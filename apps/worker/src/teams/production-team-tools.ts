@@ -6,6 +6,7 @@ import {
   canonicalizeJson,
   type PortResult,
   type ProductTeamArtifactDocument,
+  type QueryEvidenceSemanticBinding,
   sha256ContentHash,
   type Text2SqlQueryCandidate,
   text2sqlQueryCandidateSchema,
@@ -103,6 +104,78 @@ function projectionDataType(
   if (semanticType === "NUMBER") return "NUMBER";
   if (semanticType === "BOOLEAN") return "BOOLEAN";
   return "STRING";
+}
+
+function normalizedQueryEvidenceRows(input: {
+  readonly candidate: Text2SqlQueryCandidate;
+  readonly binding: QueryEvidenceSemanticBinding;
+  readonly rows: readonly Readonly<Record<string, unknown>>[];
+}): Readonly<Record<string, string | number | boolean | null>>[] {
+  const candidateNames = input.candidate.result_columns.map(({ name }) => name);
+  const bindings = input.binding.columns;
+  if (
+    bindings.length !== candidateNames.length ||
+    bindings.some(
+      (binding, index) =>
+        binding.output_name !== candidateNames[index] ||
+        binding.logical_type !== input.candidate.result_columns[index]?.semantic_type,
+    )
+  ) {
+    throw new ProductionTeamToolError("TEAM_QUERY_EVIDENCE_BINDING_INVALID");
+  }
+  const expectedKeys = [...candidateNames].sort();
+  return input.rows.map((row) => {
+    const observedKeys = Object.keys(row).sort();
+    if (
+      observedKeys.length !== expectedKeys.length ||
+      observedKeys.some((key, index) => key !== expectedKeys[index])
+    ) {
+      throw new ProductionTeamToolError("TEAM_QUERY_EVIDENCE_COLUMN_INVALID");
+    }
+    return Object.fromEntries(
+      bindings.map((binding) => {
+        const value = row[binding.output_name];
+        if (value === null) {
+          if (!binding.nullable) {
+            throw new ProductionTeamToolError("TEAM_QUERY_EVIDENCE_NULLABILITY_INVALID");
+          }
+          return [binding.output_name, null];
+        }
+        if (binding.logical_type === "NUMBER") {
+          const integerString = typeof value === "string" && /^-?(?:0|[1-9]\d*)$/u.test(value);
+          const numeric =
+            typeof value === "number"
+              ? value
+              : typeof value === "string" &&
+                  /^-?(?:0|[1-9]\d*)(?:\.\d+)?(?:[eE][+-]?\d+)?$/u.test(value)
+                ? Number(value)
+                : Number.NaN;
+          if (!Number.isFinite(numeric) || (integerString && !Number.isSafeInteger(numeric))) {
+            throw new ProductionTeamToolError("TEAM_QUERY_EVIDENCE_CELL_INVALID");
+          }
+          return [binding.output_name, numeric];
+        }
+        if (binding.logical_type === "BOOLEAN") {
+          if (typeof value !== "boolean") {
+            throw new ProductionTeamToolError("TEAM_QUERY_EVIDENCE_CELL_INVALID");
+          }
+          return [binding.output_name, value];
+        }
+        if (typeof value !== "string") {
+          throw new ProductionTeamToolError("TEAM_QUERY_EVIDENCE_CELL_INVALID");
+        }
+        if (
+          (binding.logical_type === "DATE" &&
+            (!/^\d{4}-\d{2}-\d{2}$/u.test(value) ||
+              !Number.isFinite(Date.parse(`${value}T00:00:00.000Z`)))) ||
+          (binding.logical_type === "DATETIME" && !Number.isFinite(Date.parse(value)))
+        ) {
+          throw new ProductionTeamToolError("TEAM_QUERY_EVIDENCE_CELL_INVALID");
+        }
+        return [binding.output_name, value];
+      }),
+    );
+  });
 }
 
 async function specialistProviderJson(input: {
@@ -554,9 +627,16 @@ export function createProductionTeamTools(
 
       if (input.task.profile_id === "governed-text2sql-agent") {
         if (input.tool_id === "semantic.release.read") {
+          const semanticCatalog = portValue(
+            await dependencies.semantic_release.read({
+              capability: dependencies.capability,
+              package: factoryInput.semantic_context_package,
+            }),
+          );
           state.prepared = await dependencies.text2sql.prepare({
             effective_config: factoryInput.execution_context.getEffectiveConfig(),
-            semantic_context_package: factoryInput.semantic_context_package,
+            semantic_context: factoryInput.semantic_context,
+            semantic_catalog: semanticCatalog,
             max_context_bytes: input.task.bounds.max_context_bytes,
           });
           return toolResult(null);
@@ -579,9 +659,9 @@ export function createProductionTeamTools(
               max_bytes: Math.min(10_000_000, input.task.bounds.max_context_bytes * 64),
               ...(input.signal ? { signal: input.signal } : {}),
             });
-          let result: Awaited<ReturnType<typeof executeCandidate>>;
+          let execution: Awaited<ReturnType<typeof executeCandidate>>;
           try {
-            result = await executeCandidate(state.candidate);
+            execution = await executeCandidate(state.candidate);
           } catch (error) {
             const code = safeErrorCode(error, "TEXT2SQL_QUERY_EXECUTION_FAILED");
             if (
@@ -593,8 +673,19 @@ export function createProductionTeamTools(
             state.rejected_candidate = state.candidate;
             state.rejection_code = code;
             state.candidate = await generateValidatedText2SqlCandidate();
-            result = await executeCandidate(state.candidate);
+            execution = await executeCandidate(state.candidate);
           }
+          const result = execution.result;
+          const columns = state.candidate.result_columns.map((column) => ({
+            key: column.name,
+            label: column.label,
+            data_type: projectionDataType(column.semantic_type),
+          }));
+          const rows = normalizedQueryEvidenceRows({
+            candidate: state.candidate,
+            binding: execution.semantic_binding,
+            rows: result.rows,
+          });
           const effectiveConfig = factoryInput.execution_context.getEffectiveConfig();
           const [candidateHash, parametersHash] = await Promise.all([
             sha256ContentHash(state.candidate),
@@ -623,26 +714,6 @@ export function createProductionTeamTools(
             },
             projection: { kind: "SQL", dialect: "postgresql", sql: state.candidate.sql },
           });
-          const columns = state.candidate.result_columns.map((column) => ({
-            key: column.name,
-            label: column.label,
-            data_type: projectionDataType(column.semantic_type),
-          }));
-          const rows = result.rows.map((row) =>
-            Object.fromEntries(
-              Object.entries(row).map(([key, value]) => {
-                if (
-                  value !== null &&
-                  typeof value !== "string" &&
-                  typeof value !== "number" &&
-                  typeof value !== "boolean"
-                ) {
-                  throw new ProductionTeamToolError("TEAM_QUERY_EVIDENCE_CELL_INVALID");
-                }
-                return [key, value];
-              }),
-            ),
-          );
           const evidenceRef = await commitArtifact(dependencies, factoryInput, {
             artifact_type: "QueryEvidence",
             profile_id: "governed-text2sql-agent",
@@ -657,6 +728,7 @@ export function createProductionTeamTools(
               byte_count: result.byte_count,
               elapsed_ms: result.elapsed_ms,
               truncated: result.truncated,
+              semantic_binding: execution.semantic_binding,
             },
             projection: {
               kind: "TABLE",
@@ -764,6 +836,7 @@ export function createProductionTeamTools(
 }
 
 export const productionTeamToolsInternals = Object.freeze({
+  normalizedQueryEvidenceRows,
   repairableQueryExecutionFailure,
   safeErrorCode,
   visualizationIntent,

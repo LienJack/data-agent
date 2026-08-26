@@ -16,6 +16,7 @@ import {
   createAnalysisInputMaterializer,
   resolveAnalysisInputEncryption,
 } from "../../src/analysis/input-materializer.js";
+import { buildTestQueryEvidenceSemanticBinding } from "./support/query-evidence-semantic-binding.js";
 
 const id = (suffix: number) => `81000000-0000-4000-8000-${String(suffix).padStart(12, "0")}`;
 const hash = (character: string) => `sha256:${character.repeat(64)}` as const;
@@ -56,15 +57,44 @@ const lease: RunWorkLease = {
   payload: {},
 };
 
-async function queryEvidenceDocument(rowCount = 2) {
+async function queryEvidenceDocument(
+  input:
+    | number
+    | {
+        readonly row_count?: number;
+        readonly artifact_suffix?: number;
+        readonly result_hash?: `sha256:${string}`;
+      } = 2,
+) {
+  const rowCount = typeof input === "number" ? input : (input.row_count ?? 2);
+  const artifactSuffix = typeof input === "number" ? 21 : (input.artifact_suffix ?? 21);
+  const resultHash = typeof input === "number" ? hash("a") : (input.result_hash ?? hash("a"));
   const sqlRef = reference("SqlArtifact", 20, hash("f"));
   const rows = Array.from({ length: rowCount }, (_, index) => ({
     order_id: `order-${index + 1}`,
     order_total: 100 + index,
   }));
+  const semanticBinding = await buildTestQueryEvidenceSemanticBinding({
+    columns: [
+      {
+        name: "order_id",
+        logical_type: "STRING",
+        nullable: false,
+        semantic_role: "DIMENSION",
+        semantic_object_id: "order-id",
+      },
+      {
+        name: "order_total",
+        logical_type: "NUMBER",
+        nullable: false,
+        semantic_role: "METRIC",
+        semantic_object_id: "order-total",
+      },
+    ],
+  });
   const document = await buildProductTeamArtifactDocument({
     schema_version: "product-team-artifact@2.0.0",
-    artifact_ref: reference("QueryEvidence", 21, hash("0")),
+    artifact_ref: reference("QueryEvidence", artifactSuffix, hash("0")),
     profile_id: "governed-text2sql-agent",
     task_id: id(22),
     source_refs: [sqlRef],
@@ -72,11 +102,12 @@ async function queryEvidenceDocument(rowCount = 2) {
       kind: "GOVERNED_QUERY_RESULT",
       query_id: id(23),
       request_hash: hash("1"),
-      result_hash: hash("a"),
+      result_hash: resultHash,
       row_count: rowCount,
       byte_count: 256,
       elapsed_ms: 4,
       truncated: false,
+      semantic_binding: semanticBinding,
     },
     projection: {
       kind: "TABLE",
@@ -91,9 +122,27 @@ async function queryEvidenceDocument(rowCount = 2) {
   });
   return {
     document,
+    semanticBinding,
     reference: artifactReferenceFor("QueryEvidence").parse(document.artifact_ref),
   };
 }
+
+const materializationColumns = [
+  {
+    name: "order_id",
+    arrow_type: "UTF8",
+    nullable: false,
+    semantic_role: "DIMENSION",
+    semantic_object_id: "order-id",
+  },
+  {
+    name: "order_total",
+    arrow_type: "FLOAT64",
+    nullable: false,
+    semantic_role: "METRIC",
+    semantic_object_id: "order-total",
+  },
+] as const;
 
 function arrowContent(rowCount = 2, orderTotalOffset = 0) {
   return tableToIPC(
@@ -118,6 +167,50 @@ function productArtifactAuthority(document: ProductTeamArtifactDocument | null) 
 }
 
 describe("analysis input materializer", () => {
+  it.each([0, 16 * 1024 * 1024 + 1])(
+    "rejects an input byte count of %i before reading or writing either authority",
+    async (byteCount) => {
+      const evidence = await queryEvidenceDocument();
+      const resolveCommitted = vi.fn();
+      const sensitiveCommit = vi.fn();
+      const systemCommit = vi.fn();
+      const materializer = createAnalysisInputMaterializer({
+        sensitive_artifacts: { commit: sensitiveCommit },
+        product_artifacts: { resolveCommitted },
+        analysis_artifacts: {
+          commitL2: vi.fn(),
+          commitSystem: systemCommit,
+          resolveCommitted: vi.fn(),
+        },
+        capability_input: null,
+        encryption_key: Buffer.alloc(32, 8),
+        encryption_key_id: "analysis-input-test@1",
+      });
+
+      await expect(
+        materializer.materialize({
+          lease,
+          analysis_program_ref: reference("AnalysisProgram", 33),
+          node_id: "bounded-analysis-input",
+          idempotency_key: "analysis-input-byte-bound",
+          input_name: "query_evidence",
+          format: "ARROW",
+          content: new Uint8Array(byteCount),
+          row_count: 2,
+          columns: materializationColumns,
+          source_binding_hash: evidence.semanticBinding.binding_hash as `sha256:${string}`,
+          spec_hash: hash("1"),
+          snapshot_receipt_hash: evidence.semanticBinding.schema_snapshot_ref
+            .resource_hash as `sha256:${string}`,
+          query_evidence_ref: evidence.reference,
+        }),
+      ).rejects.toThrow("ANALYSIS_INPUT_BYTE_BUDGET_EXCEEDED");
+      expect(resolveCommitted).not.toHaveBeenCalled();
+      expect(sensitiveCommit).not.toHaveBeenCalled();
+      expect(systemCommit).not.toHaveBeenCalled();
+    },
+  );
+
   it("encrypts Arrow bytes and commits the exact QueryEvidence-to-input receipt", async () => {
     const evidence = await queryEvidenceDocument();
     const sensitiveCommit = vi.fn(async (_capability, request) => ({
@@ -151,9 +244,11 @@ describe("analysis input materializer", () => {
       format: "ARROW",
       content,
       row_count: 2,
-      ordered_columns: ["order_id", "order_total"],
+      columns: materializationColumns,
+      source_binding_hash: evidence.semanticBinding.binding_hash as `sha256:${string}`,
       spec_hash: hash("1"),
-      snapshot_receipt_hash: hash("2"),
+      snapshot_receipt_hash: evidence.semanticBinding.schema_snapshot_ref
+        .resource_hash as `sha256:${string}`,
       query_evidence_ref: evidence.reference,
     });
 
@@ -170,12 +265,12 @@ describe("analysis input materializer", () => {
     ).toBe("DAAI1");
     expect(systemCommit).toHaveBeenCalledOnce();
     expect(result.materialization_receipt_document).toMatchObject({
-      protocol_version: "analysis-input-materialization@2.0.0",
+      protocol_version: "analysis-input-materialization@3.0.0",
       query_evidence_ref: evidence.reference,
       source_result_hash: hash("a"),
       input_ref: result.input_ref,
       row_count: 2,
-      ordered_columns: ["order_id", "order_total"],
+      columns: materializationColumns,
     });
     expect(result.materialization_receipt_document).not.toHaveProperty("query_result_ref");
     await expect(
@@ -210,6 +305,66 @@ describe("analysis input materializer", () => {
     ).rejects.toThrow("ANALYSIS_QUERY_EVIDENCE_MATERIALIZATION_INVALID");
   });
 
+  it("replays one QueryEvidence deterministically but never reuses its receipt for another evidence", async () => {
+    const evidence = await queryEvidenceDocument();
+    const sameRowsDifferentEvidence = await queryEvidenceDocument({
+      artifact_suffix: 24,
+      result_hash: hash("b"),
+    });
+    const sensitiveCommit = vi.fn(async (_capability, request) => ({
+      ok: true as const,
+      value: {
+        schema_version: "sensitive-execution-artifact-commit-result@2.0.0" as const,
+        disposition: "CREATED" as const,
+        receipt: request.command.receipt,
+      },
+    }));
+    const systemCommit = vi.fn(async ({ reference: committed }) => committed);
+    const content = arrowContent();
+    const materialize = async (source: Awaited<ReturnType<typeof queryEvidenceDocument>>) =>
+      createAnalysisInputMaterializer({
+        sensitive_artifacts: { commit: sensitiveCommit },
+        product_artifacts: productArtifactAuthority(source.document),
+        analysis_artifacts: {
+          commitL2: vi.fn(),
+          commitSystem: systemCommit,
+          resolveCommitted: vi.fn(),
+        },
+        capability_input: { authority: "test" },
+        encryption_key: Buffer.alloc(32, 7),
+        encryption_key_id: "analysis-input-test@1",
+      }).materialize({
+        lease,
+        analysis_program_ref: reference("AnalysisProgram", 33),
+        node_id: "generic-analysis-node",
+        idempotency_key: "analysis-input-replay",
+        input_name: "query_evidence",
+        format: "ARROW",
+        content,
+        row_count: 2,
+        columns: materializationColumns,
+        source_binding_hash: source.semanticBinding.binding_hash as `sha256:${string}`,
+        spec_hash: hash("1"),
+        snapshot_receipt_hash: source.semanticBinding.schema_snapshot_ref
+          .resource_hash as `sha256:${string}`,
+        query_evidence_ref: source.reference,
+      });
+
+    const first = await materialize(evidence);
+    const replay = await materialize(evidence);
+    const different = await materialize(sameRowsDifferentEvidence);
+
+    expect(replay.input_ref.artifact_id).toBe(first.input_ref.artifact_id);
+    expect(replay.materialization_receipt_ref.artifact_id).toBe(
+      first.materialization_receipt_ref.artifact_id,
+    );
+    expect(different.input_ref.content_hash).toBe(first.input_ref.content_hash);
+    expect(different.input_ref.artifact_id).not.toBe(first.input_ref.artifact_id);
+    expect(different.materialization_receipt_ref.artifact_id).not.toBe(
+      first.materialization_receipt_ref.artifact_id,
+    );
+  });
+
   it("rejects a QueryEvidence ref that Product Team authority cannot resolve", async () => {
     const evidence = await queryEvidenceDocument();
     const sensitiveCommit = vi.fn();
@@ -238,9 +393,11 @@ describe("analysis input materializer", () => {
         format: "ARROW",
         content: arrowContent(),
         row_count: 2,
-        ordered_columns: ["order_id", "order_total"],
+        columns: materializationColumns,
+        source_binding_hash: evidence.semanticBinding.binding_hash as `sha256:${string}`,
         spec_hash: hash("1"),
-        snapshot_receipt_hash: hash("2"),
+        snapshot_receipt_hash: evidence.semanticBinding.schema_snapshot_ref
+          .resource_hash as `sha256:${string}`,
         query_evidence_ref: evidence.reference,
       }),
     ).rejects.toThrow("ANALYSIS_INPUT_QUERY_EVIDENCE_NOT_COMMITTED");
@@ -274,9 +431,11 @@ describe("analysis input materializer", () => {
         format: "ARROW",
         content: arrowContent(),
         row_count: 2,
-        ordered_columns: ["order_total", "order_id"],
+        columns: [materializationColumns[1], materializationColumns[0]],
+        source_binding_hash: evidence.semanticBinding.binding_hash as `sha256:${string}`,
         spec_hash: hash("1"),
-        snapshot_receipt_hash: hash("2"),
+        snapshot_receipt_hash: evidence.semanticBinding.schema_snapshot_ref
+          .resource_hash as `sha256:${string}`,
         query_evidence_ref: evidence.reference,
       }),
     ).rejects.toThrow("ANALYSIS_INPUT_QUERY_EVIDENCE_INVALID");
@@ -310,9 +469,11 @@ describe("analysis input materializer", () => {
         format: "ARROW",
         content: arrowContent(2),
         row_count: 2,
-        ordered_columns: ["order_id"],
+        columns: [materializationColumns[0]],
+        source_binding_hash: evidence.semanticBinding.binding_hash as `sha256:${string}`,
         spec_hash: hash("1"),
-        snapshot_receipt_hash: hash("2"),
+        snapshot_receipt_hash: evidence.semanticBinding.schema_snapshot_ref
+          .resource_hash as `sha256:${string}`,
         query_evidence_ref: evidence.reference,
       }),
     ).rejects.toThrow("ANALYSIS_INPUT_ARROW_CONTENT_INVALID");
@@ -346,9 +507,11 @@ describe("analysis input materializer", () => {
         format: "ARROW",
         content: arrowContent(2, 1_000),
         row_count: 2,
-        ordered_columns: ["order_id", "order_total"],
+        columns: materializationColumns,
+        source_binding_hash: evidence.semanticBinding.binding_hash as `sha256:${string}`,
         spec_hash: hash("1"),
-        snapshot_receipt_hash: hash("2"),
+        snapshot_receipt_hash: evidence.semanticBinding.schema_snapshot_ref
+          .resource_hash as `sha256:${string}`,
         query_evidence_ref: evidence.reference,
       }),
     ).rejects.toThrow("ANALYSIS_INPUT_ARROW_CONTENT_MISMATCH");

@@ -5,9 +5,10 @@ import {
   artifactReferenceIdentity,
   verifyAnalysisInputMaterializationReceipt,
   verifyProductTeamArtifactDocument,
+  verifyQueryEvidenceSemanticBinding,
 } from "@data-agent/contracts/artifacts";
 import { canonicalizeJson, sha256ContentHash } from "@data-agent/contracts/common";
-import { tableFromIPC } from "apache-arrow";
+import { Bool, DateDay, Float64, TimestampMillisecond, tableFromIPC, Utf8 } from "apache-arrow";
 
 type ProductTeamQueryEvidenceRef = ArtifactReference & {
   readonly artifact_type: "QueryEvidence";
@@ -45,16 +46,41 @@ function sameOrderedColumns(left: readonly string[], right: readonly string[]): 
   return left.length === right.length && left.every((column, index) => column === right[index]);
 }
 
-function normalizeArrowValue(expected: string | number | boolean | null, observed: unknown) {
+type EvidenceColumnBinding = Awaited<
+  ReturnType<typeof verifyQueryEvidenceSemanticBinding>
+>["columns"][number];
+
+function arrowType(column: EvidenceColumnBinding) {
+  if (column.logical_type === "NUMBER") return "FLOAT64" as const;
+  if (column.logical_type === "BOOLEAN") return "BOOL" as const;
+  if (column.logical_type === "DATE") return "DATE32" as const;
+  if (column.logical_type === "DATETIME") return "TIMESTAMP_MS" as const;
+  return "UTF8" as const;
+}
+
+function exactArrowType(type: unknown, expected: ReturnType<typeof arrowType>): boolean {
+  const observed = String(type);
+  if (expected === "FLOAT64") return observed === String(new Float64());
+  if (expected === "BOOL") return observed === String(new Bool());
+  if (expected === "DATE32") return observed === String(new DateDay());
+  if (expected === "TIMESTAMP_MS") return observed === String(new TimestampMillisecond());
+  return observed === String(new Utf8());
+}
+
+function normalizeArrowValue(
+  logicalType: EvidenceColumnBinding["logical_type"],
+  expected: string | number | boolean | null,
+  observed: unknown,
+) {
   if (expected === null) return observed === null ? null : undefined;
-  if (typeof expected === "number") {
+  if (logicalType === "NUMBER") {
     return typeof observed === "number" && Number.isFinite(observed) ? observed : undefined;
   }
-  if (typeof expected === "boolean") {
+  if (logicalType === "BOOLEAN") {
     return typeof observed === "boolean" ? observed : undefined;
   }
-  if (typeof observed === "string") return observed;
-  if (/^\d{4}-\d{2}-\d{2}$/u.test(expected)) {
+  if (logicalType === "STRING") return typeof observed === "string" ? observed : undefined;
+  if (logicalType === "DATE" && typeof expected === "string") {
     if (observed instanceof Date && !Number.isNaN(observed.valueOf())) {
       return observed.toISOString().slice(0, 10);
     }
@@ -62,12 +88,20 @@ function normalizeArrowValue(expected: string | number | boolean | null, observe
       return new Date(observed).toISOString().slice(0, 10);
     }
   }
+  if (logicalType === "DATETIME" && typeof expected === "string") {
+    if (observed instanceof Date && !Number.isNaN(observed.valueOf())) {
+      return observed.toISOString();
+    }
+    if (typeof observed === "number" && Number.isFinite(observed)) {
+      return new Date(observed).toISOString();
+    }
+  }
   return undefined;
 }
 
 function verifyArrowProjection(input: {
   readonly content: Uint8Array;
-  readonly ordered_columns: readonly string[];
+  readonly columns: readonly EvidenceColumnBinding[];
   readonly rows: readonly Readonly<Record<string, string | number | boolean | null>>[];
 }): void {
   let table: ReturnType<typeof tableFromIPC>;
@@ -77,21 +111,26 @@ function verifyArrowProjection(input: {
     throw new TypeError("ANALYSIS_INPUT_ARROW_CONTENT_INVALID");
   }
   const observedColumns = table.schema.fields.map(({ name }) => name);
+  const orderedColumns = input.columns.map(({ output_name: outputName }) => outputName);
   if (
     table.numRows !== input.rows.length ||
-    !sameOrderedColumns(observedColumns, input.ordered_columns)
+    !sameOrderedColumns(observedColumns, orderedColumns) ||
+    table.schema.fields.some(
+      (field, index) =>
+        !exactArrowType(field.type, arrowType(input.columns[index] as EvidenceColumnBinding)),
+    )
   ) {
     throw new TypeError("ANALYSIS_INPUT_ARROW_CONTENT_INVALID");
   }
   for (let rowIndex = 0; rowIndex < table.numRows; rowIndex += 1) {
     const expectedRow = input.rows[rowIndex];
     if (!expectedRow) throw new TypeError("ANALYSIS_INPUT_ARROW_CONTENT_INVALID");
-    for (const column of input.ordered_columns) {
-      const vector = table.getChild(column);
+    for (const column of input.columns) {
+      const vector = table.getChild(column.output_name);
       if (!vector) throw new TypeError("ANALYSIS_INPUT_ARROW_CONTENT_INVALID");
-      const expected = expectedRow[column];
+      const expected = expectedRow[column.output_name];
       if (expected === undefined) throw new TypeError("ANALYSIS_INPUT_ARROW_CONTENT_INVALID");
-      const observed = normalizeArrowValue(expected, vector.get(rowIndex));
+      const observed = normalizeArrowValue(column.logical_type, expected, vector.get(rowIndex));
       if (observed === undefined || canonicalizeJson(observed) !== canonicalizeJson(expected)) {
         throw new TypeError("ANALYSIS_INPUT_ARROW_CONTENT_MISMATCH");
       }
@@ -109,6 +148,7 @@ export async function verifyProductTeamQueryEvidenceInput(input: {
   readonly result_hash: string;
   readonly row_count: number;
   readonly ordered_columns: readonly string[];
+  readonly semantic_binding: Awaited<ReturnType<typeof verifyQueryEvidenceSemanticBinding>>;
 }> {
   try {
     const document = await verifyProductTeamArtifactDocument(input.query_evidence_document);
@@ -124,11 +164,14 @@ export async function verifyProductTeamQueryEvidenceInput(input: {
     ) {
       throw new TypeError("ANALYSIS_INPUT_QUERY_EVIDENCE_INVALID");
     }
-    const orderedColumns = document.projection.columns.map(({ key }) => key);
+    const semanticBinding = await verifyQueryEvidenceSemanticBinding(
+      document.provenance.semantic_binding,
+    );
+    const orderedColumns = semanticBinding.columns.map(({ output_name: outputName }) => outputName);
     if (input.arrow_content) {
       verifyArrowProjection({
         content: input.arrow_content,
-        ordered_columns: orderedColumns,
+        columns: semanticBinding.columns,
         rows: document.projection.rows,
       });
     }
@@ -144,6 +187,7 @@ export async function verifyProductTeamQueryEvidenceInput(input: {
       result_hash: document.provenance.result_hash,
       row_count: document.provenance.row_count,
       ordered_columns: Object.freeze(orderedColumns),
+      semantic_binding: semanticBinding,
     });
   } catch (error) {
     if (error instanceof TypeError && error.message.startsWith("ANALYSIS_INPUT_")) {
@@ -178,13 +222,28 @@ export async function verifyGovernedAnalysisInputs(input: {
       !/^[A-Za-z_][A-Za-z0-9_.-]{0,62}$/u.test(governed.name) ||
       !exactRef(materialization.query_evidence_ref, governed.query_evidence_ref) ||
       materialization.source_result_hash !== evidence.result_hash ||
+      materialization.source_binding_hash !== evidence.semantic_binding.binding_hash ||
       materialization.row_count !== evidence.row_count ||
-      !sameOrderedColumns(materialization.ordered_columns, evidence.ordered_columns) ||
+      !sameOrderedColumns(
+        materialization.columns.map(({ name }) => name),
+        evidence.ordered_columns,
+      ) ||
+      materialization.columns.some((column, index) => {
+        const source = evidence.semantic_binding.columns[index];
+        return (
+          !source ||
+          column.arrow_type !== arrowType(source) ||
+          column.nullable !== source.nullable ||
+          column.semantic_role !== source.semantic_role ||
+          column.semantic_object_id !== source.semantic_object_id
+        );
+      }) ||
       materialization.input_format !== governed.format ||
       !exactRef(materialization.input_ref, governed.input_ref) ||
       !exactRef(materializationReference, governed.materialization_receipt_ref) ||
       materializationReference.content_hash !== (await sha256ContentHash(materialization)) ||
       governed.content.byteLength === 0 ||
+      governed.content.byteLength !== materialization.input_byte_count ||
       bytesHash(governed.content) !== governed.input_ref.content_hash ||
       !sameScopeAndRun(governed.input_ref, input.analysis_program_ref) ||
       !sameScopeAndRun(governed.query_evidence_ref, input.analysis_program_ref) ||

@@ -12,6 +12,7 @@ import type { GovernedAnalysisInput } from "../../src/analysis/governed-analysis
 import { falcon24AnalysisDataOracleReceiptSchema } from "../../src/evals/falcon24-analysis-data-oracle.js";
 import { FALCON24_ANALYSIS_QUERY_SPECS } from "../../src/evals/falcon24-analysis-queries.js";
 import { createFalcon24GovernedAnalysisQueryPort } from "../../src/evals/falcon24-governed-query-port.js";
+import { buildTestQueryEvidenceSemanticBinding } from "../analysis/support/query-evidence-semantic-binding.js";
 
 const id = (suffix: number) => `60000000-0000-4000-8000-${String(suffix).padStart(12, "0")}`;
 const hash = (character: string) => `sha256:${character.repeat(64)}` as const;
@@ -112,6 +113,20 @@ function node(nodeId: string) {
 
 async function documents(rows = fixtureRows()) {
   const spec = FALCON24_ANALYSIS_QUERY_SPECS["falcon24-business-review-18m"];
+  const semanticBinding = await buildTestQueryEvidenceSemanticBinding({
+    columns: spec.columns.map((column) => ({
+      name: column.name,
+      logical_type:
+        column.kind === "FLOAT64"
+          ? ("NUMBER" as const)
+          : column.kind === "DATE"
+            ? ("DATE" as const)
+            : ("STRING" as const),
+      nullable: column.nullable,
+      semantic_role: column.kind === "FLOAT64" ? ("METRIC" as const) : ("DIMENSION" as const),
+      semantic_object_id: `falcon24.${column.name}`,
+    })),
+  });
   const sql = await buildProductTeamArtifactDocument({
     schema_version: "product-team-artifact@2.0.0",
     artifact_ref: {
@@ -164,6 +179,7 @@ async function documents(rows = fixtureRows()) {
       byte_count: 1,
       elapsed_ms: 42,
       truncated: false,
+      semantic_binding: semanticBinding,
     },
     projection: {
       kind: "TABLE",

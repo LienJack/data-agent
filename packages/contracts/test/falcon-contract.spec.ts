@@ -118,7 +118,7 @@ describe("Falcon contracts", () => {
     const ready = await buildFalcon24E1DatabaseImportReceipt({
       source,
       observed_bundle_sha256: source.bundle_sha256,
-      expected_inventory_hash: inventory.inventory_hash,
+      expected_inventory_hash: inventory.inventory_hash as `sha256:${string}`,
       catalog_inventory: inventory,
     });
     expect(ready.status).toBe("READY");
@@ -131,12 +131,12 @@ describe("Falcon contracts", () => {
     const { inventory_hash: _inventoryHash, ...inventoryMaterial } = inventory;
     const driftedInventory = await buildFalcon24E1CatalogInventory({
       ...inventoryMaterial,
-      content_digest: `sha256:${"5".repeat(64)}`,
+      content_digest: `sha256:${"5".repeat(64)}` as `sha256:${string}`,
     });
     const drifted = await buildFalcon24E1DatabaseImportReceipt({
       source,
-      observed_bundle_sha256: `sha256:${"4".repeat(64)}`,
-      expected_inventory_hash: inventory.inventory_hash,
+      observed_bundle_sha256: `sha256:${"4".repeat(64)}` as `sha256:${string}`,
+      expected_inventory_hash: inventory.inventory_hash as `sha256:${string}`,
       catalog_inventory: driftedInventory,
     });
     expect(drifted.status).toBe("HOLD");

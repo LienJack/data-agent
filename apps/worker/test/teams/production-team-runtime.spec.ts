@@ -21,6 +21,7 @@ import type {
 } from "../../src/runs/run-worker-runner.js";
 import { buildBuiltinTeamMaterialization } from "../../src/teams/builtin-profile-assets.js";
 import { createProductionTeamRuntime } from "../../src/teams/production-team-runtime.js";
+import { buildTestQueryEvidenceSemanticBinding } from "../analysis/support/query-evidence-semantic-binding.js";
 
 const id = (suffix: number) => `00000000-0000-4000-8000-${String(suffix).padStart(12, "0")}`;
 const hash = (character: string) => `sha256:${character.repeat(64)}`;
@@ -175,7 +176,7 @@ function reference(
   };
 }
 
-function queryProvenance() {
+async function queryProvenance(outputName: string) {
   return {
     kind: "GOVERNED_QUERY_RESULT" as const,
     query_id: id(70),
@@ -185,6 +186,17 @@ function queryProvenance() {
     byte_count: 32,
     elapsed_ms: 4,
     truncated: false as const,
+    semantic_binding: await buildTestQueryEvidenceSemanticBinding({
+      columns: [
+        {
+          name: outputName,
+          logical_type: "NUMBER",
+          nullable: false,
+          semantic_role: "METRIC",
+          semantic_object_id: `metric.${outputName}`,
+        },
+      ],
+    }),
   };
 }
 
@@ -346,7 +358,7 @@ describe("Production Team runtime", () => {
               profile_id: "governed-text2sql-agent",
               task_id: task.task_id,
               source_refs: [reference("SqlArtifact", id(81))],
-              provenance: queryProvenance(),
+              provenance: await queryProvenance("table_count"),
               projection: {
                 kind: "TABLE",
                 columns: [{ key: "table_count", label: "table_count", data_type: "NUMBER" }],
@@ -626,7 +638,7 @@ describe("Production Team runtime", () => {
               profile_id: "governed-text2sql-agent",
               task_id: task.task_id,
               source_refs: [reference("SqlArtifact", id(91))],
-              provenance: queryProvenance(),
+              provenance: await queryProvenance("value"),
               projection: {
                 kind: "TABLE",
                 columns: [{ key: "value", label: "value", data_type: "NUMBER" }],

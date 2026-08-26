@@ -1,23 +1,32 @@
 import { z } from "zod";
-import { deepFreeze, sha256ContentHash } from "../common/index.js";
+import { deepFreeze, postgresqlOutputAliasSchema, sha256ContentHash } from "../common/index.js";
 import { artifactReferenceFor } from "./envelope.js";
 import {
   contentHashSchema,
-  identifierSchema,
   nonNegativeIntSchema,
   versionIdentifierSchema,
 } from "./research/primitives.js";
 
+const materializedColumnSchema = z.strictObject({
+  name: postgresqlOutputAliasSchema,
+  arrow_type: z.enum(["UTF8", "FLOAT64", "BOOL", "DATE32", "TIMESTAMP_MS"]),
+  nullable: z.boolean(),
+  semantic_role: z.enum(["METRIC", "DIMENSION"]),
+  semantic_object_id: versionIdentifierSchema,
+});
+
 const materializationReceiptFields = {
   artifact_type: z.literal("AnalysisInputMaterializationReceipt"),
-  protocol_version: z.literal("analysis-input-materialization@2.0.0"),
+  protocol_version: z.literal("analysis-input-materialization@3.0.0"),
   query_evidence_ref: artifactReferenceFor("QueryEvidence"),
   input_ref: artifactReferenceFor("SensitiveExecutionArtifact"),
   source_result_hash: contentHashSchema,
+  source_binding_hash: contentHashSchema,
   input_hash: contentHashSchema,
   input_format: z.literal("ARROW"),
+  input_byte_count: nonNegativeIntSchema.min(1).max(16 * 1024 * 1024),
   row_count: nonNegativeIntSchema.max(10_000),
-  ordered_columns: z.array(identifierSchema).min(1).max(256),
+  columns: z.array(materializedColumnSchema).min(1).max(256),
   spec_hash: contentHashSchema,
   snapshot_receipt_hash: contentHashSchema,
   materializer_version: versionIdentifierSchema,
@@ -45,7 +54,7 @@ function validateMaterializationBindings(
       message: "Analysis input materialization refs must share exact scope and run.",
     });
   }
-  if (new Set(receipt.ordered_columns).size !== receipt.ordered_columns.length) {
+  if (new Set(receipt.columns.map(({ name }) => name)).size !== receipt.columns.length) {
     context.addIssue({ code: "custom", message: "Materialized input columns must be unique." });
   }
 }
@@ -66,7 +75,7 @@ export async function computeAnalysisInputMaterializationReceiptHash(
   input: Omit<AnalysisInputMaterializationReceipt, "receipt_hash">,
 ): Promise<`sha256:${string}`> {
   return sha256ContentHash({
-    hash_domain: "analysis-input-materialization@2.0.0",
+    hash_domain: "analysis-input-materialization@3.0.0",
     value: input,
   });
 }

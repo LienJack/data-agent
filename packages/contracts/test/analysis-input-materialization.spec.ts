@@ -24,14 +24,31 @@ const reference = <
 async function receipt() {
   const material: Omit<AnalysisInputMaterializationReceipt, "receipt_hash"> = {
     artifact_type: "AnalysisInputMaterializationReceipt",
-    protocol_version: "analysis-input-materialization@2.0.0",
+    protocol_version: "analysis-input-materialization@3.0.0",
     query_evidence_ref: reference("QueryEvidence", 4, hash("a")),
     input_ref: reference("SensitiveExecutionArtifact", 6, hash("c")),
     source_result_hash: hash("b"),
+    source_binding_hash: hash("f"),
     input_hash: hash("c"),
     input_format: "ARROW",
+    input_byte_count: 1_024,
     row_count: 4_612,
-    ordered_columns: ["order_id", "order_total"],
+    columns: [
+      {
+        name: "order_id",
+        arrow_type: "UTF8",
+        nullable: false,
+        semantic_role: "DIMENSION",
+        semantic_object_id: "order-id",
+      },
+      {
+        name: "order_total",
+        arrow_type: "FLOAT64",
+        nullable: false,
+        semantic_role: "METRIC",
+        semantic_object_id: "order-total",
+      },
+    ],
     spec_hash: hash("d"),
     snapshot_receipt_hash: hash("e"),
     materializer_version: "falcon24-arrow-materializer@1.0.0",
@@ -72,12 +89,12 @@ describe("analysis input materialization receipt", () => {
     ).rejects.toThrow("ANALYSIS_INPUT_MATERIALIZATION_RECEIPT_HASH_INVALID");
   });
 
-  it("rejects the retired v1 receipt and SandboxResult compatibility field", async () => {
+  it("rejects the retired v2 receipt and SandboxResult compatibility field", async () => {
     const value = await receipt();
     expect(
       analysisInputMaterializationReceiptSchema.safeParse({
         ...value,
-        protocol_version: "analysis-input-materialization@1.0.0",
+        protocol_version: "analysis-input-materialization@2.0.0",
         query_result_ref: reference("SensitiveExecutionArtifact", 9, hash("b")),
       }).success,
     ).toBe(false);

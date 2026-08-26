@@ -1,5 +1,7 @@
 import { z } from "zod";
 
+import { versionIdentifierSchema } from "../common/index.js";
+
 const queryParameterSchema = z.union([z.string(), z.number().finite(), z.boolean(), z.null()]);
 
 export const text2sqlQueryCandidateSchema = z
@@ -17,10 +19,22 @@ export const text2sqlQueryCandidateSchema = z
             .regex(/^[A-Za-z_][A-Za-z0-9_]*$/u),
           semantic_type: z.enum(["NUMBER", "STRING", "DATE", "DATETIME", "BOOLEAN"]),
           label: z.string().trim().min(1).max(128),
+          semantic_binding: z.strictObject({
+            object_kind: z.enum(["METRIC", "DIMENSION"]),
+            object_id: versionIdentifierSchema,
+          }),
         }),
       )
       .min(1)
       .max(128),
+    time_window: z
+      .strictObject({
+        dimension_id: versionIdentifierSchema,
+        start_parameter: z.number().int().positive().max(256),
+        end_parameter: z.number().int().positive().max(256),
+        semantics: z.literal("HALF_OPEN"),
+      })
+      .nullable(),
     presentation: z.strictObject({
       title: z.string().trim().min(1).max(240),
       summary: z.string().trim().min(1).max(2_000),
@@ -36,6 +50,18 @@ export const text2sqlQueryCandidateSchema = z
     );
     if (new Set(names).size !== names.length) {
       ctx.addIssue({ code: "custom", message: "Result column names must be unique." });
+    }
+    if (
+      candidate.time_window &&
+      (candidate.time_window.start_parameter === candidate.time_window.end_parameter ||
+        candidate.time_window.start_parameter > candidate.parameters.length ||
+        candidate.time_window.end_parameter > candidate.parameters.length)
+    ) {
+      ctx.addIssue({
+        code: "custom",
+        message: "Time window must reference two distinct declared parameters.",
+        path: ["time_window"],
+      });
     }
     if (selected.some((name) => !names.includes(name))) {
       ctx.addIssue({

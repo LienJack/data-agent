@@ -20,7 +20,7 @@ import {
 const INPUT_KEY_ENV = "DATA_AGENT_ANALYSIS_INPUT_KEY_BASE64" as const;
 const INPUT_KEY_ID_ENV = "DATA_AGENT_ANALYSIS_INPUT_KEY_ID" as const;
 const DEFAULT_INPUT_KEY_ID = "analysis-input-v1" as const;
-const MATERIALIZER_VERSION = "analysis-arrow-materializer@2.0.0" as const;
+const MATERIALIZER_VERSION = "analysis-arrow-materializer@3.0.0" as const;
 const CIPHERTEXT_MAGIC = Buffer.from("DAAI1", "ascii");
 const PRIMARY_RETENTION_MS = 30 * 24 * 60 * 60 * 1_000;
 const BACKUP_RETENTION_MS = 37 * 24 * 60 * 60 * 1_000;
@@ -52,7 +52,14 @@ export interface AnalysisInputMaterializationCommand {
   readonly format: "ARROW";
   readonly content: Uint8Array;
   readonly row_count: number;
-  readonly ordered_columns: readonly string[];
+  readonly columns: readonly {
+    readonly name: string;
+    readonly arrow_type: "UTF8" | "FLOAT64" | "BOOL" | "DATE32" | "TIMESTAMP_MS";
+    readonly nullable: boolean;
+    readonly semantic_role: "METRIC" | "DIMENSION";
+    readonly semantic_object_id: string;
+  }[];
+  readonly source_binding_hash: `sha256:${string}`;
   readonly spec_hash: `sha256:${string}`;
   readonly snapshot_receipt_hash: `sha256:${string}`;
   readonly query_evidence_ref: ArtifactReference & { readonly artifact_type: "QueryEvidence" };
@@ -79,7 +86,7 @@ function inputAad(
 ): Uint8Array {
   return Buffer.from(
     canonicalizeJson({
-      protocol_version: "analysis-input-aad@2.0.0",
+      protocol_version: "analysis-input-aad@3.0.0",
       scope: input.lease.scope,
       run_id: input.lease.run_id,
       analysis_program_ref: input.analysis_program_ref,
@@ -87,7 +94,9 @@ function inputAad(
       query_evidence_ref: input.query_evidence_ref,
       input_name: input.input_name,
       source_result_hash: source.result_hash,
+      source_binding_hash: input.source_binding_hash,
       source_row_count: source.row_count,
+      columns: input.columns,
       plaintext_hash: plaintextHash,
       spec_hash: input.spec_hash,
       snapshot_receipt_hash: input.snapshot_receipt_hash,
@@ -145,6 +154,9 @@ export function createAnalysisInputMaterializer(input: {
     async materialize(
       command: AnalysisInputMaterializationCommand,
     ): Promise<GovernedAnalysisInput> {
+      if (command.content.byteLength === 0 || command.content.byteLength > 16 * 1024 * 1024) {
+        throw new TypeError("ANALYSIS_INPUT_BYTE_BUDGET_EXCEEDED");
+      }
       const resolved = await input.product_artifacts.resolveCommitted(
         input.capability_input,
         command.query_evidence_ref,
@@ -159,16 +171,36 @@ export function createAnalysisInputMaterializer(input: {
         query_evidence_document: resolved.value,
         arrow_content: command.content,
         expected_row_count: command.row_count,
-        expected_ordered_columns: command.ordered_columns,
+        expected_ordered_columns: command.columns.map(({ name }) => name),
       });
       if (
         command.analysis_program_ref.run_id !== command.lease.run_id ||
         command.analysis_program_ref.app_id !== command.lease.scope.app_id ||
         command.analysis_program_ref.tenant_id !== command.lease.scope.tenant_id ||
         command.analysis_program_ref.environment !== command.lease.scope.environment ||
-        command.content.byteLength === 0 ||
-        command.ordered_columns.length === 0 ||
-        new Set(command.ordered_columns).size !== command.ordered_columns.length
+        command.source_binding_hash !== queryEvidence.semantic_binding.binding_hash ||
+        command.snapshot_receipt_hash !==
+          queryEvidence.semantic_binding.schema_snapshot_ref.resource_hash ||
+        command.columns.length === 0 ||
+        canonicalizeJson(command.columns) !==
+          canonicalizeJson(
+            queryEvidence.semantic_binding.columns.map((column) => ({
+              name: column.output_name,
+              arrow_type:
+                column.logical_type === "NUMBER"
+                  ? "FLOAT64"
+                  : column.logical_type === "BOOLEAN"
+                    ? "BOOL"
+                    : column.logical_type === "DATE"
+                      ? "DATE32"
+                      : column.logical_type === "DATETIME"
+                        ? "TIMESTAMP_MS"
+                        : "UTF8",
+              nullable: column.nullable,
+              semantic_role: column.semantic_role,
+              semantic_object_id: column.semantic_object_id,
+            })),
+          )
       ) {
         throw new TypeError("ANALYSIS_INPUT_MATERIALIZATION_CORRELATION_INVALID");
       }
@@ -236,14 +268,16 @@ export function createAnalysisInputMaterializer(input: {
 
       const materializationReceipt = await buildAnalysisInputMaterializationReceipt({
         artifact_type: "AnalysisInputMaterializationReceipt",
-        protocol_version: "analysis-input-materialization@2.0.0",
+        protocol_version: "analysis-input-materialization@3.0.0",
         query_evidence_ref: command.query_evidence_ref,
         input_ref: inputRef,
         source_result_hash: queryEvidence.result_hash,
+        source_binding_hash: queryEvidence.semantic_binding.binding_hash,
         input_hash: plaintextHash,
         input_format: "ARROW",
+        input_byte_count: command.content.byteLength,
         row_count: command.row_count,
-        ordered_columns: [...command.ordered_columns],
+        columns: [...command.columns],
         spec_hash: command.spec_hash,
         snapshot_receipt_hash: command.snapshot_receipt_hash,
         materializer_version: MATERIALIZER_VERSION,

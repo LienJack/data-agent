@@ -7,6 +7,7 @@ export * from "./duckdb-transport.js";
 export * from "./mysql.js";
 export * from "./mysql-transport.js";
 export * from "./postgresql.js";
+export * from "./postgresql-query-evidence-semantic-binding.js";
 export * from "./postgresql-text2sql-policy.js";
 export * from "./postgresql-transport.js";
 export * from "./sqlite.js";

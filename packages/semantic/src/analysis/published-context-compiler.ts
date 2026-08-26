@@ -1,11 +1,13 @@
 import {
-  type AnalysisContext,
   type ArtifactReference,
+  computePublishedMetricFormulaHash,
+} from "@data-agent/contracts/artifacts";
+import {
+  type AnalysisContext,
   buildAnalysisContext,
   type SemanticContextCommitResult,
-  sha256ContentHash,
   verifySemanticContextCommitResult,
-} from "@data-agent/contracts";
+} from "@data-agent/contracts/context";
 import type {
   SemanticExecutablePublicationProjection,
   SemanticRelationshipPublicationProjection,
@@ -197,14 +199,9 @@ export async function compilePublishedAnalysisContext(
       const timeDimensionRef = resolveTimeDimensionRef(metric, dimensionById);
       return {
         metric_ref: { container_ref: semanticReleaseRef, node_id: metric.metric_id },
-        formula_hash: await sha256ContentHash({
+        formula_hash: await computePublishedMetricFormulaHash({
           semantic_release_hash: packageDocument.semantic_release.resource_hash,
-          metric: {
-            metric_id: metric.metric_id,
-            aggregation: metric.aggregation,
-            formula: metric.formula,
-            dependency_column_ids: metric.dependency_column_ids,
-          },
+          metric,
           formula,
         }),
         unit: metric.unit,

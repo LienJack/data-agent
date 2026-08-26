@@ -21,6 +21,7 @@ import { describe, expect, it } from "vitest";
 import type { SqlClient, SqlPool, SqlQueryResult } from "../../src/persistence/transaction.js";
 import { createPostgresResolutionTraceProjector } from "../../src/runs/postgres-resolution-trace.js";
 import { createDeploymentRegistry } from "../../src/tenancy/capability.js";
+import { buildTestQueryEvidenceSemanticBinding } from "../support/query-evidence-semantic-binding.js";
 import { asTransactionalTestAuthority } from "../support/transactional-authority.js";
 
 const id = (suffix: number) => `00000000-0000-4000-8000-${String(suffix).padStart(12, "0")}`;
@@ -347,6 +348,15 @@ async function productTeamQueryEvidenceRow(
       byte_count: 64,
       elapsed_ms: 12,
       truncated: false,
+      semantic_binding: await buildTestQueryEvidenceSemanticBinding([
+        {
+          name: "order_count",
+          logical_type: "NUMBER",
+          nullable: false,
+          semantic_role: "METRIC",
+          semantic_object_id: "metric.order_count",
+        },
+      ]),
     },
     projection: {
       kind: "TABLE",

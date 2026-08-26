@@ -10,6 +10,7 @@ import { describe, expect, it } from "vitest";
 import { productTeamGovernedQueryInternals } from "../../src/analysis/product-team-query-port.js";
 import { createSingleSeriesAnalysisOracle } from "../../src/analysis/single-series-analysis-oracle.js";
 import { compileSingleSeriesAnalysisPlan } from "../../src/analysis/single-series-analysis-planning.js";
+import { buildTestQueryEvidenceSemanticBinding } from "./support/query-evidence-semantic-binding.js";
 
 const id = (suffix: number) => `62000000-0000-4000-8000-${String(suffix).padStart(12, "0")}`;
 const hash = (character: string) => `sha256:${character.repeat(64)}` as const;
@@ -123,6 +124,35 @@ async function queryEvidence(input?: {
     metric_value: 100 + index * 10,
     ...(input?.extraNumericColumn ? { order_count: 10 + index } : {}),
   }));
+  const semanticBinding = await buildTestQueryEvidenceSemanticBinding({
+    columns: [
+      {
+        name: "period",
+        logical_type: "DATE",
+        nullable: false,
+        semantic_role: "DIMENSION",
+        semantic_object_id: "dimension.order_month",
+      },
+      {
+        name: "metric_value",
+        logical_type: "NUMBER",
+        nullable: false,
+        semantic_role: "METRIC",
+        semantic_object_id: "metric.order_revenue",
+      },
+      ...(input?.extraNumericColumn
+        ? [
+            {
+              name: "order_count",
+              logical_type: "NUMBER" as const,
+              nullable: false,
+              semantic_role: "METRIC" as const,
+              semantic_object_id: "metric.order_count",
+            },
+          ]
+        : []),
+    ],
+  });
   return buildProductTeamArtifactDocument({
     schema_version: "product-team-artifact@2.0.0",
     artifact_ref: reference("QueryEvidence", 34),
@@ -138,6 +168,7 @@ async function queryEvidence(input?: {
       byte_count: 1_024,
       elapsed_ms: 12,
       truncated: false,
+      semantic_binding: semanticBinding,
     },
     projection: {
       kind: "TABLE",
@@ -319,7 +350,12 @@ async function oracleFixture() {
     input_ref: reference("SensitiveExecutionArtifact", 50),
     materialization_receipt_ref: reference("AnalysisInputMaterializationReceipt", 51),
     materialization_receipt_document: {},
-    content: productTeamGovernedQueryInternals.materializeProductTeamArrow(evidence.projection),
+    content: productTeamGovernedQueryInternals.materializeProductTeamArrow(
+      evidence.projection,
+      evidence.provenance?.kind === "GOVERNED_QUERY_RESULT"
+        ? evidence.provenance.semantic_binding.columns
+        : [],
+    ),
   };
   const operatorReceipts = [
     {

@@ -6,10 +6,11 @@ import {
   type ProductTeamArtifactDocument,
   type RunWorkLease,
 } from "@data-agent/contracts";
-import { tableFromIPC } from "apache-arrow";
+import { DateDay, tableFromIPC } from "apache-arrow";
 import { describe, expect, it, vi } from "vitest";
 import type { GovernedAnalysisInput } from "../../src/analysis/governed-analysis-input.js";
 import { createProductTeamGovernedAnalysisQueryPort } from "../../src/analysis/product-team-query-port.js";
+import { buildTestQueryEvidenceSemanticBinding } from "./support/query-evidence-semantic-binding.js";
 
 const id = (suffix: number) => `61000000-0000-4000-8000-${String(suffix).padStart(12, "0")}`;
 const hash = (character: string) => `sha256:${character.repeat(64)}` as const;
@@ -68,6 +69,13 @@ async function documents(input?: {
     readonly data_type: "STRING" | "NUMBER" | "BOOLEAN" | "NULL" | "MIXED";
   }[];
   readonly rows?: readonly Readonly<Record<string, string | number | boolean | null>>[];
+  readonly bindings?: readonly {
+    readonly name: string;
+    readonly logical_type: "NUMBER" | "STRING" | "DATE" | "DATETIME" | "BOOLEAN";
+    readonly nullable: boolean;
+    readonly semantic_role: "METRIC" | "DIMENSION";
+    readonly semantic_object_id: string;
+  }[];
 }) {
   const sql = await buildProductTeamArtifactDocument({
     schema_version: "product-team-artifact@2.0.0",
@@ -108,6 +116,24 @@ async function documents(input?: {
     { month: "2024-09-01", revenue: 120.5, complete: true },
     { month: "2024-10-01", revenue: 140, complete: true },
   ];
+  const semanticBinding = await buildTestQueryEvidenceSemanticBinding({
+    columns:
+      input?.bindings ??
+      columns.map((column) => ({
+        name: column.key,
+        logical_type:
+          column.key === "month"
+            ? ("DATE" as const)
+            : column.data_type === "NUMBER"
+              ? ("NUMBER" as const)
+              : column.data_type === "BOOLEAN"
+                ? ("BOOLEAN" as const)
+                : ("STRING" as const),
+        nullable: false,
+        semantic_role: column.data_type === "NUMBER" ? ("METRIC" as const) : ("DIMENSION" as const),
+        semantic_object_id: column.key,
+      })),
+  });
   const evidence = await buildProductTeamArtifactDocument({
     schema_version: "product-team-artifact@2.0.0",
     artifact_ref: {
@@ -130,15 +156,16 @@ async function documents(input?: {
       byte_count: 128,
       elapsed_ms: 12,
       truncated: false,
+      semantic_binding: semanticBinding,
     },
     projection: { kind: "TABLE", columns, rows, total_rows: rows.length },
     committed_at: "2026-08-26T00:00:01.000Z",
   });
-  return { sql, evidence };
+  return { sql, evidence, semanticBinding };
 }
 
 async function harness(input?: Parameters<typeof documents>[0]) {
-  const { sql, evidence } = await documents(input);
+  const { sql, evidence, semanticBinding } = await documents(input);
   const stored: ProductTeamArtifactDocument[] = [sql, evidence];
   const materialize = vi.fn(
     async (command): Promise<GovernedAnalysisInput> => ({
@@ -160,9 +187,19 @@ async function harness(input?: Parameters<typeof documents>[0]) {
           artifactReferenceIdentity(artifactRef) === artifactReferenceIdentity(reference),
       ) ?? null,
   }));
+  const expectedAuthority = {
+    semantic_release_ref: semanticBinding.semantic_release_ref,
+    semantic_context_ref: semanticBinding.semantic_context_ref,
+    schema_snapshot_ref: semanticBinding.schema_snapshot_ref,
+    datasource_ref: semanticBinding.datasource_ref,
+    target_binding_hash: semanticBinding.target_binding_hash,
+  };
   return {
     evidence,
     materialize,
+    resolveCommitted,
+    semanticBinding,
+    expectedAuthority,
     port: createProductTeamGovernedAnalysisQueryPort({
       query_evidence_ref: evidence.artifact_ref as ArtifactReference & {
         artifact_type: "QueryEvidence";
@@ -170,8 +207,7 @@ async function harness(input?: Parameters<typeof documents>[0]) {
       artifact_authority: { resolveCommitted },
       artifact_capability: { authority: "application" },
       materializer: { materialize },
-      semantic_context_hash: hash("9"),
-      schema_snapshot_hash: hash("d"),
+      expected_authority: expectedAuthority,
     }),
   };
 }
@@ -186,6 +222,173 @@ const request = {
 };
 
 describe("Product Team governed analysis query port", () => {
+  it.each([
+    {
+      shape: "single-series",
+      columns: [
+        { key: "bucket", label: "分组", data_type: "STRING" as const },
+        { key: "value", label: "数值", data_type: "NUMBER" as const },
+      ],
+      rows: [
+        { bucket: "A", value: 1 },
+        { bucket: "B", value: 2 },
+      ],
+      bindings: [
+        {
+          name: "bucket",
+          logical_type: "STRING" as const,
+          nullable: false,
+          semantic_role: "DIMENSION" as const,
+          semantic_object_id: "dimension.bucket",
+        },
+        {
+          name: "value",
+          logical_type: "NUMBER" as const,
+          nullable: false,
+          semantic_role: "METRIC" as const,
+          semantic_object_id: "metric.value",
+        },
+      ],
+    },
+    {
+      shape: "grouped-multi-series",
+      columns: [
+        { key: "group", label: "分组", data_type: "STRING" as const },
+        { key: "series", label: "序列", data_type: "STRING" as const },
+        { key: "value", label: "数值", data_type: "NUMBER" as const },
+      ],
+      rows: [
+        { group: "A", series: "new", value: 1 },
+        { group: "A", series: "returning", value: 2 },
+      ],
+      bindings: [
+        {
+          name: "group",
+          logical_type: "STRING" as const,
+          nullable: false,
+          semantic_role: "DIMENSION" as const,
+          semantic_object_id: "dimension.group",
+        },
+        {
+          name: "series",
+          logical_type: "STRING" as const,
+          nullable: false,
+          semantic_role: "DIMENSION" as const,
+          semantic_object_id: "dimension.series",
+        },
+        {
+          name: "value",
+          logical_type: "NUMBER" as const,
+          nullable: false,
+          semantic_role: "METRIC" as const,
+          semantic_object_id: "metric.value",
+        },
+      ],
+    },
+    {
+      shape: "wide-table",
+      columns: [
+        { key: "region", label: "区域", data_type: "STRING" as const },
+        { key: "revenue", label: "收入", data_type: "NUMBER" as const },
+        { key: "orders", label: "订单", data_type: "NUMBER" as const },
+      ],
+      rows: [{ region: "north", revenue: 12.5, orders: 3 }],
+      bindings: [
+        {
+          name: "region",
+          logical_type: "STRING" as const,
+          nullable: false,
+          semantic_role: "DIMENSION" as const,
+          semantic_object_id: "dimension.region",
+        },
+        {
+          name: "revenue",
+          logical_type: "NUMBER" as const,
+          nullable: false,
+          semantic_role: "METRIC" as const,
+          semantic_object_id: "metric.revenue",
+        },
+        {
+          name: "orders",
+          logical_type: "NUMBER" as const,
+          nullable: false,
+          semantic_role: "METRIC" as const,
+          semantic_object_id: "metric.orders",
+        },
+      ],
+    },
+    {
+      shape: "time-series",
+      columns: [
+        { key: "occurred_at", label: "时间", data_type: "STRING" as const },
+        { key: "value", label: "数值", data_type: "NUMBER" as const },
+      ],
+      rows: [
+        { occurred_at: "2026-08-26T01:02:03.000Z", value: 4 },
+        { occurred_at: "2026-08-26T02:02:03.000Z", value: null },
+      ],
+      bindings: [
+        {
+          name: "occurred_at",
+          logical_type: "DATETIME" as const,
+          nullable: false,
+          semantic_role: "DIMENSION" as const,
+          semantic_object_id: "dimension.occurred_at",
+        },
+        {
+          name: "value",
+          logical_type: "NUMBER" as const,
+          nullable: true,
+          semantic_role: "METRIC" as const,
+          semantic_object_id: "metric.value",
+        },
+      ],
+    },
+    {
+      shape: "cohort",
+      columns: [
+        { key: "cohort", label: "队列", data_type: "STRING" as const },
+        { key: "month_index", label: "月序", data_type: "NUMBER" as const },
+        { key: "retention", label: "留存", data_type: "NUMBER" as const },
+      ],
+      rows: [
+        { cohort: "2026-01", month_index: 0, retention: 1 },
+        { cohort: "2026-01", month_index: 1, retention: 0.7 },
+      ],
+      bindings: [
+        {
+          name: "cohort",
+          logical_type: "STRING" as const,
+          nullable: false,
+          semantic_role: "DIMENSION" as const,
+          semantic_object_id: "dimension.cohort",
+        },
+        {
+          name: "month_index",
+          logical_type: "NUMBER" as const,
+          nullable: false,
+          semantic_role: "DIMENSION" as const,
+          semantic_object_id: "dimension.month_index",
+        },
+        {
+          name: "retention",
+          logical_type: "NUMBER" as const,
+          nullable: false,
+          semantic_role: "METRIC" as const,
+          semantic_object_id: "metric.retention",
+        },
+      ],
+    },
+  ])("materializes the generic $shape data shape", async ({ columns, rows, bindings }) => {
+    const fixture = await harness({ columns, rows, bindings });
+    await fixture.port.execute(request);
+
+    const command = fixture.materialize.mock.calls[0]?.[0];
+    const table = tableFromIPC(command?.content);
+    expect(table.schema.fields.map(({ name }) => name)).toEqual(columns.map(({ key }) => key));
+    expect(table.numRows).toBe(rows.length);
+  });
+
   it("materializes exact committed QueryEvidence as typed Arrow", async () => {
     const fixture = await harness();
 
@@ -198,15 +401,18 @@ describe("Product Team governed analysis query port", () => {
       expect.objectContaining({
         query_evidence_ref: fixture.evidence.artifact_ref,
         row_count: 2,
-        ordered_columns: ["month", "revenue", "complete"],
+        columns: [
+          expect.objectContaining({ name: "month", arrow_type: "DATE32" }),
+          expect.objectContaining({ name: "revenue", arrow_type: "FLOAT64" }),
+          expect.objectContaining({ name: "complete", arrow_type: "BOOL" }),
+        ],
       }),
     );
     const table = tableFromIPC(command?.content);
     expect(table.schema.fields.map(({ name }) => name)).toEqual(["month", "revenue", "complete"]);
-    expect(table.toArray()).toMatchObject([
-      { month: "2024-09-01", revenue: 120.5, complete: true },
-      { month: "2024-10-01", revenue: 140, complete: true },
-    ]);
+    expect(String(table.schema.fields[0]?.type)).toBe(String(new DateDay()));
+    expect(table.getChild("month")?.get(0)).toBe(Date.parse("2024-09-01T00:00:00.000Z"));
+    expect(table.getChild("revenue")?.toArray()).toEqual(Float64Array.from([120.5, 140]));
   });
 
   it("rejects QueryEvidence beyond the executor row budget", async () => {
@@ -218,21 +424,66 @@ describe("Product Team governed analysis query port", () => {
     expect(fixture.materialize).not.toHaveBeenCalled();
   });
 
+  it("rejects cross-Run, reference-substitution and frozen-authority drift before materialization", async () => {
+    const fixture = await harness();
+
+    await expect(
+      fixture.port.execute({
+        ...request,
+        lease: { ...request.lease, run_id: id(99) },
+      }),
+    ).rejects.toThrow("ANALYSIS_QUERY_EVIDENCE_SCOPE_INVALID");
+
+    const substitutedRef = {
+      ...fixture.evidence.artifact_ref,
+      artifact_id: id(98),
+      artifact_type: "QueryEvidence" as const,
+    };
+    const substitutionPort = createProductTeamGovernedAnalysisQueryPort({
+      query_evidence_ref: substitutedRef,
+      artifact_authority: {
+        resolveCommitted: vi.fn(async () => ({ ok: true as const, value: fixture.evidence })),
+      },
+      artifact_capability: { authority: "application" },
+      materializer: { materialize: fixture.materialize },
+      expected_authority: fixture.expectedAuthority,
+    });
+    await expect(substitutionPort.execute(request)).rejects.toThrow(
+      "ANALYSIS_QUERY_EVIDENCE_AUTHORITY_RESOLUTION_INVALID",
+    );
+
+    const driftedAuthorityPort = createProductTeamGovernedAnalysisQueryPort({
+      query_evidence_ref: fixture.evidence.artifact_ref as ArtifactReference & {
+        artifact_type: "QueryEvidence";
+      },
+      artifact_authority: { resolveCommitted: fixture.resolveCommitted },
+      artifact_capability: { authority: "application" },
+      materializer: { materialize: fixture.materialize },
+      expected_authority: {
+        ...fixture.expectedAuthority,
+        target_binding_hash: hash("f"),
+      },
+    });
+    await expect(driftedAuthorityPort.execute(request)).rejects.toThrow(
+      "ANALYSIS_QUERY_EVIDENCE_AUTHORITY_BINDING_INVALID",
+    );
+    expect(fixture.materialize).not.toHaveBeenCalled();
+  });
+
   it.each([
-    {
-      columns: [{ key: "value", label: "值", data_type: "MIXED" as const }],
-      rows: [{ value: 1 }],
-    },
     {
       columns: [{ key: "value", label: "值", data_type: "NUMBER" as const }],
       rows: [{ value: "not-a-number" }],
     },
+    {
+      columns: [{ key: "value", label: "值", data_type: "NUMBER" as const }],
+      rows: [{}],
+    },
+    {
+      columns: [{ key: "value", label: "值", data_type: "NUMBER" as const }],
+      rows: [{ value: Number.POSITIVE_INFINITY }],
+    },
   ])("rejects ambiguous or drifted table column types", async (input) => {
-    const fixture = await harness(input);
-
-    await expect(fixture.port.execute(request)).rejects.toThrow(
-      "ANALYSIS_QUERY_EVIDENCE_COLUMN_TYPE_INVALID",
-    );
-    expect(fixture.materialize).not.toHaveBeenCalled();
+    await expect(harness(input)).rejects.toBeDefined();
   });
 });

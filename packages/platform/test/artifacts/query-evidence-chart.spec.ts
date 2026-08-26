@@ -2,6 +2,7 @@ import { buildProductTeamArtifactDocument } from "@data-agent/contracts";
 import { describe, expect, it } from "vitest";
 import { projectArtifactDocument } from "../../src/artifacts/artifact-workspace-service.js";
 import { buildQueryEvidenceChartDocument } from "../../src/artifacts/query-evidence-chart.js";
+import { buildTestQueryEvidenceSemanticBinding } from "../support/query-evidence-semantic-binding.js";
 
 const id = (suffix: number) => `00000000-0000-4000-8000-${String(suffix).padStart(12, "0")}`;
 const hash = (character: string) => `sha256:${character.repeat(64)}`;
@@ -46,6 +47,22 @@ async function evidence(
       byte_count: 128,
       elapsed_ms: 4,
       truncated: false,
+      semantic_binding: await buildTestQueryEvidenceSemanticBinding([
+        {
+          name: "month",
+          logical_type: "STRING",
+          nullable: false,
+          semantic_role: "DIMENSION",
+          semantic_object_id: "dimension.month",
+        },
+        {
+          name: "order_count",
+          logical_type: "NUMBER",
+          nullable: rows.some(({ order_count: orderCount }) => orderCount === null),
+          semantic_role: "METRIC",
+          semantic_object_id: "metric.order_count",
+        },
+      ]),
     },
     projection: {
       kind: "TABLE",

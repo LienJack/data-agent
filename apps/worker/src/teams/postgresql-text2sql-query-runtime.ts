@@ -1,27 +1,31 @@
 import {
-  text2sqlQueryCandidateSchema,
   type Text2SqlQueryCandidate,
+  text2sqlQueryCandidateSchema,
 } from "@data-agent/contracts/agents";
+import type { QueryEvidenceSemanticBinding } from "@data-agent/contracts/artifacts";
 import type { PhysicalSchemaSnapshot } from "@data-agent/contracts/catalog";
 import { canonicalizeJson, sha256ContentHash } from "@data-agent/contracts/common";
+import type { SemanticContextCommitResult } from "@data-agent/contracts/context";
 import {
   buildGovernedDatasourceQueryRequest,
   type GovernedDatasourceQueryResult,
 } from "@data-agent/contracts/datasources";
 import type { PortResult } from "@data-agent/contracts/ports";
 import type { WorkspaceDatasource } from "@data-agent/contracts/workspaces";
-import { buildBuiltinDatasourceAdapterDescriptors } from "@data-agent/platform/datasource-adapters";
+import type { PostgresSchemaSnapshotStore } from "@data-agent/platform/catalog";
 import {
   assertPostgresqlText2SqlCandidatePolicy,
+  buildBuiltinDatasourceAdapterDescriptors,
+  buildPostgresqlQueryEvidenceSemanticBinding,
   createGovernedDatasourceAdapter,
   DatasourceAdapterPolicyError,
-  parameterizePostgresqlText2SqlCandidate,
   type DatasourceAdapterTransport,
+  parameterizePostgresqlText2SqlCandidate,
 } from "@data-agent/platform/datasource-adapters";
-import type { PostgresSchemaSnapshotStore } from "@data-agent/platform/catalog";
 import type { PersistedSecretRef } from "@data-agent/platform/secrets";
 import type pg from "pg";
 import type { RunExecutionContext } from "../runs/run-worker-runner.js";
+import type { FrozenSemanticReleaseCatalog } from "../semantic/semantic-release-read-port.js";
 import type { DataAgentProductTeamRuntimePort } from "./data-agent-team-runner.js";
 
 const POSTGRES_IDENTIFIER = /^[A-Za-z_][A-Za-z0-9_$]*$/u;
@@ -31,6 +35,11 @@ type SemanticContextPackage = Parameters<
   DataAgentProductTeamRuntimePort["execute"]
 >[0]["semantic_context_package"];
 
+export interface Text2SqlQueryExecution {
+  readonly result: GovernedDatasourceQueryResult;
+  readonly semantic_binding: QueryEvidenceSemanticBinding;
+}
+
 export interface PreparedText2SqlContext {
   readonly context_text: string;
   readonly datasource_id: string;
@@ -39,12 +48,19 @@ export interface PreparedText2SqlContext {
   readonly allowed_relations: readonly string[];
   readonly target_capability_hash: string;
   readonly reader_role: string;
+  readonly binding_authority?: {
+    readonly physical_snapshot: PhysicalSchemaSnapshot;
+    readonly semantic_context: SemanticContextCommitResult;
+    readonly semantic_catalog: FrozenSemanticReleaseCatalog;
+    readonly datasource_ref: EffectiveConfig["datasource"];
+  };
 }
 
 export interface Text2SqlQueryRuntimePort {
   prepare(input: {
     readonly effective_config: EffectiveConfig;
-    readonly semantic_context_package: SemanticContextPackage;
+    readonly semantic_context: SemanticContextCommitResult;
+    readonly semantic_catalog: FrozenSemanticReleaseCatalog;
     readonly max_context_bytes: number;
   }): Promise<PreparedText2SqlContext>;
   compileCandidate(input: {
@@ -59,7 +75,7 @@ export interface Text2SqlQueryRuntimePort {
     readonly max_rows: number;
     readonly max_bytes: number;
     readonly signal?: AbortSignal;
-  }): Promise<GovernedDatasourceQueryResult>;
+  }): Promise<Text2SqlQueryExecution>;
 }
 
 function allowedRelationBindings(prepared: PreparedText2SqlContext) {
@@ -94,11 +110,9 @@ export interface PostgresqlText2SqlQueryRuntimeDependencies {
     ): Promise<PortResult<WorkspaceDatasource | null>>;
   };
   readonly secrets: {
-    get(
-      capability: unknown,
-      input: unknown,
-    ): Promise<PortResult<PersistedSecretRef | null>>;
+    get(capability: unknown, input: unknown): Promise<PortResult<PersistedSecretRef | null>>;
   };
+  readonly bind_query_evidence?: typeof buildPostgresqlQueryEvidenceSemanticBinding;
   readonly now?: () => number;
 }
 
@@ -155,7 +169,49 @@ function schemaProjection(snapshot: PhysicalSchemaSnapshot) {
   }));
 }
 
-function semanticProjection(packageDocument: SemanticContextPackage) {
+function semanticProjection(
+  packageDocument: SemanticContextPackage,
+  catalog: FrozenSemanticReleaseCatalog,
+) {
+  const selectedIds = new Set([
+    ...packageDocument.retrieval_receipt.selected_object_ids,
+    ...packageDocument.mandatory_closure.object_ids,
+    ...(packageDocument.route_decision.selected_metric_id
+      ? [packageDocument.route_decision.selected_metric_id]
+      : []),
+    ...packageDocument.route_decision.selected_ontology_ids,
+  ]);
+  const metrics = catalog.executable.metrics.filter(({ metric_id: metricId }) =>
+    selectedIds.has(metricId),
+  );
+  const dimensions = catalog.executable.dimensions.filter(({ dimension_id: dimensionId }) =>
+    selectedIds.has(dimensionId),
+  );
+  const formulaIds = new Set(
+    metrics.flatMap(({ formula }) => (formula ? [formula.formula_id] : [])),
+  );
+  const formulas = catalog.executable.formulas.filter(
+    ({ node_id: nodeId }) => selectedIds.has(nodeId) || formulaIds.has(nodeId),
+  );
+  const physicalObjectIds = new Set([
+    ...selectedIds,
+    ...metrics.flatMap((metric) =>
+      metric.dependency_column_ids.map((columnId) =>
+        columnId.startsWith("column.")
+          ? columnId
+          : `column.${columnId.includes(".") ? columnId : `${metric.table_id}.${columnId}`}`,
+      ),
+    ),
+    ...dimensions.map((dimension) =>
+      dimension.column_id.startsWith("column.")
+        ? dimension.column_id
+        : `column.${
+            dimension.column_id.includes(".")
+              ? dimension.column_id
+              : `${dimension.table_id}.${dimension.column_id}`
+          }`,
+    ),
+  ]);
   return {
     package_id: packageDocument.package_id,
     package_hash: packageDocument.package_hash,
@@ -168,12 +224,21 @@ function semanticProjection(packageDocument: SemanticContextPackage) {
       hash: entry.evidence_hash,
       summary: entry.summary,
     })),
+    executable: {
+      metrics,
+      dimensions,
+      formulas,
+      physical_bindings: catalog.executable.physical_bindings.filter(({ logical_object_id: id }) =>
+        physicalObjectIds.has(id),
+      ),
+    },
   };
 }
 
 function text2sqlContext(input: {
   readonly snapshot: PhysicalSchemaSnapshot;
   readonly semantic_context_package: SemanticContextPackage;
+  readonly semantic_catalog: FrozenSemanticReleaseCatalog;
   readonly max_context_bytes: number;
 }): string {
   const context = canonicalizeJson({
@@ -184,7 +249,7 @@ function text2sqlContext(input: {
       included_schemas: input.snapshot.content.included_schemas,
       relations: schemaProjection(input.snapshot),
     },
-    semantic_context: semanticProjection(input.semantic_context_package),
+    semantic_context: semanticProjection(input.semantic_context_package, input.semantic_catalog),
   });
   if (new TextEncoder().encode(context).byteLength > input.max_context_bytes) {
     throw new Text2SqlQueryRuntimeError("TEXT2SQL_CONTEXT_BUDGET_EXCEEDED");
@@ -230,10 +295,7 @@ function jsonValue(input: unknown): null | string | number | boolean | object {
 
 function classifiedPostgresqlExecutionError(error: unknown): DatasourceAdapterPolicyError | null {
   const sqlState =
-    typeof error === "object" &&
-    error !== null &&
-    "code" in error &&
-    typeof error.code === "string"
+    typeof error === "object" && error !== null && "code" in error && typeof error.code === "string"
       ? error.code
       : null;
   if (!sqlState) return null;
@@ -329,6 +391,8 @@ function createManagedPostgresqlTransport(pool: pg.Pool): DatasourceAdapterTrans
 export function createPostgresqlText2SqlQueryRuntime(
   dependencies: PostgresqlText2SqlQueryRuntimeDependencies,
 ): Text2SqlQueryRuntimePort {
+  const bindQueryEvidence =
+    dependencies.bind_query_evidence ?? buildPostgresqlQueryEvidenceSemanticBinding;
   const descriptor = buildBuiltinDatasourceAdapterDescriptors().then((descriptors) => {
     const postgresql = descriptors.find(({ adapter_id: adapterId }) => adapterId === "postgresql");
     if (!postgresql) throw new Text2SqlQueryRuntimeError("POSTGRESQL_ADAPTER_NOT_REGISTERED");
@@ -339,9 +403,11 @@ export function createPostgresqlText2SqlQueryRuntime(
     async prepare(input) {
       const {
         effective_config: config,
-        semantic_context_package,
+        semantic_context,
+        semantic_catalog,
         max_context_bytes,
       } = input;
+      const semantic_context_package = semantic_context.package;
       const snapshot = value(
         await dependencies.schema_snapshots.getSnapshot(
           dependencies.capability,
@@ -372,7 +438,7 @@ export function createPostgresqlText2SqlQueryRuntime(
           expected_version: credential.secret_version,
         }),
       );
-      if (!secret || secret.status !== "ACTIVE" || secret.version !== credential.secret_version) {
+      if (secret?.status !== "ACTIVE" || secret.version !== credential.secret_version) {
         throw new Text2SqlQueryRuntimeError("TEXT2SQL_SECRET_REF_STALE");
       }
       if (
@@ -383,7 +449,8 @@ export function createPostgresqlText2SqlQueryRuntime(
         semantic_context_package.schema_snapshot.resource_hash !== snapshot.snapshot_content_hash ||
         semantic_context_package.semantic_release.resource_id !==
           config.semantic_release.resource_id ||
-        semantic_context_package.semantic_release.resource_hash !== config.semantic_release.resource_hash
+        semantic_context_package.semantic_release.resource_hash !==
+          config.semantic_release.resource_hash
       ) {
         throw new Text2SqlQueryRuntimeError("TEXT2SQL_CONTEXT_BINDING_STALE");
       }
@@ -402,6 +469,7 @@ export function createPostgresqlText2SqlQueryRuntime(
         context_text: text2sqlContext({
           snapshot,
           semantic_context_package,
+          semantic_catalog,
           max_context_bytes,
         }),
         datasource_id: datasource.datasource_id,
@@ -410,6 +478,12 @@ export function createPostgresqlText2SqlQueryRuntime(
         allowed_relations: allowedRelations,
         target_capability_hash: targetCapabilityHash,
         reader_role: datasource.username,
+        binding_authority: {
+          physical_snapshot: snapshot,
+          semantic_context,
+          semantic_catalog,
+          datasource_ref: config.datasource,
+        },
       });
     },
 
@@ -435,6 +509,9 @@ export function createPostgresqlText2SqlQueryRuntime(
         prepared.schema_snapshot_hash !== input.effective_config.schema_snapshot.resource_hash
       ) {
         throw new Text2SqlQueryRuntimeError("TEXT2SQL_PREPARED_CONTEXT_STALE");
+      }
+      if (!prepared.binding_authority) {
+        throw new Text2SqlQueryRuntimeError("TEXT2SQL_BINDING_AUTHORITY_REQUIRED");
       }
       const request = await buildGovernedDatasourceQueryRequest({
         schema_version: "governed-datasource-query@1.0.0",
@@ -502,7 +579,18 @@ export function createPostgresqlText2SqlQueryRuntime(
       ) {
         throw new Text2SqlQueryRuntimeError("TEXT2SQL_RESULT_SHAPE_MISMATCH");
       }
-      return result;
+      return Object.freeze({
+        result,
+        semantic_binding: await bindQueryEvidence({
+          candidate: input.candidate,
+          result,
+          physical_snapshot: prepared.binding_authority.physical_snapshot,
+          semantic_context: prepared.binding_authority.semantic_context,
+          semantic_catalog: prepared.binding_authority.semantic_catalog,
+          datasource_ref: prepared.binding_authority.datasource_ref,
+          target_binding_hash: prepared.target_capability_hash,
+        }),
+      });
     },
   };
   return Object.freeze(runtime);

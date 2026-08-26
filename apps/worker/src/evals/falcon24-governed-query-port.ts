@@ -127,7 +127,7 @@ export function createFalcon24GovernedAnalysisQueryPort(input: {
       if (evidence.projection.kind !== "TABLE") {
         throw new TypeError("FALCON24_QUERY_EVIDENCE_SHAPE_INVALID");
       }
-      const dataOracleReceipt = await input.snapshot_authority.inspect();
+      await input.snapshot_authority.inspect();
       const arrow = materializeFalcon24Arrow(spec, evidence.projection.rows);
       const governed = await input.materializer.materialize({
         lease: request.lease,
@@ -138,9 +138,26 @@ export function createFalcon24GovernedAnalysisQueryPort(input: {
         format: "ARROW",
         content: arrow,
         row_count: evidenceShape.row_count,
-        ordered_columns: evidenceShape.ordered_columns,
+        columns: evidenceShape.semantic_binding.columns.map((column) => ({
+          name: column.output_name,
+          arrow_type:
+            column.logical_type === "NUMBER"
+              ? ("FLOAT64" as const)
+              : column.logical_type === "BOOLEAN"
+                ? ("BOOL" as const)
+                : column.logical_type === "DATE"
+                  ? ("DATE32" as const)
+                  : column.logical_type === "DATETIME"
+                    ? ("TIMESTAMP_MS" as const)
+                    : ("UTF8" as const),
+          nullable: column.nullable,
+          semantic_role: column.semantic_role,
+          semantic_object_id: column.semantic_object_id,
+        })),
+        source_binding_hash: evidenceShape.semantic_binding.binding_hash as `sha256:${string}`,
         spec_hash: await specHash(spec),
-        snapshot_receipt_hash: dataOracleReceipt.receipt_hash as `sha256:${string}`,
+        snapshot_receipt_hash: evidenceShape.semantic_binding.schema_snapshot_ref
+          .resource_hash as `sha256:${string}`,
         query_evidence_ref: evidenceRef,
       });
       if (

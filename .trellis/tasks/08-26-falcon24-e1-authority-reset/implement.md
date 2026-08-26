@@ -33,10 +33,10 @@
 
 ## U5 - QueryEvidence and typed Arrow
 
-- [ ] 关闭 exact semantic/schema/datasource column binding。
-- [ ] 从 accepted QueryEvidence 唯一物化 bounded typed Arrow/input receipt。
-- [ ] 覆盖五题通用数据形状与 tamper/replay tests。
-- [ ] 创建 U5 scoped commit。
+- [x] 关闭 exact semantic/schema/datasource column binding。
+- [x] 从 accepted QueryEvidence 唯一物化 bounded typed Arrow/input receipt。
+- [x] 覆盖五题通用数据形状与 tamper/replay tests。
+- [x] 创建 U5 scoped commit。
 
 ## U9 - Governed Analysis and Atomic Publisher
 

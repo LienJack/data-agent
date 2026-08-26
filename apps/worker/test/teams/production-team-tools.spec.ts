@@ -2,6 +2,7 @@ import {
   type AgentProductProfileRegistryItemV2,
   type ArtifactWorkspaceChartDocumentV2,
   buildFalcon24RunExecutionPolicy,
+  buildQueryEvidenceSemanticBinding,
   DEFAULT_RUN_EXECUTION_POLICY,
   type ProductTeamArtifactDocument,
   type RunWorkLease,
@@ -15,6 +16,7 @@ import {
   createProductionTeamTools,
   productionTeamToolsInternals,
 } from "../../src/teams/production-team-tools.js";
+import { buildTestQueryEvidenceSemanticBinding } from "../analysis/support/query-evidence-semantic-binding.js";
 import { buildWorkerEffectiveConfigFixture } from "../runs/support/effective-config-fixture.js";
 
 const id = (suffix: number) => `93000000-0000-4000-8000-${String(suffix).padStart(12, "0")}`;
@@ -27,9 +29,20 @@ describe("Production Team governed chart publication", () => {
       sql: "select channel as channel, sum(spend) as spend from governed.source group by channel",
       parameters: [],
       result_columns: [
-        { name: "channel", semantic_type: "STRING" as const, label: "渠道" },
-        { name: "spend", semantic_type: "NUMBER" as const, label: "投入" },
+        {
+          name: "channel",
+          semantic_type: "STRING" as const,
+          label: "渠道",
+          semantic_binding: { object_kind: "DIMENSION" as const, object_id: "channel" },
+        },
+        {
+          name: "spend",
+          semantic_type: "NUMBER" as const,
+          label: "投入",
+          semantic_binding: { object_kind: "METRIC" as const, object_id: "spend" },
+        },
       ],
+      time_window: null,
       presentation: {
         title: "渠道投入",
         summary: "渠道比较",
@@ -43,11 +56,91 @@ describe("Production Team governed chart publication", () => {
       productionTeamToolsInternals.visualizationIntent({
         ...candidate,
         result_columns: [
-          { name: "month", semantic_type: "DATE" as const, label: "月份" },
-          { name: "revenue", semantic_type: "NUMBER" as const, label: "收入" },
+          {
+            name: "month",
+            semantic_type: "DATE" as const,
+            label: "月份",
+            semantic_binding: { object_kind: "DIMENSION" as const, object_id: "month" },
+          },
+          {
+            name: "revenue",
+            semantic_type: "NUMBER" as const,
+            label: "收入",
+            semantic_binding: { object_kind: "METRIC" as const, object_id: "revenue" },
+          },
         ],
       }),
     ).toBe("TREND");
+  });
+
+  it("normalizes bounded PostgreSQL numeric strings and rejects missing, non-finite or null drift", async () => {
+    const candidate = {
+      schema_version: "text2sql-query-candidate@1.0.0" as const,
+      sql: "select bucket, revenue from governed.source",
+      parameters: [],
+      result_columns: [
+        {
+          name: "bucket",
+          semantic_type: "STRING" as const,
+          label: "分组",
+          semantic_binding: { object_kind: "DIMENSION" as const, object_id: "dimension.bucket" },
+        },
+        {
+          name: "revenue",
+          semantic_type: "NUMBER" as const,
+          label: "收入",
+          semantic_binding: { object_kind: "METRIC" as const, object_id: "metric.revenue" },
+        },
+      ],
+      time_window: null,
+      presentation: {
+        title: "分组收入",
+        summary: "通用分组收入。",
+        visualization: "TABLE" as const,
+        x_key: null,
+        y_keys: [],
+      },
+    };
+    const binding = await buildTestQueryEvidenceSemanticBinding({
+      columns: [
+        {
+          name: "bucket",
+          logical_type: "STRING",
+          nullable: false,
+          semantic_role: "DIMENSION",
+          semantic_object_id: "dimension.bucket",
+        },
+        {
+          name: "revenue",
+          logical_type: "NUMBER",
+          nullable: false,
+          semantic_role: "METRIC",
+          semantic_object_id: "metric.revenue",
+        },
+      ],
+    });
+
+    expect(
+      productionTeamToolsInternals.normalizedQueryEvidenceRows({
+        candidate,
+        binding,
+        rows: [{ bucket: "A", revenue: "120.50" }],
+      }),
+    ).toEqual([{ bucket: "A", revenue: 120.5 }]);
+    for (const rows of [
+      [{ bucket: "A" }],
+      [{ bucket: "A", revenue: "Infinity" }],
+      [{ bucket: "A", revenue: "9007199254740993" }],
+      [{ bucket: "A", revenue: null }],
+    ]) {
+      expect(() =>
+        productionTeamToolsInternals.normalizedQueryEvidenceRows({
+          candidate,
+          binding,
+          rows,
+        }),
+      ).toThrow();
+    }
   });
 
   it("reads frozen semantic relationships without invoking Text2SQL or table count", async () => {
@@ -468,9 +561,20 @@ describe("Production Team governed chart publication", () => {
           sql: "select month, count(*)::integer as order_count from falcon_db_24.orders group by month order by month",
           parameters: [],
           result_columns: [
-            { name: "month", semantic_type: "STRING", label: "月份" },
-            { name: "order_count", semantic_type: "NUMBER", label: "订单量" },
+            {
+              name: "month",
+              semantic_type: "STRING",
+              label: "月份",
+              semantic_binding: { object_kind: "DIMENSION", object_id: "month" },
+            },
+            {
+              name: "order_count",
+              semantic_type: "NUMBER",
+              label: "订单量",
+              semantic_binding: { object_kind: "METRIC", object_id: "order-count" },
+            },
           ],
+          time_window: null,
           presentation: {
             title: "月度订单趋势",
             summary: "按月展示订单量。",
@@ -518,7 +622,61 @@ describe("Production Team governed chart publication", () => {
       target_capability_hash: hash("5"),
       reader_role: "falcon_demo_reader",
     }));
-    const text2sqlExecute = vi.fn(async () => ({
+    const semanticBinding = await buildQueryEvidenceSemanticBinding({
+      protocol_version: "query-evidence-semantic-binding@1.0.0",
+      semantic_release_ref: config.semantic_release,
+      semantic_context_ref: {
+        package_id: id(20),
+        package_hash: hash("a"),
+        receipt_id: id(21),
+        receipt_hash: hash("b"),
+      },
+      schema_snapshot_ref: config.schema_snapshot,
+      datasource_ref: config.datasource,
+      target_binding_hash: hash("5"),
+      columns: [
+        {
+          output_name: "month",
+          logical_type: "STRING",
+          nullable: false,
+          semantic_role: "DIMENSION",
+          semantic_object_id: "month",
+          formula_hash: null,
+          aggregate: null,
+          grain: { grain_id: "month", granularity: "month" },
+          physical_sources: [
+            {
+              schema_name: "falcon_db_24",
+              relation_name: "orders",
+              column_name: "month",
+              formatted_type: "text",
+              nullable: false,
+            },
+          ],
+        },
+        {
+          output_name: "order_count",
+          logical_type: "NUMBER",
+          nullable: false,
+          semantic_role: "METRIC",
+          semantic_object_id: "order-count",
+          formula_hash: hash("9"),
+          aggregate: "count",
+          grain: { grain_id: "order", granularity: "atomic" },
+          physical_sources: [
+            {
+              schema_name: "falcon_db_24",
+              relation_name: "orders",
+              column_name: "id",
+              formatted_type: "uuid",
+              nullable: false,
+            },
+          ],
+        },
+      ],
+      time_window: null,
+    });
+    const queryResult = {
       schema_version: "governed-datasource-query-result@1.0.0" as const,
       query_id: id(42),
       request_hash: hash("6"),
@@ -542,6 +700,10 @@ describe("Production Team governed chart publication", () => {
       elapsed_ms: 5,
       truncated: false as const,
       result_hash: hash("8"),
+    };
+    const text2sqlExecute = vi.fn(async () => ({
+      result: queryResult,
+      semantic_binding: semanticBinding,
     }));
     const text2sqlCompile = vi.fn(async ({ candidate }) => candidate);
     const tools = createProductionTeamTools(
@@ -567,8 +729,30 @@ describe("Production Team governed chart publication", () => {
         },
         semantic_release: {
           read: vi.fn(async () => ({
-            ok: false as const,
-            error: { code: "UNUSED", message: "unused", retryable: false },
+            ok: true as const,
+            value: {
+              release_identity: {
+                semantic_domain: "commerce",
+                release_id: config.semantic_release.resource_id,
+                release_digest: config.semantic_release.resource_hash,
+              },
+              executable: {
+                schema_version: "semantic-executable-projection@1.0.0" as const,
+                metrics: [],
+                dimensions: [],
+                formulas: [],
+                physical_bindings: [],
+              },
+              relationships: {
+                schema_version: "semantic-relationship-projection@1.0.0" as const,
+                relationships: [],
+              },
+              restrictions: {
+                schema_version: "semantic-runtime-restriction-projection@1.0.0" as const,
+                quality_constraints: [],
+                time_semantics: [],
+              },
+            },
           })),
         },
       },
@@ -644,5 +828,18 @@ describe("Production Team governed chart publication", () => {
         context_text: "frozen-schema-and-semantic-context",
       },
     });
+
+    const committedBeforeFailure = [...productDocuments.keys()].sort();
+    const chartBeforeFailure = chartDocument;
+    text2sqlExecute.mockRejectedValueOnce(
+      Object.assign(new TypeError("DATASOURCE_ADAPTER_PERMISSION_DENIED"), {
+        code: "DATASOURCE_ADAPTER_PERMISSION_DENIED",
+      }),
+    );
+    await expect(invocation("sql.sandbox.execute")).rejects.toMatchObject({
+      code: "DATASOURCE_ADAPTER_PERMISSION_DENIED",
+    });
+    expect([...productDocuments.keys()].sort()).toEqual(committedBeforeFailure);
+    expect(chartDocument).toBe(chartBeforeFailure);
   });
 });

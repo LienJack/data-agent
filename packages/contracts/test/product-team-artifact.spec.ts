@@ -1,6 +1,7 @@
 import { describe, expect, it } from "vitest";
 import {
   buildProductTeamArtifactDocument,
+  buildQueryEvidenceSemanticBinding,
   verifyProductTeamArtifactDocument,
 } from "../src/artifacts/product-team-artifact.js";
 
@@ -19,6 +20,55 @@ describe("Product Team Artifact", () => {
       revision: 1,
       content_hash: hash("6"),
     };
+    const semanticBinding = await buildQueryEvidenceSemanticBinding({
+      protocol_version: "query-evidence-semantic-binding@1.0.0",
+      semantic_release_ref: {
+        resource_id: id(8),
+        resource_revision: 1,
+        resource_hash: hash("8"),
+        datasource_id: id(9),
+        semantic_generation: 1,
+        publication_status: "PUBLISHED",
+      },
+      semantic_context_ref: {
+        package_id: id(10),
+        package_hash: hash("a"),
+        receipt_id: id(11),
+        receipt_hash: hash("b"),
+      },
+      schema_snapshot_ref: {
+        resource_id: id(12),
+        resource_revision: 1,
+        resource_hash: hash("c"),
+        datasource_id: id(9),
+        semantic_release_id: id(8),
+        semantic_generation: 1,
+      },
+      datasource_ref: { resource_id: id(9), resource_revision: 1, resource_hash: hash("9") },
+      target_binding_hash: hash("d"),
+      columns: [
+        {
+          output_name: "table_count",
+          logical_type: "NUMBER",
+          nullable: false,
+          semantic_role: "METRIC",
+          semantic_object_id: "metric.table-count",
+          formula_hash: hash("e"),
+          aggregate: "count",
+          grain: { grain_id: "table", granularity: "atomic" },
+          physical_sources: [
+            {
+              schema_name: "falcon_db_24",
+              relation_name: "orders",
+              column_name: "id",
+              formatted_type: "uuid",
+              nullable: false,
+            },
+          ],
+        },
+      ],
+      time_window: null,
+    });
     const document = await buildProductTeamArtifactDocument({
       schema_version: "product-team-artifact@2.0.0",
       artifact_ref: {
@@ -43,6 +93,7 @@ describe("Product Team Artifact", () => {
         byte_count: 32,
         elapsed_ms: 4,
         truncated: false,
+        semantic_binding: semanticBinding,
       },
       projection: {
         kind: "TABLE",
