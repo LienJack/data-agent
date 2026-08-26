@@ -3,9 +3,12 @@ import {
   buildResolutionTraceDetail,
   buildSqlHistoryEntry,
   modelRequestPerformanceSchema,
+  verifyResolutionTrace,
+  verifyResolutionTraceDetail,
 } from "@data-agent/contracts";
 import { renderToStaticMarkup } from "react-dom/server";
 import { describe, expect, it } from "vitest";
+import { z } from "zod";
 import {
   bindResolutionTraceLoadState,
   ResolutionTracePanel,
@@ -20,6 +23,174 @@ const hash = (character: string) => `sha256:${character.repeat(64)}`;
 const scope = { app_id: id(1), tenant_id: id(2), environment: "test" } as const;
 
 describe("Resolution Trace panel", () => {
+  it("normalizes wrapped contract codes and raw validation failures at the authority boundary", () => {
+    expect(
+      resolveResolutionTraceDetailFailure(
+        new Error("轨迹详情哈希校验失败 (RESOLUTION_TRACE_DETAIL_HASH_MISMATCH)"),
+      ),
+    ).toEqual({
+      status: "authority",
+      message: "权威轨迹已阻断：轨迹详情哈希校验失败 (RESOLUTION_TRACE_DETAIL_HASH_MISMATCH)",
+    });
+
+    let validationFailure: unknown;
+    try {
+      z.strictObject({ schema_version: z.literal("resolution-trace@1.0.0") }).parse({});
+    } catch (error) {
+      validationFailure = error;
+    }
+    expect(
+      resolveResolutionTraceLoadFailure(
+        {
+          status: "loading",
+          request: { workspaceId: id(20), runId: id(3) },
+        },
+        { workspaceId: id(20), runId: id(3) },
+        validationFailure,
+      ),
+    ).toEqual({
+      status: "error",
+      request: { workspaceId: id(20), runId: id(3) },
+      message: "权威轨迹已阻断：轨迹响应未通过契约校验 (RESOLUTION_TRACE_SCHEMA_INVALID)",
+    });
+  });
+
+  it("drops ready content for duplicate refs, dangling edges, noncanonical order, and hash drift", async () => {
+    const reference = {
+      artifact_id: id(9),
+      artifact_type: "QueryEvidence" as const,
+      ...scope,
+      run_id: id(3),
+      revision: 1,
+      content_hash: hash("9"),
+    };
+    const trace = await buildResolutionTrace({
+      schema_version: "resolution-trace@1.0.0",
+      scope,
+      run_id: id(3),
+      conversation_id: id(4),
+      config_ref: null,
+      nodes: [
+        {
+          node_id: `event:${id(5)}`,
+          kind: "TOOL",
+          source_event_id: id(5),
+          sequence: 1,
+          occurred_at: "2026-08-18T12:00:00.000Z",
+          status: "COMPLETED",
+          title: "query.execute",
+          summary: "查询已完成",
+          duration_ms: 80,
+          artifact_refs: [reference],
+        },
+        {
+          node_id: `event:${id(6)}`,
+          kind: "TERMINAL",
+          source_event_id: id(6),
+          sequence: 2,
+          occurred_at: "2026-08-18T12:00:01.000Z",
+          status: "COMPLETED",
+          title: "Run completed",
+          summary: "分析已完成",
+          duration_ms: 120,
+          artifact_refs: [],
+        },
+        {
+          node_id: `artifact:${reference.artifact_id}:${reference.revision}`,
+          kind: "ARTIFACT",
+          source_event_id: null,
+          sequence: null,
+          occurred_at: "2026-08-18T12:00:00.000Z",
+          status: "AVAILABLE",
+          title: "QueryEvidence",
+          summary: "已提交查询证据",
+          duration_ms: null,
+          artifact_refs: [reference],
+        },
+      ],
+      edges: [
+        {
+          from_node_id: `event:${id(5)}`,
+          to_node_id: `artifact:${reference.artifact_id}:${reference.revision}`,
+          kind: "PRODUCED",
+        },
+        { from_node_id: `event:${id(5)}`, to_node_id: `event:${id(6)}`, kind: "SEQUENCE" },
+      ],
+    });
+    const request = { workspaceId: id(20), runId: trace.run_id };
+    const ready = {
+      status: "ready" as const,
+      request,
+      trace,
+      traces: [trace],
+      sql: [],
+      profiles: [],
+      teamTrace: null,
+      teamError: null,
+    };
+    const invalidPayloads = [
+      {
+        ...trace,
+        nodes: trace.nodes.map((node, index) =>
+          index === 0 ? { ...node, artifact_refs: [reference, reference] } : node,
+        ),
+      },
+      {
+        ...trace,
+        edges: [
+          ...trace.edges,
+          {
+            from_node_id: `event:${id(5)}`,
+            to_node_id: `event:${id(99)}`,
+            kind: "SEQUENCE" as const,
+          },
+        ],
+      },
+      { ...trace, nodes: [...trace.nodes].reverse() },
+      {
+        ...trace,
+        nodes: trace.nodes.map((node, index) =>
+          index === 1 ? { ...node, summary: "被篡改的终态" } : node,
+        ),
+      },
+    ];
+
+    for (const invalidPayload of invalidPayloads) {
+      let verificationFailure: unknown;
+      try {
+        await verifyResolutionTrace(invalidPayload);
+      } catch (error) {
+        verificationFailure = error;
+      }
+      const failed = resolveResolutionTraceLoadFailure(ready, request, verificationFailure);
+      expect(failed).toMatchObject({
+        status: "error",
+        request,
+      });
+      expect((failed as { message: string }).message).toMatch(
+        /RESOLUTION_TRACE_(?:SCHEMA_INVALID|HASH_MISMATCH)/,
+      );
+      expect(failed).not.toHaveProperty("trace");
+      expect(failed).not.toHaveProperty("traces");
+    }
+  });
+
+  it("promotes a real detail contract failure to a stable authority error", async () => {
+    let verificationFailure: unknown;
+    try {
+      await verifyResolutionTraceDetail({
+        schema_version: "resolution-trace-detail@3.0.0",
+      });
+    } catch (error) {
+      verificationFailure = error;
+    }
+
+    expect(resolveResolutionTraceDetailFailure(verificationFailure)).toEqual({
+      status: "authority",
+      message: "权威轨迹已阻断：RESOLUTION_TRACE_DETAIL_SCHEMA_INVALID",
+    });
+  });
+
   it("promotes every RESOLUTION_TRACE detail error to the authority boundary", () => {
     const failure = resolveResolutionTraceDetailFailure(
       new ApiRequestError(

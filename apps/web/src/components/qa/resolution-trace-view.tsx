@@ -102,12 +102,20 @@ const authoritativeTraceFailureCodes = new Set([
   "RESOLUTION_TRACE_RESEARCH_ARTIFACT_NOT_COMMITTED",
   "RESOLUTION_TRACE_TOOL_IDENTITY_MISMATCH",
 ]);
+const resolutionTraceFailureCodePattern = /\bRESOLUTION_TRACE_[A-Z0-9_]+\b/;
 
 function errorMessage(error: unknown): string {
   return error instanceof Error ? error.message : "轨迹加载失败";
 }
 
-function authoritativeTraceFailureCode(error: unknown): string | null {
+function isContractValidationFailure(error: unknown): boolean {
+  return error instanceof Error && error.name === "ZodError";
+}
+
+function authoritativeTraceFailureCode(
+  error: unknown,
+  contractFailureCode: string | null = null,
+): string | null {
   if (error instanceof ApiRequestError && error.code) {
     return error.code.startsWith("RESOLUTION_TRACE_") ||
       authoritativeTraceFailureCodes.has(error.code)
@@ -115,16 +123,25 @@ function authoritativeTraceFailureCode(error: unknown): string | null {
       : null;
   }
   if (error instanceof Error) {
-    return error.message.startsWith("RESOLUTION_TRACE_") ||
-      authoritativeTraceFailureCodes.has(error.message)
-      ? error.message
-      : null;
+    const embeddedCode = error.message.match(resolutionTraceFailureCodePattern)?.[0] ?? null;
+    if (embeddedCode) return embeddedCode;
+    if (authoritativeTraceFailureCodes.has(error.message)) return error.message;
+    if (contractFailureCode && isContractValidationFailure(error)) return contractFailureCode;
   }
   return null;
 }
 
-function authoritativeTraceFailureMessage(error: unknown): string | null {
-  return authoritativeTraceFailureCode(error) ? `权威轨迹已阻断：${errorMessage(error)}` : null;
+function authoritativeTraceFailureMessage(
+  error: unknown,
+  contractFailureCode: string | null = null,
+): string | null {
+  const code = authoritativeTraceFailureCode(error, contractFailureCode);
+  if (!code) return null;
+  const message =
+    contractFailureCode === code && isContractValidationFailure(error)
+      ? `轨迹响应未通过契约校验 (${code})`
+      : errorMessage(error);
+  return `权威轨迹已阻断：${message}`;
 }
 
 export type ResolutionTraceDetailFailure =
@@ -132,7 +149,10 @@ export type ResolutionTraceDetailFailure =
   | { readonly status: "detail"; readonly message: string };
 
 export function resolveResolutionTraceDetailFailure(error: unknown): ResolutionTraceDetailFailure {
-  const authorityMessage = authoritativeTraceFailureMessage(error);
+  const authorityMessage = authoritativeTraceFailureMessage(
+    error,
+    "RESOLUTION_TRACE_DETAIL_SCHEMA_INVALID",
+  );
   return authorityMessage
     ? { status: "authority", message: authorityMessage }
     : { status: "detail", message: errorMessage(error) };
@@ -167,7 +187,10 @@ export function resolveResolutionTraceLoadFailure(
   error: unknown,
 ): LoadState {
   if (!stateMatchesResolutionTraceRequest(current, request)) return current;
-  const authorityMessage = authoritativeTraceFailureMessage(error);
+  const authorityMessage = authoritativeTraceFailureMessage(
+    error,
+    "RESOLUTION_TRACE_SCHEMA_INVALID",
+  );
   if (authorityMessage) {
     return {
       status: "error",
@@ -902,15 +925,7 @@ function TraceWorkbench({
       count: model.records.length,
       lastNodeId: model.records.at(-1)?.node_id ?? null,
     };
-  }, [
-    focused?.node_id,
-    initialDetails,
-    model.records,
-    selectedNodeId,
-    focusedRunId,
-    traceHash,
-    traces,
-  ]);
+  }, [focused?.node_id, initialDetails, model.records, selectedNodeId, focusedRunId, traceHash]);
   useEffect(() => {
     if (!selectedNodeId) {
       setDetail(null);
