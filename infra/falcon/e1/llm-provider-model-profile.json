@@ -1,0 +1,21 @@
+{
+  "schema_version": "falcon24-retained-llm-config@1.0.0",
+  "profiles": [
+    {
+      "logical_profile_key": "falcon24-analysis-deepseek",
+      "vendor_id": "deepseek",
+      "runtime_provider": "deepseek",
+      "display_name": "Falcon24 DeepSeek Analysis",
+      "base_url": "https://api.deepseek.com",
+      "model_id": "deepseek-v4-flash",
+      "capabilities": [
+        "LLM",
+        "REASONING",
+        "STREAMING",
+        "STRUCTURED_OUTPUT",
+        "TOOLS"
+      ],
+      "default": true
+    }
+  ]
+}

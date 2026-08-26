@@ -1,0 +1,228 @@
+{
+  "schema_version": "falcon24-retained-assets@1.0.0",
+  "authority_epoch": "E1",
+  "retained_categories": [
+    "ANALYSIS_RUNTIME",
+    "DATASET_AND_ORACLE",
+    "FALCON_QUESTIONS",
+    "LLM_CONFIGURATION",
+    "SEMANTIC_DEFINITIONS",
+    "SOURCE_MANIFEST"
+  ],
+  "discarded_categories": [
+    "ARTIFACTS_AND_TRACES",
+    "CAMPAIGNS_AND_QUALIFICATIONS",
+    "CREDENTIALS_AND_CERTIFICATIONS",
+    "HISTORICAL_IDENTITIES",
+    "RUNS_AND_CONVERSATIONS",
+    "SANDBOX_AND_JOURNAL_STATE"
+  ],
+  "upstream": {
+    "source_commit": "8ff29caaa7fad5c7b8f8864f2fc19f9f698d39a5",
+    "source_digest": "sha256:20ad41ba54d24f70d69a981907ed223ccd7bc6ab0a5894f8e417c567c1d5df4e",
+    "manifest_path": "infra/falcon/v1/source-manifest.json",
+    "manifest_hash": "sha256:46b6fef35d798ae0dbd502daf315952f7621e8838923c5a582e8f5430540bd4e",
+    "database_count": 28,
+    "public_case_count": 500,
+    "sealed_case_count": 309
+  },
+  "active_dataset": {
+    "database_id": "falcon_db_24",
+    "db_id": 24,
+    "bundle_path": "infra/falcon/v1/bundles/falcon_db_24.sql.gz",
+    "bundle_sha256": "sha256:0164d36d0c4c8ee72562223200b8e960d4519fa4ae8269a574df4dff618b910e",
+    "content_digest": "sha256:7728f3d652812ef0a7e69fcd59abbcbd859892af839ee13f82a005b35c7251fb",
+    "seed_hash": "sha256:e215a7572a120b31cace809c05a517e01e05d35fe4d37821c2aa43888ab93abc",
+    "table_count": 9,
+    "column_count": 70,
+    "row_count": 121445,
+    "active_subset_hash": "sha256:12f028d95464af08d4311a56168381d1c99dcb5ecfe8f2f11779e348db5a76e0"
+  },
+  "questions": {
+    "public_manifest_path": "infra/falcon/v1/public-cases.json",
+    "public_manifest_hash": "sha256:d157306cdd13807e9954dde77897c975ed962014eb8c26d3ee6817dbe324fe19",
+    "sealed_manifest_path": "infra/falcon/v1/sealed/dev-cases.json",
+    "sealed_manifest_hash": "sha256:b4652866feff8ae192ddc5e9db38e6359b85e743795438bd082a181bc77e6730",
+    "test_manifest_path": "infra/falcon/v1/test-cases.json",
+    "test_manifest_hash": "sha256:136c106d1c25df346861eadbce68ae6f623196a665f7d727bf5c241def5607e9",
+    "active_public_subset_hash": "sha256:c6d87d630d3df1bd0796f8bfe47c3648f88add898d81df0a62e8040b0328fc81",
+    "active_sealed_subset_hash": "sha256:57f8b20ee76ca8aec9d8affcd5f024910caa61cc5b7ce16bc6517ad208d59f01",
+    "active_case_count": 17,
+    "suite_version": "falcon24-agent-analysis-suite@3.0.0",
+    "suite_hash": "sha256:debbd2b80f1c8b78f4bafd8bcd4b3bb2721056d16e86084597d0bf46f8cc4e55",
+    "case_ids": [
+      "falcon24-business-review-18m",
+      "falcon24-cohort-retention-m0-m6",
+      "falcon24-delivery-experience-12m",
+      "falcon24-inventory-damage-12m",
+      "falcon24-marketing-lag-effect"
+    ]
+  },
+  "semantics": {
+    "source_files": [
+      {
+        "path": "apps/worker/src/evals/falcon24-semantic-catalog.ts",
+        "hash": "sha256:28f7c0a309a1874eb609a6315fe21e6588c4eb5b9cf5fe9a927364b0f5a00070"
+      },
+      {
+        "path": "apps/worker/src/evals/falcon24-semantic-change-set.ts",
+        "hash": "sha256:c02f7b1b99a49bd7f7e6d016fdf0a9ba3171b1b7f4dac90021dcd56770981564"
+      },
+      {
+        "path": "packages/evals/src/test-center/falcon24-agent-analysis-suite.ts",
+        "hash": "sha256:bb0d9bd4f17074d16f8edc26b09ceb8558dd19cb43e1ee98423cdbd33cd310a2"
+      }
+    ],
+    "source_bundle_hash": "sha256:c5f5bbcb3ccd7bf15d06a1d012e4a1567451c786fa2d00728d4f7f089f29f981",
+    "expected_table_count": 9,
+    "expected_column_count": 70,
+    "expected_join_count": 8,
+    "expected_definition_count": 149,
+    "competency_closure_hash": "sha256:30ba4b36250c758c67204c0efbf4c5b51fe9ea5ea8af49b6b8c84397b45216d2",
+    "database_export_hash": "sha256:c5f5bbcb3ccd7bf15d06a1d012e4a1567451c786fa2d00728d4f7f089f29f981",
+    "semantic_diff": {
+      "status": "MATCH",
+      "diff_hash": "sha256:4f53cda18c2baa0c0354bb5f9a3ecbe5ed12ab4d8e11ba873c2f11161202b945",
+      "differences": []
+    }
+  },
+  "llm": {
+    "manifest_path": "infra/falcon/e1/llm-provider-model-profile.json",
+    "manifest_hash": "sha256:6bfa07e1bdab43c42d1062dff4f51c9435190aa3ed6825665be1366d4aa6a8a3",
+    "source_files": [
+      {
+        "path": "apps/web/src/lib/model-provider-catalog.ts",
+        "hash": "sha256:adefb50b33f5132fe2f1448672a8cd5d2977334186fed8b2ae9ffc0eacba2945"
+      },
+      {
+        "path": "packages/contracts/src/models/index.ts",
+        "hash": "sha256:250cd42e2dff1b789dd9b3aa4286e24aec287749aaf38064c85b41a517cd9164"
+      }
+    ],
+    "source_bundle_hash": "sha256:75656bb95a7b575616f721b325acc6893bfdcb9eb083606bbecd155b446d2dd1",
+    "profiles": [
+      {
+        "logical_profile_key": "falcon24-analysis-deepseek",
+        "vendor_id": "deepseek",
+        "runtime_provider": "deepseek",
+        "display_name": "Falcon24 DeepSeek Analysis",
+        "base_url": "https://api.deepseek.com",
+        "model_id": "deepseek-v4-flash",
+        "capabilities": [
+          "LLM",
+          "REASONING",
+          "STREAMING",
+          "STRUCTURED_OUTPUT",
+          "TOOLS"
+        ],
+        "default": true
+      }
+    ],
+    "database_diff": {
+      "status": "RECREATE",
+      "diff_hash": "sha256:2b1b79301505e772891084f125ab5299a8aaf37dc4cd9617ad4357ce504fef3a",
+      "differences": [
+        "MISSING_DATABASE_PROFILE:falcon24-analysis-deepseek"
+      ]
+    }
+  },
+  "analysis_runtime": {
+    "operator_manifest_path": "services/sandbox/src/data_agent_stats/manifest.json",
+    "operator_manifest_hash": "sha256:f76095309046111b1f654740642034943e4d65c8a723ac64a3f1992f8a1b88ae",
+    "operator_registry_digest": "sha256:32adf67e8ea3473e55bb588f7c4da6eeef703fefb956a040fd3fb785ddd5f1ab",
+    "attestation_path": "infra/docker/opensandbox-analysis-attestation.json",
+    "attestation_hash": "sha256:7ab5b31b8d0328e008c28eff94b9f768cd7909b84ab396907b33eef5977acadb",
+    "source_files": [
+      {
+        "path": "infra/docker/Dockerfile.opensandbox-analysis-agent",
+        "hash": "sha256:5d062d173880163030a0835729ad70d67d687e872fa13747b52a7122c963ed05"
+      },
+      {
+        "path": "infra/docker/Dockerfile.opensandbox-analysis-operator",
+        "hash": "sha256:ff04520764fc6698ea888289b13a7426a7392c6d1d44481b029d7a6518e7bc10"
+      },
+      {
+        "path": "infra/docker/opensandbox-analysis-causal-requirements.lock",
+        "hash": "sha256:819b9575d51f93f08d3e1bb842ab46092afad37fe09f565f674fa612242a6277"
+      },
+      {
+        "path": "infra/docker/opensandbox-analysis-core-requirements.lock",
+        "hash": "sha256:3928afc1e57bc5110c70f830b2c3df7685c3c3a8f96aa464c22cb5942f9fb45a"
+      },
+      {
+        "path": "infra/docker/opensandbox-analysis-ml-requirements.lock",
+        "hash": "sha256:42809fb6d8fdf8bd8bf11d1532a9c65a929bd887f9c0bb47e4331b2bb1987b77"
+      },
+      {
+        "path": "packages/contracts/src/generated/statistical-operators.ts",
+        "hash": "sha256:4df9219a1c7f1b4ebfad7619bc2e0fdf3e79d0ffbf955db504d766e60b9c9cb3"
+      },
+      {
+        "path": "services/sandbox/src/data_agent_stats/__init__.py",
+        "hash": "sha256:48949c99d8bbe86ec09b903d93cbfe840dada0bf7c1f08bbd70ee8dd75f8542b"
+      },
+      {
+        "path": "services/sandbox/src/data_agent_stats/attestation.py",
+        "hash": "sha256:ee4dcf596fb4afe3a2c3d74a2b19b6060d82131dcea2cbeecfb575422ff898fd"
+      },
+      {
+        "path": "services/sandbox/src/data_agent_stats/cell_policy.py",
+        "hash": "sha256:f477e01c43214c7c90b62bbf2dd5cd88902ca9af6939a1963426c98224e0d28b"
+      },
+      {
+        "path": "services/sandbox/src/data_agent_stats/cohort.py",
+        "hash": "sha256:7b0e81553810d5c9e8eedcdbbcb5c4398b15fcb378961e598cbcbb81fd0017fc"
+      },
+      {
+        "path": "services/sandbox/src/data_agent_stats/decomposition.py",
+        "hash": "sha256:5f5b8ee1027de8e874ccb5f6d3227c4cb2153d1e2700a37ad8a64bc02e0e70c4"
+      },
+      {
+        "path": "services/sandbox/src/data_agent_stats/delivery.py",
+        "hash": "sha256:21292623a1554e513b10972840d184a728182268c945a4f3ac78e5529ada68c9"
+      },
+      {
+        "path": "services/sandbox/src/data_agent_stats/dispatcher.py",
+        "hash": "sha256:7c6954d59f228cd9a86b92bbe1db932f59f4fddf85aaf0edb2666d71d43d68ab"
+      },
+      {
+        "path": "services/sandbox/src/data_agent_stats/inventory.py",
+        "hash": "sha256:2ec8d678d642e260d0e2680bf4ddd663e4dbb814244a7ada3c5585f9738d0e71"
+      },
+      {
+        "path": "services/sandbox/src/data_agent_stats/manifest.py",
+        "hash": "sha256:65d2f4b04e014c90fd6cf1e0de646ef070d5b6fb0aebec6fe25b1f4c10b6d296"
+      },
+      {
+        "path": "services/sandbox/src/data_agent_stats/marketing.py",
+        "hash": "sha256:b3d86f273907643d3f4b58d7e818701f68f9ceabace68944c6761e8feb684c84"
+      },
+      {
+        "path": "services/sandbox/src/data_agent_stats/models.py",
+        "hash": "sha256:37217aabe2e8bfe0c162942de2ca0fa13e53bc04e9dae83476ebb50e5475d778"
+      },
+      {
+        "path": "services/sandbox/src/data_agent_stats/multiple_testing.py",
+        "hash": "sha256:ed5b3bf5ae62be649a8cab015b04a7dc1658eaf5731c539c51713ae21104a7cd"
+      },
+      {
+        "path": "services/sandbox/src/data_agent_stats/registry.py",
+        "hash": "sha256:3b8638bf24230248693a582608e9989bebdc53dda554d5e0e9960dc65d68383d"
+      },
+      {
+        "path": "services/sandbox/src/data_agent_stats/regression.py",
+        "hash": "sha256:f6ab3f3951f06faf53fb7fe7cf1ae23d5b95b411f6e39406d453626be238c7a4"
+      },
+      {
+        "path": "services/sandbox/src/data_agent_stats/robust_trend.py",
+        "hash": "sha256:4bfb3d8ccacded68ab88ef51cbd863fc970f7b1fd950f181cf56e96da06b9ead"
+      }
+    ],
+    "source_bundle_hash": "sha256:402d6c6d11d58245f53a80a027bbbc04a0f97c65932da6749c23b8bb3f66d2c8",
+    "method_registry_hash": "sha256:0ecc713f5c6dce945bd4901d53d72afb60a975ec675b0369fe5464def87e13b7",
+    "oracle_contract_hash": "sha256:915c826471d18c2ea582d7a409b7c8653a866f997017612a4290c22f1a39aead",
+    "production_isolation_proven": false,
+    "production_gate": "HOLD"
+  },
+  "manifest_hash": "sha256:56852438e1ae90ec838e99b96755d175fdf82839159e13236b278446869776b7"
+}
