@@ -106,6 +106,7 @@ describe("Root Agent Harness", () => {
           tool_call_id: "query",
           tool_name: "delegate_to_subagent@2",
           arguments: {
+            delegation_key: "query-evidence",
             profile_id: "governed-text2sql-agent",
             objective: "Prepare accepted evidence.",
             requested_artifact_types: ["QueryEvidence"],
@@ -118,12 +119,13 @@ describe("Root Agent Harness", () => {
           tool_call_id: "analysis",
           tool_name: "delegate_to_subagent@2",
           arguments: {
+            delegation_key: "analysis",
             profile_id: "governed-analysis-agent",
             objective: "Analyze the accepted evidence.",
             requested_artifact_types: ["AnalysisReport"],
             input_artifact_refs: [],
             upstream_accepted_output: {
-              producer_tool_call_id: "query",
+              producer_delegation_key: "query-evidence",
               artifact_type: "QueryEvidence",
             },
             requested_budget: budget,
@@ -164,6 +166,7 @@ describe("Root Agent Harness", () => {
             tool_call_id: "call-semantic-dependency",
             tool_name: "delegate_to_subagent@2",
             arguments: {
+              delegation_key: "semantic-dependency",
               profile_id: "semantic-management-agent",
               objective: "Read the frozen graph and explain table dependencies.",
               requested_artifact_types: ["AnalysisReport"],
@@ -222,6 +225,7 @@ describe("Root Agent Harness", () => {
             tool_call_id: "call-1",
             tool_name: "delegate_to_subagent@2",
             arguments: {
+              delegation_key: "semantic-definition",
               profile_id: "semantic-management-agent",
               objective: "Explain the frozen semantic definition.",
               requested_artifact_types: ["AnalysisReport"],
@@ -257,6 +261,8 @@ describe("Root Agent Harness", () => {
     expect(message).toContain("native tool call");
     expect(message).toContain("complete producer-to-consumer native call chain");
     expect(message).toContain("upstream_accepted_output");
+    expect(message).toContain("producer_delegation_key");
+    expect(message).toContain("transport tool_call_id values are Host-owned");
     expect(message).toContain("Never rely on call adjacency");
     expect(message).toContain('{"kind":"FINAL_ANSWER","sections"');
     expect(message).toContain('Never output a "final_answer" wrapper');

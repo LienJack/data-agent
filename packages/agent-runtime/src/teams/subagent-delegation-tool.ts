@@ -1,14 +1,12 @@
-import {
-  DELEGATE_TO_SUBAGENT_TOOL_NAME,
-  delegateToSubagentArgumentsSchema,
-} from "@data-agent/contracts";
+import { DELEGATE_TO_SUBAGENT_TOOL_NAME } from "@data-agent/contracts";
 import type { ServerOwnedToolDescriptor } from "../tools/registry.js";
+import { rootAgentDelegationToolArgumentsSchema } from "./root-agent-harness.js";
 
 export const SUBAGENT_DELEGATION_TOOL_DESCRIPTOR = Object.freeze({
   tool_name: DELEGATE_TO_SUBAGENT_TOOL_NAME,
   description:
-    "Delegate one governed objective to an eligible Subagent from the frozen capability catalog. Use only when direct answering cannot satisfy the evidence contract.",
-  input_schema: delegateToSubagentArgumentsSchema,
+    "Delegate one governed objective to an eligible Subagent from the frozen capability catalog. Use a unique delegation_key for each call and bind batch dependencies through producer_delegation_key. Use only when direct answering cannot satisfy the evidence contract.",
+  input_schema: rootAgentDelegationToolArgumentsSchema,
   network_access: { mode: "DENY" },
 } satisfies ServerOwnedToolDescriptor);
 
