@@ -47,7 +47,7 @@ export interface RunProviderDispatchCapability {
         >
       | Readonly<{
           kind: "SPECIALIST";
-          stage: "SEMANTIC" | "TEXT2SQL" | "REPORT";
+          stage: "SEMANTIC" | "TEXT2SQL" | "ANALYSIS_PROGRAM" | "REPORT";
           profile_id: string;
           objective: string;
           context_text: string;

@@ -20,6 +20,7 @@ import {
   text2sqlQueryCandidateSchema,
 } from "@data-agent/contracts";
 import { z } from "zod";
+import { analysisProgramCandidateSchema } from "../analysis/analysis-program-compiler.js";
 import {
   ANALYSIS_MODEL_TOOL_ALLOWLIST,
   ANALYSIS_MODEL_TOOL_DESCRIPTORS,
@@ -33,6 +34,7 @@ import { createTrustedUtf8InputTokenUpperBoundCounter } from "./trusted-input-to
 const DIRECT_QA_RESPONSE_SCHEMA_VERSION = "direct-qa-answer@1.0.0";
 const ANALYSIS_PYTHON_RESPONSE_SCHEMA_VERSION = "analysis-python-source@1.0.0";
 const ANALYSIS_AGENT_FINAL_RESPONSE_SCHEMA_VERSION = "analysis-agent-final@1.0.0";
+const ANALYSIS_PROGRAM_CANDIDATE_SCHEMA_VERSION = "analysis-program-candidate@1.0.0";
 const TEXT2SQL_QUERY_CANDIDATE_SCHEMA_VERSION = "text2sql-query-candidate@1.0.0";
 const directAnswerSchema = z.strictObject({ answer: z.string().trim().min(1).max(32_000) });
 const analysisPythonSourceSchema = z.strictObject({
@@ -144,6 +146,10 @@ export function createDirectRunBoundProviderDispatcher(input: {
       schema: analysisAgentFinalResponseSchema,
     },
     {
+      response_schema_version: ANALYSIS_PROGRAM_CANDIDATE_SCHEMA_VERSION,
+      schema: analysisProgramCandidateSchema,
+    },
+    {
       response_schema_version: TEXT2SQL_QUERY_CANDIDATE_SCHEMA_VERSION,
       schema: text2sqlQueryCandidateSchema,
     },
@@ -248,6 +254,8 @@ export function createDirectRunBoundProviderDispatcher(input: {
           specialistTurn.profile_id !== "semantic-management-agent") ||
           (specialistTurn.stage === "TEXT2SQL" &&
             specialistTurn.profile_id !== "governed-text2sql-agent") ||
+          (specialistTurn.stage === "ANALYSIS_PROGRAM" &&
+            specialistTurn.profile_id !== "governed-analysis-agent") ||
           (specialistTurn.stage === "REPORT" &&
             specialistTurn.profile_id !== "report-writing-agent") ||
           specialistTurn.objective.trim().length === 0 ||
@@ -375,12 +383,24 @@ export function createDirectRunBoundProviderDispatcher(input: {
                             "Return only the declared candidate JSON. Do not add template identifiers, Markdown, prose outside JSON, or invented schema.",
                             `Frozen query context: ${specialistTurn.context_text}`,
                           ].join("\n")
-                        : [
-                            "You are the governed report-writing specialist.",
-                            "Return exactly one JSON object with a non-empty answer field.",
-                            "Use only the accepted evidence supplied in the frozen context; do not invent facts.",
-                            `Frozen accepted evidence: ${specialistTurn.context_text}`,
-                          ].join("\n"),
+                        : specialistTurn.stage === "ANALYSIS_PROGRAM"
+                          ? [
+                              "You are the governed analysis-program planner.",
+                              "Return exactly one analysis-program-candidate@1.0.0 JSON object and no prose.",
+                              "Select only metric_ids and dimension_ids present in the frozen Published AnalysisContext.",
+                              "Use the exact approved half-open time window. Never invent or widen a time range.",
+                              "Do not return ResultContract, semantic hashes, physical lineage, limits, generated-source policy, case_id, acceptance metadata, Python source, SQL, or chart data; those are Host-owned.",
+                              "Choose only statistical operator obligations from the frozen registry and exact host-required operator ids. Every operator input must bind exact governed input, an approved server transform, or a preceding governed operator result.",
+                              "Do not implement BH-FDR, Theil-Sen, Mann-Kendall, HAC, Shapley, cohort retention, or any other registered operator in generated Python.",
+                              "The accepted shape is strict: schema_version, node_id, metric_ids, dimension_ids, time_window, comparison_window, parameters, operator_obligations.",
+                              `Frozen analysis authority: ${specialistTurn.context_text}`,
+                            ].join("\n")
+                          : [
+                              "You are the governed report-writing specialist.",
+                              "Return exactly one JSON object with a non-empty answer field.",
+                              "Use only the accepted evidence supplied in the frozen context; do not invent facts.",
+                              `Frozen accepted evidence: ${specialistTurn.context_text}`,
+                            ].join("\n"),
                 },
                 {
                   role: "user" as const,
@@ -435,11 +455,13 @@ export function createDirectRunBoundProviderDispatcher(input: {
             ? ROOT_AGENT_RESPONSE_SCHEMA_VERSION
             : specialistTurn?.stage === "TEXT2SQL"
               ? TEXT2SQL_QUERY_CANDIDATE_SCHEMA_VERSION
-              : specialistTurn?.stage === "SEMANTIC" || specialistTurn?.stage === "REPORT"
-                ? DIRECT_QA_RESPONSE_SCHEMA_VERSION
-                : (analysisAgent?.response_schema_version ??
-                  analysisPython?.response_schema_version ??
-                  DIRECT_QA_RESPONSE_SCHEMA_VERSION),
+              : specialistTurn?.stage === "ANALYSIS_PROGRAM"
+                ? ANALYSIS_PROGRAM_CANDIDATE_SCHEMA_VERSION
+                : specialistTurn?.stage === "SEMANTIC" || specialistTurn?.stage === "REPORT"
+                  ? DIRECT_QA_RESPONSE_SCHEMA_VERSION
+                  : (analysisAgent?.response_schema_version ??
+                    analysisPython?.response_schema_version ??
+                    DIRECT_QA_RESPONSE_SCHEMA_VERSION),
           ...(analysisAgent || rootTurn || specialistTurn ? { sampling: { temperature: 0 } } : {}),
           budget: {
             timeout_ms: Math.min(config.execution_safety_policy.max_elapsed_ms, 120_000),
