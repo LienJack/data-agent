@@ -26,7 +26,7 @@ describe("Agent Team v2 profiles", () => {
     }
     expect(
       new Set(AGENT_PROFILE_REVISIONS.map((profile) => profile.workflow.workflow_id)).size,
-    ).toBe(7);
+    ).toBe(8);
     const rootRevisions = AGENT_PROFILE_REVISIONS.filter(
       ({ profile_id }) => profile_id === "data-agent-orchestrator",
     );
@@ -34,12 +34,16 @@ describe("Agent Team v2 profiles", () => {
     const semanticRevisions = AGENT_PROFILE_REVISIONS.filter(
       ({ profile_id }) => profile_id === "semantic-management-agent",
     );
-    expect(semanticRevisions.map(({ revision }) => revision)).toEqual([1, 2]);
+    expect(semanticRevisions.map(({ revision }) => revision)).toEqual([1, 2, 3]);
     for (const semantic of semanticRevisions) {
       expect(
         getAgentProfileRevisionExact(semantic.profile_id, semantic.revision, semantic.profile_hash),
       ).toBe(semantic);
     }
+    expect(semanticRevisions.at(-1)).toMatchObject({
+      direct_tool_allowlist: ["semantic.catalog.read"],
+      expected_output_artifact_types: ["AnalysisReport"],
+    });
   });
 
   it("separates direct tools from delegation and denies recursive delegation", () => {

@@ -11,6 +11,7 @@ import {
   DEFAULT_RUN_EXECUTION_POLICY,
   type ProductTeamArtifactDocument,
   projectSubagentCapabilityCatalogItem,
+  sha256ContentHash,
 } from "@data-agent/contracts";
 import { describe, expect, it, vi } from "vitest";
 import type {
@@ -493,8 +494,33 @@ describe("Production Team runtime", () => {
       committed_at: "2026-08-18T12:00:00.000Z",
     });
     const output = document.artifact_ref;
+    const replayLease = await lease();
+    const semanticContextRef = {
+      package_id: id(60),
+      package_hash: hash("p"),
+      receipt_id: id(61),
+      receipt_hash: hash("r"),
+      semantic_domain: "commerce",
+      semantic_release_id: id(41),
+      semantic_release_hash: hash("s"),
+    };
     const runtime = createProductionTeamRuntime({
       store: store(calls, {
+        task: {
+          task_id: taskId,
+          run_id: replayLease.run_id,
+          attempt_id: replayLease.attempt_id,
+          worker_fence: replayLease.worker_fence,
+          profile_id: report.revision.runtime_profile_ref.profile_id,
+          profile_revision: report.revision.runtime_profile_ref.revision,
+          profile_hash: report.revision.runtime_profile_ref.profile_hash,
+        },
+        context_epochs: [
+          {
+            phase: "ACTIVATED",
+            proposed_epoch: { build_signature: await sha256ContentHash(semanticContextRef) },
+          },
+        ],
         completions: [{ completion_id: id(91), output_ref: output }],
         acceptances: [{ completion_id: id(91), status: "ACCEPTED" }],
       }),
@@ -507,20 +533,12 @@ describe("Production Team runtime", () => {
     });
     await expect(
       runtime.execute({
-        lease: await lease(),
+        lease: replayLease,
         profiles: new Map([["report-writing-agent", report]]),
         admitted_delegations: delegations,
         semantic_context_package: {} as never,
         semantic_context: {} as never,
-        semantic_context_ref: {
-          package_id: id(60),
-          package_hash: hash("p"),
-          receipt_id: id(61),
-          receipt_hash: hash("r"),
-          semantic_domain: "commerce",
-          semantic_release_id: id(41),
-          semantic_release_hash: hash("s"),
-        },
+        semantic_context_ref: semanticContextRef,
         restored_snapshot: null,
         execution_context: executionContext(events),
         signal: new AbortController().signal,

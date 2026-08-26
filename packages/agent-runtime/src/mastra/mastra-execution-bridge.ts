@@ -416,7 +416,8 @@ class MastraExecutionBridge implements ModelExecutionBridge {
   readonly #responseSchemaRegistry: ServerModelResponseSchemaRegistry;
   readonly #inputTokenCounter: TrustedModelInputTokenCounter;
   readonly #runtimeModelFactory: RuntimeModelFactory;
-  readonly #toolChoicePolicy: ModelToolChoicePolicy;
+  /** Composition-time policy; it is never read from a model request. */
+  readonly #serverToolChoicePolicy: ModelToolChoicePolicy;
 
   constructor(options: ResolvedMastraExecutionBridgeOptions) {
     this.#credentialResolver = options.credential_resolver;
@@ -426,7 +427,7 @@ class MastraExecutionBridge implements ModelExecutionBridge {
       options.response_schema_registry ?? EMPTY_SERVER_MODEL_RESPONSE_SCHEMA_REGISTRY;
     this.#inputTokenCounter = options.input_token_counter ?? failClosedInputTokenCounter;
     this.#runtimeModelFactory = options.runtime_model_factory;
-    this.#toolChoicePolicy = options.tool_choice_policy ?? "REQUIRED";
+    this.#serverToolChoicePolicy = options.tool_choice_policy ?? "REQUIRED";
   }
 
   async *stream(input: {
@@ -522,7 +523,7 @@ class MastraExecutionBridge implements ModelExecutionBridge {
     // (the first operation allowed to open a provider connection) has not run.
     yield { chunk_type: "DISPATCH_READY" };
     const output = usesToolCalling
-      ? this.#toolChoicePolicy === "REQUIRED"
+      ? this.#serverToolChoicePolicy === "REQUIRED"
         ? await agent.stream(projected.messages, {
             ...commonExecutionOptions,
             structuredOutput: {

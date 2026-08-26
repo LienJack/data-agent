@@ -1,20 +1,11 @@
 import {
-  buildFalcon24RunExecutionPolicy,
-  DEFAULT_RUN_EXECUTION_POLICY,
-} from "@data-agent/contracts/runs";
-import {
   loadRuntimeBuildIdentity,
   RUNTIME_BUILD_IDENTITY_VERSION,
   type RuntimeBuildIdentity,
   type RuntimeBuildIdentityConfigurationError,
 } from "@data-agent/contracts/server";
 import { describe, expect, it } from "vitest";
-import {
-  projectWorkerHealthResponse,
-  runWorkerProcess,
-  selectFalcon24AnalysisForLease,
-  shouldComposeFalcon24StrictAnalysisRuntime,
-} from "../src/run-worker-cli.js";
+import { projectWorkerHealthResponse, runWorkerProcess } from "../src/run-worker-cli.js";
 import {
   runSemanticAuthoringWorkerProcess,
   semanticAuthoringStartedRecord,
@@ -38,38 +29,6 @@ function identity(role: RuntimeBuildIdentity["consumer_role"] = "worker"): Runti
 }
 
 describe("Worker runtime build identity", () => {
-  it("仅在显式 strict policy 下装配 Falcon24 固定分析运行时", () => {
-    expect(shouldComposeFalcon24StrictAnalysisRuntime({})).toBe(false);
-    expect(
-      shouldComposeFalcon24StrictAnalysisRuntime({
-        DATA_AGENT_FALCON24_ACCEPTANCE_EXECUTION_POLICY: "falcon24-strict-zero-retry@1.0.0",
-      }),
-    ).toBe(true);
-    expect(() =>
-      shouldComposeFalcon24StrictAnalysisRuntime({
-        DATA_AGENT_FALCON24_ACCEPTANCE_EXECUTION_POLICY: "default-run-retry@1.0.0",
-      }),
-    ).toThrow("FALCON24_ACCEPTANCE_EXECUTION_POLICY_INVALID");
-  });
-
-  it("同一 strict Worker 也只向当前 strict Lease 暴露 Falcon24 运行时", () => {
-    const runtime = { analyze: async () => ({}) };
-    const strictPolicy = buildFalcon24RunExecutionPolicy({
-      campaign_id: "falcon24-root-v13-final-20260826",
-      case_id: "falcon24-business-review-18m",
-      run_variant: "COLD",
-      repetition: 1,
-    });
-    expect(
-      selectFalcon24AnalysisForLease(runtime, { execution_policy: strictPolicy } as never),
-    ).toBe(runtime);
-    expect(
-      selectFalcon24AnalysisForLease(runtime, {
-        execution_policy: DEFAULT_RUN_EXECUTION_POLICY,
-      } as never),
-    ).toBeNull();
-  });
-
   it("四个受管理角色均拒绝 mismatch，test harness 必须显式注入", () => {
     for (const role of ["web", "worker", "relationship-indexer", "semantic-authoring"] as const) {
       expect(

@@ -143,10 +143,10 @@ describe("Mastra specialist profile composition", () => {
     }
     expect(
       displayEvents.filter((event) => (event as { kind: string }).kind === "tool_started"),
-    ).toHaveLength(8);
+    ).toHaveLength(7);
     expect(
       displayEvents.filter((event) => (event as { kind: string }).kind === "tool_completed"),
-    ).toHaveLength(8);
+    ).toHaveLength(7);
     expect(displayEvents).toContainEqual(
       expect.objectContaining({
         kind: "tool_completed",

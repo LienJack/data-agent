@@ -2,13 +2,16 @@ import { randomUUID } from "node:crypto";
 import { createServer, type Server } from "node:http";
 import { pathToFileURL } from "node:url";
 import {
+  SubagentDelegationAdmissionError,
+  verifyFrozenSubagentCatalogProfiles,
+} from "@data-agent/agent-runtime";
+import {
   type AppScope,
   effectiveConfigRunLeasePayloadSchema,
   type PortResult,
   type RunQueuePort,
   type RunWorkLease,
 } from "@data-agent/contracts";
-import { FALCON24_STRICT_ACCEPTANCE_POLICY_ID } from "@data-agent/contracts/evals";
 import {
   loadRuntimeBuildIdentity,
   loadRuntimeMigrationFact,
@@ -51,6 +54,7 @@ import {
 import {
   createPostgresEffectiveConfigResolver,
   createPostgresFalcon24AcceptanceCampaignAuthority,
+  createPostgresFalcon24AuthorityEpoch,
   createPostgresFalcon24QualificationAuthority,
   createPostgresRunEventStore,
   createPostgresRunQueue,
@@ -66,7 +70,6 @@ import {
   createFileScanPort,
   createFileSystemStorageClient,
   createPostgresWorkspaceFiles,
-  createSensitiveExecutionArtifactAuthority,
   createWorkspaceContentNamespace,
 } from "@data-agent/platform/storage";
 import {
@@ -77,11 +80,6 @@ import { createSemanticContextService } from "@data-agent/semantic/runtime-conte
 import pg from "pg";
 import { z } from "zod";
 import { classifyFalcon24RunFailureCode } from "./evals/falcon24-acceptance-execution-policy.js";
-import { createFalcon24AnalysisAcceptanceRecorder } from "./evals/falcon24-analysis-acceptance-recorder.js";
-import {
-  createFalcon24AnalysisRuntime,
-  isFalcon24StrictAnalysisLease,
-} from "./evals/falcon24-analysis-runtime.js";
 import { createArtifactExportJobHandler } from "./jobs/artifact-export-job-handler.js";
 import { runConversationRetentionCycle } from "./jobs/conversation-retention-cycle.js";
 import { createFileScanJobHandler } from "./jobs/file-scan-job-handler.js";
@@ -133,24 +131,6 @@ export function requireCompletedProviderSmokeCycle(result: {
   if (result.ok !== true || result.value?.kind !== "COMPLETED") {
     throw new RunWorkerStartupError("PROVIDER_INVOCATION_SMOKE_NOT_COMPLETED");
   }
-}
-
-export function shouldComposeFalcon24StrictAnalysisRuntime(
-  environment: NodeJS.ProcessEnv,
-): boolean {
-  const configuredPolicy = environment.DATA_AGENT_FALCON24_ACCEPTANCE_EXECUTION_POLICY?.trim();
-  if (!configuredPolicy) return false;
-  if (configuredPolicy !== FALCON24_STRICT_ACCEPTANCE_POLICY_ID) {
-    throw new RunWorkerStartupError("FALCON24_ACCEPTANCE_EXECUTION_POLICY_INVALID");
-  }
-  return true;
-}
-
-export function selectFalcon24AnalysisForLease<T>(
-  runtime: T | null,
-  lease: RunWorkLease,
-): T | null {
-  return runtime && isFalcon24StrictAnalysisLease(lease) ? runtime : null;
 }
 
 export function targetProviderSmokeQueue(
@@ -285,7 +265,6 @@ export async function runWorkerProcess(
   const migrationFact = loadRuntimeMigrationFact(environment);
   environment = loadRunWorkerEnvironment(environment);
   const config = parseRunWorkerEnvironment(environment);
-  const composeFalcon24StrictAnalysis = shouldComposeFalcon24StrictAnalysisRuntime(environment);
   const analysisSandboxMaintenance = createEnvironmentOpenSandboxAnalysisRuntime(environment);
   const smokeTarget =
     environment.DATA_AGENT_U3_PROVIDER_SMOKE_ONE_SHOT === "YES"
@@ -459,23 +438,6 @@ export async function runWorkerProcess(
       }, 60_000);
       analysisStageSweepTimer.unref();
     }
-    const sensitiveArtifacts = createSensitiveExecutionArtifactAuthority({
-      pool: sqlPool,
-      authorizer: capabilityAuthority.authorizer,
-      blobs: {
-        async putIfAbsent(contentHash, bytes) {
-          await fileStorage.put(
-            `analysis-sensitive/v1/${contentHash.replace(/^sha256:/u, "sha256-")}`,
-            bytes,
-          );
-        },
-        get(contentHash) {
-          return fileStorage.get(
-            `analysis-sensitive/v1/${contentHash.replace(/^sha256:/u, "sha256-")}`,
-          );
-        },
-      },
-    });
     const effectiveConfigResolver = createPostgresEffectiveConfigResolver({
       pool: sqlPool,
       authorizer: capabilityAuthority.authorizer,
@@ -547,6 +509,10 @@ export async function runWorkerProcess(
           pool: sqlPool,
           authorizer: capabilityAuthority.authorizer,
         });
+        const e1Authority = createPostgresFalcon24AuthorityEpoch({
+          pool: sqlPool,
+          authorizer: capabilityAuthority.authorizer,
+        });
         const falcon24CampaignAuthority = createPostgresFalcon24AcceptanceCampaignAuthority({
           pool: sqlPool,
           authorizer: capabilityAuthority.authorizer,
@@ -554,25 +520,6 @@ export async function runWorkerProcess(
         const falcon24QualificationAuthority = createPostgresFalcon24QualificationAuthority({
           pool: sqlPool,
           authorizer: capabilityAuthority.authorizer,
-        });
-        const falcon24AcceptanceRecorder = createFalcon24AnalysisAcceptanceRecorder({
-          async stage_result({ authority_kind: authorityKind, campaign_id: campaignId, result }) {
-            const command = {
-              run_id: result.run_id,
-              result_document: result,
-            } as const;
-            const staged =
-              authorityKind === "QUALIFICATION"
-                ? await falcon24QualificationAuthority.stageResult(capability, {
-                    qualification_id: campaignId,
-                    ...command,
-                  })
-                : await falcon24CampaignAuthority.stage(capability, {
-                    campaign_id: campaignId,
-                    ...command,
-                  });
-            if (!staged.ok) throw new TypeError(staged.error.code);
-          },
         });
         const text2sqlRuntime = createPostgresqlText2SqlQueryRuntime({
           pool,
@@ -599,24 +546,6 @@ export async function runWorkerProcess(
           resolveCommitted: (reference: Parameters<typeof teamArtifacts.resolveCommitted>[1]) =>
             teamArtifacts.resolveCommitted(capability, reference),
         };
-        const falcon24Analysis =
-          composeFalcon24StrictAnalysis &&
-          researchCapabilities &&
-          environment.ANALYSIS_SANDBOX_ENABLED === "true" &&
-          environment.DATA_AGENT_ANALYSIS_INPUT_KEY_BASE64?.trim() &&
-          environment.DATA_AGENT_ANALYSIS_PYTHON_SOURCE_KEY_BASE64?.trim()
-            ? createFalcon24AnalysisRuntime({
-                pool: sqlPool,
-                research_authority: researchAuthority,
-                sensitive_artifacts: sensitiveArtifacts,
-                research_capabilities: researchCapabilities,
-                app_capability_input: capability,
-                public_artifacts: teamArtifacts,
-                environment,
-                now: () => new Date(),
-                acceptance_recorder: falcon24AcceptanceRecorder,
-              })
-            : null;
         const productionTeamRuntime = createProductionTeamRuntime({
           store: teamStore,
           capability,
@@ -628,16 +557,44 @@ export async function runWorkerProcess(
                 artifacts: teamArtifacts,
                 text2sql: text2sqlRuntime,
                 semantic_release: semanticRelease,
-                governed_analysis: selectFalcon24AnalysisForLease(falcon24Analysis, input.lease),
               },
               input,
             ),
         });
         const teamExecutor = createDataAgentTeamRunner({
+          e1_authority: {
+            loadCurrent: () => e1Authority.loadCurrent(capability),
+            loadRunBinding: (runId) => e1Authority.loadRunBinding(capability, { run_id: runId }),
+          },
+          catalog_authority: {
+            async loadFrozen(catalog) {
+              const discovered = await profileRegistry.listDiscoverable(capability);
+              if (!discovered.ok) return discovered;
+              try {
+                return {
+                  ok: true as const,
+                  value: await verifyFrozenSubagentCatalogProfiles({
+                    catalog,
+                    profiles: discovered.value,
+                  }),
+                };
+              } catch (error) {
+                return {
+                  ok: false as const,
+                  error: {
+                    code:
+                      error instanceof SubagentDelegationAdmissionError
+                        ? error.code
+                        : "ROOT_AGENT_CATALOG_AUTHORITY_INVALID",
+                    message: "Frozen Root Agent catalog no longer matches its Profile authority.",
+                    retryable: false,
+                  },
+                };
+              }
+            },
+          },
           root: createRootAgentTurnExecutor(),
           root_runtime: createRootAgentDelegationRuntime({
-            profiles: profileRegistry,
-            profile_capability_input: capability,
             runtime: productionTeamRuntime,
             artifacts: teamArtifactAuthority,
           }),

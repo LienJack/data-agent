@@ -249,13 +249,13 @@ describe("Root Agent Harness", () => {
     const frozenCatalog = await catalog(["semantic-management-agent"]);
     const message = await buildRootAgentSystemMessage(frozenCatalog);
     expect(message).toContain("semantic-management-agent");
-    expect(message).toContain("never route by keyword lists");
-    expect(message).toContain("named business entities");
+    expect(message).toContain("Never route by keyword lists");
+    expect(message).toContain("frozen Agent Card descriptions");
     expect(message).toContain("generic textbook answer");
     expect(message).toContain("no accepted result Artifact is visible");
     expect(message).toContain("Never invent an Artifact reference");
     expect(message).toContain("native tool call");
-    expect(message).toContain("emit both native calls in the same response");
+    expect(message).toContain("complete producer-to-consumer native call chain");
     expect(message).toContain("upstream_accepted_output");
     expect(message).toContain("Never rely on call adjacency");
     expect(message).toContain('{"kind":"FINAL_ANSWER","sections"');

@@ -140,6 +140,41 @@ describe("Root Agent direct-answer review", () => {
       turn: { phase: "DIRECT_ANSWER_REVIEW", prior_output_text: direct },
     });
 
+    const driftContext = createRunExecutionContext({
+      lease,
+      effective_config: consumed.effective_config,
+      context_receipt: {
+        ...consumed.context_receipt,
+        schema_snapshot: {
+          ...consumed.context_receipt.schema_snapshot,
+          resource_hash: `sha256:${"f".repeat(64)}`,
+        },
+      },
+      run_signal: new AbortController().signal,
+      event_store: {} as never,
+      now: () => new Date("2026-08-25T10:00:00.000Z"),
+      create_id: () => id(12),
+      side_effect_timeout_ms: 1_000,
+      provider_dispatch: { invoke: invoke as never },
+      heartbeat: vi.fn(),
+      guard_running_lease: vi.fn(),
+      append_checkpoint_event: vi.fn(),
+      append_side_effect_event: vi.fn(),
+      append_display_event: vi.fn(async () => ({ ok: true as const, value: { sequence: 1 } })),
+    });
+    const driftResult = await createRootAgentTurnExecutor().decide({
+      lease,
+      restored_snapshot: null,
+      context: driftContext,
+      signal: new AbortController().signal,
+      deadline_at: lease.expires_at,
+    });
+    expect(driftResult).toEqual({
+      ok: false,
+      error: expect.objectContaining({ code: "ROOT_AGENT_CONTEXT_BINDING_INVALID" }),
+    });
+    expect(invoke).toHaveBeenCalledTimes(2);
+
     invoke.mockReset();
     invoke.mockResolvedValueOnce({
       ok: true,

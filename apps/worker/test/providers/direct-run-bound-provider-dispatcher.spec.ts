@@ -1,7 +1,38 @@
-import { describe, expect, it } from "vitest";
-import { directRunBoundProviderDispatcherInternals } from "../../src/providers/direct-run-bound-provider-dispatcher.js";
+import { describe, expect, it, vi } from "vitest";
+import {
+  createDirectRunBoundProviderDispatcher,
+  directRunBoundProviderDispatcherInternals,
+} from "../../src/providers/direct-run-bound-provider-dispatcher.js";
 
 describe("direct run-bound provider retry policy", () => {
+  it("rejects the removed Direct QA fallback before reading Run or provider state", async () => {
+    const getRun = vi.fn();
+    const dispatcher = createDirectRunBoundProviderDispatcher({
+      runs: { getRun },
+      capability: {},
+      environment: {},
+    });
+    const runId = "90000000-0000-4000-8000-000000000001";
+    const attemptId = "90000000-0000-4000-8000-000000000002";
+    const result = await dispatcher.invoke({
+      lease: { run_id: runId, attempt_id: attemptId, worker_fence: 1 },
+      effective_config: { run_id: runId },
+      context_receipt: { run_id: runId, attempt_id: attemptId, worker_fence: 1 },
+      logical_call_id: "90000000-0000-4000-8000-000000000003",
+      signal: new AbortController().signal,
+    } as never);
+
+    expect(result).toEqual({
+      ok: false,
+      error: {
+        code: "MODEL_DISPATCH_MODE_REQUIRED",
+        message: "生产模型调用必须选择唯一的 Root、Specialist、Analysis 或 smoke turn。",
+        retryable: false,
+      },
+    });
+    expect(getRun).not.toHaveBeenCalled();
+  });
+
   it("projects native tool-call events into the strict Root Harness shape", () => {
     const providerEvent = {
       tool_call_id: "call-1",

@@ -183,8 +183,8 @@ describe("built-in Team materialization", () => {
         expected_head_version: 0,
         revision: expect.objectContaining({
           profile_id: "semantic-management-agent",
-          revision: 4,
-          runtime_profile_ref: expect.objectContaining({ revision: 2 }),
+          revision: 5,
+          runtime_profile_ref: expect.objectContaining({ revision: 3 }),
         }),
       }),
     );
@@ -281,7 +281,7 @@ describe("built-in Team materialization", () => {
     expect(profileCommands).toContainEqual(
       expect.objectContaining({
         expected_head_version: 9,
-        revision: expect.objectContaining({ profile_id: targetProfile.profile_id, revision: 3 }),
+        revision: expect.objectContaining({ profile_id: targetProfile.profile_id, revision: 4 }),
       }),
     );
   });
@@ -352,7 +352,7 @@ describe("built-in Team materialization", () => {
         target_lifecycle: "ENABLED",
         revision: expect.objectContaining({
           profile_id: "governed-analysis-agent",
-          revision: 3,
+          revision: 4,
         }),
       }),
     ]);
@@ -441,7 +441,7 @@ describe("built-in Team materialization", () => {
     ).toBe(false);
   });
 
-  it("uses the current Product Profile head version when activating semantic revision 2", async () => {
+  it("uses the current Product Profile head version when activating the E1 semantic revision", async () => {
     const request = input();
     const semanticRevision = (
       await buildBuiltinTeamMaterialization({
@@ -507,7 +507,7 @@ describe("built-in Team materialization", () => {
       .find(({ revision }) => revision.profile_id === "semantic-management-agent");
     expect(semanticCommand).toMatchObject({
       expected_head_version: 7,
-      revision: { revision: 4, runtime_profile_ref: { revision: 2 } },
+      revision: { revision: 5, runtime_profile_ref: { revision: 3 } },
     });
   });
 });

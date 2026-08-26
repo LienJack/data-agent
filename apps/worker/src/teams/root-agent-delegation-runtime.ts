@@ -26,12 +26,6 @@ import { deriveTeamRuntimeTaskBounds } from "./team-runtime-bounds.js";
 type RootExecution = Parameters<RunWorkflowExecutorPort["execute"]>[0];
 
 export interface RootAgentDelegationRuntimeDependencies {
-  readonly profiles: {
-    listDiscoverable(
-      capabilityInput: unknown,
-    ): Promise<PortResult<readonly AgentProductProfileRegistryItemV2[]>>;
-  };
-  readonly profile_capability_input: unknown;
   readonly runtime: DataAgentProductTeamRuntimePort;
   readonly artifacts: {
     verifyCommitted(reference: ArtifactReference): Promise<PortResult<boolean>>;
@@ -117,6 +111,7 @@ export function createRootAgentDelegationRuntime(
     async execute(input: {
       readonly decision: RootAgentDecisionCandidate;
       readonly execution: RootExecution;
+      readonly profiles: readonly AgentProductProfileRegistryItemV2[];
     }) {
       try {
         const payload = effectiveConfigRunLeasePayloadSchema.parse(input.execution.lease.payload);
@@ -144,14 +139,11 @@ export function createRootAgentDelegationRuntime(
           return { status: "ACCEPTED", reason_code: "ROOT_DIRECT_ANSWER_ACCEPTED" };
         }
 
-        const discoverable = value(
-          await dependencies.profiles.listDiscoverable(dependencies.profile_capability_input),
-        );
         const ceiling = runCeiling(input.execution);
         const admitted = await admitRootAgentDelegations({
           decision: input.decision,
           catalog: payload.catalog_snapshot,
-          profiles: discoverable,
+          profiles: input.profiles,
           run_ceiling: ceiling,
           profile_ceiling: (profile) => profileCeiling(profile, ceiling),
           artifact_is_accepted: async (reference) =>

@@ -37,6 +37,7 @@ export interface RunProviderDispatchCapability {
     readonly analysis_python?: RunAnalysisPythonGenerationRequest;
     readonly analysis_agent?: RunAnalysisAgentTurnRequest;
     readonly turn?:
+      | Readonly<{ kind: "PROVIDER_SMOKE" }>
       | Readonly<
           | { kind: "ROOT"; phase: "INITIAL" }
           | {

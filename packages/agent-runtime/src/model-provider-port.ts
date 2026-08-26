@@ -44,6 +44,11 @@ export interface ModelProviderPortCompositionInput {
   readonly clock?: ModelProviderAdapterClock;
 }
 
+export type RootModelProviderPortCompositionInput = Omit<
+  ModelProviderPortCompositionInput,
+  "tool_choice_policy"
+>;
+
 /** @deprecated Use createDirectModelProviderPort. */
 export function createSemanticAuthoringModelProviderPort(
   input: ModelProviderPortCompositionInput & {
@@ -101,6 +106,18 @@ export function createModelProviderPort(
  * no certification lookup and consumes no persisted invocation permit.
  */
 export const createDirectModelProviderPort = createModelProviderPort;
+
+/**
+ * Root Agent provider path.
+ *
+ * AUTO is a server-owned policy at this composition boundary. A Run, caller,
+ * or model request cannot turn the native delegation tool into REQUIRED/NONE.
+ */
+export function createRootModelProviderPort(
+  input: RootModelProviderPortCompositionInput,
+): ModelProviderPort {
+  return createModelProviderPort({ ...input, tool_choice_policy: "AUTO" });
+}
 
 /**
  * @deprecated Compatibility alias for isolated benchmarks. It now uses the

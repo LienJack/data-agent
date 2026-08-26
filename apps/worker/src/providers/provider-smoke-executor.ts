@@ -16,7 +16,10 @@ export function createProviderSmokeExecutor(): RunWorkflowExecutorPort {
       if (!hasRunProviderDispatchCapability(dispatch)) {
         return { kind: "FAILED", error_code: "PROVIDER_DISPATCH_AUTHORITY_NOT_CONFIGURED" };
       }
-      const result = await dispatch.invoke({ logical_call_id: lease.command_id });
+      const result = await dispatch.invoke({
+        logical_call_id: lease.command_id,
+        turn: { kind: "PROVIDER_SMOKE" },
+      });
       if (!result.ok) return { kind: "FAILED", error_code: result.error.code };
       if (result.value.projection.status !== "COMPLETED") {
         return { kind: "FAILED", error_code: "PROVIDER_INVOCATION_SMOKE_NOT_COMPLETED" };

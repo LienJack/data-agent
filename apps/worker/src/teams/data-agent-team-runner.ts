@@ -2,8 +2,11 @@ import type { AdmittedSubagentDelegation } from "@data-agent/agent-runtime";
 import {
   type AgentProductProfileRegistryItemV2,
   effectiveConfigRunLeasePayloadSchema,
+  type Falcon24AuthorityBinding,
+  type PortResult,
   type RootAgentDecisionCandidate,
   type SemanticContextCommitResult,
+  type SubagentCapabilityCatalogSnapshot,
 } from "@data-agent/contracts";
 import { z } from "zod";
 import { hasRunExecutionContextProvenance } from "../runs/run-execution-context.js";
@@ -50,17 +53,39 @@ export interface DataAgentProductTeamRuntimePort {
 }
 
 export interface DataAgentTeamRunnerDependencies {
+  readonly e1_authority?: {
+    loadCurrent(): Promise<PortResult<Falcon24AuthorityBinding | null>>;
+    loadRunBinding(runId: string): Promise<PortResult<Falcon24AuthorityBinding>>;
+  };
+  readonly catalog_authority?: {
+    loadFrozen(
+      catalog: SubagentCapabilityCatalogSnapshot,
+    ): Promise<PortResult<readonly AgentProductProfileRegistryItemV2[]>>;
+  };
   readonly root?: RootAgentTurnPort;
   readonly root_runtime?: {
     execute(input: {
       readonly decision: RootAgentDecisionCandidate;
       readonly execution: Parameters<RunWorkflowExecutorPort["execute"]>[0];
+      readonly profiles: readonly AgentProductProfileRegistryItemV2[];
     }): Promise<unknown>;
   };
 }
 
 function failed(errorCode: string): RunExecutorResult {
   return runExecutorResultSchema.parse({ kind: "FAILED", error_code: errorCode });
+}
+
+function sameAuthorityBinding(
+  left: Falcon24AuthorityBinding,
+  right: Falcon24AuthorityBinding,
+): boolean {
+  return (
+    left.authority_epoch === right.authority_epoch &&
+    left.baseline_id === right.baseline_id &&
+    left.baseline_hash === right.baseline_hash &&
+    left.activation_attempt_id === right.activation_attempt_id
+  );
 }
 
 export function createDataAgentTeamRunner(
@@ -87,13 +112,35 @@ export function createDataAgentTeamRunner(
       ) {
         return failed("ROOT_AGENT_LEASE_VERSION_UNSUPPORTED");
       }
+      if (!dependencies.e1_authority) {
+        return failed("FALCON24_E1_RUNTIME_AUTHORITY_NOT_CONFIGURED");
+      }
+      const currentAuthority = await dependencies.e1_authority.loadCurrent();
+      if (!currentAuthority.ok) return failed(currentAuthority.error.code);
+      if (!currentAuthority.value) return failed("FALCON24_E1_NOT_ACTIVE");
+      const runAuthority = await dependencies.e1_authority.loadRunBinding(input.lease.run_id);
+      if (!runAuthority.ok) return failed(runAuthority.error.code);
+      if (!sameAuthorityBinding(currentAuthority.value, runAuthority.value)) {
+        return failed("FALCON24_E1_RUNTIME_AUTHORITY_DRIFT");
+      }
+      if (!dependencies.catalog_authority) {
+        return failed("ROOT_AGENT_CATALOG_AUTHORITY_NOT_CONFIGURED");
+      }
+      const frozenProfiles = await dependencies.catalog_authority.loadFrozen(
+        payload.data.catalog_snapshot,
+      );
+      if (!frozenProfiles.ok) return failed(frozenProfiles.error.code);
       if (!dependencies.root) return failed("ROOT_AGENT_TURN_NOT_CONFIGURED");
       if (!dependencies.root_runtime) return failed("ROOT_AGENT_RUNTIME_NOT_CONFIGURED");
 
       const decision = await dependencies.root.decide(input);
       if (!decision.ok) return failed(decision.error.code);
       const runtime = rootRuntimeResultSchema.safeParse(
-        await dependencies.root_runtime.execute({ decision: decision.value, execution: input }),
+        await dependencies.root_runtime.execute({
+          decision: decision.value,
+          execution: input,
+          profiles: frozenProfiles.value,
+        }),
       );
       if (!runtime.success) return failed("ROOT_AGENT_RUNTIME_RESULT_INVALID");
       if (runtime.data.status !== "ACCEPTED") return failed(runtime.data.reason_code);
@@ -101,3 +148,5 @@ export function createDataAgentTeamRunner(
     },
   });
 }
+
+export const dataAgentTeamRunnerInternals = Object.freeze({ sameAuthorityBinding });

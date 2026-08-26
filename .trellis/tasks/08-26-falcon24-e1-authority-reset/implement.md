@@ -26,10 +26,10 @@
 
 ## U4 - Root V3 Only Router
 
-- [ ] 收敛 E1 Root、Agent Cards、provider AUTO tool choice 与 frozen admission。
-- [ ] 删除生产 Direct QA、regex/classifier、fixed query kind/template SQL、case resolver 引用。
-- [ ] 覆盖 direct/Semantic/Text2SQL/Analysis/Report/recovery/import-boundary tests。
-- [ ] 创建 U4 scoped commit。
+- [x] 收敛 E1 Root、Agent Cards、provider AUTO tool choice 与 frozen admission。
+- [x] 删除生产 Direct QA、regex/classifier、fixed query kind/template SQL、case resolver 引用。
+- [x] 覆盖 direct/Semantic/Text2SQL/Analysis/Report/recovery/import-boundary tests。
+- [x] 创建 U4 scoped commit。
 
 ## U5 - QueryEvidence and typed Arrow
 

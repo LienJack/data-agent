@@ -111,12 +111,20 @@ async function specialistProviderJson(input: {
   readonly context_text: string;
   readonly call_index?: number;
 }): Promise<unknown> {
+  const expectedProfile = {
+    SEMANTIC: "semantic-management-agent",
+    TEXT2SQL: "governed-text2sql-agent",
+    REPORT: "report-writing-agent",
+  } as const;
+  const delegation = input.factory.delegation;
+  if (!delegation) throw new ProductionTeamToolError("ROOT_AGENT_DELEGATION_REQUIRED");
+  if (delegation.profile.revision.profile_id !== expectedProfile[input.stage]) {
+    throw new ProductionTeamToolError("TEAM_SPECIALIST_STAGE_PROFILE_MISMATCH");
+  }
   const provider = input.factory.execution_context.getProviderDispatchCapability();
   if (!hasRunProviderDispatchCapability(provider)) {
     throw new ProductionTeamToolError("PROVIDER_DISPATCH_AUTHORITY_NOT_CONFIGURED");
   }
-  const delegation = input.factory.delegation;
-  if (!delegation) throw new ProductionTeamToolError("ROOT_AGENT_DELEGATION_REQUIRED");
   const result = portValue(
     await provider.invoke({
       logical_call_id: productionTeamRuntimeInternals.identity(

@@ -7,6 +7,7 @@ import {
   canonicalizeJson,
   type DelegateToSubagentCall,
   deepFreeze,
+  projectSubagentCapabilityCatalogItem,
   type RootAgentDecisionCandidate,
   type SubagentCapabilityCatalogSnapshot,
   type SubagentDelegationReceipt,
@@ -99,6 +100,41 @@ function exactProfile(
   return profile;
 }
 
+export async function verifyFrozenSubagentCatalogProfiles(input: {
+  readonly catalog: SubagentCapabilityCatalogSnapshot;
+  readonly profiles: readonly AgentProductProfileRegistryItemV2[];
+}): Promise<readonly AgentProductProfileRegistryItemV2[]> {
+  const catalog = await verifySubagentCapabilityCatalogSnapshot(input.catalog);
+  const profileIds = input.profiles.map(({ revision }) => revision.profile_id);
+  if (new Set(profileIds).size !== profileIds.length) {
+    throw new SubagentDelegationAdmissionError("SUBAGENT_PROFILE_AUTHORITY_DUPLICATE");
+  }
+  const verified: AgentProductProfileRegistryItemV2[] = [];
+  for (const item of catalog.items) {
+    const profile = input.profiles.find(
+      ({ revision }) => revision.profile_id === item.profile_ref.profile_id,
+    );
+    if (!profile) {
+      throw new SubagentDelegationAdmissionError("SUBAGENT_PROFILE_CATALOG_BINDING_STALE");
+    }
+    await verifyAgentProductProfileRevisionV2(profile.revision);
+    if (
+      profile.head.lifecycle !== "ENABLED" ||
+      profile.revision.approval_status !== "APPROVED" ||
+      profile.revision.revision !== item.profile_ref.revision ||
+      profile.revision.revision_hash !== item.profile_ref.revision_hash ||
+      profile.head.active_revision !== item.profile_ref.revision ||
+      profile.head.active_revision_hash !== item.profile_ref.revision_hash ||
+      canonicalizeJson(await projectSubagentCapabilityCatalogItem(profile)) !==
+        canonicalizeJson(item)
+    ) {
+      throw new SubagentDelegationAdmissionError("SUBAGENT_PROFILE_CATALOG_BINDING_STALE");
+    }
+    verified.push(profile);
+  }
+  return deepFreeze(verified);
+}
+
 export async function admitRootAgentDelegations(input: {
   readonly decision: RootAgentDecisionCandidate;
   readonly catalog: SubagentCapabilityCatalogSnapshot;
@@ -119,11 +155,7 @@ export async function admitRootAgentDelegations(input: {
     throw new SubagentDelegationAdmissionError("SUBAGENT_PROFILE_DUPLICATE_IN_BATCH");
   }
 
-  const profileIds = input.profiles.map(({ revision }) => revision.profile_id);
-  if (new Set(profileIds).size !== profileIds.length) {
-    throw new SubagentDelegationAdmissionError("SUBAGENT_PROFILE_AUTHORITY_DUPLICATE");
-  }
-  for (const profile of input.profiles) await verifyAgentProductProfileRevisionV2(profile.revision);
+  await verifyFrozenSubagentCatalogProfiles({ catalog, profiles: input.profiles });
 
   const admitted: AdmittedSubagentDelegation[] = [];
   for (const call of decision.tool_calls) {

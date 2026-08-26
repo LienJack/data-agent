@@ -11,6 +11,17 @@ import {
 } from "../runs/run-execution-context.js";
 import type { RunWorkflowExecutorPort } from "../runs/run-worker-runner.js";
 
+function sameScope(
+  left: Readonly<{ app_id: string; tenant_id: string; environment: string }>,
+  right: Readonly<{ app_id: string; tenant_id: string; environment: string }>,
+): boolean {
+  return (
+    left.app_id === right.app_id &&
+    left.tenant_id === right.tenant_id &&
+    left.environment === right.environment
+  );
+}
+
 function identity(runId: string, phase: "INITIAL" | "DIRECT_ANSWER_REVIEW"): string {
   const bytes = createHash("sha256")
     .update(`data-agent/root-agent-turn@1\0${runId}\0${phase}`)
@@ -51,6 +62,48 @@ export function createRootAgentTurnExecutor(): RootAgentTurnPort {
         return failure(
           "ROOT_AGENT_LEASE_INVALID",
           "Root Agent requires an exact v3 catalog lease.",
+        );
+      }
+      const config = input.context.getEffectiveConfig();
+      const contextReceipt = input.context.getContextReceipt();
+      const configRef = payload.data.effective_config_ref;
+      if (
+        config.run_id !== input.lease.run_id ||
+        !sameScope(config.scope, input.lease.scope) ||
+        config.scope.principal_id !== input.lease.principal_id ||
+        config.config_id !== configRef.config_id ||
+        config.config_revision !== configRef.config_revision ||
+        config.config_hash !== configRef.config_hash
+      ) {
+        return failure(
+          "ROOT_AGENT_EFFECTIVE_CONFIG_BINDING_INVALID",
+          "Root Agent Effective Config does not match the frozen Run lease.",
+        );
+      }
+      if (
+        payload.data.catalog_snapshot.principal_id !== input.lease.principal_id ||
+        !sameScope(payload.data.catalog_snapshot.scope, input.lease.scope)
+      ) {
+        return failure(
+          "ROOT_AGENT_CATALOG_BINDING_INVALID",
+          "Root Agent catalog does not match the frozen Run authority.",
+        );
+      }
+      if (
+        contextReceipt.run_id !== input.lease.run_id ||
+        contextReceipt.attempt_id !== input.lease.attempt_id ||
+        contextReceipt.worker_fence !== input.lease.worker_fence ||
+        contextReceipt.config_ref.config_id !== configRef.config_id ||
+        contextReceipt.config_ref.config_revision !== configRef.config_revision ||
+        contextReceipt.config_ref.config_hash !== configRef.config_hash ||
+        contextReceipt.semantic_release.resource_id !== config.semantic_release.resource_id ||
+        contextReceipt.semantic_release.resource_hash !== config.semantic_release.resource_hash ||
+        contextReceipt.schema_snapshot.resource_id !== config.schema_snapshot.resource_id ||
+        contextReceipt.schema_snapshot.resource_hash !== config.schema_snapshot.resource_hash
+      ) {
+        return failure(
+          "ROOT_AGENT_CONTEXT_BINDING_INVALID",
+          "Root Agent context receipt drifted from the frozen schema or semantic binding.",
         );
       }
       const catalog = payload.data.catalog_snapshot;

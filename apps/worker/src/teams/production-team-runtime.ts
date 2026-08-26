@@ -552,6 +552,57 @@ function acceptedOutput(snapshot: unknown): ArtifactReference | null {
   return (completion?.output_ref as ArtifactReference | undefined) ?? null;
 }
 
+async function verifyAcceptedReplayBinding(input: {
+  readonly snapshot: unknown;
+  readonly execution: Parameters<DataAgentProductTeamRuntimePort["execute"]>[0];
+  readonly task_id: string;
+  readonly profile: AgentProductProfileRegistryItemV2;
+}): Promise<void> {
+  if (
+    typeof input.snapshot !== "object" ||
+    input.snapshot === null ||
+    Array.isArray(input.snapshot)
+  ) {
+    throw new ProductionTeamRuntimeError("TEAM_ACCEPTED_REPLAY_BINDING_INVALID");
+  }
+  const snapshot = input.snapshot as Record<string, unknown>;
+  const task = snapshot.task;
+  if (typeof task !== "object" || task === null || Array.isArray(task)) {
+    throw new ProductionTeamRuntimeError("TEAM_ACCEPTED_REPLAY_BINDING_INVALID");
+  }
+  const taskRecord = task as Record<string, unknown>;
+  const runtimeProfile = input.profile.revision.runtime_profile_ref;
+  if (
+    taskRecord.task_id !== input.task_id ||
+    taskRecord.run_id !== input.execution.lease.run_id ||
+    taskRecord.attempt_id !== input.execution.lease.attempt_id ||
+    taskRecord.worker_fence !== input.execution.lease.worker_fence ||
+    taskRecord.profile_id !== runtimeProfile.profile_id ||
+    taskRecord.profile_revision !== runtimeProfile.revision ||
+    taskRecord.profile_hash !== runtimeProfile.profile_hash
+  ) {
+    throw new ProductionTeamRuntimeError("TEAM_ACCEPTED_REPLAY_BINDING_INVALID");
+  }
+  const expectedContextHash = await sha256ContentHash(input.execution.semantic_context_ref);
+  const contextEpochs = Array.isArray(snapshot.context_epochs) ? snapshot.context_epochs : [];
+  const activated = contextEpochs.findLast(
+    (candidate) =>
+      typeof candidate === "object" &&
+      candidate !== null &&
+      !Array.isArray(candidate) &&
+      (candidate as Record<string, unknown>).phase === "ACTIVATED",
+  ) as Record<string, unknown> | undefined;
+  const proposedEpoch = activated?.proposed_epoch;
+  if (
+    typeof proposedEpoch !== "object" ||
+    proposedEpoch === null ||
+    Array.isArray(proposedEpoch) ||
+    (proposedEpoch as Record<string, unknown>).build_signature !== expectedContextHash
+  ) {
+    throw new ProductionTeamRuntimeError("TEAM_ACCEPTED_REPLAY_CONTEXT_DRIFT");
+  }
+}
+
 function renderAcceptedArtifact(document: ProductTeamArtifactDocument): string {
   if (document.projection.kind === "REPORT") {
     if (document.profile_id === "semantic-management-agent") {
@@ -605,6 +656,8 @@ export function createProductionTeamRuntime(
         if (!replayProfileId) throw new ProductionTeamRuntimeError("AGENT_DISPATCH_PLAN_INVALID");
         const replayTaskId = input.admitted_delegations.at(-1)?.receipt.task_id;
         if (!replayTaskId) throw new ProductionTeamRuntimeError("ROOT_AGENT_EMPTY_DELEGATION");
+        const replayProfile = input.profiles.get(replayProfileId);
+        if (!replayProfile) throw new ProductionTeamRuntimeError("AGENT_PROFILE_NOT_ALLOWED");
         const loadedReplay = portValue(
           await dependencies.store.loadRun(
             dependencies.capability,
@@ -621,6 +674,12 @@ export function createProductionTeamRuntime(
         const replay = loadedReplay as { readonly document?: unknown };
         const replayOutput = acceptedOutput(replay.document);
         if (replayOutput) {
+          await verifyAcceptedReplayBinding({
+            snapshot: replay.document,
+            execution: input,
+            task_id: replayTaskId,
+            profile: replayProfile,
+          });
           const document = await verifyProductTeamArtifactDocument(
             portValue(await dependencies.artifacts.resolveCommitted(replayOutput)),
           );
