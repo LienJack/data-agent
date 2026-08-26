@@ -103,14 +103,17 @@ services:
         condition: service_healthy
     environment:
       DATABASE_URL: postgres://postgres:postgres@postgres:5432/data_agent
+      DATA_AGENT_IMPORT_MODE: ${DATA_AGENT_IMPORT_MODE:-FULL}
       FALCON_READER_PASSWORD: ${FALCON_READER_PASSWORD:-data-agent-falcon-demo-change-me}
     volumes:
       - ./infra/docker/init-db.sh:/init-db.sh:ro
       - ./infra/docker/import-agenticdatabench-ecommerce.sh:/import-agenticdatabench-ecommerce.sh:ro
       - ./infra/docker/import-falcon.sh:/import-falcon.sh:ro
+      - ./infra/docker/import-falcon24-e1.sh:/import-falcon24-e1.sh:ro
       - ./infra/supabase:/migrations:ro
       - ./infra/agenticdatabench/ecommerce-v1:/agenticdatabench/ecommerce-v1:ro
       - ./infra/falcon/v1:/falcon/v1:ro
+      - ./infra/falcon/e1:/falcon/e1:ro
     command: ["sh", "/init-db.sh"]
     profiles:
       - migrate

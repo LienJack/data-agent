@@ -4,10 +4,14 @@ import { dirname, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
 import { z } from "zod";
 import { STATISTICAL_OPERATOR_REGISTRY_DIGEST } from "../packages/contracts/src/generated/statistical-operators.js";
+import {
+  sha256ContentHash,
+  verifyFalcon24RetainedAssetsManifest,
+} from "../packages/contracts/src/index.js";
 
 const hashSchema = z.string().regex(/^sha256:[a-f0-9]{64}$/u);
 const fileBindingSchema = z.strictObject({ path: z.string().min(1), sha256: hashSchema });
-const attestationSchema = z.strictObject({
+export const openSandboxAnalysisAttestationSchema = z.strictObject({
   schema_version: z.literal("opensandbox-analysis-attestation@1.0.0"),
   opensandbox_source: z.strictObject({
     repository: z.literal("https://github.com/opensandbox-group/OpenSandbox"),
@@ -67,62 +71,112 @@ const attestationSchema = z.strictObject({
   }),
 });
 
-const root = resolve(dirname(fileURLToPath(import.meta.url)), "..");
-const attestation = attestationSchema.parse(
-  JSON.parse(
-    readFileSync(resolve(root, "infra/docker/opensandbox-analysis-attestation.json"), "utf8"),
-  ),
-);
-
-function sha256(path: string): `sha256:${string}` {
+function sha256(root: string, path: string): `sha256:${string}` {
   return `sha256:${createHash("sha256")
     .update(readFileSync(resolve(root, path)))
     .digest("hex")}`;
 }
 
-function assertBinding(path: string, expected: string): void {
-  if (sha256(path) !== expected) throw new TypeError(`OPENSANDBOX_ATTESTATION_MISMATCH:${path}`);
+function assertBinding(root: string, path: string, expected: string): void {
+  if (sha256(root, path) !== expected) {
+    throw new TypeError(`OPENSANDBOX_ATTESTATION_MISMATCH:${path}`);
+  }
 }
 
-const workerManifest = JSON.parse(
-  readFileSync(resolve(root, "apps/worker/package.json"), "utf8"),
-) as {
-  dependencies: Record<string, string>;
-};
-if (
-  workerManifest.dependencies["@alibaba-group/opensandbox"] !== attestation.sdk.opensandbox ||
-  workerManifest.dependencies["@alibaba-group/opensandbox-code-interpreter"] !==
-    attestation.sdk.code_interpreter
+export async function verifyOpenSandboxAnalysisAttestation(
+  repositoryRoot = resolve(dirname(fileURLToPath(import.meta.url)), ".."),
 ) {
-  throw new TypeError("OPENSANDBOX_SDK_ATTESTATION_MISMATCH");
-}
-assertBinding(attestation.agent_dockerfile.path, attestation.agent_dockerfile.sha256);
-for (const profile of Object.values(attestation.profiles)) {
-  assertBinding(profile.lock_path, profile.lock_sha256);
-}
-assertBinding(attestation.operator.dockerfile_path, attestation.operator.dockerfile_sha256);
-assertBinding(attestation.operator.manifest_path, attestation.operator.manifest_sha256);
-if (attestation.operator.registry_digest !== STATISTICAL_OPERATOR_REGISTRY_DIGEST) {
-  throw new TypeError("OPENSANDBOX_OPERATOR_REGISTRY_ATTESTATION_MISMATCH");
-}
-if (Object.keys(attestation.local_probe.profile_counts).length !== 3) {
-  throw new TypeError("OPENSANDBOX_PROFILE_COUNT_ATTESTATION_INCOMPLETE");
-}
-const dockerfiles = [
-  readFileSync(resolve(root, attestation.agent_dockerfile.path), "utf8"),
-  readFileSync(resolve(root, attestation.operator.dockerfile_path), "utf8"),
-];
-if (dockerfiles.some((source) => !source.includes(`FROM ${attestation.base_image}`))) {
-  throw new TypeError("OPENSANDBOX_BASE_IMAGE_ATTESTATION_MISMATCH");
+  const attestationPath = "infra/docker/opensandbox-analysis-attestation.json";
+  const retainedPath = "infra/falcon/e1/retained-assets-manifest.json";
+  const attestation = openSandboxAnalysisAttestationSchema.parse(
+    JSON.parse(readFileSync(resolve(repositoryRoot, attestationPath), "utf8")),
+  );
+  const retained = await verifyFalcon24RetainedAssetsManifest(
+    JSON.parse(readFileSync(resolve(repositoryRoot, retainedPath), "utf8")),
+  );
+  const attestationHash = sha256(repositoryRoot, attestationPath);
+  if (attestationHash !== retained.analysis_runtime.attestation_hash) {
+    throw new TypeError("OPENSANDBOX_RETAINED_ATTESTATION_HASH_MISMATCH");
+  }
+
+  const workerManifest = JSON.parse(
+    readFileSync(resolve(repositoryRoot, "apps/worker/package.json"), "utf8"),
+  ) as { dependencies: Record<string, string> };
+  if (
+    workerManifest.dependencies["@alibaba-group/opensandbox"] !== attestation.sdk.opensandbox ||
+    workerManifest.dependencies["@alibaba-group/opensandbox-code-interpreter"] !==
+      attestation.sdk.code_interpreter
+  ) {
+    throw new TypeError("OPENSANDBOX_SDK_ATTESTATION_MISMATCH");
+  }
+  assertBinding(
+    repositoryRoot,
+    attestation.agent_dockerfile.path,
+    attestation.agent_dockerfile.sha256,
+  );
+  for (const profile of Object.values(attestation.profiles)) {
+    assertBinding(repositoryRoot, profile.lock_path, profile.lock_sha256);
+  }
+  assertBinding(
+    repositoryRoot,
+    attestation.operator.dockerfile_path,
+    attestation.operator.dockerfile_sha256,
+  );
+  assertBinding(
+    repositoryRoot,
+    attestation.operator.manifest_path,
+    attestation.operator.manifest_sha256,
+  );
+  if (
+    attestation.operator.registry_digest !== STATISTICAL_OPERATOR_REGISTRY_DIGEST ||
+    attestation.operator.registry_digest !== retained.analysis_runtime.operator_registry_digest ||
+    attestation.operator.manifest_sha256 !== retained.analysis_runtime.operator_manifest_hash
+  ) {
+    throw new TypeError("OPENSANDBOX_OPERATOR_REGISTRY_ATTESTATION_MISMATCH");
+  }
+  if (Object.keys(attestation.local_probe.profile_counts).length !== 3) {
+    throw new TypeError("OPENSANDBOX_PROFILE_COUNT_ATTESTATION_INCOMPLETE");
+  }
+  const dockerfiles = [
+    readFileSync(resolve(repositoryRoot, attestation.agent_dockerfile.path), "utf8"),
+    readFileSync(resolve(repositoryRoot, attestation.operator.dockerfile_path), "utf8"),
+  ];
+  if (dockerfiles.some((source) => !source.includes(`FROM ${attestation.base_image}`))) {
+    throw new TypeError("OPENSANDBOX_BASE_IMAGE_ATTESTATION_MISMATCH");
+  }
+  for (const source of retained.analysis_runtime.source_files) {
+    assertBinding(repositoryRoot, source.path, source.hash);
+  }
+  if (
+    (await sha256ContentHash(retained.analysis_runtime.source_files)) !==
+    retained.analysis_runtime.source_bundle_hash
+  ) {
+    throw new TypeError("OPENSANDBOX_RUNTIME_SOURCE_BUNDLE_MISMATCH");
+  }
+  const evidenceHash = await sha256ContentHash({
+    attestation_hash: attestationHash,
+    source_files: retained.analysis_runtime.source_files,
+    sdk: attestation.sdk,
+    base_image: attestation.base_image,
+    production_gate: attestation.production_gate,
+    local_probe: attestation.local_probe,
+  });
+  return Object.freeze({
+    schema_version: "falcon24-e1-runtime-attestation-proof@1.0.0" as const,
+    attestation_hash: attestationHash,
+    operator_manifest_hash: attestation.operator.manifest_sha256,
+    operator_registry_digest: attestation.operator.registry_digest,
+    source_bundle_hash: retained.analysis_runtime.source_bundle_hash,
+    attestation_evidence_hash: evidenceHash,
+    production_gate: attestation.production_gate.decision,
+    production_isolation_proven: attestation.local_probe.production_isolation_proven,
+  });
 }
 
-process.stdout.write(
-  `${JSON.stringify({
-    schema_version: attestation.schema_version,
-    source_commit: attestation.opensandbox_source.commit,
-    registered_profiles: Object.keys(attestation.profiles).sort(),
-    operator_registry_digest: attestation.operator.registry_digest,
-    local_probe: attestation.local_probe,
-    production_gate: attestation.production_gate,
-  })}\n`,
-);
+async function main(): Promise<void> {
+  process.stdout.write(`${JSON.stringify(await verifyOpenSandboxAnalysisAttestation())}\n`);
+}
+
+if (process.argv[1] && resolve(process.argv[1]) === fileURLToPath(import.meta.url)) {
+  await main();
+}

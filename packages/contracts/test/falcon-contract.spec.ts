@@ -1,8 +1,11 @@
 import {
   benchmarkRunBudgetSchema,
   benchmarkTestSuiteIdSchema,
+  buildFalcon24E1CatalogInventory,
+  buildFalcon24E1DatabaseImportReceipt,
   FALCON_CASE_COUNT,
   FALCON_DATABASE_COUNT,
+  falcon24E1DatabaseImportReceiptSchema,
   falconSchemaNameSchema,
   falconSourceManifestSchema,
   sealedFalconCaseSchema,
@@ -77,5 +80,70 @@ describe("Falcon contracts", () => {
       false,
     );
     expect(sealedFalconCaseSchema.shape).toHaveProperty("expected_results");
+  });
+
+  it("builds a deterministic db24-only E1 import receipt and fails closed on drift", async () => {
+    const source = {
+      db_id: 24,
+      schema_name: "falcon_db_24",
+      relative_path: "bundles/falcon_db_24.sql.gz",
+      source_sqlite_sha256: `sha256:${"1".repeat(64)}`,
+      bundle_sha256: `sha256:${"2".repeat(64)}`,
+      bundle_bytes: 10,
+      table_count: 1,
+      column_count: 2,
+      row_count: 3,
+      null_count: 1,
+      content_digest: `sha256:${"3".repeat(64)}`,
+    } as const;
+    const inventory = await buildFalcon24E1CatalogInventory({
+      schema_name: "falcon_db_24",
+      tables: [
+        {
+          table_name: "orders",
+          columns: [
+            { ordinal: 2, column_name: "note", data_type: "text", is_nullable: true },
+            { ordinal: 1, column_name: "id", data_type: "bigint", is_nullable: true },
+          ],
+          row_count: 3,
+          null_count: 1,
+        },
+      ],
+      table_count: 1,
+      column_count: 2,
+      row_count: 3,
+      null_count: 1,
+      content_digest: source.content_digest,
+    });
+    const ready = await buildFalcon24E1DatabaseImportReceipt({
+      source,
+      observed_bundle_sha256: source.bundle_sha256,
+      expected_inventory_hash: inventory.inventory_hash,
+      catalog_inventory: inventory,
+    });
+    expect(ready.status).toBe("READY");
+    expect(ready.failure_codes).toEqual([]);
+    expect(
+      ready.catalog_inventory.tables[0]?.columns.map(({ column_name }) => column_name),
+    ).toEqual(["id", "note"]);
+    expect(falcon24E1DatabaseImportReceiptSchema.parse(ready)).toEqual(ready);
+
+    const { inventory_hash: _inventoryHash, ...inventoryMaterial } = inventory;
+    const driftedInventory = await buildFalcon24E1CatalogInventory({
+      ...inventoryMaterial,
+      content_digest: `sha256:${"5".repeat(64)}`,
+    });
+    const drifted = await buildFalcon24E1DatabaseImportReceipt({
+      source,
+      observed_bundle_sha256: `sha256:${"4".repeat(64)}`,
+      expected_inventory_hash: inventory.inventory_hash,
+      catalog_inventory: driftedInventory,
+    });
+    expect(drifted.status).toBe("HOLD");
+    expect(drifted.failure_codes).toEqual([
+      "BUNDLE_HASH_MISMATCH",
+      "CONTENT_DIGEST_MISMATCH",
+      "INVENTORY_HASH_INVALID",
+    ]);
   });
 });

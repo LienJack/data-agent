@@ -7,7 +7,12 @@ import {
   FALCON_DATABASE_COUNT,
   FALCON_DEV_CASE_COUNT,
   FALCON_TEST_CASE_COUNT,
+  FALCON24_E1_DB_ID,
+  FALCON24_E1_SCHEMA_NAME,
+  type Falcon24RetainedAssetsManifest,
+  type FalconBundleFile,
   type FalconSourceManifest,
+  falcon24RetainedAssetsManifestSchema,
   falconExpectedResultSchema,
   falconSourceManifestSchema,
   type PublicBenchmarkCase,
@@ -15,6 +20,7 @@ import {
   type SealedFalconCase,
   sealedFalconCaseSchema,
   sha256ContentHash,
+  verifyFalcon24RetainedAssetsManifest,
 } from "@data-agent/contracts";
 import { z } from "zod";
 import { falconSemanticContext } from "./falcon-semantic-context.js";
@@ -45,6 +51,21 @@ export interface FalconBundleVerification {
   readonly installed_digest: `sha256:${string}`;
 }
 
+export interface Falcon24E1BundleVerification {
+  readonly retained_manifest: Falcon24RetainedAssetsManifest;
+  readonly source_manifest: FalconSourceManifest;
+  readonly database: FalconBundleFile;
+  readonly active_public_cases: readonly PublicBenchmarkCase[];
+  readonly active_sealed_cases: readonly SealedFalconCase[];
+  readonly verified_file_count: 5;
+  readonly installed_digest: `sha256:${string}`;
+}
+
+export interface Falcon24E1Dataset extends Falcon24E1BundleVerification {
+  readonly public_cases: readonly PublicBenchmarkCase[];
+  readonly sealed_cases: readonly SealedFalconCase[];
+}
+
 function defaultFalconDirectory(): string {
   const relative = "infra/falcon/v1";
   for (const candidate of [
@@ -54,6 +75,17 @@ function defaultFalconDirectory(): string {
     if (existsSync(resolve(candidate, "source-manifest.json"))) return candidate;
   }
   throw new Error("FALCON_BUNDLE_NOT_FOUND");
+}
+
+function defaultFalcon24E1Directory(): string {
+  const relative = "infra/falcon/e1";
+  for (const candidate of [
+    resolve(process.cwd(), relative),
+    resolve(process.cwd(), "../..", relative),
+  ]) {
+    if (existsSync(resolve(candidate, "retained-assets-manifest.json"))) return candidate;
+  }
+  throw new Error("FALCON24_E1_RETAINED_ASSETS_NOT_FOUND");
 }
 
 async function sha256File(path: string): Promise<`sha256:${string}`> {
@@ -157,6 +189,105 @@ export async function verifyFalconBundle(
     compatibility_fixture_count: 5 as const,
     verified_file_count: manifest.files.length + fixedFiles.length,
     installed_digest: installedDigest,
+  });
+}
+
+export async function verifyFalcon24E1Bundle(
+  directory = defaultFalconDirectory(),
+  retainedDirectory = defaultFalcon24E1Directory(),
+): Promise<Falcon24E1BundleVerification> {
+  const retainedManifest = await verifyFalcon24RetainedAssetsManifest(
+    falcon24RetainedAssetsManifestSchema.parse(
+      await readJson(resolve(retainedDirectory, "retained-assets-manifest.json")),
+    ),
+  );
+  const sourceManifestPath = resolve(directory, "source-manifest.json");
+  if ((await sha256File(sourceManifestPath)) !== retainedManifest.upstream.manifest_hash) {
+    throw new Error("FALCON24_E1_SOURCE_MANIFEST_DIGEST_MISMATCH");
+  }
+  const sourceManifest = await readManifest(directory);
+  const database = sourceManifest.files.find(({ db_id: dbId }) => dbId === FALCON24_E1_DB_ID);
+  if (
+    !database ||
+    database.schema_name !== FALCON24_E1_SCHEMA_NAME ||
+    database.bundle_sha256 !== retainedManifest.active_dataset.bundle_sha256 ||
+    database.source_sqlite_sha256 !== retainedManifest.active_dataset.seed_hash ||
+    database.content_digest !== retainedManifest.active_dataset.content_digest ||
+    database.table_count !== retainedManifest.active_dataset.table_count ||
+    database.column_count !== retainedManifest.active_dataset.column_count ||
+    database.row_count !== retainedManifest.active_dataset.row_count
+  ) {
+    throw new Error("FALCON24_E1_DATABASE_MANIFEST_MISMATCH");
+  }
+  if ((await sha256File(resolve(directory, database.relative_path))) !== database.bundle_sha256) {
+    throw new Error("FALCON24_E1_DB24_BUNDLE_DIGEST_MISMATCH");
+  }
+  const questionFiles = [
+    ["public-cases.json", retainedManifest.questions.public_manifest_hash],
+    ["sealed/dev-cases.json", retainedManifest.questions.sealed_manifest_hash],
+    ["test-cases.json", retainedManifest.questions.test_manifest_hash],
+  ] as const;
+  const questionDigests = await Promise.all(
+    questionFiles.map(async ([relativePath, expected]) => ({
+      expected,
+      actual: await sha256File(resolve(directory, relativePath)),
+    })),
+  );
+  if (questionDigests.some(({ actual, expected }) => actual !== expected)) {
+    throw new Error("FALCON24_E1_QUESTION_MANIFEST_DIGEST_MISMATCH");
+  }
+  const publicCases = await loadSourcePublicCases(directory);
+  const sealedCases = z
+    .array(sealedFalconCaseSchema)
+    .length(FALCON_DEV_CASE_COUNT)
+    .parse(await readJson(resolve(directory, "sealed/dev-cases.json")));
+  const activePublicCases = publicCases
+    .filter(({ database_id: databaseId }) => databaseId === FALCON24_E1_SCHEMA_NAME)
+    .sort((left, right) => left.ordinal - right.ordinal);
+  const activeSealedCases = sealedCases
+    .filter(({ public_case: publicCase }) => publicCase.database_id === FALCON24_E1_SCHEMA_NAME)
+    .sort((left, right) => left.public_case.ordinal - right.public_case.ordinal);
+  if (
+    activePublicCases.length !== retainedManifest.questions.active_case_count ||
+    activeSealedCases.length !== retainedManifest.questions.active_case_count ||
+    (await sha256ContentHash(activePublicCases)) !==
+      retainedManifest.questions.active_public_subset_hash ||
+    (await sha256ContentHash(activeSealedCases)) !==
+      retainedManifest.questions.active_sealed_subset_hash
+  ) {
+    throw new Error("FALCON24_E1_ACTIVE_CASE_SET_MISMATCH");
+  }
+  await Promise.all(
+    activeSealedCases.map(async (sealedCase) => {
+      const { sealed_case_hash: expected, ...material } = sealedCase;
+      if ((await sha256ContentHash(material)) !== expected) {
+        throw new Error(
+          `FALCON24_E1_SEALED_CASE_DIGEST_MISMATCH:${sealedCase.public_case.case_id}`,
+        );
+      }
+    }),
+  );
+  return Object.freeze({
+    retained_manifest: retainedManifest,
+    source_manifest: sourceManifest,
+    database,
+    active_public_cases: Object.freeze(activePublicCases),
+    active_sealed_cases: Object.freeze(activeSealedCases),
+    verified_file_count: 5 as const,
+    installed_digest: retainedManifest.manifest_hash as `sha256:${string}`,
+  });
+}
+
+/** Server/Worker-only because the E1 dataset retains sealed db24 oracle cases. */
+export async function loadFalcon24E1Dataset(
+  directory = defaultFalconDirectory(),
+  retainedDirectory = defaultFalcon24E1Directory(),
+): Promise<Falcon24E1Dataset> {
+  const verified = await verifyFalcon24E1Bundle(directory, retainedDirectory);
+  return Object.freeze({
+    ...verified,
+    public_cases: verified.active_public_cases,
+    sealed_cases: verified.active_sealed_cases,
   });
 }
 

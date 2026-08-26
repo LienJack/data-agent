@@ -101,6 +101,12 @@ ANALYZE
 - 资源起点：Agent 1 vCPU/2 GiB（ML/CAUSAL 2 vCPU/4 GiB），Operator 2 vCPU/2 GiB（ML/CAUSAL 4 GiB），`pids_limit` 128/256，全部 BLAS threads=1，Cell 30s，Operator 60–120s，result 16 MiB，closure 64 MiB，stdout/stderr 4/16 KiB。
 - 每次 Run 逻辑 Sandbox 必须 `before=0、peak<=2、after=0`；cleanup 失败不得伪装成功，TTL sweeper 只清孤儿，不替代当次清理证明。
 
+### Falcon24 E1 runtime attestation
+
+- E1 attestation must recompute the retained operator manifest and generated Registry digests, OpenSandbox SDK versions, base image identity, Agent/Operator Dockerfiles, all three lockfiles, and every retained analysis implementation source. It also binds one canonical source-bundle hash over those inputs。
+- A matching local attestation is only staging evidence while `production_isolation_proven=false`; it must produce `production_gate=HOLD` and cannot be translated into an active Epoch. Production `GO` requires separate runtime evidence proving the declared isolation and capacity boundary。
+- Attestation, operator Registry, and runtime source drift fail closed before Agent Profile materialization or Campaign execution. No best-effort fallback to host Python, an older Registry, or an older attestation is allowed。
+
 ### 4. Validation & Error Matrix
 
 | 条件 | 稳定错误/动作 |

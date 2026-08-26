@@ -20,6 +20,10 @@
       "types": "./dist/agents/index.d.ts",
       "import": "./dist/agents/index.js"
     },
+    "./authz": {
+      "types": "./dist/authz/index.d.ts",
+      "import": "./dist/authz/index.js"
+    },
     "./catalog": {
       "types": "./dist/catalog/index.d.ts",
       "import": "./dist/catalog/index.js"
@@ -35,6 +39,10 @@
     "./knowledge": {
       "types": "./dist/knowledge/index.d.ts",
       "import": "./dist/knowledge/index.js"
+    },
+    "./models": {
+      "types": "./dist/models/index.d.ts",
+      "import": "./dist/models/index.js"
     },
     "./persistence": {
       "types": "./dist/persistence/index.d.ts",

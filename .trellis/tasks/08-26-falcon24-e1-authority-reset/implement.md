@@ -19,10 +19,10 @@
 
 ## U3 - Fresh Bootstrap
 
-- [ ] 实现 db24-only importer 与互斥 import mode。
-- [ ] 实现 Semantic Release、LLM/Profile、Operator/Sandbox staging bootstrap。
-- [ ] 在 disposable fresh environment 演练恢复；保持 E1 未激活。
-- [ ] 运行聚焦 tests/build/smoke 并创建 U3 scoped commit。
+- [x] 实现 db24-only importer 与互斥 import mode。
+- [x] 实现 Semantic Release、LLM/Profile、Operator/Sandbox staging bootstrap。
+- [x] 在 disposable fresh environment 演练恢复；保持 E1 未激活。
+- [x] 运行聚焦 tests/build/smoke 并创建 U3 scoped commit。
 
 ## U4 - Root V3 Only Router
 

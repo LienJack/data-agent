@@ -1,3 +1,4 @@
+export * from "../semantic/falcon24-e1-bootstrap.js";
 export {
   createPostgresGreenfieldBootstrapReleaseAuthority,
   type PostgresGreenfieldBootstrapReleaseAuthority,

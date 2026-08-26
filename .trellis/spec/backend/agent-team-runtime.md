@@ -48,6 +48,12 @@ Root turn (AUTO)
 - Discovery and admission are V2 only. Unknown/revoked/stale revisions fail closed; no V1 projection or compatibility facade exists。
 - Only Root-selected Profiles create child tasks, handoffs, capabilities and public Agent events。
 
+### 4.1 Falcon24 E1 staging boundary
+
+- U3 bootstrap may run the built-in Profile builder only as a deterministic, non-materialized closure proof. The proof must bind the fresh E1 model Profile/version/projection hash and report `materialized=false`; it is not Agent Profile authority and is not runnable。
+- Final Falcon24 E1 Profile/Skill/Context/Safety materialization happens only after the dedicated Agent authority reset. Old Profile revisions, certification refs, model Profile identities, or a disposable U3 build proof cannot be admitted by the final Campaign。
+- Missing SecretRef keeps the fresh model Profile in `DRAFT` and the E1 Epoch in `STAGED_HOLD`. A successful provider authentication may establish LLM configuration evidence, but cannot activate the Epoch while runtime isolation remains `HOLD`。
+
 ## 5. Governed Text2SQL
 
 ### 5.1 Frozen input

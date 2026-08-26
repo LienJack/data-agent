@@ -36,6 +36,10 @@
       "types": "./dist/evals/index.d.ts",
       "import": "./dist/evals/index.js"
     },
+    "./models": {
+      "types": "./dist/models/index.d.ts",
+      "import": "./dist/models/index.js"
+    },
     "./ports": {
       "types": "./dist/ports/index.d.ts",
       "import": "./dist/ports/index.js"

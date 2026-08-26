@@ -145,10 +145,26 @@ done
 
 echo "=== Migration complete ==="
 
-echo "=== Importing bundled AgenticDataBench E-commerce Demo ==="
-sh /import-agenticdatabench-ecommerce.sh
-echo "=== AgenticDataBench E-commerce Demo ready ==="
-
-echo "=== Importing bundled Falcon fixed snapshot ==="
-sh /import-falcon.sh
-echo "=== Falcon fixed snapshot ready ==="
+IMPORT_MODE="${DATA_AGENT_IMPORT_MODE:-FULL}"
+case "$IMPORT_MODE" in
+  FULL)
+    echo "=== Importing bundled AgenticDataBench E-commerce Demo ==="
+    sh /import-agenticdatabench-ecommerce.sh
+    echo "=== AgenticDataBench E-commerce Demo ready ==="
+    echo "=== Importing bundled Falcon fixed snapshot ==="
+    sh /import-falcon.sh
+    echo "=== Falcon fixed snapshot ready ==="
+    ;;
+  FALCON24_E1)
+    echo "=== Importing Falcon24 E1 db24-only snapshot ==="
+    sh /import-falcon24-e1.sh
+    echo "=== Falcon24 E1 db24-only snapshot staged ==="
+    ;;
+  NONE)
+    echo "=== Dataset import disabled by explicit mode ==="
+    ;;
+  *)
+    echo "DATA_AGENT_IMPORT_MODE_INVALID" >&2
+    exit 1
+    ;;
+esac

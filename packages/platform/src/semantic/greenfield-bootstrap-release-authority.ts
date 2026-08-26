@@ -14,7 +14,6 @@ import {
   verifiedDomainBootstrapReceiptSchema,
   verifyPublishedInitialSemanticReleaseBundle,
   verifySemanticDomainBootstrapPacket,
-  verifyVerifiedDomainBootstrapReceipt,
 } from "@data-agent/contracts";
 import { z } from "zod";
 import {
@@ -166,9 +165,14 @@ async function verifyDomainReceiptCorrelation(
 ) {
   const receipt = verifiedDomainBootstrapReceiptSchema.safeParse(input);
   if (!receipt.success) databaseContractInvalid("Verified Domain Receipt strict schema 无效。");
-  try {
-    await verifyVerifiedDomainBootstrapReceipt(receipt.data);
-  } catch {
+  if (typeof input !== "object" || input === null || Array.isArray(input)) {
+    databaseContractInvalid("Verified Domain Receipt raw authority 无效。");
+  }
+  const { receipt_hash: rawReceiptHash, ...rawDraft } = input as Record<string, unknown>;
+  if (
+    typeof rawReceiptHash !== "string" ||
+    (await sha256ContentHash(rawDraft)) !== rawReceiptHash
+  ) {
     databaseContractInvalid("Verified Domain Receipt canonical hash 无效。");
   }
   if (

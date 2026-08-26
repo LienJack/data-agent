@@ -1,8 +1,10 @@
 import { describe, expect, it } from "vitest";
 import {
+  loadFalcon24E1Dataset,
   loadFalconDevDataset,
   loadFalconPreview,
   loadFalconTestCases,
+  verifyFalcon24E1Bundle,
   verifyFalconBundle,
 } from "../src/test-center/index.js";
 
@@ -38,5 +40,22 @@ describe("fixed Falcon dataset", () => {
     expect(JSON.stringify(dev.public_cases)).not.toContain("LOCAL_HOLDOUT");
     expect(test).toHaveLength(191);
     expect(test.every((testCase) => testCase.registry === "OFFICIAL_TEST_BLIND")).toBe(true);
+  }, 30_000);
+
+  it("verifies and loads only the retained db24 E1 subset", async () => {
+    const [verification, dataset] = await Promise.all([
+      verifyFalcon24E1Bundle(),
+      loadFalcon24E1Dataset(),
+    ]);
+    expect(verification.database.db_id).toBe(24);
+    expect(verification.database.table_count).toBe(9);
+    expect(verification.database.column_count).toBe(70);
+    expect(verification.database.row_count).toBe(121_445);
+    expect(verification.verified_file_count).toBe(5);
+    expect(dataset.public_cases).toHaveLength(17);
+    expect(dataset.sealed_cases).toHaveLength(17);
+    expect(dataset.public_cases.every(({ database_id }) => database_id === "falcon_db_24")).toBe(
+      true,
+    );
   }, 30_000);
 });
