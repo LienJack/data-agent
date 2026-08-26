@@ -2458,6 +2458,22 @@
       "postcondition": {
         "checksum_occurrences": 2
       }
+    },
+    {
+      "id": "10780",
+      "migration_name": "20260725010780_app_data_agent_falcon24_e1_runtime_profile.sql",
+      "source_directory": "infra/supabase/apps/data-agent/migration-sources/10780",
+      "segments": [
+        "00-preamble.sql.inc",
+        "10-semantic-runtime-profile.sql.inc",
+        "90-postconditions.sql.inc",
+        "99-ledger.sql.inc"
+      ],
+      "placeholder": "__FALCON24_E1_RUNTIME_PROFILE_MIGRATION_CHECKSUM__",
+      "checksum_header": "falcon24_e1_runtime_profile_migration_checksum",
+      "postcondition": {
+        "checksum_occurrences": 2
+      }
     }
   ],
   "exceptions": [
