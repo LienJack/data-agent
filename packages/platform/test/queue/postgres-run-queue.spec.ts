@@ -146,6 +146,8 @@ describe("PostgreSQL Run Queue", () => {
     expect(claim?.text).toContain(
       "app_data_agent.resolve_falcon24_run_execution_policy(run.run_id)",
     );
+    expect(claim?.text).toContain("coalesce(");
+    expect(claim?.text).not.toContain("pg_catalog.coalesce(");
     expect(claim?.text).not.toContain("join app_data_agent.falcon24_acceptance_campaign_runs");
     expect(claim?.text).not.toContain("join app_data_agent.falcon24_acceptance_campaigns");
   });

@@ -177,7 +177,7 @@ export function createPostgresRunQueue(
              work.lease_token,
              work.worker_fence,
              work.expires_at as lease_expires_at,
-             pg_catalog.coalesce(
+             coalesce(
                app_data_agent.resolve_falcon24_run_execution_policy(run.run_id),
                $8::jsonb
              ) as execution_policy
