@@ -417,7 +417,9 @@ export function createPostgresFalcon24QualificationAuthority(input: {
         sql: "select app_data_agent.hold_falcon24_qualification($1::jsonb) as value",
         command,
         parse: (raw) => {
-          const row = assertIdentity(qualificationRowSchema.parse(raw), request);
+          const row = assertIdentity(qualificationRowSchema.parse(raw), {
+            qualification_id: request.qualification_id,
+          });
           if (
             row.status !== "HOLD" ||
             row.first_failure_run_id !== request.run_id ||

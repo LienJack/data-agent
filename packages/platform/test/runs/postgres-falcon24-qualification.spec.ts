@@ -259,6 +259,38 @@ describe("PostgreSQL Falcon24 qualification authority", () => {
     });
   });
 
+  it("holds the qualification against the returned first-failure run", async () => {
+    const auth = authority();
+    const scripted = scriptedPool((text) =>
+      text.includes("hold_falcon24_qualification")
+        ? qualification({
+            status: "HOLD",
+            first_failure_run_id: ids.run,
+            first_failure_layer: "ROOT_ROUTING",
+            first_failure_code: "PROVIDER_CREDENTIAL_UNAVAILABLE",
+          })
+        : undefined,
+    );
+    const result = await createPostgresFalcon24QualificationAuthority({
+      pool: scripted.pool,
+      authorizer: auth.authorizer,
+    }).hold(auth.capability, {
+      qualification_id: qualificationId,
+      run_id: ids.run,
+      failure_layer: "ROOT_ROUTING",
+      failure_code: "PROVIDER_CREDENTIAL_UNAVAILABLE",
+    });
+
+    expect(result).toMatchObject({
+      ok: true,
+      value: {
+        qualification_id: qualificationId,
+        status: "HOLD",
+        first_failure_run_id: ids.run,
+      },
+    });
+  });
+
   it("rejects an ambiguous forced cleanup outcome before touching PostgreSQL", async () => {
     const auth = authority();
     const scripted = scriptedPool(() => undefined);
