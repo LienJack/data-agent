@@ -173,7 +173,7 @@ describe("App-aware PostgreSQL transaction", () => {
     );
 
     expect(result).toEqual({ ok: true, value: "snapshot" });
-    expect(fixture.calls[0]?.text).toBe("BEGIN ISOLATION LEVEL REPEATABLE READ READ ONLY");
+    expect(fixture.calls[0]?.text).toBe("BEGIN ISOLATION LEVEL REPEATABLE READ");
   });
 
   it("rolls back, releases the client and redacts unknown database errors", async () => {

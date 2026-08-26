@@ -219,9 +219,11 @@ export async function withAppTransaction<T>(
 
   let transactionStarted = false;
   try {
+    // Capability revalidation takes FOR SHARE locks, which PostgreSQL rejects in READ ONLY
+    // transactions. REPEATABLE READ still provides the single authority/data snapshot.
     await client.query(
       options.access === "READ" && options.snapshot === "REPEATABLE_READ"
-        ? "BEGIN ISOLATION LEVEL REPEATABLE READ READ ONLY"
+        ? "BEGIN ISOLATION LEVEL REPEATABLE READ"
         : "BEGIN",
     );
     transactionStarted = true;

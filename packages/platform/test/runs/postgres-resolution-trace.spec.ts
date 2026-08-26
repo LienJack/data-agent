@@ -1867,7 +1867,7 @@ describe("PostgreSQL Resolution Trace projector", () => {
     expect(JSON.stringify(history)).not.toMatch(/"(?:sql|parameters|rows|prompt|context)"/i);
     expect(calls.some(({ text }) => text.includes("run.principal_id = $4"))).toBe(true);
     expect(calls.filter(({ text }) => text.startsWith("BEGIN")).map(({ text }) => text)).toEqual(
-      Array.from({ length: 4 }, () => "BEGIN ISOLATION LEVEL REPEATABLE READ READ ONLY"),
+      Array.from({ length: 4 }, () => "BEGIN ISOLATION LEVEL REPEATABLE READ"),
     );
 
     const outsideWindow = await projector.listSqlHistory(capability, {
