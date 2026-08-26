@@ -43,6 +43,17 @@ begin
 end
 $function$;
 
+create function pg_temp.falcon24_insert_partial_submit_run(requested_run_id uuid)
+returns void language sql volatile security definer set search_path='' as $function$
+  insert into app_data_agent.runs(
+    app_id,tenant_id,environment,run_id,principal_id,status,question)
+  values(
+    '00000000-0000-4000-8000-00000000da01'::uuid,
+    '00000000-0000-4000-8000-00000000aa22'::uuid,'test',requested_run_id,
+    '00000000-0000-4000-8000-000000001003'::uuid,'QUEUED',
+    'Falcon24 deliberately partial submit authority fixture')
+$function$;
+
 create function pg_temp.falcon24_runtime_lease_document(requested_claim jsonb)
 returns jsonb language sql stable strict security definer set search_path='' as $function$
   select pg_catalog.jsonb_build_object(
@@ -211,7 +222,7 @@ end
 $exact_run_execution_policy$;
 
 do $submit_fence_claim_and_preflight_hold$
-declare command jsonb; claimed jsonb; held jsonb; loaded jsonb;
+declare command jsonb; claimed jsonb; held jsonb; loaded jsonb; resolved jsonb;
   fence_token constant text:='00000000-0000-4000-8000-000000005499';
   expected_fence_hash text;
 begin
@@ -263,6 +274,53 @@ begin
     or claimed->>'claim_fence_hash' is distinct from expected_fence_hash
     or claimed->>'claim_fence_consumed_at' is not null
   then raise exception 'FALCON24_CLAIM_FENCE_NOT_DURABLE'; end if;
+
+  begin
+    command:=pg_catalog.jsonb_build_object(
+      'schema_version','falcon24-submit-outcome-resolution@1.0.0',
+      'campaign_id','falcon24-test-v14-authority',
+      'run_id','00000000-0000-4000-8000-000000005411',
+      'observed_failure_code','FALCON24_CLAIM_ORPHANED');
+    command:=command||pg_catalog.jsonb_build_object(
+      'command_hash',pg_temp.falcon24_test_hash(command));
+    resolved:=app_data_agent.resolve_falcon24_acceptance_submit_outcome(command);
+    if resolved->>'disposition' is distinct from 'HELD'
+      or resolved->>'failure_code' is distinct from 'FALCON24_CLAIM_ORPHANED'
+    then raise exception 'FALCON24_ORPHANED_CLAIM_NOT_HELD'; end if;
+    raise exception 'FALCON24_ORPHANED_CLAIM_PROBE_ROLLBACK';
+  exception when others then
+    if sqlerrm<>'FALCON24_ORPHANED_CLAIM_PROBE_ROLLBACK' then raise; end if;
+  end;
+
+  begin
+    perform pg_temp.falcon24_insert_partial_submit_run(
+      '00000000-0000-4000-8000-000000005411'::uuid);
+    command:=pg_catalog.jsonb_build_object(
+      'schema_version','falcon24-submit-outcome-resolution@1.0.0',
+      'campaign_id','falcon24-test-v14-authority',
+      'run_id','00000000-0000-4000-8000-000000005411',
+      'observed_failure_code','PERSISTENCE_TRANSACTION_FAILED');
+    command:=command||pg_catalog.jsonb_build_object(
+      'command_hash',pg_temp.falcon24_test_hash(command));
+    resolved:=app_data_agent.resolve_falcon24_acceptance_submit_outcome(command);
+    if resolved->>'disposition' is distinct from 'HELD'
+      or resolved->>'failure_code' is distinct from 'FALCON24_SUBMIT_AUTHORITY_CORRUPT'
+    then raise exception 'FALCON24_PARTIAL_SUBMIT_AUTHORITY_NOT_HELD'; end if;
+    raise exception 'FALCON24_PARTIAL_SUBMIT_PROBE_ROLLBACK';
+  exception when others then
+    if sqlerrm<>'FALCON24_PARTIAL_SUBMIT_PROBE_ROLLBACK' then raise; end if;
+  end;
+
+  command:=pg_catalog.jsonb_build_object(
+    'schema_version','falcon24-acceptance-campaign-run-load@1.0.0',
+    'campaign_id','falcon24-test-v14-authority',
+    'run_id','00000000-0000-4000-8000-000000005411');
+  command:=command||pg_catalog.jsonb_build_object(
+    'command_hash',pg_temp.falcon24_test_hash(command));
+  loaded:=app_data_agent.load_falcon24_acceptance_campaign_run(command);
+  if loaded->>'status' is distinct from 'CLAIMED'
+    or loaded->>'claim_fence_consumed_at' is not null
+  then raise exception 'FALCON24_SUBMIT_OUTCOME_PROBE_LEAKED_STATE'; end if;
 
   command:=pg_catalog.jsonb_build_object(
     'schema_version','falcon24-acceptance-campaign-hold@1.0.0',
@@ -441,7 +499,7 @@ $function$;
 set local role data_agent_backend;
 
 do $submit_fence_consume_and_hold_sequences$
-declare command jsonb; consumed jsonb; accepted jsonb; loaded jsonb; held jsonb;
+declare command jsonb; consumed jsonb; accepted jsonb; loaded jsonb; held jsonb; resolved jsonb;
   defaults_ref jsonb; requested_config jsonb; requested_command jsonb;
   fence_token constant text:='00000000-0000-4000-8000-000000005499';
 begin
@@ -512,6 +570,28 @@ begin
     or consumed->>'run_id' is distinct from '00000000-0000-4000-8000-000000005411'
     or consumed->>'claim_fence_consumed_at' is null
   then raise exception 'FALCON24_SUBMIT_FENCE_RECEIPT_DRIFT'; end if;
+
+  command:=pg_catalog.jsonb_build_object(
+    'schema_version','falcon24-submit-outcome-resolution@1.0.0',
+    'campaign_id','falcon24-test-v14-authority',
+    'run_id','00000000-0000-4000-8000-000000005411',
+    'observed_failure_code','PERSISTENCE_TRANSACTION_FAILED');
+  command:=command||pg_catalog.jsonb_build_object(
+    'command_hash',pg_temp.falcon24_test_hash(command));
+  resolved:=app_data_agent.resolve_falcon24_acceptance_submit_outcome(command);
+  if resolved->>'disposition' is distinct from 'ACCEPTED'
+    or resolved->>'run_id' is distinct from '00000000-0000-4000-8000-000000005411'
+    or resolved->>'claim_fence_hash' is distinct from consumed->>'claim_fence_hash'
+    or resolved->>'claim_fence_consumed_at' is distinct from consumed->>'claim_fence_consumed_at'
+  then raise exception 'FALCON24_ACCEPTED_SUBMIT_OUTCOME_DRIFT'; end if;
+
+  command:=pg_catalog.jsonb_build_object(
+    'schema_version','falcon24-question-run-acceptance@1.0.0',
+    'campaign_id','falcon24-test-v14-authority',
+    'run_id','00000000-0000-4000-8000-000000005411',
+    'claim_fence_token',fence_token);
+  command:=command||pg_catalog.jsonb_build_object(
+    'command_hash',pg_temp.falcon24_test_hash(command));
   begin
     perform app_data_agent.accept_falcon24_question_run_with_effective_config(
       requested_command,requested_config,command);

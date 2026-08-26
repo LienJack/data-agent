@@ -485,6 +485,104 @@ describe("PostgreSQL Falcon24 acceptance campaign authority", () => {
     });
   });
 
+  it("atomically resolves an unaccepted submit failure as HELD", async () => {
+    const auth = authority();
+    const scripted = scriptedPool((text) =>
+      text.includes("resolve_falcon24_acceptance_submit_outcome")
+        ? {
+            schema_version: "falcon24-submit-outcome-resolution@1.0.0",
+            disposition: "HELD",
+            campaign_id: "falcon24-root-v13-final",
+            run_id: ids.run,
+            failure_code: "FALCON24_CLAIM_ORPHANED",
+          }
+        : undefined,
+    );
+    const port = createPostgresFalcon24AcceptanceCampaignAuthority({
+      pool: scripted.pool,
+      authorizer: auth.authorizer,
+    });
+
+    await expect(
+      port.resolveSubmitOutcome(auth.capability, {
+        campaign_id: "falcon24-root-v13-final",
+        run_id: ids.run,
+        observed_failure_code: "FALCON24_CLAIM_ORPHANED",
+      }),
+    ).resolves.toMatchObject({ ok: true, value: { disposition: "HELD" } });
+    expect(
+      scripted.calls.find(({ text }) => text.includes("resolve_falcon24_acceptance_submit_outcome"))
+        ?.values?.[0],
+    ).toMatchObject({
+      schema_version: "falcon24-submit-outcome-resolution@1.0.0",
+      campaign_id: "falcon24-root-v13-final",
+      run_id: ids.run,
+      observed_failure_code: "FALCON24_CLAIM_ORPHANED",
+      command_hash: expect.stringMatching(/^sha256:[0-9a-f]{64}$/),
+    });
+  });
+
+  it("returns ACCEPTED only for an atomically closed existing question run", async () => {
+    const auth = authority();
+    const scripted = scriptedPool((text) =>
+      text.includes("resolve_falcon24_acceptance_submit_outcome")
+        ? {
+            schema_version: "falcon24-submit-outcome-resolution@1.0.0",
+            disposition: "ACCEPTED",
+            campaign_id: "falcon24-root-v13-final",
+            run_id: ids.run,
+            claim_fence_hash: hash("f"),
+            claim_fence_consumed_at: now,
+          }
+        : undefined,
+    );
+    const port = createPostgresFalcon24AcceptanceCampaignAuthority({
+      pool: scripted.pool,
+      authorizer: auth.authorizer,
+    });
+
+    await expect(
+      port.resolveSubmitOutcome(auth.capability, {
+        campaign_id: "falcon24-root-v13-final",
+        run_id: ids.run,
+        observed_failure_code: "PERSISTENCE_TRANSACTION_FAILED",
+      }),
+    ).resolves.toMatchObject({ ok: true, value: { disposition: "ACCEPTED" } });
+  });
+
+  it("accepts a durable corruption override from the submit outcome authority", async () => {
+    const auth = authority();
+    const scripted = scriptedPool((text) =>
+      text.includes("resolve_falcon24_acceptance_submit_outcome")
+        ? {
+            schema_version: "falcon24-submit-outcome-resolution@1.0.0",
+            disposition: "HELD",
+            campaign_id: "falcon24-root-v13-final",
+            run_id: ids.run,
+            failure_code: "FALCON24_SUBMIT_AUTHORITY_CORRUPT",
+          }
+        : undefined,
+    );
+    const port = createPostgresFalcon24AcceptanceCampaignAuthority({
+      pool: scripted.pool,
+      authorizer: auth.authorizer,
+    });
+
+    await expect(
+      port.resolveSubmitOutcome(auth.capability, {
+        campaign_id: "falcon24-root-v13-final",
+        run_id: ids.run,
+        observed_failure_code: "PERSISTENCE_TRANSACTION_FAILED",
+      }),
+    ).resolves.toMatchObject({
+      ok: true,
+      value: {
+        disposition: "HELD",
+        failure_code: "FALCON24_SUBMIT_AUTHORITY_CORRUPT",
+      },
+    });
+  });
+
   it("durably stages the exact result while the run remains claimed", async () => {
     const auth = authority();
     const resultDocument = await falconResult();

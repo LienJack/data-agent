@@ -2266,6 +2266,57 @@
       "postcondition": {
         "checksum_occurrences": 2
       }
+    },
+    {
+      "id": "10770",
+      "migration_name": "20260725010770_app_data_agent_falcon24_submit_outcome_authority.sql",
+      "source_directory": "infra/supabase/apps/data-agent/migration-sources/10770",
+      "segments": [
+        "00-preamble.sql.inc",
+        "20-submit-outcome-authority.sql.inc",
+        "80-grants.sql.inc",
+        "90-postconditions.sql.inc",
+        "99-ledger.sql.inc"
+      ],
+      "placeholder": "__FALCON24_SUBMIT_OUTCOME_AUTHORITY_MIGRATION_CHECKSUM__",
+      "checksum_header": "falcon24_submit_outcome_authority_migration_checksum",
+      "postcondition": {
+        "checksum_occurrences": 2
+      }
+    },
+    {
+      "id": "10771",
+      "migration_name": "20260725010771_app_data_agent_falcon24_submit_outcome_lock_repair.sql",
+      "source_directory": "infra/supabase/apps/data-agent/migration-sources/10771",
+      "segments": [
+        "00-preamble.sql.inc",
+        "20-submit-outcome-lock-repair.sql.inc",
+        "80-grants.sql.inc",
+        "90-postconditions.sql.inc",
+        "99-ledger.sql.inc"
+      ],
+      "placeholder": "__FALCON24_SUBMIT_OUTCOME_LOCK_REPAIR_MIGRATION_CHECKSUM__",
+      "checksum_header": "falcon24_submit_outcome_lock_repair_migration_checksum",
+      "postcondition": {
+        "checksum_occurrences": 2
+      }
+    },
+    {
+      "id": "10772",
+      "migration_name": "20260725010772_app_data_agent_falcon24_submit_outcome_coalesce_repair.sql",
+      "source_directory": "infra/supabase/apps/data-agent/migration-sources/10772",
+      "segments": [
+        "00-preamble.sql.inc",
+        "20-submit-outcome-coalesce-repair.sql.inc",
+        "80-grants.sql.inc",
+        "90-postconditions.sql.inc",
+        "99-ledger.sql.inc"
+      ],
+      "placeholder": "__FALCON24_SUBMIT_OUTCOME_COALESCE_REPAIR_MIGRATION_CHECKSUM__",
+      "checksum_header": "falcon24_submit_outcome_coalesce_repair_migration_checksum",
+      "postcondition": {
+        "checksum_occurrences": 2
+      }
     }
   ],
   "exceptions": [

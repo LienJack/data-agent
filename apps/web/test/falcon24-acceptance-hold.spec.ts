@@ -1,13 +1,9 @@
-import type { SqlClient, SqlPool, SqlQueryResult } from "@data-agent/platform/persistence";
 import { describe, expect, it, vi } from "vitest";
 import {
-  acquireFalcon24SubmitGuard,
-  claimFalcon24RunWithUnknownOutcomeRecovery,
   holdCampaignAfterFailure,
   projectFalcon24AcceptanceStatus,
-  reconcileClaimedFalcon24Run,
-  recoverAcceptedFalcon24RunAfterSubmitFailure,
   requireSucceededFalcon24Run,
+  resolveFalcon24SubmitFailure,
 } from "@/cli/falcon24-agent-acceptance";
 
 vi.mock("server-only", () => ({}));
@@ -22,52 +18,6 @@ describe("Falcon24 acceptance campaign HOLD", () => {
       terminal: "STATUS",
       hard_stopped: true,
     });
-  });
-
-  it("holds a crash-released PostgreSQL session guard across claim and Run acceptance", async () => {
-    const release = vi.fn();
-    const queries: string[] = [];
-    const client: SqlClient = {
-      async query<Row extends object = Record<string, unknown>>(text: string) {
-        queries.push(text);
-        const value = text.includes("pg_try_advisory_lock")
-          ? { acquired: true }
-          : text.includes("pg_backend_pid")
-            ? { backend_pid: 42 }
-            : { unlocked: true };
-        return { rows: [value], rowCount: 1 } as unknown as SqlQueryResult<Row>;
-      },
-      release,
-    };
-    const pool: SqlPool = { connect: async () => client };
-
-    const guard = await acquireFalcon24SubmitGuard(pool, "campaign\0run");
-    expect(guard).not.toBeNull();
-    await guard?.assert_active();
-    await guard?.release();
-    expect(queries.map((query) => query.match(/pg_catalog\.(pg_[a-z_]+)/u)?.[1])).toEqual([
-      "pg_try_advisory_lock",
-      "pg_backend_pid",
-      "pg_advisory_unlock",
-    ]);
-    expect(release).toHaveBeenCalledTimes(1);
-  });
-
-  it("reports an active submit guard without claiming or holding the same run", async () => {
-    const release = vi.fn();
-    const client: SqlClient = {
-      async query<Row extends object = Record<string, unknown>>() {
-        return {
-          rows: [{ acquired: false }],
-          rowCount: 1,
-        } as unknown as SqlQueryResult<Row>;
-      },
-      release,
-    };
-    const pool: SqlPool = { connect: async () => client };
-
-    await expect(acquireFalcon24SubmitGuard(pool, "campaign\0run")).resolves.toBeNull();
-    expect(release).toHaveBeenCalledTimes(1);
   });
 
   it("requires the exact persisted Run to be SUCCEEDED before trace verification", () => {
@@ -147,98 +97,86 @@ describe("Falcon24 acceptance campaign HOLD", () => {
     expect(events).toEqual(["hold"]);
   });
 
-  it("reconciles an unknown claim COMMIT outcome by its exact persisted fence", async () => {
-    const claimed = {
-      status: "CLAIMED",
-      claim_fence_hash: `sha256:${"a".repeat(64)}`,
-      claim_fence_consumed_at: null,
-    };
-    const hold = vi.fn();
-
-    await expect(
-      claimFalcon24RunWithUnknownOutcomeRecovery({
-        expected_fence_hash: claimed.claim_fence_hash,
-        claim: vi.fn().mockRejectedValue(new Error("PERSISTENCE_TRANSACTION_FAILED")),
-        load: vi.fn().mockResolvedValue(claimed),
-        hold,
-      }),
-    ).resolves.toBe(claimed);
-    expect(hold).not.toHaveBeenCalled();
-  });
-
-  it("never resubmits an already accepted run after a post-claim process crash", async () => {
+  it("returns an exact accepted binding without resubmitting after an unknown submit outcome", async () => {
     const binding = { run_id: "accepted-run" };
     const loadBinding = vi.fn().mockResolvedValue(binding);
-    const hold = vi.fn();
+    const resolve = vi.fn().mockResolvedValue({ disposition: "ACCEPTED" });
 
     await expect(
-      reconcileClaimedFalcon24Run({
-        run_status: "CLAIMED",
-        load_binding: loadBinding,
-        hold,
-      }),
-    ).resolves.toEqual({ kind: "EXISTING_RUN_ACCEPTED", binding });
-    expect(loadBinding).toHaveBeenCalledTimes(1);
-    expect(hold).not.toHaveBeenCalled();
-  });
-
-  it("holds an orphaned claim instead of invoking the provider again", async () => {
-    const loadBinding = vi.fn().mockResolvedValue(null);
-    const hold = vi.fn().mockResolvedValue({ ok: true, value: { status: "HOLD" } });
-
-    await expect(
-      reconcileClaimedFalcon24Run({
-        run_status: "CLAIMED",
-        load_binding: loadBinding,
-        hold,
-      }),
-    ).rejects.toThrow("FALCON24_CLAIM_ORPHANED");
-    expect(loadBinding).toHaveBeenCalledTimes(1);
-    expect(hold).toHaveBeenCalledTimes(1);
-    expect(hold).toHaveBeenCalledWith("FALCON24_CLAIM_ORPHANED");
-  });
-
-  it("does not HOLD when a concurrent accept consumes the database fence first", async () => {
-    const binding = { run_id: "accepted-run" };
-    const loadBinding = vi.fn().mockResolvedValueOnce(null).mockResolvedValueOnce(binding);
-    const hold = vi.fn().mockResolvedValue({
-      ok: false,
-      error: {
-        code: "FALCON24_RUN_ACCEPTED_RECOVERY_REQUIRED",
-        message: "Run acceptance won the row lock.",
-        retryable: false,
-      },
-    });
-
-    await expect(
-      reconcileClaimedFalcon24Run({
-        run_status: "CLAIMED",
-        load_binding: loadBinding,
-        hold,
-      }),
-    ).resolves.toEqual({ kind: "EXISTING_RUN_ACCEPTED", binding });
-    expect(loadBinding).toHaveBeenCalledTimes(2);
-  });
-
-  it("reloads the binding when HOLD observes an atomically consumed submit fence", async () => {
-    const binding = { run_id: "accepted-run" };
-    const loadBinding = vi.fn().mockResolvedValueOnce(null).mockResolvedValueOnce(binding);
-    const hold = vi.fn().mockResolvedValue({
-      ok: false,
-      error: {
-        code: "FALCON24_RUN_ACCEPTED_RECOVERY_REQUIRED",
-        message: "Run was accepted while HOLD waited on the fence.",
-        retryable: false,
-      },
-    });
-
-    await expect(
-      recoverAcceptedFalcon24RunAfterSubmitFailure({
+      resolveFalcon24SubmitFailure({
         original_error: new Error("PERSISTENCE_TRANSACTION_FAILED"),
+        resolve,
         load_binding: loadBinding,
-        hold,
       }),
     ).resolves.toEqual(binding);
-    expect(loadBinding).toHaveBeenCalledTimes(2);
+    expect(resolve).toHaveBeenCalledWith("PERSISTENCE_TRANSACTION_FAILED");
+    expect(loadBinding).toHaveBeenCalledTimes(1);
+  });
+
+  it("preserves the original submit failure after PostgreSQL atomically holds the campaign", async () => {
+    const originalError = new Error("FALCON24_CLAIM_ORPHANED");
+    const resolve = vi.fn().mockResolvedValue({
+      disposition: "HELD",
+      failure_code: "FALCON24_CLAIM_ORPHANED",
+    });
+    const loadBinding = vi.fn();
+
+    await expect(
+      resolveFalcon24SubmitFailure({
+        original_error: originalError,
+        resolve,
+        load_binding: loadBinding,
+      }),
+    ).rejects.toBe(originalError);
+    expect(resolve).toHaveBeenCalledWith("FALCON24_CLAIM_ORPHANED");
+    expect(loadBinding).not.toHaveBeenCalled();
+  });
+
+  it("surfaces PostgreSQL authority corruption instead of masking it as the observed failure", async () => {
+    const originalError = new Error("PERSISTENCE_TRANSACTION_FAILED");
+
+    await expect(
+      resolveFalcon24SubmitFailure({
+        original_error: originalError,
+        resolve: vi.fn().mockResolvedValue({
+          disposition: "HELD",
+          failure_code: "FALCON24_SUBMIT_AUTHORITY_CORRUPT",
+        }),
+        load_binding: vi.fn(),
+      }),
+    ).rejects.toMatchObject({
+      message: "FALCON24_SUBMIT_AUTHORITY_CORRUPT",
+      cause: originalError,
+    });
+  });
+
+  it("fails closed when PostgreSQL reports ACCEPTED without the exact binding", async () => {
+    const resolve = vi.fn().mockResolvedValue({ disposition: "ACCEPTED" });
+
+    await expect(
+      resolveFalcon24SubmitFailure({
+        original_error: new Error("PERSISTENCE_TRANSACTION_FAILED"),
+        resolve,
+        load_binding: vi.fn().mockResolvedValue(null),
+      }),
+    ).rejects.toMatchObject({
+      code: "PERSISTENCE_TRANSACTION_FAILED",
+      hold_failure_code: "FALCON24_ACCEPTED_BINDING_MISSING",
+    });
+  });
+
+  it("preserves the submit failure when PostgreSQL outcome resolution itself is unavailable", async () => {
+    const originalError = new Error("FALCON24_CLAIM_ORPHANED");
+
+    await expect(
+      resolveFalcon24SubmitFailure({
+        original_error: originalError,
+        resolve: vi.fn().mockRejectedValue(new Error("PERSISTENCE_TRANSACTION_FAILED")),
+        load_binding: vi.fn(),
+      }),
+    ).rejects.toMatchObject({
+      code: "FALCON24_CLAIM_ORPHANED",
+      hold_failure_code: "PERSISTENCE_TRANSACTION_FAILED",
+    });
   });
 });

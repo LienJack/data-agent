@@ -103,6 +103,28 @@ const holdInputSchema = z.strictObject({
   failure_layer: falcon24AcceptanceFailureLayerSchema,
   failure_code: failureCodeSchema,
 });
+const submitOutcomeInputSchema = z.strictObject({
+  campaign_id: campaignIdSchema,
+  run_id: canonicalImmutableIdSchema,
+  observed_failure_code: failureCodeSchema,
+});
+const submitOutcomeResolutionSchema = z.discriminatedUnion("disposition", [
+  z.strictObject({
+    schema_version: z.literal("falcon24-submit-outcome-resolution@1.0.0"),
+    disposition: z.literal("HELD"),
+    campaign_id: campaignIdSchema,
+    run_id: canonicalImmutableIdSchema,
+    failure_code: failureCodeSchema,
+  }),
+  z.strictObject({
+    schema_version: z.literal("falcon24-submit-outcome-resolution@1.0.0"),
+    disposition: z.literal("ACCEPTED"),
+    campaign_id: campaignIdSchema,
+    run_id: canonicalImmutableIdSchema,
+    claim_fence_hash: contentHashSchema,
+    claim_fence_consumed_at: timestampSchema,
+  }),
+]);
 
 const completeInputSchema = z.strictObject({
   campaign_id: campaignIdSchema,
@@ -165,6 +187,9 @@ const STABLE_DATABASE_ERRORS = new Set([
   "FALCON24_SUBMIT_FENCE_MISMATCH",
   "FALCON24_SUBMIT_FENCE_ALREADY_CONSUMED",
   "FALCON24_SUBMIT_FENCE_REQUIRED",
+  "FALCON24_SUBMIT_OUTCOME_INVALID",
+  "FALCON24_SUBMIT_OUTCOME_UNKNOWN",
+  "FALCON24_SUBMIT_AUTHORITY_CORRUPT",
   "FALCON24_RUN_ACCEPTED_RECOVERY_REQUIRED",
   "FALCON24_CAMPAIGN_HOLD_INVALID",
   "FALCON24_CAMPAIGN_HOLD_REPLAY_MISMATCH",
@@ -453,6 +478,43 @@ export function createPostgresFalcon24AcceptanceCampaignAuthority(input: {
             );
           }
           return campaign;
+        },
+      );
+    },
+
+    async resolveSubmitOutcome(capabilityInput: unknown, candidate: unknown) {
+      const request = submitOutcomeInputSchema.parse(candidate);
+      const command = await commandWithHash({
+        schema_version: "falcon24-submit-outcome-resolution@1.0.0" as const,
+        ...request,
+      });
+      return withAppTransaction(
+        input.pool,
+        input.authorizer,
+        capabilityInput,
+        {
+          access: "WRITE",
+          allowed_roles: ["OWNER", "ANALYST"],
+          operation_name: "falcon24-acceptance.resolve-submit-outcome",
+          correlation_id: request.run_id,
+          map_database_error: mapDatabaseError,
+        },
+        async ({ client }) => {
+          const result = await client.query<JsonRow>(
+            "select app_data_agent.resolve_falcon24_acceptance_submit_outcome($1::jsonb) as value",
+            [command],
+          );
+          const resolution = submitOutcomeResolutionSchema.parse(exact(result.rows));
+          if (
+            resolution.campaign_id !== request.campaign_id ||
+            resolution.run_id !== request.run_id
+          ) {
+            throw new PersistenceBoundaryError(
+              "FALCON24_CAMPAIGN_DATABASE_CONTRACT_INVALID",
+              "Falcon24 submit outcome RPC 返回了不同的运行身份。",
+            );
+          }
+          return resolution;
         },
       );
     },

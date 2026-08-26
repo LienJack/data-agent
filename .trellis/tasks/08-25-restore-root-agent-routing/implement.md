@@ -1,6 +1,6 @@
 # 实施记录：恢复 Root Agent 自主 Subagent 路由
 
-> 当前状态：v12 在首个真实 Run 失败后已硬停止；未重试、未创建 v13。正在提交实际代码/冻结契约变更，完成后才允许建立新版本。唯一生产路径是 V3 Root Harness；无兼容层。
+> 当前状态：v14 已在第 0 个 slot 的首次提交失败后硬停止并由 PostgreSQL Authority 冻结为 HOLD；后续 29 个 Run 未启动。submit outcome 原子判定与 fail-closed HOLD 已通过定向 PostgreSQL smoke，等待形成独立 commit。随后必须先闭合真实轨迹 UI 和 G1–G4 资格门禁，才允许创建 v15。唯一生产路径是 V3 Root Harness；无兼容层。
 
 ## v12 硬停止与分层定位
 
@@ -11,6 +11,14 @@
 - v12 的 Research L2 `QueryEvidence` 还引用了 11 个未提交的直接输入。轨迹投影必须 fail-closed 为 `RESOLUTION_TRACE_ARTIFACT_REFERENCE_MISSING` 或 `RESOLUTION_TRACE_ARTIFACT_CORRUPT`，不得把断链投影成可用节点或普通 `BLOCKED` 状态。
 - 只有提交实际代码或冻结契约变化后，才允许创建新 campaign；不得自动把 v12 升为 v13。
 - v12 证据固定在 `artifacts/falcon24-agent-analysis/v12-hold.json`。
+
+## v13 / v14 硬停止续证
+
+- v13 `falcon24-root-v13-final-20260826` 只执行首个真实 Run `9907753b-fae9-8c85-9fec-3bd9a239e44e`，在 `Root 路由` 层以 `ROOT_AGENT_DECISION_REJECTED` 失败；后续 29 个 Run 未启动。该 Run 没有 Artifact，不能用于证明完整证据链。
+- v13 的失败轨迹已在真实 Q&A 轨迹界面显示 `run.accepted -> run.leased -> model.request -> FAILED`，节点详情可打开；这只证明失败轨迹可读，不替代成功链路 UI 验收。
+- v14 `falcon24-root-v14-final-20260826` 在首个 slot 创建真实 Run 之前失败。根因是 CLI 用 `join("\\0")` 生成 PostgreSQL `text` advisory-lock 参数，PostgreSQL 以 `invalid byte sequence for encoding "UTF8": 0x00` 拒绝。
+- v14 已通过唯一 Campaign Authority 冻结为 `HOLD`，固定首失败为 Run `68ffa847-347b-8dbe-a329-0142226025e4`、层级 `ROOT_ROUTING`、错误码 `FALCON24_SUBMIT_GUARD_FAILED`；该 Run 的 `runs/run_events/workspace_run_bindings/artifacts` 计数均为 0。
+- 修复删除 CLI 的 session advisory guard；`claim` 只形成 PostgreSQL durable reservation，随后由唯一 `resolve_falcon24_acceptance_submit_outcome` RPC 在与原子 accept 相同的 run 事务锁下判定 `HELD` 或 `ACCEPTED`。零权威行可原子 HOLD，完整 Run/Binding/Config 三元组只恢复而不重提，部分权威状态以 `FALCON24_SUBMIT_AUTHORITY_CORRUPT` HOLD。不得重跑 v14。
 
 ## Phase 0：故障基线
 
@@ -76,12 +84,17 @@ Gate：Semantic、Text2SQL、Text2SQL -> Report 和 Root direct 四条路径都�
 - [x] Sandbox 回收 receipt 只接受 runtime 实际执行的 `list -> kill -> confirmed list` 管理面观察；operation UUID、target hash、前后数量/哈希与 observation hash 均由服务端生成并由 PostgreSQL 二次复验。
 - [x] Finalize 只有在 Oracle 通过、轨迹闭合、底层 Run 已 `SUCCEEDED`，且 OpenSandbox management API 的 attestation-bound `residual=0` receipt 已进入 PostgreSQL Authority 后才推进 Campaign；不读取本地 receipt JSON，任一失败立即 HOLD。
 - [x] 恢复已应用 10761/10764 的不可变原文，并以 10768 前向切换 Analysis Profile v2、退役旧固定 Product Profile 约束；完成 10761–10768 的确定性渲染、静态检查和 clean PostgreSQL 定向 smoke。
+- [x] 删除 CLI submit session guard，以 10770–10772 的唯一 submit-outcome RPC 原子仲裁 `HELD/ACCEPTED`；故障注入覆盖 orphaned claim、部分权威三元组、完整已接受恢复，定向 PostgreSQL smoke 通过。
 - [x] 完成 contracts、agent-runtime、platform、worker、web 与 sandbox 的任务相关 test/typecheck/build。
-- [ ] 在实际代码与冻结契约提交且工作树 clean 后创建 v13；逐条执行 30 个真实 DeepSeek/Falcon db24 Run。
-- [ ] v13 任一 Run 失败后立即停止，不重试、不继续下一 slot、不创建 v14；先固定六层定位证据。
+- [ ] 将轨迹门禁升级为 backend + browser 组合 receipt：真实打开 Conversation/Run、逐节点详情、QueryEvidence/AnalysisReport/Chart Preview，校验 exact ref/hash、图表渲染、web build 与无错误横幅；后端 receipt 单独通过不得 finalize。
+- [ ] 增加独立 Qualification Manifest 与 PostgreSQL 状态机，顺序执行 G1 单链路 1 次、G2 五题最小版 5 次、G3 五题完整版 5 次、G4 冷启动 5 次。每一级首败即 HOLD，同版本禁止重跑，且全部调用唯一 Root V3 生产链路。
+- [ ] 只有 G1–G4 共 16 个资格 slot 全部通过，才创建 v15；随后逐条执行 30 个真实 DeepSeek/Falcon db24 Run（5 题 × COLD/WARM × 3 次），禁止并发跨 slot。
+- [ ] v15 任一 command/Run/Oracle/UI gate 失败后立即停止，不重试、不继续下一 slot、不自动创建 v16；先按六层顺序固定诊断证据。只有代码或冻结契约再次形成新 commit 才允许新版本。
+- [ ] 每个成功 Run 都必须在真实 Q&A 轨迹界面打开对应 Conversation/Run：轨迹主图、节点详情、Artifact Preview 与图表均可读，且 UI 展示的 exact ref/hash 与 API/数据库 Authority 一致。后端 trace API 或 CLI gate 单独通过不算通过。
+- [ ] 轨迹缺引用或内容损坏时，UI 必须显示 `RESOLUTION_TRACE_ARTIFACT_REFERENCE_MISSING` / `RESOLUTION_TRACE_ARTIFACT_CORRUPT` 阻断态并清空旧 ready 快照，禁止白屏、陈旧轨迹或普通 `BLOCKED` 降级。
 - [ ] 30/30 通过后运行数据库结果驱动的最终 Gate，并确认无残留 OpenSandbox/container。
 
-Gate：PRD 每项 AC 都有自动测试或真实运行证据；v13 尚未达到 30/30 前不得标记最终验收完成。
+Gate：PRD 每项 AC 都有自动测试或真实运行证据；资格 16/16、v15 最终 30/30、成功/失败轨迹 UI 与 Sandbox=0 均闭合前不得标记最终验收完成。
 
 ## 真实验收证据（Falcon db24 / DeepSeek）
 
@@ -94,7 +107,7 @@ Gate：PRD 每项 AC 都有自动测试或真实运行证据；v13 尚未达到 
 
 浏览器确认公开活动只展示模型请求、实际选中的 Subagent、完成状态及已提交 Artifact；没有 prompt、CoT、credential、target 或 raw provider payload。Docker 检查为 0 个 sandbox/opensandbox 容器。
 
-以上是 v12 前的历史 smoke，只证明 Root V3 基础路径，不替代新的 30 Run 验收。v12 的首个失败 Run 已按硬规则冻结；新的 v13 只能在本轮代码与冻结契约形成新 commit 后创建。
+以上是 v12 前的历史 smoke，只证明 Root V3 基础路径，不替代新的资格与最终验收。v12、v13、v14 的首个失败均已按硬规则冻结；新的 v15 只能在 submit-outcome、真实轨迹 UI 与 G1–G4 资格状态机分别形成 commit，且资格 16/16 通过后创建。
 
 ## Validation Commands
 
@@ -111,16 +124,18 @@ pnpm --filter @data-agent/worker typecheck
 pnpm --dir apps/worker exec vitest run <task-owned-tests>
 pnpm --dir apps/web exec vitest run test/falcon24-resolution-trace-gate.spec.ts
 uv run --directory services/sandbox --group dev pytest tests/operators
+DATA_AGENT_POSTGRES_ASSERTION_FILTER=54-falcon24-acceptance-campaign-assertions.sql \
+  ./infra/supabase/test-support/run-postgres-smoke.sh
 ```
 
 ## Commit Boundary
 
-唯一实现提交包含 Root/Provider/Team/Text2SQL/Semantic/Chart 恢复、相应 contracts/platform exports、测试、Trellis specs 与本任务文档。不得包含工作区已有的 Web 生成文件或其他并行改动。
+后续按三个独立提交关闭：submit-outcome 原子权威、真实浏览器轨迹 receipt、Qualification Manifest/状态机。不得包含工作区已有的 Web 生成文件或其他并行改动。
 
 提交信息：
 
 ```text
-fix(agent-runtime): restore root-routed governed text2sql
+fix(acceptance): resolve Falcon24 submit outcomes atomically
 ```
 
 ## Hard Blockers
