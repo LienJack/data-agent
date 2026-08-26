@@ -1,10 +1,11 @@
 import {
   buildResolutionTrace,
+  buildResolutionTraceDetail,
   type ResolutionTrace,
   type ResolutionTraceDetail,
-  verifyResolutionTraceDetail,
 } from "@data-agent/contracts";
 import { describe, expect, it } from "vitest";
+import { exactRequiredFalcon24ArtifactReferences } from "@/cli/falcon24-browser-trace-gate";
 import { verifyFalcon24ResolutionTraceGate } from "@/cli/falcon24-resolution-trace-gate";
 
 const id = (suffix: number) => `00000000-0000-4000-8000-${String(suffix).padStart(12, "0")}`;
@@ -163,7 +164,7 @@ async function traceFixture(sqlKind: "SQL" | "ARTIFACT" = "SQL") {
   });
 }
 
-function detail(
+async function detail(
   trace: ResolutionTrace,
   ref:
     | typeof sqlRef
@@ -174,12 +175,18 @@ function detail(
     | typeof reportRef,
   schemaName: string,
   schemaVersion: string,
-): ResolutionTraceDetail {
+): Promise<ResolutionTraceDetail> {
   const node = trace.nodes.find(({ node_id: current }) => current === nodeId(ref));
   if (!node) throw new Error("missing fixture node");
-  const section = { state: "AVAILABLE", format: "TEXT", text: "公开内容", fields: [] } as const;
-  return verifyResolutionTraceDetail({
-    schema_version: "resolution-trace-detail@2.0.0",
+  const section = {
+    state: "AVAILABLE" as const,
+    format: "TEXT" as const,
+    text: "公开内容",
+    fields: [],
+  };
+  return buildResolutionTraceDetail({
+    schema_version: "resolution-trace-detail@3.0.0",
+    trace_hash: trace.trace_hash,
     scope,
     run_id: runId,
     node_id: node.node_id,
@@ -212,12 +219,18 @@ function detail(
   });
 }
 
-function terminalDetail(trace: ResolutionTrace): ResolutionTraceDetail {
+async function terminalDetail(trace: ResolutionTrace): Promise<ResolutionTraceDetail> {
   const node = trace.nodes.find(({ node_id: current }) => current === terminalNodeId);
   if (!node) throw new Error("missing terminal fixture node");
-  const section = { state: "AVAILABLE", format: "TEXT", text: "分析已完成", fields: [] } as const;
-  return verifyResolutionTraceDetail({
-    schema_version: "resolution-trace-detail@2.0.0",
+  const section = {
+    state: "AVAILABLE" as const,
+    format: "TEXT" as const,
+    text: "分析已完成",
+    fields: [],
+  };
+  return buildResolutionTraceDetail({
+    schema_version: "resolution-trace-detail@3.0.0",
+    trace_hash: trace.trace_hash,
     scope,
     run_id: runId,
     node_id: node.node_id,
@@ -250,8 +263,8 @@ function terminalDetail(trace: ResolutionTrace): ResolutionTraceDetail {
   });
 }
 
-function detailsFixture(trace: ResolutionTrace): ResolutionTraceDetail[] {
-  return [
+async function detailsFixture(trace: ResolutionTrace): Promise<ResolutionTraceDetail[]> {
+  return Promise.all([
     terminalDetail(trace),
     detail(trace, sqlRef, "product-team-artifact", "product-team-artifact@2.0.0"),
     detail(trace, evidenceRef, "product-team-artifact", "product-team-artifact@2.0.0"),
@@ -263,13 +276,22 @@ function detailsFixture(trace: ResolutionTrace): ResolutionTraceDetail[] {
       "artifact-workspace-chart-document@3.0.0",
     ),
     detail(trace, reportRef, "product-team-artifact", "product-team-artifact@2.0.0"),
-  ];
+  ]);
+}
+
+async function rebuildDetail(
+  detail: ResolutionTraceDetail,
+  changes: Partial<Omit<ResolutionTraceDetail, "detail_hash">>,
+): Promise<ResolutionTraceDetail> {
+  const { detail_hash: _detailHash, ...material } = detail;
+  return buildResolutionTraceDetail({ ...material, ...changes });
 }
 
 describe("Falcon24 Resolution Trace acceptance gate", () => {
   it("accepts the completed SQL to query evidence to derived evidence to chart and report chain", async () => {
     const trace = await traceFixture();
-    expect(verifyFalcon24ResolutionTraceGate(trace, detailsFixture(trace))).toEqual({
+    const details = await detailsFixture(trace);
+    expect(verifyFalcon24ResolutionTraceGate(trace, details)).toEqual({
       node_count: 6,
       edge_count: 5,
       detail_count: 6,
@@ -278,7 +300,37 @@ describe("Falcon24 Resolution Trace acceptance gate", () => {
       analysis_evidence_node_count: 1,
       chart_node_count: 1,
       report_node_count: 1,
+      detail_closure: details
+        .map(({ node_id: nodeId, detail_hash: detailHash }) => ({
+          node_id: nodeId,
+          detail_hash: detailHash,
+        }))
+        .sort((left, right) => left.node_id.localeCompare(right.node_id)),
     });
+    expect(
+      exactRequiredFalcon24ArtifactReferences(trace).map(
+        ({ artifact_type: artifactType }) => artifactType,
+      ),
+    ).toEqual([
+      "SqlArtifact",
+      "QueryEvidence",
+      "DerivedAnalysisEvidence",
+      "ArtifactWorkspaceDocument",
+      "AnalysisReport",
+    ]);
+  });
+
+  it("rejects a browser gate trace without exactly one required Artifact of each type", async () => {
+    const trace = await traceFixture();
+    const missingChart = {
+      ...trace,
+      nodes: trace.nodes.map((node) =>
+        node.node_id === nodeId(chartRef) ? { ...node, artifact_refs: [] } : node,
+      ),
+    } as ResolutionTrace;
+    expect(() => exactRequiredFalcon24ArtifactReferences(missingChart)).toThrow(
+      "FALCON24_BROWSER_REQUIRED_ARTIFACT_CARDINALITY_INVALID",
+    );
   });
 
   it("rejects a trace without the exact completed Run terminal", async () => {
@@ -288,12 +340,10 @@ describe("Falcon24 Resolution Trace acceptance gate", () => {
       ...material,
       nodes: complete.nodes.filter(({ kind }) => kind !== "TERMINAL"),
     });
-    expect(() =>
-      verifyFalcon24ResolutionTraceGate(
-        trace,
-        detailsFixture(complete).filter(({ kind }) => kind !== "TERMINAL"),
-      ),
-    ).toThrow("FALCON24_RESOLUTION_TRACE_COMPLETED_TERMINAL_REQUIRED");
+    const details = (await detailsFixture(complete)).filter(({ kind }) => kind !== "TERMINAL");
+    expect(() => verifyFalcon24ResolutionTraceGate(trace, details)).toThrow(
+      "FALCON24_RESOLUTION_TRACE_COMPLETED_TERMINAL_REQUIRED",
+    );
   });
 
   it("rejects a running terminal before sandbox reclamation", async () => {
@@ -305,30 +355,25 @@ describe("Falcon24 Resolution Trace acceptance gate", () => {
         node.kind === "TERMINAL" ? { ...node, status: "RUNNING" as const } : node,
       ),
     });
-    expect(() =>
-      verifyFalcon24ResolutionTraceGate(
-        trace,
-        detailsFixture(trace).map((candidate) =>
-          candidate.kind === "TERMINAL"
-            ? verifyResolutionTraceDetail({ ...candidate, status: "RUNNING" })
-            : candidate,
-        ),
-      ),
-    ).toThrow("FALCON24_RESOLUTION_TRACE_COMPLETED_TERMINAL_REQUIRED");
+    expect(() => verifyFalcon24ResolutionTraceGate(trace, [])).toThrow(
+      "FALCON24_RESOLUTION_TRACE_COMPLETED_TERMINAL_REQUIRED",
+    );
   });
 
   it("rejects the former ARTIFACT-kind SqlArtifact lookup", async () => {
     const trace = await traceFixture("ARTIFACT");
-    expect(() => verifyFalcon24ResolutionTraceGate(trace, detailsFixture(trace))).toThrow(
+    const details = await detailsFixture(trace);
+    expect(() => verifyFalcon24ResolutionTraceGate(trace, details)).toThrow(
       "FALCON24_RESOLUTION_TRACE_SQL_CARDINALITY_INVALID",
     );
   });
 
   it("rejects a missing detail instead of treating the graph as readable", async () => {
     const trace = await traceFixture();
-    expect(() =>
-      verifyFalcon24ResolutionTraceGate(trace, detailsFixture(trace).slice(0, -1)),
-    ).toThrow("FALCON24_RESOLUTION_TRACE_DETAIL_INVALID");
+    const details = (await detailsFixture(trace)).slice(0, -1);
+    expect(() => verifyFalcon24ResolutionTraceGate(trace, details)).toThrow(
+      "FALCON24_RESOLUTION_TRACE_DETAIL_INVALID",
+    );
   });
 
   it("rejects derived analysis evidence without a QueryEvidence evidence edge", async () => {
@@ -341,26 +386,28 @@ describe("Falcon24 Resolution Trace acceptance gate", () => {
           fromNodeId !== nodeId(evidenceRef) || toNodeId !== nodeId(derivedEvidenceRef),
       ),
     });
-    expect(() => verifyFalcon24ResolutionTraceGate(trace, detailsFixture(trace))).toThrow(
+    const details = await detailsFixture(trace);
+    expect(() => verifyFalcon24ResolutionTraceGate(trace, details)).toThrow(
       "FALCON24_RESOLUTION_TRACE_ANALYSIS_EVIDENCE_LINEAGE_REQUIRED",
     );
   });
 
   it("rejects a legacy chart schema even when its evidence edges are present", async () => {
     const trace = await traceFixture();
-    const details = detailsFixture(trace).map((candidate) =>
-      candidate.node_id === nodeId(chartRef)
-        ? verifyResolutionTraceDetail({
-            ...candidate,
-            schema: {
-              ...candidate.schema,
-              state: "AVAILABLE" as const,
-              schema_name: "artifact-workspace-chart-document",
-              schema_version: "artifact-workspace-chart-document@2.0.0",
-              fields: [],
-            },
-          })
-        : candidate,
+    const details = await Promise.all(
+      (await detailsFixture(trace)).map(async (candidate) =>
+        candidate.node_id === nodeId(chartRef)
+          ? rebuildDetail(candidate, {
+              schema: {
+                ...candidate.schema,
+                state: "AVAILABLE" as const,
+                schema_name: "artifact-workspace-chart-document",
+                schema_version: "artifact-workspace-chart-document@2.0.0",
+                fields: [],
+              },
+            })
+          : candidate,
+      ),
     );
     expect(() => verifyFalcon24ResolutionTraceGate(trace, details)).toThrow(
       "FALCON24_RESOLUTION_TRACE_CHART_CARDINALITY_INVALID",
@@ -369,18 +416,19 @@ describe("Falcon24 Resolution Trace acceptance gate", () => {
 
   it("does not accept a Research QueryEvidence as the Product Team table authority", async () => {
     const trace = await traceFixture();
-    const details = detailsFixture(trace).map((candidate) =>
-      candidate.node_id === nodeId(evidenceRef)
-        ? verifyResolutionTraceDetail({
-            ...candidate,
-            schema: {
-              state: "AVAILABLE",
-              schema_name: "artifact-reference",
-              schema_version: "artifact-reference@1.0.0",
-              fields: [],
-            },
-          })
-        : candidate,
+    const details = await Promise.all(
+      (await detailsFixture(trace)).map(async (candidate) =>
+        candidate.node_id === nodeId(evidenceRef)
+          ? rebuildDetail(candidate, {
+              schema: {
+                state: "AVAILABLE",
+                schema_name: "artifact-reference",
+                schema_version: "artifact-reference@1.0.0",
+                fields: [],
+              },
+            })
+          : candidate,
+      ),
     );
     expect(() => verifyFalcon24ResolutionTraceGate(trace, details)).toThrow(
       "FALCON24_RESOLUTION_TRACE_PRODUCT_QUERY_EVIDENCE_CARDINALITY_INVALID",
@@ -406,15 +454,16 @@ describe("Falcon24 Resolution Trace acceptance gate", () => {
       ...material,
       nodes: [...complete.nodes, extraNode],
     });
-    const extraDetail = detail(
+    const extraDetail = await detail(
       trace,
       secondChartRef,
       "artifact-workspace-chart-document",
       "artifact-workspace-chart-document@3.0.0",
     );
-    expect(() =>
-      verifyFalcon24ResolutionTraceGate(trace, [...detailsFixture(trace), extraDetail]),
-    ).toThrow("FALCON24_RESOLUTION_TRACE_CHART_CARDINALITY_INVALID");
+    const details = [...(await detailsFixture(trace)), extraDetail];
+    expect(() => verifyFalcon24ResolutionTraceGate(trace, details)).toThrow(
+      "FALCON24_RESOLUTION_TRACE_CHART_CARDINALITY_INVALID",
+    );
   });
 
   it("rejects an additional evidence edge inside the required five-node chain", async () => {
@@ -431,7 +480,8 @@ describe("Falcon24 Resolution Trace acceptance gate", () => {
         },
       ],
     });
-    expect(() => verifyFalcon24ResolutionTraceGate(trace, detailsFixture(trace))).toThrow(
+    const details = await detailsFixture(trace);
+    expect(() => verifyFalcon24ResolutionTraceGate(trace, details)).toThrow(
       "FALCON24_RESOLUTION_TRACE_EVIDENCE_CLOSURE_INVALID",
     );
   });

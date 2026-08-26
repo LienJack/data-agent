@@ -377,6 +377,10 @@ function TraceInspector({
     <aside
       className="glass-surface-strong relative flex min-h-0 min-w-0 flex-col border-l border-[var(--color-border-default)] max-lg:border-l-0 max-lg:border-t"
       aria-label="轨迹详情 Inspector"
+      data-testid="resolution-trace-detail"
+      data-trace-hash={detail?.trace_hash}
+      data-detail-hash={detail?.detail_hash}
+      data-node-id={detail?.node_id ?? node.node_id}
     >
       <hr
         tabIndex={0}
@@ -787,7 +791,7 @@ function TraceWorkbench({
   const detailCache = useRef(
     new Map(
       initialDetails.map((candidate) => [
-        `${focusedRunId ?? traces.at(-1)?.run_id}:${candidate.node_id}`,
+        `${candidate.run_id}:${candidate.trace_hash}:${candidate.node_id}`,
         candidate,
       ]),
     ),
@@ -879,7 +883,7 @@ function TraceWorkbench({
     detailCache.current.clear();
     for (const candidate of initialDetails)
       detailCache.current.set(
-        `${focusedRunId ?? traces.at(-1)?.run_id}:${candidate.node_id}`,
+        `${candidate.run_id}:${candidate.trace_hash}:${candidate.node_id}`,
         candidate,
       );
     const nextNodeId = refresh.selectedNodeId;
@@ -914,7 +918,9 @@ function TraceWorkbench({
       return;
     }
     if (!selectedRecord) return;
-    const cacheKey = `${selectedRecord.run_id}:${selectedRecord.node.node_id}`;
+    const selectedTrace = traces.find(({ run_id: runId }) => runId === selectedRecord.run_id);
+    if (!selectedTrace) return;
+    const cacheKey = `${selectedRecord.run_id}:${selectedTrace.trace_hash}:${selectedRecord.node.node_id}`;
     const cached = detailCache.current.get(cacheKey);
     if (cached) {
       setDetail(cached);
@@ -932,6 +938,7 @@ function TraceWorkbench({
     void fetchResolutionTraceDetail(
       selectedRecord.run_id,
       selectedRecord.node.node_id,
+      selectedTrace.trace_hash,
       workspaceId,
       controller.signal,
     )
@@ -951,7 +958,7 @@ function TraceWorkbench({
         setDetailError(failure.message);
       });
     return () => controller.abort();
-  }, [onAuthoritativeFailure, selectedNodeId, selectedRecord, workspaceId]);
+  }, [onAuthoritativeFailure, selectedNodeId, selectedRecord, traces, workspaceId]);
   useEffect(() => {
     if (!selectedNodeId) return;
     const index = listItems.findIndex(
@@ -1061,6 +1068,7 @@ function TraceWorkbench({
         <label className="relative min-w-[160px] flex-1 sm:max-w-[280px]">
           <span className="sr-only">搜索公开轨迹</span>
           <input
+            data-testid="resolution-trace-search"
             value={query}
             onChange={(event) => setQuery(event.currentTarget.value)}
             placeholder="搜索标题、摘要、状态、sequence"
@@ -1236,6 +1244,9 @@ function TraceWorkbench({
                       else rowTriggers.current.delete(record.node_id);
                     }}
                     type="button"
+                    data-testid="resolution-trace-node"
+                    data-run-id={record.run_id}
+                    data-node-id={record.node_id}
                     aria-current={selectedNodeId === record.node_id ? "step" : undefined}
                     onClick={() => setSelectedNodeId(record.node_id)}
                     className="grid h-full w-full grid-cols-[12px_minmax(0,1fr)_auto] items-start gap-3 px-4 py-2 pl-7 text-left outline-none hover:bg-[var(--color-bg-tertiary)] focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-[var(--color-accent)]"
@@ -1444,6 +1455,11 @@ function ArtifactList({ trace }: { trace: ResolutionTrace }) {
           <li key={`${reference.artifact_id}:${reference.revision}`}>
             <button
               type="button"
+              data-testid="resolution-trace-artifact"
+              data-artifact-id={reference.artifact_id}
+              data-artifact-type={reference.artifact_type}
+              data-artifact-revision={reference.revision}
+              data-content-hash={reference.content_hash}
               onClick={() => setSelectedIdentity(referenceIdentity(reference))}
               className={`grid w-full grid-cols-[auto_minmax(0,1fr)] gap-3 px-4 py-3 text-left ${selected && referenceIdentity(reference) === referenceIdentity(selected) ? "bg-[color-mix(in_srgb,var(--color-accent)_8%,transparent)]" : "hover:bg-[var(--color-bg-tertiary)]"}`}
             >
@@ -1626,7 +1642,12 @@ export function ResolutionTracePanel({
   }
 
   return (
-    <div className="flex h-full min-h-0 w-full min-w-0 flex-col overflow-hidden bg-[var(--color-bg-primary)]">
+    <div
+      className="flex h-full min-h-0 w-full min-w-0 flex-col overflow-hidden bg-[var(--color-bg-primary)]"
+      data-testid="resolution-trace-ready"
+      data-run-id={trace.run_id}
+      data-trace-hash={trace.trace_hash}
+    >
       <header className="flex min-h-12 shrink-0 items-center justify-between gap-3 border-b border-[var(--color-border-default)] px-4">
         <div className="min-w-0">
           <h2 className="truncate text-sm font-semibold">运行与证据</h2>
@@ -1640,6 +1661,7 @@ export function ResolutionTracePanel({
               key={id}
               type="button"
               role="tab"
+              data-testid={`resolution-trace-tab-${id}`}
               aria-selected={tab === id}
               onClick={() => setTab(id)}
               title={label}

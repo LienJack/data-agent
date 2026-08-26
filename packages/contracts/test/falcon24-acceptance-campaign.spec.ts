@@ -1,17 +1,41 @@
 import { describe, expect, it } from "vitest";
+import { artifactReferenceIdentity } from "../src/artifacts/envelope.js";
 import { sha256ContentHash } from "../src/common/index.js";
 import {
   buildFalcon24AcceptanceRunManifest,
   buildFalcon24ResolutionTraceGateReceipt,
+  buildFalcon24ResolutionTraceUiGateReceipt,
   buildFalcon24SandboxReclamationReceipt,
   verifyFalcon24AcceptanceRunManifest,
   verifyFalcon24ResolutionTraceGateReceipt,
+  verifyFalcon24ResolutionTraceUiGateReceipt,
   verifyFalcon24SandboxReclamationReceipt,
 } from "../src/evals/falcon24-acceptance-campaign.js";
 import { falcon24AnalysisCaseIdSchema } from "../src/evals/falcon24-agent-analysis.js";
 
 const id = (suffix: number) => `00000000-0000-4000-8000-${String(suffix).padStart(12, "0")}`;
 const hash = (character: string) => `sha256:${character.repeat(64)}`;
+
+function artifactReference(
+  artifactType:
+    | "AnalysisReport"
+    | "ArtifactWorkspaceDocument"
+    | "DerivedAnalysisEvidence"
+    | "QueryEvidence"
+    | "SqlArtifact",
+  suffix: number,
+) {
+  return {
+    artifact_id: id(suffix),
+    artifact_type: artifactType,
+    app_id: id(90),
+    tenant_id: id(91),
+    environment: "test" as const,
+    run_id: id(1),
+    revision: 1,
+    content_hash: hash(String(suffix % 10)),
+  };
+}
 
 describe("Falcon24 acceptance campaign contracts", () => {
   it("builds and verifies the exact 30-slot frozen manifest", async () => {
@@ -82,7 +106,7 @@ describe("Falcon24 acceptance campaign contracts", () => {
 
   it("hashes the exact successful Resolution Trace gate closure", async () => {
     const receipt = await buildFalcon24ResolutionTraceGateReceipt({
-      schema_version: "falcon24-resolution-trace-gate-receipt@1.0.0",
+      schema_version: "falcon24-resolution-trace-gate-receipt@2.0.0",
       campaign_id: "falcon24-root-v13-final",
       run_id: id(1),
       trace_hash: hash("a"),
@@ -94,11 +118,70 @@ describe("Falcon24 acceptance campaign contracts", () => {
       analysis_evidence_node_count: 1,
       chart_node_count: 1,
       report_node_count: 1,
+      detail_closure: Array.from({ length: 10 }, (_, index) => ({
+        node_id: `node-${String(index).padStart(2, "0")}`,
+        detail_hash: hash(String(index % 10)),
+      })),
       verified_at: "2026-08-26T00:00:00.000Z",
     });
     await expect(verifyFalcon24ResolutionTraceGateReceipt(receipt)).resolves.toEqual(receipt);
     await expect(
       verifyFalcon24ResolutionTraceGateReceipt({ ...receipt, chart_node_count: 2 }),
     ).rejects.toThrow("FALCON24_RESOLUTION_TRACE_GATE_RECEIPT_HASH_INVALID");
+  });
+
+  it("hashes the browser-observed UI trace closure and rejects incomplete artifact coverage", async () => {
+    const references = [
+      artifactReference("AnalysisReport", 15),
+      artifactReference("ArtifactWorkspaceDocument", 14),
+      artifactReference("DerivedAnalysisEvidence", 13),
+      artifactReference("QueryEvidence", 12),
+      artifactReference("SqlArtifact", 11),
+    ].sort((left, right) =>
+      artifactReferenceIdentity(left).localeCompare(artifactReferenceIdentity(right)),
+    );
+    const chartRef = references.find(
+      ({ artifact_type: artifactType }) => artifactType === "ArtifactWorkspaceDocument",
+    );
+    if (!chartRef) throw new Error("chart fixture missing");
+    const receipt = await buildFalcon24ResolutionTraceUiGateReceipt({
+      schema_version: "falcon24-resolution-trace-ui-gate-receipt@1.0.0",
+      campaign_id: "falcon24-root-v13-final",
+      run_id: id(1),
+      workspace_id: id(91),
+      conversation_id: id(92),
+      trace_hash: hash("a"),
+      web_build: { build_id: hash("b"), generation_id: hash("c") },
+      browser_harness_version: "falcon24-agent-browser-trace-gate@1.0.0",
+      opened_nodes: [
+        { node_id: "node-01", detail_hash: hash("d") },
+        { node_id: "node-02", detail_hash: hash("e") },
+      ],
+      opened_artifact_refs: references,
+      chart_ref: chartRef,
+      chart_renderer_version: "governed-vchart@1.0.0",
+      chart_rendered: true,
+      source_table_visible: true,
+      error_banner: null,
+      dom_snapshot_hash: hash("f"),
+      screenshot_hash: hash("0"),
+      observed_at: "2026-08-26T00:00:00.000Z",
+    });
+    await expect(verifyFalcon24ResolutionTraceUiGateReceipt(receipt)).resolves.toEqual(receipt);
+    const { receipt_hash: _receiptHash, ...receiptMaterial } = receipt;
+    await expect(
+      buildFalcon24ResolutionTraceUiGateReceipt({
+        ...receiptMaterial,
+        opened_artifact_refs: [
+          ...references.slice(0, 4),
+          artifactReference("SqlArtifact", 16),
+        ].sort((left, right) =>
+          artifactReferenceIdentity(left).localeCompare(artifactReferenceIdentity(right)),
+        ),
+      }),
+    ).rejects.toThrow("Falcon24 UI 必须精确打开");
+    await expect(
+      verifyFalcon24ResolutionTraceUiGateReceipt({ ...receipt, chart_rendered: false }),
+    ).rejects.toThrow();
   });
 });

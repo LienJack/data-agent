@@ -125,7 +125,14 @@ export function projectTimelineRecords(
 }
 
 function normalizedSearchText(node: ResolutionTraceNode): string {
-  return [node.title, node.summary, node.kind, node.status, node.sequence ?? "derived"]
+  return [
+    node.node_id,
+    node.title,
+    node.summary,
+    node.kind,
+    node.status,
+    node.sequence ?? "derived",
+  ]
     .join("\n")
     .toLocaleLowerCase("zh-CN");
 }

@@ -317,8 +317,9 @@ export const resolutionTraceDetailSchemaSectionSchema = z.discriminatedUnion("st
   }),
 ]);
 
-export const resolutionTraceDetailSchema = z.strictObject({
-  schema_version: z.literal("resolution-trace-detail@2.0.0"),
+const resolutionTraceDetailMaterialSchema = z.strictObject({
+  schema_version: z.literal("resolution-trace-detail@3.0.0"),
+  trace_hash: contentHashSchema,
   scope: z.strictObject({
     app_id: immutableIdSchema,
     tenant_id: immutableIdSchema,
@@ -360,9 +361,30 @@ export const resolutionTraceDetailSchema = z.strictObject({
   artifact_refs: z.array(artifactReferenceSchema).max(64),
 });
 
-export function verifyResolutionTraceDetail(input: unknown): ResolutionTraceDetail {
+export const resolutionTraceDetailSchema = resolutionTraceDetailMaterialSchema.extend({
+  detail_hash: contentHashSchema,
+});
+
+export async function buildResolutionTraceDetail(
+  input: z.input<typeof resolutionTraceDetailMaterialSchema>,
+): Promise<ResolutionTraceDetail> {
+  const material = resolutionTraceDetailMaterialSchema.parse(input);
+  return deepFreeze(
+    resolutionTraceDetailSchema.parse({
+      ...material,
+      detail_hash: await sha256ContentHash(material),
+    }),
+  );
+}
+
+export async function verifyResolutionTraceDetail(input: unknown): Promise<ResolutionTraceDetail> {
   try {
-    return deepFreeze(resolutionTraceDetailSchema.parse(input));
+    const detail = resolutionTraceDetailSchema.parse(input);
+    const { detail_hash: observedHash, ...material } = detail;
+    if ((await sha256ContentHash(material)) !== observedHash) {
+      throw new TypeError("RESOLUTION_TRACE_DETAIL_HASH_MISMATCH");
+    }
+    return deepFreeze(detail);
   } catch (error) {
     if (error instanceof TypeError && error.message.startsWith("RESOLUTION_TRACE_")) throw error;
     throw new TypeError("RESOLUTION_TRACE_DETAIL_SCHEMA_INVALID");

@@ -331,19 +331,27 @@ export async function fetchResolutionTrace(
 export async function fetchResolutionTraceDetail(
   runId: string,
   nodeId: string,
+  expectedTraceHash: string,
   workspaceId?: string,
   signal?: AbortSignal,
 ): Promise<ResolutionTraceDetail> {
   const resolvedWorkspace = workspaceId?.trim() || resolveWorkspaceId();
   if (!resolvedWorkspace) throw new Error("请先选择工作空间");
-  const parameters = new URLSearchParams({ node_id: nodeId });
+  const parameters = new URLSearchParams({
+    node_id: nodeId,
+    expected_trace_hash: expectedTraceHash,
+  });
   const response = await request<{ data: unknown }>(
     `/api/workspaces/${encodeURIComponent(resolvedWorkspace)}/runs/${encodeURIComponent(runId)}/resolution-trace/details?${parameters.toString()}`,
     { signal },
     resolvedWorkspace,
   );
   try {
-    return verifyResolutionTraceDetail(response.data);
+    const detail = await verifyResolutionTraceDetail(response.data);
+    if (detail.trace_hash !== expectedTraceHash) {
+      throw new TypeError("RESOLUTION_TRACE_SNAPSHOT_STALE");
+    }
+    return detail;
   } catch (error) {
     throw resolutionTraceDecodeError(error, "RESOLUTION_TRACE_DETAIL_SCHEMA_INVALID");
   }

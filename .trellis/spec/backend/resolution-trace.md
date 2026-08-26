@@ -6,8 +6,9 @@
 
 - 修改 Run Event 历史读取、Task Console/Trajectory、SQL History、Artifact lineage、Conversation deep link
   或 workspace trace route 时适用。
-- PostgreSQL `run_events`、`artifacts`、`workspace_run_bindings` 与 `effective_run_config_receipts` 是事实源；
-  Trace/SQL History 是同事务生成的只读投影，不新增可写 Trace Authority。
+- PostgreSQL `run_events`、`artifacts`、`analysis_system_artifacts`、`text2sql_system_artifacts`、
+  `workspace_run_bindings` 与 `effective_run_config_receipts` 是事实源；Trace/SQL History 是同事务生成的
+  只读投影，不新增可写 Trace Authority。
 - 本单元不运行 Falcon、不调用真实 Provider/MCP，也不写 Run、Artifact 或 Effect 状态。
 
 ## 2. Signatures
@@ -15,6 +16,8 @@
 ```ts
 buildResolutionTrace(input): Promise<ResolutionTrace>;
 verifyResolutionTrace(input): Promise<ResolutionTrace>;
+buildResolutionTraceDetail(input): Promise<ResolutionTraceDetail>;
+verifyResolutionTraceDetail(input): Promise<ResolutionTraceDetail>;
 buildSqlHistoryEntry(input): Promise<SqlHistoryEntry>;
 verifySqlHistoryResult(input): Promise<SqlHistoryResult>;
 createPostgresResolutionTraceProjector({ pool, authorizer });
@@ -22,7 +25,7 @@ createPostgresResolutionTraceProjector({ pool, authorizer });
 
 ```text
 GET /api/workspaces/{workspaceId}/runs/{runId}/resolution-trace
-GET /api/workspaces/{workspaceId}/runs/{runId}/resolution-trace/details?node_id=
+GET /api/workspaces/{workspaceId}/runs/{runId}/resolution-trace/details?node_id=&expected_trace_hash=
 GET /api/workspaces/{workspaceId}/sql-history?run_id=&conversation_id=&occurred_after=&occurred_before=&limit=
 ```
 
@@ -40,11 +43,13 @@ GET /api/workspaces/{workspaceId}/sql-history?run_id=&conversation_id=&occurred_
   `product-team-artifact@1.0.0`；两者都必须与 relational exact identity 一致，禁止因 schema variant 跳过校验。
 - Trace 只保存 bounded summary、status、duration、时间和 typed refs。禁止 Prompt、私有推理、raw Context、
   raw SQL、参数值、Result rows、credential 与 Provider body。
-- `resolution-trace-detail@2.0.0` 是按 `run_id + node_id` 懒加载的严格公共投影，并为所有节点携带
-  content-first `run_context`。服务端必须先在同一
-  Trace 快照中解析 node，再以 `source_event_id + sequence + exact ArtifactReference` 关闭身份；不得让请求方
-  仅凭 call/artifact/config ID 读取对象。Tool detail 按 exact `call_id + profile_id + task_id + tool_name`
-  合并 START/terminal，仅公开经过 `PublicRunEvent` 脱敏的 input/output/error/duration。
+- `resolution-trace-detail@3.0.0` 是按 `run_id + expected_trace_hash + node_id` 懒加载的唯一严格公共投影，
+  并为所有节点携带 content-first `run_context`、父 `trace_hash` 与自身 `detail_hash`。服务端必须在同一个
+  `REPEATABLE READ` transaction 中重建 Trace；若其 hash 与调用方绑定值不同，返回
+  `RESOLUTION_TRACE_SNAPSHOT_STALE`，不得拼接另一快照的 Detail。随后才以
+  `source_event_id + sequence + exact ArtifactReference` 关闭身份；不得让请求方仅凭
+  call/artifact/config ID 读取对象。Tool detail 按 exact `call_id + profile_id + task_id + tool_name` 合并
+  START/terminal，仅公开经过 `PublicRunEvent` 脱敏的 input/output/error/duration。Detail v2 不再接受。
 - Detail 的 Payload/Result/Schema 使用 `AVAILABLE/UNAVAILABLE/FORBIDDEN/UNSUPPORTED/STALE` 判别状态；
   缺少公共内容时返回稳定 reason code。Artifact 正文不进入 detail DTO，Web 必须继续通过 exact-reference
   Artifact Preview API 鉴权、验 source identity 并有界读取。
@@ -56,6 +61,9 @@ GET /api/workspaces/{workspaceId}/sql-history?run_id=&conversation_id=&occurred_
   `/w/{tenant_id}/qa?conversation={conversation_id}&run={run_id}&tab=conversation`；不得生成 latest/none fallback。
 - Client 对 route 响应再次执行 strict parse + hash verify。QA 入口消费 conversation/run 查询参数，轨迹与 SQL
   Tab 只格式化 DTO；移动端宽表只在表容器内横向滚动，页面本身不得溢出。
+- Trace 与 Detail route 必须返回 `Cache-Control: private, no-store`。Web Detail cache key 固定为
+  `run_id:trace_hash:node_id`；任何 scope/run/trace/build identity 变化或 authority 验签失败都必须清空旧 ready
+  DOM、所选节点与缓存，禁止继续展示旧快照。
 - Web Workbench 先逐 Run 验签 `ResolutionTrace`，再按 Conversation 中每个 Run 的最早公开事件时间形成稳定
   Turn 1..N，并由无 React/DOM 的纯模型合并四泳道、统计、时间/sequence domain、搜索与 edge hierarchy。
   UUID 或 replay 数组顺序不能决定 Turn 顺序。每条 record 必须保留真实 `run_id/turn_index`，Inspector 按所选 record
@@ -76,6 +84,8 @@ GET /api/workspaces/{workspaceId}/sql-history?run_id=&conversation_id=&occurred_
 | 时间窗口非 RFC 3339 或 after >= before | `SQL_HISTORY_LOOKUP_INVALID`，数据库调用数为 0 |
 | capability scope 或 Run principal 不匹配 | not-found-or-denied，不允许枚举 |
 | Trace/entry 内容或 hash 篡改 | `RESOLUTION_TRACE_HASH_MISMATCH` / `SQL_HISTORY_ENTRY_HASH_MISMATCH` |
+| Detail 内容或 hash 篡改 | `RESOLUTION_TRACE_DETAIL_SCHEMA_INVALID` / `RESOLUTION_TRACE_DETAIL_HASH_MISMATCH` |
+| Detail 请求绑定旧 Trace hash | `RESOLUTION_TRACE_SNAPSHOT_STALE`，不返回另一快照内容 |
 | unknown/private DTO field | strict Zod 拒绝，UI 不渲染 |
 
 ## 5. Good / Base / Bad Cases
@@ -90,9 +100,11 @@ GET /api/workspaces/{workspaceId}/sql-history?run_id=&conversation_id=&occurred_
 - Contracts：node/edge/entry canonical hash、排序、重复 sequence、端点闭包、scope/ref splice、unknown field、
   deep-link identity 与 forbidden-key scan。
 - Platform：稳定 reload、Event gap/hash、L2 与 Product Team Artifact relational/document/content hash、input/source ref existence、SQL
-  statement/parameter hash、Run/Conversation filter 与 principal predicate。
+  statement/parameter hash、Run/Conversation filter、principal predicate，以及旧 `expected_trace_hash` 的 snapshot-stale 负例。
 - Web：route 注入授权 scope、not-found-or-denied、client hash verify、Trace/SQL/Artifact/empty/error 状态、键盘 Tab、
-  1440px 与 390px 截图、长摘要和页面横向溢出检查。
+  1440px 与 390px 截图、长摘要和页面横向溢出检查；Falcon24 gate 还必须用真实浏览器逐节点打开 Detail、
+  打开 SQL/QueryEvidence/DerivedAnalysisEvidence/Chart/AnalysisReport exact preview，并观察图表 READY、同源表格
+  可见且无 `role=alert`。
 - Full gates：Contracts unit/typecheck/build、Platform unit/typecheck/build、Web unit/typecheck/build、Biome 与
   forbidden scan。若共享分支存在非 U9 fixture 失败，必须用 focused test 证明隔离并明确记录。
 
@@ -114,7 +126,7 @@ const trace = await verifyResolutionTrace((await response.json()).data);
 
 只有同事务重验后的 Event/Artifact projection 与客户端再次验签的 DTO 可以标记为可审计轨迹。
 
-## Scenario: Content-first Resolution Trace Detail v2
+## Scenario: Content-first Resolution Trace Detail v3
 
 ### 1. Scope / Trigger
 
@@ -124,8 +136,10 @@ const trace = await verifyResolutionTrace((await response.json()).data);
 ### 2. Signatures
 
 ```ts
-type ResolutionTraceDetailV2 = {
-  schema_version: "resolution-trace-detail@2.0.0";
+type ResolutionTraceDetailV3 = {
+  schema_version: "resolution-trace-detail@3.0.0";
+  trace_hash: ContentHash;
+  detail_hash: ContentHash;
   run_context: ResolutionTraceDetailSection;
   payload: ResolutionTraceDetailSection;
   result: ResolutionTraceDetailSection;
@@ -146,7 +160,9 @@ load_agent_team_public_projection_v2(requested_run_id uuid) returns jsonb;
 
 ### 3. Contracts
 
-- `run_context` 在同一 owner READ transaction 中提供用户问题、权威 Run 状态/时间、attempt count、active attempt/fence、Conversation title/version/message count、Datasource binding、公开回答摘要和冻结模型。
+- `run_context` 在同一 owner `REPEATABLE READ` transaction 中提供用户问题、权威 Run 状态/时间、attempt count、active attempt/fence、Conversation title/version/message count、Datasource binding、公开回答摘要和冻结模型。
+- Detail 请求必须携带父 `expected_trace_hash`；服务端重建同快照 Trace 后才生成 Detail，并对除
+  `detail_hash` 外的完整 material 计算 canonical hash。客户端必须同时验 `trace_hash/detail_hash`。
 - 历史 Config/Resource 没有冻结 display name 时返回 exact identity 和 `HISTORICAL_DISPLAY_NAME_UNAVAILABLE`；禁止查询当前 Catalog 补名。
 - Artifact 行内摘要只允许从已校验 committed document 的安全字段生成；正文仍按 exact `ArtifactReference` 进入 Preview API。
 - Team v2 只能投影 hash-verified authority document 的 allowlist：goal/bounds/required outputs/output ref、handoff child bounds、obligation counts、verifier dimensions/semantic status、acceptance status/reason/time。
@@ -156,7 +172,7 @@ load_agent_team_public_projection_v2(requested_run_id uuid) returns jsonb;
 
 | 条件 | 结果 |
 | --- | --- |
-| Detail v1 携带 v2 字段或未知字段 | strict reject |
+| Detail v2、未知字段或伪造 detail hash | strict reject |
 | Artifact ref scope/run/revision/hash 不闭合 | `RESOLUTION_TRACE_ARTIFACT_REFERENCE_MISSING` 或 corrupt，禁止内容 fallback |
 | Config 只有 exact identity、无历史公共 receipt | `HISTORICAL_CONFIG_CONTENT_UNAVAILABLE` + `HISTORICAL_DISPLAY_NAME_UNAVAILABLE` |
 | Team obligation open/unknown/resolved 之和不等于 total | contract reject |
@@ -174,7 +190,7 @@ load_agent_team_public_projection_v2(requested_run_id uuid) returns jsonb;
 
 ### 6. Tests Required
 
-- Contracts：Detail v2 十类节点矩阵；Team v1/v2 hash、unknown/private key、scope/run、output type、obligation closure。
+- Contracts：Detail v3 十类节点矩阵、父/自身 hash 篡改、unknown/private key、scope/run splice；Team v1/v2 hash、unknown/private key、scope/run、output type、obligation closure。
 - Platform：Run/Conversation/attempt/datasource 内容；Tool exact group；Artifact content summary；Config no-current-Catalog fallback；Team v2 RPC strict parse。
 - Migration：baseline 10696、checksum、security definer/search_path、public revoke/backend grant、v1 verification call、allowlist source assertions。
 - Web：Run context 主信息、Team goal/bounds/output/verifier/acceptance、Artifact exact preview，DOM 无 private material。

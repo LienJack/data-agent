@@ -1,4 +1,5 @@
 import { z } from "zod";
+import { artifactReferenceIdentity, artifactReferenceSchema } from "../artifacts/envelope.js";
 import {
   contentHashSchema,
   immutableIdSchema,
@@ -8,6 +9,14 @@ import {
 import { falcon24AnalysisCaseIdSchema } from "./falcon24-agent-analysis.js";
 
 export const FALCON24_STRICT_ACCEPTANCE_POLICY_ID = "falcon24-strict-zero-retry@1.0.0" as const;
+
+export const FALCON24_REQUIRED_UI_ARTIFACT_TYPES = Object.freeze([
+  "AnalysisReport",
+  "ArtifactWorkspaceDocument",
+  "DerivedAnalysisEvidence",
+  "QueryEvidence",
+  "SqlArtifact",
+] as const);
 
 export const falcon24AcceptanceCampaignIdSchema = z
   .string()
@@ -106,21 +115,54 @@ export async function verifyFalcon24AcceptanceRunManifest(input: unknown) {
   return manifest;
 }
 
-const falcon24ResolutionTraceGateReceiptMaterialSchema = z.strictObject({
-  schema_version: z.literal("falcon24-resolution-trace-gate-receipt@1.0.0"),
-  campaign_id: falcon24AcceptanceCampaignIdSchema,
-  run_id: immutableIdSchema,
-  trace_hash: contentHashSchema,
-  node_count: z.number().int().positive().safe(),
-  edge_count: z.number().int().positive().safe(),
-  detail_count: z.number().int().positive().safe(),
-  sql_node_count: z.number().int().positive().safe(),
-  query_evidence_node_count: z.number().int().positive().safe(),
-  analysis_evidence_node_count: z.number().int().positive().safe(),
-  chart_node_count: z.number().int().positive().safe(),
-  report_node_count: z.number().int().positive().safe(),
-  verified_at: timestampSchema,
-});
+const falcon24ResolutionTraceGateReceiptMaterialSchema = z
+  .strictObject({
+    schema_version: z.literal("falcon24-resolution-trace-gate-receipt@2.0.0"),
+    campaign_id: falcon24AcceptanceCampaignIdSchema,
+    run_id: immutableIdSchema,
+    trace_hash: contentHashSchema,
+    node_count: z.number().int().positive().safe(),
+    edge_count: z.number().int().positive().safe(),
+    detail_count: z.number().int().positive().safe(),
+    sql_node_count: z.number().int().positive().safe(),
+    query_evidence_node_count: z.number().int().positive().safe(),
+    analysis_evidence_node_count: z.number().int().positive().safe(),
+    chart_node_count: z.number().int().positive().safe(),
+    report_node_count: z.number().int().positive().safe(),
+    detail_closure: z
+      .array(
+        z.strictObject({
+          node_id: z.string().min(1).max(320),
+          detail_hash: contentHashSchema,
+        }),
+      )
+      .min(1)
+      .max(20_000)
+      .superRefine((items, context) => {
+        const identities = items.map(({ node_id: nodeId }) => nodeId);
+        if (
+          new Set(identities).size !== identities.length ||
+          identities.some(
+            (identity, index) => index > 0 && identity <= (identities[index - 1] ?? ""),
+          )
+        ) {
+          context.addIssue({
+            code: "custom",
+            message: "Falcon24 backend detail closure 必须按唯一 node_id 规范升序排列。",
+          });
+        }
+      }),
+    verified_at: timestampSchema,
+  })
+  .superRefine((receipt, context) => {
+    if (receipt.detail_closure.length !== receipt.detail_count) {
+      context.addIssue({
+        code: "custom",
+        message: "Falcon24 backend detail closure 必须精确覆盖 detail_count。",
+        path: ["detail_closure"],
+      });
+    }
+  });
 
 export const falcon24ResolutionTraceGateReceiptSchema =
   falcon24ResolutionTraceGateReceiptMaterialSchema.extend({
@@ -140,6 +182,121 @@ export async function verifyFalcon24ResolutionTraceGateReceipt(input: unknown) {
   const { receipt_hash: observedHash, ...material } = receipt;
   if ((await sha256ContentHash(material)) !== observedHash) {
     throw new TypeError("FALCON24_RESOLUTION_TRACE_GATE_RECEIPT_HASH_INVALID");
+  }
+  return receipt;
+}
+
+const falcon24ResolutionTraceUiGateReceiptMaterialSchema = z
+  .strictObject({
+    schema_version: z.literal("falcon24-resolution-trace-ui-gate-receipt@1.0.0"),
+    campaign_id: falcon24AcceptanceCampaignIdSchema,
+    run_id: immutableIdSchema,
+    workspace_id: immutableIdSchema,
+    conversation_id: immutableIdSchema,
+    trace_hash: contentHashSchema,
+    web_build: z.strictObject({
+      build_id: contentHashSchema,
+      generation_id: contentHashSchema,
+    }),
+    browser_harness_version: z.literal("falcon24-agent-browser-trace-gate@1.0.0"),
+    opened_nodes: z
+      .array(
+        z.strictObject({
+          node_id: z.string().min(1).max(320),
+          detail_hash: contentHashSchema,
+        }),
+      )
+      .min(1)
+      .max(20_000),
+    opened_artifact_refs: z.array(artifactReferenceSchema).length(5),
+    chart_ref: artifactReferenceSchema,
+    chart_renderer_version: z.literal("governed-vchart@1.0.0"),
+    chart_rendered: z.literal(true),
+    source_table_visible: z.literal(true),
+    error_banner: z.null(),
+    dom_snapshot_hash: contentHashSchema,
+    screenshot_hash: contentHashSchema,
+    observed_at: timestampSchema,
+  })
+  .superRefine((receipt, context) => {
+    const nodeIds = receipt.opened_nodes.map(({ node_id: nodeId }) => nodeId);
+    if (
+      new Set(nodeIds).size !== nodeIds.length ||
+      nodeIds.some((nodeId, index) => index > 0 && nodeId <= (nodeIds[index - 1] ?? ""))
+    ) {
+      context.addIssue({
+        code: "custom",
+        message: "Falcon24 UI opened_nodes 必须按唯一 node_id 规范升序排列。",
+        path: ["opened_nodes"],
+      });
+    }
+    const artifactIdentities = receipt.opened_artifact_refs.map(artifactReferenceIdentity);
+    if (
+      new Set(artifactIdentities).size !== artifactIdentities.length ||
+      artifactIdentities.some(
+        (identity, index) => index > 0 && identity <= (artifactIdentities[index - 1] ?? ""),
+      )
+    ) {
+      context.addIssue({
+        code: "custom",
+        message: "Falcon24 UI opened_artifact_refs 必须按唯一 exact reference 规范升序排列。",
+        path: ["opened_artifact_refs"],
+      });
+    }
+    const artifactTypes = [...receipt.opened_artifact_refs]
+      .map(({ artifact_type: artifactType }) => artifactType)
+      .sort();
+    if (
+      artifactTypes.length !== FALCON24_REQUIRED_UI_ARTIFACT_TYPES.length ||
+      artifactTypes.some(
+        (artifactType, index) => artifactType !== FALCON24_REQUIRED_UI_ARTIFACT_TYPES[index],
+      )
+    ) {
+      context.addIssue({
+        code: "custom",
+        message: "Falcon24 UI 必须精确打开 SQL、查询证据、分析证据、图表与分析报告。",
+        path: ["opened_artifact_refs"],
+      });
+    }
+    for (const [index, reference] of receipt.opened_artifact_refs.entries()) {
+      if (reference.run_id !== receipt.run_id || reference.tenant_id !== receipt.workspace_id) {
+        context.addIssue({
+          code: "custom",
+          message: "Falcon24 UI Artifact 必须属于同一 Workspace/Run。",
+          path: ["opened_artifact_refs", index],
+        });
+      }
+    }
+    if (
+      receipt.chart_ref.artifact_type !== "ArtifactWorkspaceDocument" ||
+      !artifactIdentities.includes(artifactReferenceIdentity(receipt.chart_ref))
+    ) {
+      context.addIssue({
+        code: "custom",
+        message: "Falcon24 UI 图表必须是已打开的 exact ArtifactWorkspaceDocument。",
+        path: ["chart_ref"],
+      });
+    }
+  });
+
+export const falcon24ResolutionTraceUiGateReceiptSchema =
+  falcon24ResolutionTraceUiGateReceiptMaterialSchema.extend({
+    receipt_hash: contentHashSchema,
+  });
+
+export async function buildFalcon24ResolutionTraceUiGateReceipt(input: unknown) {
+  const material = falcon24ResolutionTraceUiGateReceiptMaterialSchema.parse(input);
+  return falcon24ResolutionTraceUiGateReceiptSchema.parse({
+    ...material,
+    receipt_hash: await sha256ContentHash(material),
+  });
+}
+
+export async function verifyFalcon24ResolutionTraceUiGateReceipt(input: unknown) {
+  const receipt = falcon24ResolutionTraceUiGateReceiptSchema.parse(input);
+  const { receipt_hash: observedHash, ...material } = receipt;
+  if ((await sha256ContentHash(material)) !== observedHash) {
+    throw new TypeError("FALCON24_RESOLUTION_TRACE_UI_GATE_RECEIPT_HASH_INVALID");
   }
   return receipt;
 }

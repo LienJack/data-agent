@@ -1110,10 +1110,15 @@ describe("PostgreSQL Resolution Trace projector", () => {
       if (text.includes("from artifacts")) return { rows: [], rowCount: 0 };
       return undefined;
     });
-    const result = await createPostgresResolutionTraceProjector({ pool, authorizer }).loadDetail(
-      capability,
-      { scope, run_id: ids.run, node_id: `event:${toolEvent.event_id}` },
-    );
+    const projector = createPostgresResolutionTraceProjector({ pool, authorizer });
+    const trace = await projector.loadTrace(capability, { scope, run_id: ids.run });
+    if (!trace.ok || !trace.value) throw new Error("trace fixture missing");
+    const result = await projector.loadDetail(capability, {
+      scope,
+      run_id: ids.run,
+      node_id: `event:${toolEvent.event_id}`,
+      expected_trace_hash: trace.value.trace_hash,
+    });
     expect(result.ok && result.value).toMatchObject({
       kind: "TOOL",
       title: "semantic.release.read",
@@ -1153,11 +1158,40 @@ describe("PostgreSQL Resolution Trace projector", () => {
       if (text.includes("from artifacts")) return { rows: [], rowCount: 0 };
       return undefined;
     });
+    const projector = createPostgresResolutionTraceProjector({ pool, authorizer });
+    const trace = await projector.loadTrace(capability, { scope, run_id: ids.run });
+    if (!trace.ok || !trace.value) throw new Error("trace fixture missing");
+    const result = await projector.loadDetail(capability, {
+      scope,
+      run_id: ids.run,
+      node_id: `event:${id(999)}`,
+      expected_trace_hash: trace.value.trace_hash,
+    });
+    expect(result).toMatchObject({ ok: true, value: null });
+  });
+
+  it("fails closed when a detail request is bound to a stale trace snapshot", async () => {
+    const row = await eventRow();
+    const { capability, authorizer } = issueCapability();
+    const { pool } = scriptedPool((text) => {
+      if (text.includes("from runs as run")) return { rows: [authorityRow()], rowCount: 1 };
+      if (text.includes("from run_events")) return { rows: [row], rowCount: 1 };
+      if (text.includes("from artifacts")) return { rows: [], rowCount: 0 };
+      return undefined;
+    });
     const result = await createPostgresResolutionTraceProjector({ pool, authorizer }).loadDetail(
       capability,
-      { scope, run_id: ids.run, node_id: `event:${id(999)}` },
+      {
+        scope,
+        run_id: ids.run,
+        node_id: `event:${ids.event}`,
+        expected_trace_hash: hash("0"),
+      },
     );
-    expect(result).toMatchObject({ ok: true, value: null });
+    expect(result).toMatchObject({
+      ok: false,
+      error: { code: "RESOLUTION_TRACE_SNAPSHOT_STALE", retryable: false },
+    });
   });
 
   it("fails closed when a public Tool event references a missing Artifact revision", async () => {
@@ -1402,9 +1436,15 @@ describe("PostgreSQL Resolution Trace projector", () => {
         }),
       ]),
     );
+    if (!result.ok || !result.value) throw new Error("trace fixture missing");
     const detail = await createPostgresResolutionTraceProjector({ pool, authorizer }).loadDetail(
       capability,
-      { scope, run_id: ids.run, node_id: `artifact:${sql.artifact_id}:${sql.revision}` },
+      {
+        scope,
+        run_id: ids.run,
+        node_id: `artifact:${sql.artifact_id}:${sql.revision}`,
+        expected_trace_hash: result.value.trace_hash,
+      },
     );
     expect(detail.ok && detail.value?.payload).toMatchObject({
       state: "AVAILABLE",
@@ -1578,10 +1618,12 @@ describe("PostgreSQL Resolution Trace projector", () => {
         }),
       ]),
     );
+    if (!trace.ok || !trace.value) throw new Error("trace fixture missing");
     const detail = await projector.loadDetail(capability, {
       scope,
       run_id: ids.run,
       node_id: chartNodeId,
+      expected_trace_hash: trace.value.trace_hash,
     });
     expect(detail.ok && detail.value).toMatchObject({
       payload: { state: "AVAILABLE" },
@@ -1636,15 +1678,18 @@ describe("PostgreSQL Resolution Trace projector", () => {
         { from_node_id: chartNodeId, to_node_id: reportNodeId, kind: "EVIDENCE" },
       ]),
     );
+    if (!trace.ok || !trace.value) throw new Error("trace fixture missing");
     const chartDetail = await projector.loadDetail(capability, {
       scope,
       run_id: ids.run,
       node_id: chartNodeId,
+      expected_trace_hash: trace.value.trace_hash,
     });
     const reportDetail = await projector.loadDetail(capability, {
       scope,
       run_id: ids.run,
       node_id: reportNodeId,
+      expected_trace_hash: trace.value.trace_hash,
     });
     expect(chartDetail.ok && chartDetail.value?.schema).toMatchObject({
       state: "AVAILABLE",
@@ -1843,11 +1888,13 @@ describe("PostgreSQL Resolution Trace projector", () => {
       second.ok && second.value?.trace_hash,
     );
     expect(first.ok && first.value?.nodes.some(({ kind }) => kind === "SQL")).toBe(true);
+    if (!first.ok || !first.value) throw new Error("trace fixture missing");
 
     const configDetail = await projector.loadDetail(capability, {
       scope,
       run_id: ids.run,
       node_id: `config:${ids.config}:1`,
+      expected_trace_hash: first.value.trace_hash,
     });
     expect(configDetail.ok && configDetail.value).toMatchObject({
       kind: "CONTEXT",

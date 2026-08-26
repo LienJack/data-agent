@@ -17,20 +17,21 @@ export default function GovernedVChart({
   readonly describedBy?: string;
 }) {
   const container = useRef<HTMLDivElement>(null);
-  const [renderFailed, setRenderFailed] = useState(false);
+  const [renderState, setRenderState] = useState<"PENDING" | "READY" | "FAILED">("PENDING");
   const spec = useMemo(() => toGovernedVChartSpec(projection), [projection]);
 
   useEffect(() => {
     const target = container.current;
     if (!target) return;
-    setRenderFailed(false);
+    setRenderState("PENDING");
     let chart: VChartCore | null = null;
     try {
       chart = new VChartCore(spec, { dom: target, autoFit: true });
       chart.renderSync();
+      setRenderState("READY");
     } catch {
       chart?.release();
-      setRenderFailed(true);
+      setRenderState("FAILED");
       return;
     }
     return () => chart?.release();
@@ -42,9 +43,11 @@ export default function GovernedVChart({
       role="img"
       aria-label={`${projection.title}图表`}
       aria-describedby={describedBy}
+      data-testid="governed-chart"
+      data-chart-render-state={renderState}
     >
       <div className="h-full w-full" ref={container} />
-      {renderFailed ? (
+      {renderState === "FAILED" ? (
         <div className="absolute inset-0 grid place-items-center px-4 text-center text-xs text-[var(--color-text-muted)]">
           <p>
             图表暂时无法渲染，请查看下方等价数据表。

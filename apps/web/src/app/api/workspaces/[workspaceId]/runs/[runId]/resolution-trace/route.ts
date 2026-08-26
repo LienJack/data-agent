@@ -21,5 +21,8 @@ export async function GET(request: NextRequest, context: RouteContext) {
       retryable: false,
     });
   }
-  return NextResponse.json({ data: result.value });
+  return NextResponse.json(
+    { data: result.value },
+    { headers: { "Cache-Control": "private, no-store" } },
+  );
 }

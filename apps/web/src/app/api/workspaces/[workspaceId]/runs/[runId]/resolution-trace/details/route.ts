@@ -10,10 +10,12 @@ export async function GET(request: NextRequest, context: RouteContext) {
   const authorized = await authorizeWorkspaceRequest(request, workspaceId, "READ");
   if (!authorized.ok) return workspaceErrorResponse(authorized.error);
   const nodeId = request.nextUrl.searchParams.get("node_id");
+  const expectedTraceHash = request.nextUrl.searchParams.get("expected_trace_hash");
   const result = await getResolutionTraceProjector().loadDetail(authorized.value.capability, {
     scope: authorized.value.capability.scope,
     run_id: runId,
     node_id: nodeId,
+    expected_trace_hash: expectedTraceHash,
   });
   if (!result.ok) return workspaceErrorResponse(result.error);
   if (!result.value) {
@@ -23,5 +25,8 @@ export async function GET(request: NextRequest, context: RouteContext) {
       retryable: false,
     });
   }
-  return NextResponse.json({ data: result.value });
+  return NextResponse.json(
+    { data: result.value },
+    { headers: { "Cache-Control": "private, no-store" } },
+  );
 }

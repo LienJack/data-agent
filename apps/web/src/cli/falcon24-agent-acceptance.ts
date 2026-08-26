@@ -6,9 +6,11 @@ import { pathToFileURL } from "node:url";
 import { promisify } from "node:util";
 import type { BuiltinTeamProfileSetSnapshot } from "@data-agent/agent-runtime";
 import { sha256ContentHash } from "@data-agent/contracts/common";
+import { artifactReferenceIdentity } from "@data-agent/contracts/artifacts";
 import {
   buildFalcon24AcceptanceRunManifest,
   buildFalcon24ResolutionTraceGateReceipt,
+  buildFalcon24ResolutionTraceUiGateReceipt,
   FALCON24_STRICT_ACCEPTANCE_POLICY_ID,
   type Falcon24AcceptanceFailureLayer,
   falcon24AcceptanceCampaignIdSchema,
@@ -29,6 +31,7 @@ import {
   verifyCurrentBuiltinTeamAuthority,
 } from "@/lib/builtin-team-authority";
 import { deriveRunCommandIdentities } from "@/lib/run-command-identity";
+import { getWebRuntimeBuildIdentity } from "@/lib/runtime-build-identity";
 import {
   closeWorkspaceIdentityRuntime,
   getAgentProfileRegistry,
@@ -40,6 +43,10 @@ import {
   getWorkspaceSqlPool,
 } from "@/lib/workspace-identity";
 import { startQuestionRun } from "@/server/qa/start-question-run";
+import {
+  exactRequiredFalcon24ArtifactReferences,
+  runFalcon24BrowserTraceGate,
+} from "./falcon24-browser-trace-gate";
 import { verifyFalcon24ResolutionTraceGate } from "./falcon24-resolution-trace-gate";
 
 const execFileAsync = promisify(execFile);
@@ -481,6 +488,7 @@ async function main(): Promise<void> {
           scope: capability.scope,
           run_id: identities.run_id,
           node_id: nodeId,
+          expected_trace_hash: trace.trace_hash,
         }),
       );
       if (!detail || detail.node_id !== nodeId) {
@@ -488,15 +496,15 @@ async function main(): Promise<void> {
       }
       details.push(detail);
     }
-    return { trace, verified: verifyFalcon24ResolutionTraceGate(trace, details) };
+    return { trace, details, verified: verifyFalcon24ResolutionTraceGate(trace, details) };
   };
 
   if (command === "trace") {
     try {
       requireStrictPolicy(environment);
-      const { trace, verified } = await loadAndVerifyTrace();
+      const { trace, details, verified } = await loadAndVerifyTrace();
       const traceGateReceipt = await buildFalcon24ResolutionTraceGateReceipt({
-        schema_version: "falcon24-resolution-trace-gate-receipt@1.0.0",
+        schema_version: "falcon24-resolution-trace-gate-receipt@2.0.0",
         campaign_id: campaignId,
         run_id: identities.run_id,
         trace_hash: trace.trace_hash,
@@ -510,8 +518,49 @@ async function main(): Promise<void> {
           receipt: traceGateReceipt,
         }),
       );
+      if (trace.conversation_id !== identities.conversationId) {
+        throw new Error("FALCON24_BROWSER_CONVERSATION_IDENTITY_INVALID");
+      }
+      const screenshotPath = resolve(
+        root,
+        argument("browser-screenshot") ??
+          `artifacts/falcon24-agent-analysis/browser/${campaignId}/${identities.run_id}.png`,
+      );
+      await mkdir(dirname(screenshotPath), { recursive: true });
+      const browserObservation = await runFalcon24BrowserTraceGate({
+        session: z.string().min(1).parse(argument("browser-session")),
+        web_base_url: z.string().url().parse(argument("web-base-url")),
+        screenshot_path: screenshotPath,
+        workspace_id: scope.workspaceId,
+        conversation_id: identities.conversationId,
+        trace,
+        details,
+      });
+      const webBuildIdentity = getWebRuntimeBuildIdentity();
+      if (
+        browserObservation.web_build.build_id !== webBuildIdentity.build_id ||
+        browserObservation.web_build.generation_id !== webBuildIdentity.generation_id
+      ) {
+        throw new Error("FALCON24_BROWSER_BUILD_IDENTITY_MISMATCH");
+      }
+      const uiTraceGateReceipt = await buildFalcon24ResolutionTraceUiGateReceipt({
+        schema_version: "falcon24-resolution-trace-ui-gate-receipt@1.0.0",
+        campaign_id: campaignId,
+        run_id: identities.run_id,
+        workspace_id: scope.workspaceId,
+        conversation_id: identities.conversationId,
+        trace_hash: trace.trace_hash,
+        ...browserObservation,
+      });
+      requireValue(
+        await campaignAuthority.stageUiTrace(capability, {
+          campaign_id: campaignId,
+          run_id: identities.run_id,
+          receipt: uiTraceGateReceipt,
+        }),
+      );
       report({
-        terminal: "TRACE_VERIFIED",
+        terminal: "TRACE_UI_VERIFIED",
         campaign_id: campaignId,
         run_ordinal: runOrdinal,
         case_id: testCase.case_id,
@@ -520,6 +569,8 @@ async function main(): Promise<void> {
         run_id: identities.run_id,
         trace_hash: trace.trace_hash,
         trace_gate_receipt_hash: traceGateReceipt.receipt_hash,
+        ui_trace_gate_receipt_hash: uiTraceGateReceipt.receipt_hash,
+        screenshot_hash: uiTraceGateReceipt.screenshot_hash,
         ...verified,
       });
       return;
@@ -585,6 +636,18 @@ async function main(): Promise<void> {
           run_id: identities.run_id,
         }),
       );
+      const uiTraceGateReceipt = requireValue(
+        await campaignAuthority.loadUiTraceGate(capability, {
+          campaign_id: campaignId,
+          run_id: identities.run_id,
+        }),
+      );
+      const detailClosure = verified.detail_closure;
+      const requiredArtifactIdentities =
+        exactRequiredFalcon24ArtifactReferences(trace).map(artifactReferenceIdentity);
+      const openedArtifactIdentities =
+        uiTraceGateReceipt?.opened_artifact_refs.map(artifactReferenceIdentity);
+      const webBuildIdentity = getWebRuntimeBuildIdentity();
       if (
         !traceGateReceipt ||
         traceGateReceipt.trace_hash !== trace.trace_hash ||
@@ -595,9 +658,16 @@ async function main(): Promise<void> {
         traceGateReceipt.query_evidence_node_count !== verified.query_evidence_node_count ||
         traceGateReceipt.analysis_evidence_node_count !== verified.analysis_evidence_node_count ||
         traceGateReceipt.chart_node_count !== verified.chart_node_count ||
-        traceGateReceipt.report_node_count !== verified.report_node_count
+        traceGateReceipt.report_node_count !== verified.report_node_count ||
+        JSON.stringify(traceGateReceipt.detail_closure) !== JSON.stringify(detailClosure) ||
+        !uiTraceGateReceipt ||
+        uiTraceGateReceipt.trace_hash !== trace.trace_hash ||
+        uiTraceGateReceipt.web_build.build_id !== webBuildIdentity.build_id ||
+        uiTraceGateReceipt.web_build.generation_id !== webBuildIdentity.generation_id ||
+        JSON.stringify(uiTraceGateReceipt.opened_nodes) !== JSON.stringify(detailClosure) ||
+        JSON.stringify(openedArtifactIdentities) !== JSON.stringify(requiredArtifactIdentities)
       ) {
-        throw new Error("FALCON24_TRACE_STAGE_REQUIRED");
+        throw new Error("FALCON24_UI_TRACE_STAGE_REQUIRED");
       }
       failureLayer = "SANDBOX_RECLAMATION";
       const receipt = requireValue(
@@ -622,6 +692,7 @@ async function main(): Promise<void> {
         run_id: identities.run_id,
         trace_hash: trace.trace_hash,
         trace_gate_receipt_hash: traceGateReceipt.receipt_hash,
+        ui_trace_gate_receipt_hash: uiTraceGateReceipt.receipt_hash,
         sandbox_reclamation_hash: receipt.receipt_hash,
         ...verified,
       });

@@ -6,8 +6,10 @@ import {
   falcon24AcceptanceRunManifestSchema,
   falcon24AgentAnalysisRunResultSchema,
   falcon24ResolutionTraceGateReceiptSchema,
+  falcon24ResolutionTraceUiGateReceiptSchema,
   falcon24SandboxReclamationReceiptSchema,
   verifyFalcon24ResolutionTraceGateReceipt,
+  verifyFalcon24ResolutionTraceUiGateReceipt,
   verifyFalcon24SandboxReclamationReceipt,
 } from "@data-agent/contracts/evals";
 import { canonicalImmutableIdSchema } from "@data-agent/contracts/workspaces";
@@ -74,6 +76,8 @@ const campaignRunRowSchema = z.strictObject({
   trace_closure_hash: contentHashSchema.nullable(),
   trace_gate_receipt_hash: contentHashSchema.nullable(),
   trace_gate_receipt: falcon24ResolutionTraceGateReceiptSchema.nullable(),
+  ui_trace_gate_receipt_hash: contentHashSchema.nullable(),
+  ui_trace_gate_receipt: falcon24ResolutionTraceUiGateReceiptSchema.nullable(),
   result_hash: contentHashSchema.nullable(),
   result_document: falcon24AgentAnalysisRunResultSchema.nullable(),
   sandbox_reclamation_recovery_hash: contentHashSchema.nullable(),
@@ -136,6 +140,11 @@ const traceStageInputSchema = z.strictObject({
   campaign_id: campaignIdSchema,
   run_id: canonicalImmutableIdSchema,
   receipt: falcon24ResolutionTraceGateReceiptSchema,
+});
+const uiTraceStageInputSchema = z.strictObject({
+  campaign_id: campaignIdSchema,
+  run_id: canonicalImmutableIdSchema,
+  receipt: falcon24ResolutionTraceUiGateReceiptSchema,
 });
 const stageInputSchema = z.strictObject({
   campaign_id: campaignIdSchema,
@@ -201,6 +210,10 @@ const STABLE_DATABASE_ERRORS = new Set([
   "FALCON24_TRACE_STAGE_REPLAY_MISMATCH",
   "FALCON24_TRACE_STAGE_REQUIRED",
   "FALCON24_TRACE_GATE_RECEIPT_LOAD_INVALID",
+  "FALCON24_UI_TRACE_STAGE_INVALID",
+  "FALCON24_UI_TRACE_STAGE_REPLAY_MISMATCH",
+  "FALCON24_UI_TRACE_STAGE_REQUIRED",
+  "FALCON24_UI_TRACE_GATE_RECEIPT_LOAD_INVALID",
   "FALCON24_ACTUAL_RUN_REQUIRED",
   "FALCON24_ACTUAL_RUN_NOT_TERMINAL",
   "FALCON24_ACTUAL_RUN_NOT_SUCCEEDED",
@@ -648,6 +661,91 @@ export function createPostgresFalcon24AcceptanceCampaignAuthority(input: {
             throw new PersistenceBoundaryError(
               "FALCON24_CAMPAIGN_DATABASE_CONTRACT_INVALID",
               "Falcon24 Trace gate receipt escaped its exact campaign/run identity.",
+            );
+          }
+          return receipt;
+        },
+      );
+    },
+
+    async stageUiTrace(capabilityInput: unknown, candidate: unknown) {
+      const request = uiTraceStageInputSchema.parse(candidate);
+      const receipt = await verifyFalcon24ResolutionTraceUiGateReceipt(request.receipt);
+      if (receipt.campaign_id !== request.campaign_id || receipt.run_id !== request.run_id) {
+        throw new TypeError("FALCON24_UI_TRACE_STAGE_IDENTITY_INVALID");
+      }
+      const command = await commandWithHash({
+        schema_version: "falcon24-acceptance-ui-trace-stage@1.0.0" as const,
+        campaign_id: request.campaign_id,
+        run_id: request.run_id,
+        trace_closure_hash: receipt.trace_hash,
+        ui_trace_gate_receipt_hash: receipt.receipt_hash,
+        ui_trace_gate_receipt: receipt,
+      });
+      return withAppTransaction(
+        input.pool,
+        input.authorizer,
+        capabilityInput,
+        {
+          access: "WRITE",
+          allowed_roles: ["OWNER", "ANALYST"],
+          operation_name: "falcon24-acceptance.stage-ui-trace",
+          correlation_id: request.run_id,
+          map_database_error: mapDatabaseError,
+        },
+        async ({ client }) => {
+          const result = await client.query<JsonRow>(
+            "select app_data_agent.stage_falcon24_acceptance_ui_trace($1::jsonb) as value",
+            [command],
+          );
+          const campaignRun = campaignRunRowSchema.parse(exact(result.rows));
+          if (
+            campaignRun.campaign_id !== request.campaign_id ||
+            campaignRun.run_id !== request.run_id ||
+            campaignRun.status !== "CLAIMED" ||
+            campaignRun.trace_closure_hash !== receipt.trace_hash ||
+            campaignRun.ui_trace_gate_receipt_hash !== receipt.receipt_hash ||
+            campaignRun.ui_trace_gate_receipt?.receipt_hash !== receipt.receipt_hash
+          ) {
+            throw new PersistenceBoundaryError(
+              "FALCON24_CAMPAIGN_DATABASE_CONTRACT_INVALID",
+              "Falcon24 UI Trace stage RPC 返回了不同的浏览器闭包。",
+            );
+          }
+          return campaignRun;
+        },
+      );
+    },
+
+    async loadUiTraceGate(capabilityInput: unknown, candidate: unknown) {
+      const request = runIdentityInputSchema.parse(candidate);
+      const command = await commandWithHash({
+        schema_version: "falcon24-acceptance-ui-trace-gate-load@1.0.0" as const,
+        ...request,
+      });
+      return withAppTransaction(
+        input.pool,
+        input.authorizer,
+        capabilityInput,
+        {
+          access: "READ",
+          allowed_roles: ["OWNER", "ANALYST"],
+          operation_name: "falcon24-acceptance.load-ui-trace-gate",
+          correlation_id: request.run_id,
+          map_database_error: mapDatabaseError,
+        },
+        async ({ client }) => {
+          const result = await client.query<JsonRow>(
+            "select app_data_agent.load_falcon24_acceptance_ui_trace_gate($1::jsonb) as value",
+            [command],
+          );
+          const raw = exact(result.rows);
+          if (raw === null) return null;
+          const receipt = await verifyFalcon24ResolutionTraceUiGateReceipt(raw);
+          if (receipt.campaign_id !== request.campaign_id || receipt.run_id !== request.run_id) {
+            throw new PersistenceBoundaryError(
+              "FALCON24_CAMPAIGN_DATABASE_CONTRACT_INVALID",
+              "Falcon24 UI Trace gate receipt escaped its exact campaign/run identity.",
             );
           }
           return receipt;

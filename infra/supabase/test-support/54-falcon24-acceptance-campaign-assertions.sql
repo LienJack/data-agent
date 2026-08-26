@@ -751,7 +751,9 @@ set local role data_agent_backend;
 
 do $assertion$
 declare observation jsonb; receipt jsonb; command jsonb; result_document jsonb; result_hash text;
-  trace_receipt jsonb; trace_command jsonb; loaded jsonb; reclamation_claim jsonb;
+  trace_receipt jsonb; trace_command jsonb; ui_trace_receipt jsonb;
+  ui_trace_command jsonb; competing_ui_trace_receipt jsonb;
+  competing_ui_trace_command jsonb; loaded jsonb; reclamation_claim jsonb;
   recorded jsonb; completed jsonb;
   reclamation_recovery_token constant text:='00000000-0000-4000-8000-000000005415';
   competing_recovery_token constant text:='00000000-0000-4000-8000-000000005416';
@@ -938,6 +940,55 @@ begin
     'trace_gate_receipt',trace_receipt);
   trace_command:=trace_command||pg_catalog.jsonb_build_object(
     'command_hash',pg_temp.falcon24_test_hash(trace_command));
+  begin
+    perform app_data_agent.stage_falcon24_acceptance_trace(trace_command);
+    raise exception 'FALCON24_LEGACY_TRACE_RECEIPT_WAS_ACCEPTED';
+  exception when others then
+    if sqlerrm<>'FALCON24_TRACE_STAGE_INVALID' then raise; end if;
+  end;
+
+  trace_receipt:=pg_catalog.jsonb_build_object(
+    'schema_version','falcon24-resolution-trace-gate-receipt@2.0.0',
+    'campaign_id','falcon24-test-v14-authority',
+    'run_id','00000000-0000-4000-8000-000000005411',
+    'trace_hash','sha256:1111111111111111111111111111111111111111111111111111111111111111',
+    'node_count',7,'edge_count',5,'detail_count',7,'sql_node_count',1,
+    'query_evidence_node_count',1,'analysis_evidence_node_count',1,
+    'chart_node_count',1,'report_node_count',1,
+    'detail_closure',pg_catalog.jsonb_build_array(
+      pg_catalog.jsonb_build_object(
+        'node_id','node-01','detail_hash',
+          'sha256:2222222222222222222222222222222222222222222222222222222222222222'),
+      pg_catalog.jsonb_build_object(
+        'node_id','node-02','detail_hash',
+          'sha256:3333333333333333333333333333333333333333333333333333333333333333'),
+      pg_catalog.jsonb_build_object(
+        'node_id','node-03','detail_hash',
+          'sha256:4444444444444444444444444444444444444444444444444444444444444444'),
+      pg_catalog.jsonb_build_object(
+        'node_id','node-04','detail_hash',
+          'sha256:5555555555555555555555555555555555555555555555555555555555555555'),
+      pg_catalog.jsonb_build_object(
+        'node_id','node-05','detail_hash',
+          'sha256:6666666666666666666666666666666666666666666666666666666666666666'),
+      pg_catalog.jsonb_build_object(
+        'node_id','node-06','detail_hash',
+          'sha256:7777777777777777777777777777777777777777777777777777777777777777'),
+      pg_catalog.jsonb_build_object(
+        'node_id','node-07','detail_hash',
+          'sha256:8888888888888888888888888888888888888888888888888888888888888888')),
+    'verified_at','2026-08-26T00:00:00.000Z');
+  trace_receipt:=trace_receipt||pg_catalog.jsonb_build_object(
+    'receipt_hash',pg_temp.falcon24_test_hash(trace_receipt));
+  trace_command:=pg_catalog.jsonb_build_object(
+    'schema_version','falcon24-acceptance-trace-stage@1.0.0',
+    'campaign_id','falcon24-test-v14-authority',
+    'run_id','00000000-0000-4000-8000-000000005411',
+    'trace_closure_hash',trace_receipt->>'trace_hash',
+    'trace_gate_receipt_hash',trace_receipt->>'receipt_hash',
+    'trace_gate_receipt',trace_receipt);
+  trace_command:=trace_command||pg_catalog.jsonb_build_object(
+    'command_hash',pg_temp.falcon24_test_hash(trace_command));
   loaded:=app_data_agent.stage_falcon24_acceptance_trace(trace_command);
   if loaded->>'trace_closure_hash' is distinct from trace_receipt->>'trace_hash'
     or loaded->>'trace_gate_receipt_hash' is distinct from trace_receipt->>'receipt_hash'
@@ -953,6 +1004,159 @@ begin
   loaded:=app_data_agent.load_falcon24_acceptance_trace_gate(command);
   if loaded is distinct from trace_receipt
   then raise exception 'FALCON24_TRACE_GATE_LOAD_RPC_DRIFT'; end if;
+
+  command:=pg_catalog.jsonb_build_object(
+    'schema_version','falcon24-sandbox-reclamation-claim@1.0.0',
+    'campaign_id','falcon24-test-v14-authority',
+    'run_id','00000000-0000-4000-8000-000000005411',
+    'runtime_attestation_hash',
+      'sha256:cccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccc',
+    'reclamation_recovery_token',reclamation_recovery_token,
+    'reclamation_claim_token',reclamation_claim_token);
+  command:=command||pg_catalog.jsonb_build_object(
+    'command_hash',pg_temp.falcon24_test_hash(command));
+  begin
+    perform app_data_agent.claim_falcon24_sandbox_reclamation(command);
+    raise exception 'FALCON24_RECLAMATION_WITHOUT_UI_TRACE_WAS_CLAIMED';
+  exception when others then
+    if sqlerrm<>'FALCON24_UI_TRACE_STAGE_REQUIRED' then raise; end if;
+  end;
+
+  ui_trace_receipt:=pg_catalog.jsonb_build_object(
+    'schema_version','falcon24-resolution-trace-ui-gate-receipt@1.0.0',
+    'campaign_id','falcon24-test-v14-authority',
+    'run_id','00000000-0000-4000-8000-000000005411',
+    'workspace_id','00000000-0000-4000-8000-00000000aa22',
+    'conversation_id','00000000-0000-4000-8000-000000005497',
+    'trace_hash',trace_receipt->>'trace_hash',
+    'web_build',pg_catalog.jsonb_build_object(
+      'build_id','sha256:aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa',
+      'generation_id','sha256:bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb'),
+    'browser_harness_version','falcon24-agent-browser-trace-gate@1.0.0',
+    'opened_nodes',trace_receipt->'detail_closure',
+    'opened_artifact_refs',pg_catalog.jsonb_build_array(
+      pg_catalog.jsonb_build_object(
+        'app_id','00000000-0000-4000-8000-00000000da01',
+        'tenant_id','00000000-0000-4000-8000-00000000aa22','environment','test',
+        'run_id','00000000-0000-4000-8000-000000005411',
+        'artifact_id','00000000-0000-4000-8000-0000000054b1',
+        'artifact_type','SqlArtifact','revision',1,
+        'content_hash','sha256:bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb'),
+      pg_catalog.jsonb_build_object(
+        'app_id','00000000-0000-4000-8000-00000000da01',
+        'tenant_id','00000000-0000-4000-8000-00000000aa22','environment','test',
+        'run_id','00000000-0000-4000-8000-000000005411',
+        'artifact_id','00000000-0000-4000-8000-0000000054b2',
+        'artifact_type','QueryEvidence','revision',1,
+        'content_hash','sha256:cccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccc'),
+      pg_catalog.jsonb_build_object(
+        'app_id','00000000-0000-4000-8000-00000000da01',
+        'tenant_id','00000000-0000-4000-8000-00000000aa22','environment','test',
+        'run_id','00000000-0000-4000-8000-000000005411',
+        'artifact_id','00000000-0000-4000-8000-0000000054b3',
+        'artifact_type','DerivedAnalysisEvidence','revision',1,
+        'content_hash','sha256:dddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddd'),
+      pg_catalog.jsonb_build_object(
+        'app_id','00000000-0000-4000-8000-00000000da01',
+        'tenant_id','00000000-0000-4000-8000-00000000aa22','environment','test',
+        'run_id','00000000-0000-4000-8000-000000005411',
+        'artifact_id','00000000-0000-4000-8000-0000000054b4',
+        'artifact_type','ArtifactWorkspaceDocument','revision',1,
+        'content_hash','sha256:eeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeee'),
+      pg_catalog.jsonb_build_object(
+        'app_id','00000000-0000-4000-8000-00000000da01',
+        'tenant_id','00000000-0000-4000-8000-00000000aa22','environment','test',
+        'run_id','00000000-0000-4000-8000-000000005411',
+        'artifact_id','00000000-0000-4000-8000-0000000054b5',
+        'artifact_type','AnalysisReport','revision',1,
+        'content_hash','sha256:ffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffff')),
+    'chart_ref',pg_catalog.jsonb_build_object(
+      'app_id','00000000-0000-4000-8000-00000000da01',
+      'tenant_id','00000000-0000-4000-8000-00000000aa22','environment','test',
+      'run_id','00000000-0000-4000-8000-000000005411',
+      'artifact_id','00000000-0000-4000-8000-0000000054b4',
+      'artifact_type','ArtifactWorkspaceDocument','revision',1,
+      'content_hash','sha256:eeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeee'),
+    'chart_renderer_version','governed-vchart@1.0.0',
+    'chart_rendered',true,'source_table_visible',true,'error_banner','null'::jsonb,
+    'dom_snapshot_hash',
+      'sha256:cccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccc',
+    'screenshot_hash',
+      'sha256:dddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddd',
+    'observed_at','2026-08-26T00:00:01.000Z');
+  ui_trace_receipt:=ui_trace_receipt||pg_catalog.jsonb_build_object(
+    'receipt_hash',pg_temp.falcon24_test_hash(ui_trace_receipt));
+
+  competing_ui_trace_receipt:=pg_catalog.jsonb_set(
+    ui_trace_receipt-'receipt_hash','{opened_nodes}',
+    pg_catalog.jsonb_build_array((trace_receipt->'detail_closure')->0),false);
+  competing_ui_trace_receipt:=competing_ui_trace_receipt||pg_catalog.jsonb_build_object(
+    'receipt_hash',pg_temp.falcon24_test_hash(competing_ui_trace_receipt));
+  competing_ui_trace_command:=pg_catalog.jsonb_build_object(
+    'schema_version','falcon24-acceptance-ui-trace-stage@1.0.0',
+    'campaign_id','falcon24-test-v14-authority',
+    'run_id','00000000-0000-4000-8000-000000005411',
+    'trace_closure_hash',trace_receipt->>'trace_hash',
+    'ui_trace_gate_receipt_hash',competing_ui_trace_receipt->>'receipt_hash',
+    'ui_trace_gate_receipt',competing_ui_trace_receipt);
+  competing_ui_trace_command:=competing_ui_trace_command||pg_catalog.jsonb_build_object(
+    'command_hash',pg_temp.falcon24_test_hash(competing_ui_trace_command));
+  begin
+    perform app_data_agent.stage_falcon24_acceptance_ui_trace(
+      competing_ui_trace_command);
+    raise exception 'FALCON24_INCOMPLETE_UI_NODE_CLOSURE_WAS_STAGED';
+  exception when others then
+    if sqlerrm<>'FALCON24_TRACE_STAGE_REQUIRED' then raise; end if;
+  end;
+
+  ui_trace_command:=pg_catalog.jsonb_build_object(
+    'schema_version','falcon24-acceptance-ui-trace-stage@1.0.0',
+    'campaign_id','falcon24-test-v14-authority',
+    'run_id','00000000-0000-4000-8000-000000005411',
+    'trace_closure_hash',trace_receipt->>'trace_hash',
+    'ui_trace_gate_receipt_hash',ui_trace_receipt->>'receipt_hash',
+    'ui_trace_gate_receipt',ui_trace_receipt);
+  ui_trace_command:=ui_trace_command||pg_catalog.jsonb_build_object(
+    'command_hash',pg_temp.falcon24_test_hash(ui_trace_command));
+  loaded:=app_data_agent.stage_falcon24_acceptance_ui_trace(ui_trace_command);
+  if loaded->>'ui_trace_gate_receipt_hash' is distinct from ui_trace_receipt->>'receipt_hash'
+    or loaded->'ui_trace_gate_receipt' is distinct from ui_trace_receipt
+  then raise exception 'FALCON24_UI_TRACE_GATE_NOT_DURABLE'; end if;
+  loaded:=app_data_agent.stage_falcon24_acceptance_ui_trace(ui_trace_command);
+  if loaded->>'ui_trace_gate_receipt_hash' is distinct from ui_trace_receipt->>'receipt_hash'
+  then raise exception 'FALCON24_UI_TRACE_GATE_IDEMPOTENCY_DRIFT'; end if;
+
+  competing_ui_trace_receipt:=pg_catalog.jsonb_set(
+    ui_trace_receipt-'receipt_hash','{observed_at}',
+    pg_catalog.to_jsonb('2026-08-26T00:00:02.000Z'::text),false);
+  competing_ui_trace_receipt:=competing_ui_trace_receipt||pg_catalog.jsonb_build_object(
+    'receipt_hash',pg_temp.falcon24_test_hash(competing_ui_trace_receipt));
+  competing_ui_trace_command:=pg_catalog.jsonb_build_object(
+    'schema_version','falcon24-acceptance-ui-trace-stage@1.0.0',
+    'campaign_id','falcon24-test-v14-authority',
+    'run_id','00000000-0000-4000-8000-000000005411',
+    'trace_closure_hash',trace_receipt->>'trace_hash',
+    'ui_trace_gate_receipt_hash',competing_ui_trace_receipt->>'receipt_hash',
+    'ui_trace_gate_receipt',competing_ui_trace_receipt);
+  competing_ui_trace_command:=competing_ui_trace_command||pg_catalog.jsonb_build_object(
+    'command_hash',pg_temp.falcon24_test_hash(competing_ui_trace_command));
+  begin
+    perform app_data_agent.stage_falcon24_acceptance_ui_trace(
+      competing_ui_trace_command);
+    raise exception 'FALCON24_UI_TRACE_GATE_DIFFERENT_RECEIPT_WAS_ACCEPTED';
+  exception when others then
+    if sqlerrm<>'FALCON24_UI_TRACE_STAGE_REPLAY_MISMATCH' then raise; end if;
+  end;
+
+  command:=pg_catalog.jsonb_build_object(
+    'schema_version','falcon24-acceptance-ui-trace-gate-load@1.0.0',
+    'campaign_id','falcon24-test-v14-authority',
+    'run_id','00000000-0000-4000-8000-000000005411');
+  command:=command||pg_catalog.jsonb_build_object(
+    'command_hash',pg_temp.falcon24_test_hash(command));
+  loaded:=app_data_agent.load_falcon24_acceptance_ui_trace_gate(command);
+  if loaded is distinct from ui_trace_receipt
+  then raise exception 'FALCON24_UI_TRACE_GATE_LOAD_RPC_DRIFT'; end if;
 
   command:=pg_catalog.jsonb_build_object(
     'schema_version','falcon24-sandbox-reclamation-claim@1.0.0',

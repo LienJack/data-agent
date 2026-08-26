@@ -1,4 +1,4 @@
-import { buildResolutionTrace } from "@data-agent/contracts";
+import { buildResolutionTrace, buildResolutionTraceDetail } from "@data-agent/contracts";
 import { NextRequest, NextResponse } from "next/server";
 import { beforeAll, beforeEach, describe, expect, it, vi } from "vitest";
 
@@ -58,8 +58,10 @@ beforeAll(async () => {
     edges: [],
   });
   state.sql = { schema_version: "sql-history-result@1.0.0", items: [], next_cursor: null };
-  state.detail = {
-    schema_version: "resolution-trace-detail@2.0.0",
+  const trace = state.trace as Awaited<ReturnType<typeof buildResolutionTrace>>;
+  state.detail = await buildResolutionTraceDetail({
+    schema_version: "resolution-trace-detail@3.0.0",
+    trace_hash: trace.trace_hash,
     scope,
     run_id: runId,
     node_id: `event:${id(7)}`,
@@ -97,7 +99,7 @@ beforeAll(async () => {
     },
     relations: [],
     artifact_refs: [],
-  };
+  });
 });
 
 describe("Resolution Trace workspace routes", () => {
@@ -113,9 +115,10 @@ describe("Resolution Trace workspace routes", () => {
       "../src/app/api/workspaces/[workspaceId]/runs/[runId]/resolution-trace/details/route"
     );
     const nodeId = `event:${id(7)}`;
+    const traceHash = (state.trace as Awaited<ReturnType<typeof buildResolutionTrace>>).trace_hash;
     const response = await route.GET(
       new NextRequest(
-        `http://localhost/api/workspaces/${workspaceId}/runs/${runId}/resolution-trace/details?node_id=${encodeURIComponent(nodeId)}`,
+        `http://localhost/api/workspaces/${workspaceId}/runs/${runId}/resolution-trace/details?node_id=${encodeURIComponent(nodeId)}&expected_trace_hash=${encodeURIComponent(traceHash)}`,
       ),
       { params: Promise.resolve({ workspaceId, runId }) },
     );
@@ -123,8 +126,11 @@ describe("Resolution Trace workspace routes", () => {
     expect(await response.json()).toMatchObject({
       data: { node_id: nodeId, result: { text: "文档正文" } },
     });
-    expect(state.detailInputs).toEqual([{ scope, run_id: runId, node_id: nodeId }]);
+    expect(state.detailInputs).toEqual([
+      { scope, run_id: runId, node_id: nodeId, expected_trace_hash: traceHash },
+    ]);
     expect(state.accesses).toEqual(["READ"]);
+    expect(response.headers.get("cache-control")).toBe("private, no-store");
   });
 
   it("injects the authorized scope and returns the hashed Run trace", async () => {
@@ -145,6 +151,7 @@ describe("Resolution Trace workspace routes", () => {
     });
     expect(state.traceInputs).toEqual([{ scope, run_id: runId }]);
     expect(state.accesses).toEqual(["READ"]);
+    expect(response.headers.get("cache-control")).toBe("private, no-store");
   });
 
   it("passes only strict SQL filters and does not expose a missing Run identity", async () => {

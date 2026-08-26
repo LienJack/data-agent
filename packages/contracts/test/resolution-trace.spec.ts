@@ -1,6 +1,7 @@
 import { describe, expect, it } from "vitest";
 import {
   buildResolutionTrace,
+  buildResolutionTraceDetail,
   buildSqlHistoryEntry,
   resolutionTraceDetailSchema,
   resolutionTraceSchema,
@@ -266,9 +267,9 @@ describe("resolution trace contracts", () => {
     await expect(
       verifyResolutionTrace({ schema_version: "resolution-trace@1.0.0" }),
     ).rejects.toThrow("RESOLUTION_TRACE_SCHEMA_INVALID");
-    expect(() =>
-      verifyResolutionTraceDetail({ schema_version: "resolution-trace-detail@2.0.0" }),
-    ).toThrow("RESOLUTION_TRACE_DETAIL_SCHEMA_INVALID");
+    await expect(
+      verifyResolutionTraceDetail({ schema_version: "resolution-trace-detail@3.0.0" }),
+    ).rejects.toThrow("RESOLUTION_TRACE_DETAIL_SCHEMA_INVALID");
   });
 
   it("rejects unknown or private fields instead of leaking them into the public wire", async () => {
@@ -286,9 +287,10 @@ describe("resolution trace contracts", () => {
     expect(parsed.success).toBe(false);
   });
 
-  it("parses a content-first public detail and rejects private payload fields", () => {
-    const detail = {
-      schema_version: "resolution-trace-detail@2.0.0",
+  it("parses a content-first public detail and rejects private payload fields", async () => {
+    const detail = await buildResolutionTraceDetail({
+      schema_version: "resolution-trace-detail@3.0.0",
+      trace_hash: hash("f"),
       scope,
       run_id: id(4),
       node_id: `event:${id(7)}`,
@@ -339,27 +341,34 @@ describe("resolution trace contracts", () => {
       },
       relations: [],
       artifact_refs: [],
-    } as const;
+    });
+    const { detail_hash: _detailHash, ...detailMaterial } = detail;
 
-    expect(resolutionTraceDetailSchema.parse(detail).result).toMatchObject({
+    await expect(verifyResolutionTraceDetail(detail)).resolves.toEqual(detail);
+    expect(detail.result).toMatchObject({
       state: "AVAILABLE",
       text: "文件正文预览",
     });
     expect(
       resolutionTraceDetailSchema.safeParse({
-        ...detail,
+        ...detailMaterial,
+        detail_hash: detail.detail_hash,
         provider_payload: { authorization: "Bearer secret" },
       }).success,
     ).toBe(false);
     expect(
       resolutionTraceDetailSchema.safeParse({
-        ...detail,
-        payload: { ...detail.payload, reasoning_content: "private chain of thought" },
+        ...detailMaterial,
+        detail_hash: detail.detail_hash,
+        payload: { ...detailMaterial.payload, reasoning_content: "private chain of thought" },
       }).success,
     ).toBe(false);
+    await expect(verifyResolutionTraceDetail({ ...detail, summary: "tampered" })).rejects.toThrow(
+      "RESOLUTION_TRACE_DETAIL_HASH_MISMATCH",
+    );
   });
 
-  it("keeps a strict content-first detail shape for all ten node kinds", () => {
+  it("keeps a strict content-first detail shape for all ten node kinds", async () => {
     const kinds = [
       "LIFECYCLE",
       "PROGRESS",
@@ -374,8 +383,9 @@ describe("resolution trace contracts", () => {
     ] as const;
     for (const [index, kind] of kinds.entries()) {
       const derived = ["ARTIFACT", "SQL", "CONTEXT"].includes(kind);
-      const parsed = resolutionTraceDetailSchema.parse({
-        schema_version: "resolution-trace-detail@2.0.0",
+      const parsed = await buildResolutionTraceDetail({
+        schema_version: "resolution-trace-detail@3.0.0",
+        trace_hash: hash("f"),
         scope,
         run_id: id(4),
         node_id: derived ? `artifact:${id(index + 30)}:1` : `event:${id(index + 30)}`,

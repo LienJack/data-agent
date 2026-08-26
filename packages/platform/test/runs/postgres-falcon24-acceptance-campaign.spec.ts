@@ -1,6 +1,8 @@
 import {
+  artifactReferenceIdentity,
   buildFalcon24AcceptanceRunManifest,
   buildFalcon24ResolutionTraceGateReceipt,
+  buildFalcon24ResolutionTraceUiGateReceipt,
   buildFalcon24SandboxReclamationReceipt,
   falcon24AnalysisCaseIdSchema,
   STATISTICAL_OPERATOR_REGISTRY_DIGEST,
@@ -86,6 +88,8 @@ function run(overrides: Record<string, unknown> = {}) {
     trace_closure_hash: null,
     trace_gate_receipt_hash: null,
     trace_gate_receipt: null,
+    ui_trace_gate_receipt_hash: null,
+    ui_trace_gate_receipt: null,
     result_hash: null,
     result_document: null,
     sandbox_reclamation_recovery_hash: null,
@@ -104,9 +108,13 @@ function run(overrides: Record<string, unknown> = {}) {
 function reference(
   artifactType:
     | "AnalysisProgram"
+    | "AnalysisReport"
+    | "DerivedAnalysisEvidence"
+    | "QueryEvidence"
     | "SensitiveExecutionArtifact"
     | "SandboxExecutionReceipt"
-    | "ArtifactWorkspaceDocument",
+    | "ArtifactWorkspaceDocument"
+    | "SqlArtifact",
   suffix: number,
 ) {
   return {
@@ -225,7 +233,7 @@ async function reclamationReceipt() {
 
 async function traceGateReceipt() {
   return buildFalcon24ResolutionTraceGateReceipt({
-    schema_version: "falcon24-resolution-trace-gate-receipt@1.0.0" as const,
+    schema_version: "falcon24-resolution-trace-gate-receipt@2.0.0" as const,
     campaign_id: "falcon24-root-v13-final",
     run_id: ids.run,
     trace_hash: hash("d"),
@@ -237,7 +245,50 @@ async function traceGateReceipt() {
     analysis_evidence_node_count: 1,
     chart_node_count: 1,
     report_node_count: 1,
+    detail_closure: Array.from({ length: 10 }, (_, index) => ({
+      node_id: `node-${String(index).padStart(2, "0")}`,
+      detail_hash: hash(String(index % 10)),
+    })),
     verified_at: now,
+  });
+}
+
+async function uiTraceGateReceipt() {
+  const openedArtifactRefs = [
+    reference("AnalysisReport", 35),
+    reference("ArtifactWorkspaceDocument", 34),
+    reference("DerivedAnalysisEvidence", 33),
+    reference("QueryEvidence", 32),
+    reference("SqlArtifact", 31),
+  ].sort((left, right) =>
+    artifactReferenceIdentity(left).localeCompare(artifactReferenceIdentity(right)),
+  );
+  const chartRef = openedArtifactRefs.find(
+    ({ artifact_type: artifactType }) => artifactType === "ArtifactWorkspaceDocument",
+  );
+  if (!chartRef) throw new Error("chart fixture missing");
+  return buildFalcon24ResolutionTraceUiGateReceipt({
+    schema_version: "falcon24-resolution-trace-ui-gate-receipt@1.0.0",
+    campaign_id: "falcon24-root-v13-final",
+    run_id: ids.run,
+    workspace_id: ids.tenant,
+    conversation_id: id(36),
+    trace_hash: hash("d"),
+    web_build: { build_id: hash("1"), generation_id: hash("2") },
+    browser_harness_version: "falcon24-agent-browser-trace-gate@1.0.0",
+    opened_nodes: Array.from({ length: 10 }, (_, index) => ({
+      node_id: `node-${String(index).padStart(2, "0")}`,
+      detail_hash: hash(String(index % 10)),
+    })),
+    opened_artifact_refs: openedArtifactRefs,
+    chart_ref: chartRef,
+    chart_renderer_version: "governed-vchart@1.0.0",
+    chart_rendered: true,
+    source_table_visible: true,
+    error_banner: null,
+    dom_snapshot_hash: hash("3"),
+    screenshot_hash: hash("4"),
+    observed_at: now,
   });
 }
 
@@ -784,6 +835,49 @@ describe("PostgreSQL Falcon24 acceptance campaign authority", () => {
     });
     await expect(
       port.loadTraceGate(auth.capability, {
+        campaign_id: "falcon24-root-v13-final",
+        run_id: ids.run,
+      }),
+    ).resolves.toEqual({ ok: true, value: receipt });
+  });
+
+  it("durably stages and reloads the exact browser-observed UI Trace gate", async () => {
+    const auth = authority();
+    const backendReceipt = await traceGateReceipt();
+    const receipt = await uiTraceGateReceipt();
+    const scripted = scriptedPool((text) =>
+      text.includes("stage_falcon24_acceptance_ui_trace")
+        ? run({
+            trace_closure_hash: backendReceipt.trace_hash,
+            trace_gate_receipt_hash: backendReceipt.receipt_hash,
+            trace_gate_receipt: backendReceipt,
+            ui_trace_gate_receipt_hash: receipt.receipt_hash,
+            ui_trace_gate_receipt: receipt,
+          })
+        : text.includes("load_falcon24_acceptance_ui_trace_gate")
+          ? receipt
+          : undefined,
+    );
+    const port = createPostgresFalcon24AcceptanceCampaignAuthority({
+      pool: scripted.pool,
+      authorizer: auth.authorizer,
+    });
+
+    await expect(
+      port.stageUiTrace(auth.capability, {
+        campaign_id: "falcon24-root-v13-final",
+        run_id: ids.run,
+        receipt,
+      }),
+    ).resolves.toMatchObject({
+      ok: true,
+      value: {
+        trace_closure_hash: receipt.trace_hash,
+        ui_trace_gate_receipt_hash: receipt.receipt_hash,
+      },
+    });
+    await expect(
+      port.loadUiTraceGate(auth.capability, {
         campaign_id: "falcon24-root-v13-final",
         run_id: ids.run,
       }),

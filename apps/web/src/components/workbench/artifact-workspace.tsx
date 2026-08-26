@@ -159,7 +159,10 @@ export function ArtifactWorkspace({
       aria-label="Artifact 工作区"
       className="overflow-hidden rounded-2xl border border-white/60 bg-[color-mix(in_srgb,var(--color-bg-surface)_92%,transparent)] shadow-[0_12px_36px_rgba(15,23,42,0.08)] backdrop-blur-xl"
       data-artifact-id={preview.source_ref.artifact_id}
+      data-artifact-type={preview.source_ref.artifact_type}
+      data-artifact-revision={preview.source_ref.revision}
       data-content-hash={preview.source_ref.content_hash}
+      data-testid="artifact-preview-ready"
     >
       <header className="flex flex-wrap items-center justify-between gap-3 border-b border-[var(--color-border-default)] px-4 py-3">
         <SourceIdentity preview={preview} />
@@ -231,7 +234,11 @@ export function ArtifactWorkspace({
             </div>
           </div>
           <GovernedVChart projection={governedChart} describedBy={chartDescriptionId} />
-          <details className="mt-3 rounded-xl border border-[var(--color-border-default)]" open>
+          <details
+            className="mt-3 rounded-xl border border-[var(--color-border-default)]"
+            data-testid="chart-source-table"
+            open
+          >
             <summary className="cursor-pointer px-3 py-2 text-xs font-semibold">
               查看数据表（与图表同源）
             </summary>

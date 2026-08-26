@@ -1,4 +1,4 @@
-import { buildResolutionTrace, verifyResolutionTraceDetail } from "@data-agent/contracts";
+import { buildResolutionTrace, buildResolutionTraceDetail } from "@data-agent/contracts";
 import { notFound } from "next/navigation";
 import { ResolutionTracePanel } from "@/components/qa/resolution-trace-view";
 
@@ -74,8 +74,9 @@ export default async function ResolutionTracePreviewPage({
       kind: "SEQUENCE" as const,
     })),
   });
-  const detail = verifyResolutionTraceDetail({
-    schema_version: "resolution-trace-detail@2.0.0",
+  const detail = await buildResolutionTraceDetail({
+    schema_version: "resolution-trace-detail@3.0.0",
+    trace_hash: trace.trace_hash,
     scope: trace.scope,
     run_id: trace.run_id,
     node_id: `event:${id(52)}`,

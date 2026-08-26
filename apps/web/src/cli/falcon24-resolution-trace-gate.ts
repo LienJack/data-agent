@@ -10,6 +10,10 @@ export interface Falcon24ResolutionTraceGateResult {
   readonly analysis_evidence_node_count: number;
   readonly chart_node_count: number;
   readonly report_node_count: number;
+  readonly detail_closure: readonly Readonly<{
+    node_id: string;
+    detail_hash: string;
+  }>[];
 }
 
 function fail(code: string): never {
@@ -99,6 +103,7 @@ export function verifyFalcon24ResolutionTraceGate(
     const detailArtifactIdentities = detail?.artifact_refs.map(artifactReferenceIdentity) ?? [];
     if (
       !detail ||
+      detail.trace_hash !== trace.trace_hash ||
       detail.run_id !== trace.run_id ||
       detail.scope.app_id !== trace.scope.app_id ||
       detail.scope.tenant_id !== trace.scope.tenant_id ||
@@ -261,5 +266,11 @@ export function verifyFalcon24ResolutionTraceGate(
     analysis_evidence_node_count: derivedAnalysisEvidenceNodes.length,
     chart_node_count: chartNodes.length,
     report_node_count: productReportNodes.length,
+    detail_closure: details
+      .map(({ node_id: nodeId, detail_hash: detailHash }) => ({
+        node_id: nodeId,
+        detail_hash: detailHash,
+      }))
+      .sort((left, right) => left.node_id.localeCompare(right.node_id)),
   };
 }

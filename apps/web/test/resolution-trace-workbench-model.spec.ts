@@ -201,6 +201,9 @@ describe("Resolution Trace workbench model", () => {
     expect(model.stats).toMatchObject({ nodes: 2, calls: 1, failed_or_waiting: 1 });
     expect(model.real_time_domain.duration_ms).toBe(1_250);
     expect(model.search("sql_timeout").map(({ node_id }) => node_id)).toEqual([`event:${id(6)}`]);
+    expect(model.search(`event:${id(6)}`).map(({ node_id }) => node_id)).toEqual([
+      `event:${id(6)}`,
+    ]);
     expect(model.records[1]?.parent_node_ids).toEqual([`event:${id(5)}`]);
   });
 

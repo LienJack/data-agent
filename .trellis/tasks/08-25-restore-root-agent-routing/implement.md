@@ -1,6 +1,6 @@
 # 实施记录：恢复 Root Agent 自主 Subagent 路由
 
-> 当前状态：v14 已在第 0 个 slot 的首次提交失败后硬停止并由 PostgreSQL Authority 冻结为 HOLD；后续 29 个 Run 未启动。submit outcome 原子判定与 fail-closed HOLD 已通过定向 PostgreSQL smoke，等待形成独立 commit。随后必须先闭合真实轨迹 UI 和 G1–G4 资格门禁，才允许创建 v15。唯一生产路径是 V3 Root Harness；无兼容层。
+> 当前状态：v14 已在第 0 个 slot 的首次提交失败后硬停止并由 PostgreSQL Authority 冻结为 HOLD；后续 29 个 Run 未启动。submit outcome 原子判定与 fail-closed HOLD 已由 commit `866e8115` 关闭。真实轨迹 UI 的 Detail v3、backend/UI 双 receipt 与回收前数据库门禁已实现并通过定向测试，仍须在 G1 真实浏览器运行中取证。随后必须闭合 G1–G4 资格门禁，才允许创建 v15。唯一生产路径是 V3 Root Harness；无兼容层。
 
 ## v12 硬停止与分层定位
 
@@ -82,11 +82,14 @@ Gate：Semantic、Text2SQL、Text2SQL -> Report 和 Root direct 四条路径都�
 - [x] 每次 finalize 重新读取完整轨迹和每个 detail，并验证 `SqlArtifact -> QueryEvidence -> AnalysisReport/Chart -> Report` 的精确引用与 Hash。
 - [x] 轨迹 UI 对 corrupt/missing-reference 错误清空旧 ready 快照并显示阻断态；不得在 Authority 已失败关闭后继续展示陈旧轨迹。
 - [x] Sandbox 回收 receipt 只接受 runtime 实际执行的 `list -> kill -> confirmed list` 管理面观察；operation UUID、target hash、前后数量/哈希与 observation hash 均由服务端生成并由 PostgreSQL 二次复验。
-- [x] Finalize 只有在 Oracle 通过、轨迹闭合、底层 Run 已 `SUCCEEDED`，且 OpenSandbox management API 的 attestation-bound `residual=0` receipt 已进入 PostgreSQL Authority 后才推进 Campaign；不读取本地 receipt JSON，任一失败立即 HOLD。
+- [x] Finalize 只有在 Oracle 通过、backend Detail closure 与真实浏览器 UI receipt 绑定同一 Trace、底层 Run 已 `SUCCEEDED`，且 OpenSandbox management API 的 attestation-bound `residual=0` receipt 已进入 PostgreSQL Authority 后才推进 Campaign；不读取本地 receipt JSON，任一失败立即 HOLD。
 - [x] 恢复已应用 10761/10764 的不可变原文，并以 10768 前向切换 Analysis Profile v2、退役旧固定 Product Profile 约束；完成 10761–10768 的确定性渲染、静态检查和 clean PostgreSQL 定向 smoke。
 - [x] 删除 CLI submit session guard，以 10770–10772 的唯一 submit-outcome RPC 原子仲裁 `HELD/ACCEPTED`；故障注入覆盖 orphaned claim、部分权威三元组、完整已接受恢复，定向 PostgreSQL smoke 通过。
 - [x] 完成 contracts、agent-runtime、platform、worker、web 与 sandbox 的任务相关 test/typecheck/build。
-- [ ] 将轨迹门禁升级为 backend + browser 组合 receipt：真实打开 Conversation/Run、逐节点详情、QueryEvidence/AnalysisReport/Chart Preview，校验 exact ref/hash、图表渲染、web build 与无错误横幅；后端 receipt 单独通过不得 finalize。
+- [x] 轨迹合同唯一升级为 Detail v3：请求绑定 `expected_trace_hash`，服务端在同一 `REPEATABLE READ` 快照重建 Trace，返回父 `trace_hash` 与自身 `detail_hash`；Detail v2 不再接受。
+- [x] Migration 10773 增加 backend receipt v2/detail closure 与独立 UI receipt；没有同 Trace 的 UI receipt 时，数据库 trigger 在 Sandbox 回收 claim 和 Campaign complete 之前 fail-closed。旧 backend receipt v1 在 preflight/RPC/contract 三层拒绝。
+- [x] 实现固定的 agent-browser harness：打开 exact Conversation/Run，逐节点验证 Detail hash，依次打开 SqlArtifact、QueryEvidence、DerivedAnalysisEvidence、Chart、AnalysisReport exact preview，验证图表 READY、同源表格、Web build、无错误横幅，并哈希 DOM/screenshot 后 stage UI receipt。
+- [ ] 在 G1 真实运行中执行上述 browser harness 并保存截图/receipt；代码测试或 backend receipt 单独通过不算真实 UI 通过。
 - [ ] 增加独立 Qualification Manifest 与 PostgreSQL 状态机，顺序执行 G1 单链路 1 次、G2 五题最小版 5 次、G3 五题完整版 5 次、G4 冷启动 5 次。每一级首败即 HOLD，同版本禁止重跑，且全部调用唯一 Root V3 生产链路。
 - [ ] 只有 G1–G4 共 16 个资格 slot 全部通过，才创建 v15；随后逐条执行 30 个真实 DeepSeek/Falcon db24 Run（5 题 × COLD/WARM × 3 次），禁止并发跨 slot。
 - [ ] v15 任一 command/Run/Oracle/UI gate 失败后立即停止，不重试、不继续下一 slot、不自动创建 v16；先按六层顺序固定诊断证据。只有代码或冻结契约再次形成新 commit 才允许新版本。
@@ -130,7 +133,7 @@ DATA_AGENT_POSTGRES_ASSERTION_FILTER=54-falcon24-acceptance-campaign-assertions.
 
 ## Commit Boundary
 
-后续按三个独立提交关闭：submit-outcome 原子权威、真实浏览器轨迹 receipt、Qualification Manifest/状态机。不得包含工作区已有的 Web 生成文件或其他并行改动。
+三个独立提交边界：submit-outcome 原子权威（已完成）、真实浏览器轨迹 receipt（当前）、Qualification Manifest/状态机（下一提交）。不得包含工作区已有的 Web 生成文件或其他并行改动。
 
 提交信息：
 

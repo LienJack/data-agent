@@ -14,6 +14,7 @@ import {
   artifactReferenceIdentity,
   artifactReferenceSchema,
   buildResolutionTrace,
+  buildResolutionTraceDetail,
   buildSqlHistoryEntry,
   canonicalizeJson,
   computeGroundingAuthorityDocumentHash,
@@ -35,7 +36,6 @@ import {
   type ResolutionTraceNode,
   type RunRuntimeEvent,
   redactPublicDisplayText,
-  resolutionTraceDetailSchema,
   type SandboxResult,
   type SchemaSnapshotDocument,
   type SqlHistoryEntry,
@@ -64,6 +64,7 @@ import type { TransactionalCapabilityAuthorizer } from "../tenancy/transactional
 
 const traceLookupSchema = z.strictObject({ scope: appScopeSchema, run_id: immutableIdSchema });
 const traceDetailLookupSchema = traceLookupSchema.extend({
+  expected_trace_hash: contentHashSchema,
   node_id: z
     .string()
     .min(1)
@@ -1653,8 +1654,9 @@ async function projectDetail(
     }
   }
 
-  return resolutionTraceDetailSchema.parse({
-    schema_version: "resolution-trace-detail@2.0.0",
+  return buildResolutionTraceDetail({
+    schema_version: "resolution-trace-detail@3.0.0",
+    trace_hash: trace.trace_hash,
     scope: trace.scope,
     run_id: trace.run_id,
     node_id: node.node_id,
@@ -1875,6 +1877,12 @@ export function createPostgresResolutionTraceProjector(
           const events = await loadVerifiedRunEvents(client, capability.scope, authority.run_id);
           const artifacts = await loadVerifiedArtifacts(client, authority, events);
           const trace = await projectTrace(authority, events, artifacts);
+          if (trace.trace_hash !== lookup.data.expected_trace_hash) {
+            throw new PersistenceBoundaryError(
+              "RESOLUTION_TRACE_SNAPSHOT_STALE",
+              "Trace detail 请求绑定的快照已变化。",
+            );
+          }
           return projectDetail(authority, trace, events, artifacts, lookup.data.node_id);
         },
       );

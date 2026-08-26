@@ -1,8 +1,8 @@
 import {
   buildResolutionTrace,
+  buildResolutionTraceDetail,
   buildSqlHistoryEntry,
   modelRequestPerformanceSchema,
-  verifyResolutionTraceDetail,
 } from "@data-agent/contracts";
 import { renderToStaticMarkup } from "react-dom/server";
 import { describe, expect, it } from "vitest";
@@ -385,8 +385,9 @@ describe("Resolution Trace panel", () => {
       ],
       edges: [],
     });
-    const detail = verifyResolutionTraceDetail({
-      schema_version: "resolution-trace-detail@2.0.0",
+    const detail = await buildResolutionTraceDetail({
+      schema_version: "resolution-trace-detail@3.0.0",
+      trace_hash: trace.trace_hash,
       scope,
       run_id: id(3),
       node_id: `event:${id(5)}`,
