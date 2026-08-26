@@ -527,15 +527,19 @@ async function main(): Promise<void> {
           `artifacts/falcon24-agent-analysis/browser/${campaignId}/${identities.run_id}.png`,
       );
       await mkdir(dirname(screenshotPath), { recursive: true });
-      const browserObservation = await runFalcon24BrowserTraceGate({
+      const browserWidth = argument("browser-width") === "390" ? 390 : 1440;
+      const browserGate = await runFalcon24BrowserTraceGate({
         session: z.string().min(1).parse(argument("browser-session")),
         web_base_url: z.string().url().parse(argument("web-base-url")),
         screenshot_path: screenshotPath,
         workspace_id: scope.workspaceId,
         conversation_id: identities.conversationId,
+        question: testCase.question,
+        viewport: { width: browserWidth, height: browserWidth === 390 ? 844 : 900 },
         trace,
         details,
       });
+      const browserObservation = browserGate.trace_ui;
       const webBuildIdentity = getWebRuntimeBuildIdentity();
       if (
         browserObservation.web_build.build_id !== webBuildIdentity.build_id ||

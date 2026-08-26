@@ -18,7 +18,9 @@ function reference(
   artifactType:
     | "SqlArtifact"
     | "QueryEvidence"
+    | "AnalysisProgram"
     | "DerivedAnalysisEvidence"
+    | "AnalysisCompletionReceipt"
     | "ArtifactWorkspaceDocument"
     | "AnalysisReport",
   suffix: number,
@@ -39,19 +41,33 @@ const derivedEvidenceRef = reference("DerivedAnalysisEvidence", 12);
 const chartRef = reference("ArtifactWorkspaceDocument", 13);
 const reportRef = reference("AnalysisReport", 14);
 const secondChartRef = reference("ArtifactWorkspaceDocument", 15);
+const programRef = reference("AnalysisProgram", 16);
+const completionRef = reference("AnalysisCompletionReceipt", 17);
 
 const nodeId = (
   ref:
     | typeof sqlRef
     | typeof evidenceRef
+    | typeof programRef
     | typeof derivedEvidenceRef
+    | typeof completionRef
+    | typeof programRef
+    | typeof completionRef
     | typeof chartRef
     | typeof secondChartRef
     | typeof reportRef,
 ) => `artifact:${ref.artifact_id}:${ref.revision}`;
 
+const rootEventId = id(18);
+const subagentEventId = id(19);
 const terminalEventId = id(20);
+const oracleId = id(21);
+const publisherEventId = id(22);
+const rootNodeId = `event:${rootEventId}`;
+const subagentNodeId = `event:${subagentEventId}`;
 const terminalNodeId = `event:${terminalEventId}`;
+const oracleNodeId = `context:oracle:${oracleId}`;
+const publisherNodeId = `context:publisher:${publisherEventId}`;
 
 async function traceFixture(sqlKind: "SQL" | "ARTIFACT" = "SQL") {
   return buildResolutionTrace({
@@ -62,16 +78,52 @@ async function traceFixture(sqlKind: "SQL" | "ARTIFACT" = "SQL") {
     config_ref: null,
     nodes: [
       {
+        node_id: rootNodeId,
+        kind: "AGENT",
+        source_event_id: rootEventId,
+        sequence: 1,
+        occurred_at: occurredAt,
+        status: "COMPLETED",
+        title: "Root Agent",
+        summary: "已完成任务编排",
+        duration_ms: 10,
+        artifact_refs: [],
+      },
+      {
+        node_id: subagentNodeId,
+        kind: "AGENT",
+        source_event_id: subagentEventId,
+        sequence: 2,
+        occurred_at: occurredAt,
+        status: "COMPLETED",
+        title: "Text2SQL Agent",
+        summary: "已完成受治理查询",
+        duration_ms: 20,
+        artifact_refs: [],
+      },
+      {
         node_id: terminalNodeId,
         kind: "TERMINAL",
         source_event_id: terminalEventId,
-        sequence: 1,
+        sequence: 3,
         occurred_at: occurredAt,
         status: "COMPLETED",
         title: "Run terminal",
         summary: "分析已完成",
         duration_ms: null,
         artifact_refs: [],
+      },
+      {
+        node_id: nodeId(programRef),
+        kind: "ARTIFACT",
+        source_event_id: null,
+        sequence: null,
+        occurred_at: occurredAt,
+        status: "AVAILABLE",
+        title: "AnalysisProgram",
+        summary: "通用分析程序",
+        duration_ms: null,
+        artifact_refs: [programRef],
       },
       {
         node_id: nodeId(sqlRef),
@@ -84,6 +136,18 @@ async function traceFixture(sqlKind: "SQL" | "ARTIFACT" = "SQL") {
         summary: "受治理 SQL candidate",
         duration_ms: null,
         artifact_refs: [sqlRef],
+      },
+      {
+        node_id: nodeId(completionRef),
+        kind: "ARTIFACT",
+        source_event_id: null,
+        sequence: null,
+        occurred_at: occurredAt,
+        status: "AVAILABLE",
+        title: "AnalysisCompletionReceipt",
+        summary: "READY 分析闭包",
+        duration_ms: null,
+        artifact_refs: [completionRef],
       },
       {
         node_id: nodeId(evidenceRef),
@@ -133,8 +197,34 @@ async function traceFixture(sqlKind: "SQL" | "ARTIFACT" = "SQL") {
         duration_ms: null,
         artifact_refs: [reportRef],
       },
+      {
+        node_id: oracleNodeId,
+        kind: "CONTEXT",
+        source_event_id: null,
+        sequence: null,
+        occurred_at: occurredAt,
+        status: "AVAILABLE",
+        title: "Oracle · trend",
+        summary: "PASS · governed-oracle@1 · coverage 1",
+        duration_ms: null,
+        artifact_refs: [],
+      },
+      {
+        node_id: publisherNodeId,
+        kind: "CONTEXT",
+        source_event_id: null,
+        sequence: null,
+        occurred_at: occurredAt,
+        status: "AVAILABLE",
+        title: "E1 Publisher",
+        summary: "Atomic publication · 4 exact artifacts",
+        duration_ms: null,
+        artifact_refs: [],
+      },
     ],
     edges: [
+      { from_node_id: rootNodeId, to_node_id: subagentNodeId, kind: "SEQUENCE" },
+      { from_node_id: subagentNodeId, to_node_id: terminalNodeId, kind: "SEQUENCE" },
       {
         from_node_id: nodeId(sqlRef),
         to_node_id: nodeId(evidenceRef),
@@ -143,6 +233,21 @@ async function traceFixture(sqlKind: "SQL" | "ARTIFACT" = "SQL") {
       {
         from_node_id: nodeId(evidenceRef),
         to_node_id: nodeId(derivedEvidenceRef),
+        kind: "EVIDENCE",
+      },
+      {
+        from_node_id: nodeId(programRef),
+        to_node_id: nodeId(derivedEvidenceRef),
+        kind: "EVIDENCE",
+      },
+      {
+        from_node_id: nodeId(programRef),
+        to_node_id: nodeId(completionRef),
+        kind: "EVIDENCE",
+      },
+      {
+        from_node_id: nodeId(derivedEvidenceRef),
+        to_node_id: nodeId(completionRef),
         kind: "EVIDENCE",
       },
       {
@@ -160,6 +265,14 @@ async function traceFixture(sqlKind: "SQL" | "ARTIFACT" = "SQL") {
         to_node_id: nodeId(reportRef),
         kind: "EVIDENCE",
       },
+      { from_node_id: nodeId(evidenceRef), to_node_id: oracleNodeId, kind: "EVIDENCE" },
+      { from_node_id: nodeId(programRef), to_node_id: oracleNodeId, kind: "EVIDENCE" },
+      { from_node_id: nodeId(derivedEvidenceRef), to_node_id: oracleNodeId, kind: "EVIDENCE" },
+      { from_node_id: oracleNodeId, to_node_id: publisherNodeId, kind: "EVIDENCE" },
+      { from_node_id: publisherNodeId, to_node_id: nodeId(derivedEvidenceRef), kind: "EVIDENCE" },
+      { from_node_id: publisherNodeId, to_node_id: nodeId(completionRef), kind: "EVIDENCE" },
+      { from_node_id: publisherNodeId, to_node_id: nodeId(chartRef), kind: "EVIDENCE" },
+      { from_node_id: publisherNodeId, to_node_id: nodeId(reportRef), kind: "EVIDENCE" },
     ],
   });
 }
@@ -198,7 +311,10 @@ async function detail(
     summary: node.summary,
     hierarchy: { parent_node_ids: [], child_node_ids: [] },
     run_context: section,
-    identity: [],
+    identity:
+      ref.artifact_type === "DerivedAnalysisEvidence"
+        ? [{ label: "Analysis node", value: "trend", value_kind: "NAME" as const }]
+        : [],
     payload: section,
     result: { ...section, format: "ARTIFACTS" },
     schema: {
@@ -219,9 +335,15 @@ async function detail(
   });
 }
 
-async function terminalDetail(trace: ResolutionTrace): Promise<ResolutionTraceDetail> {
-  const node = trace.nodes.find(({ node_id: current }) => current === terminalNodeId);
-  if (!node) throw new Error("missing terminal fixture node");
+async function publicNodeDetail(
+  trace: ResolutionTrace,
+  targetNodeId: string,
+  schemaName: string,
+  schemaVersion: string,
+  identity: ResolutionTraceDetail["identity"] = [],
+): Promise<ResolutionTraceDetail> {
+  const node = trace.nodes.find(({ node_id: current }) => current === targetNodeId);
+  if (!node) throw new Error("missing public node fixture");
   const section = {
     state: "AVAILABLE" as const,
     format: "TEXT" as const,
@@ -236,27 +358,27 @@ async function terminalDetail(trace: ResolutionTrace): Promise<ResolutionTraceDe
     node_id: node.node_id,
     kind: node.kind,
     sequence: node.sequence,
-    source_event_ids: [terminalEventId],
+    source_event_ids: node.source_event_id ? [node.source_event_id] : [],
     title: node.title,
     status: node.status,
     summary: node.summary,
     hierarchy: { parent_node_ids: [], child_node_ids: [] },
     run_context: section,
-    identity: [],
+    identity,
     payload: section,
     result: section,
     schema: {
       state: "AVAILABLE",
-      schema_name: "run-terminal",
-      schema_version: "run-terminal@1.0.0",
+      schema_name: schemaName,
+      schema_version: schemaVersion,
       fields: [],
     },
     timing: {
       occurred_at: occurredAt,
       started_at: null,
-      completed_at: occurredAt,
-      duration_ms: null,
-      source: "EVENT_TIMESTAMP",
+      completed_at: node.source_event_id ? occurredAt : null,
+      duration_ms: node.duration_ms,
+      source: node.source_event_id ? "EVENT_TIMESTAMP" : "ARTIFACT_TIMESTAMP",
     },
     relations: [],
     artifact_refs: [],
@@ -265,10 +387,20 @@ async function terminalDetail(trace: ResolutionTrace): Promise<ResolutionTraceDe
 
 async function detailsFixture(trace: ResolutionTrace): Promise<ResolutionTraceDetail[]> {
   return Promise.all([
-    terminalDetail(trace),
+    publicNodeDetail(trace, rootNodeId, "public-run-event", "public-run-event@2.0.0", [
+      { label: "Agent Profile", value: "data-agent-orchestrator", value_kind: "NAME" },
+      { label: "Task ID", value: id(30), value_kind: "ID" },
+    ]),
+    publicNodeDetail(trace, subagentNodeId, "public-run-event", "public-run-event@2.0.0", [
+      { label: "Agent Profile", value: "governed-text2sql-agent", value_kind: "NAME" },
+      { label: "Task ID", value: id(31), value_kind: "ID" },
+    ]),
+    publicNodeDetail(trace, terminalNodeId, "run-terminal", "run-terminal@1.0.0"),
     detail(trace, sqlRef, "product-team-artifact", "product-team-artifact@2.0.0"),
     detail(trace, evidenceRef, "product-team-artifact", "product-team-artifact@2.0.0"),
+    detail(trace, programRef, "artifact-reference", "artifact-reference@1.0.0"),
     detail(trace, derivedEvidenceRef, "artifact-reference", "artifact-reference@1.0.0"),
+    detail(trace, completionRef, "artifact-reference", "artifact-reference@1.0.0"),
     detail(
       trace,
       chartRef,
@@ -276,6 +408,19 @@ async function detailsFixture(trace: ResolutionTrace): Promise<ResolutionTraceDe
       "artifact-workspace-chart-document@3.0.0",
     ),
     detail(trace, reportRef, "product-team-artifact", "product-team-artifact@2.0.0"),
+    publicNodeDetail(
+      trace,
+      oracleNodeId,
+      "analysis-oracle-receipt",
+      "analysis-oracle-receipt@1.0.0",
+      [{ label: "Analysis node", value: "trend", value_kind: "NAME" }],
+    ),
+    publicNodeDetail(
+      trace,
+      publisherNodeId,
+      "e1-analysis-publication",
+      "e1-analysis-publication@1.0.0",
+    ),
   ]);
 }
 
@@ -292,9 +437,9 @@ describe("Falcon24 Resolution Trace acceptance gate", () => {
     const trace = await traceFixture();
     const details = await detailsFixture(trace);
     expect(verifyFalcon24ResolutionTraceGate(trace, details)).toEqual({
-      node_count: 6,
-      edge_count: 5,
-      detail_count: 6,
+      node_count: 12,
+      edge_count: 18,
+      detail_count: 12,
       sql_node_count: 1,
       query_evidence_node_count: 1,
       analysis_evidence_node_count: 1,
@@ -339,6 +484,10 @@ describe("Falcon24 Resolution Trace acceptance gate", () => {
     const trace = await buildResolutionTrace({
       ...material,
       nodes: complete.nodes.filter(({ kind }) => kind !== "TERMINAL"),
+      edges: complete.edges.filter(
+        ({ from_node_id: fromNodeId, to_node_id: toNodeId }) =>
+          fromNodeId !== terminalNodeId && toNodeId !== terminalNodeId,
+      ),
     });
     const details = (await detailsFixture(complete)).filter(({ kind }) => kind !== "TERMINAL");
     expect(() => verifyFalcon24ResolutionTraceGate(trace, details)).toThrow(
@@ -376,19 +525,19 @@ describe("Falcon24 Resolution Trace acceptance gate", () => {
     );
   });
 
-  it("rejects derived analysis evidence without a QueryEvidence evidence edge", async () => {
+  it("rejects an Oracle without its exact QueryEvidence evidence edge", async () => {
     const complete = await traceFixture();
     const { trace_hash: _traceHash, ...material } = complete;
     const trace = await buildResolutionTrace({
       ...material,
       edges: complete.edges.filter(
         ({ from_node_id: fromNodeId, to_node_id: toNodeId }) =>
-          fromNodeId !== nodeId(evidenceRef) || toNodeId !== nodeId(derivedEvidenceRef),
+          fromNodeId !== nodeId(evidenceRef) || toNodeId !== oracleNodeId,
       ),
     });
     const details = await detailsFixture(trace);
     expect(() => verifyFalcon24ResolutionTraceGate(trace, details)).toThrow(
-      "FALCON24_RESOLUTION_TRACE_ANALYSIS_EVIDENCE_LINEAGE_REQUIRED",
+      "FALCON24_RESOLUTION_TRACE_ORACLE_QUERY_EVIDENCE_REQUIRED",
     );
   });
 
@@ -435,54 +584,51 @@ describe("Falcon24 Resolution Trace acceptance gate", () => {
     );
   });
 
-  it("rejects multiple candidate artifacts instead of cross-matching evidence coverage", async () => {
+  it("rejects multiple Publisher authority nodes", async () => {
     const complete = await traceFixture();
     const { trace_hash: _traceHash, ...material } = complete;
+    const extraPublisherId = `context:publisher:${id(32)}`;
     const extraNode = {
-      node_id: nodeId(secondChartRef),
-      kind: "ARTIFACT" as const,
+      node_id: extraPublisherId,
+      kind: "CONTEXT" as const,
       source_event_id: null,
       sequence: null,
       occurred_at: occurredAt,
       status: "AVAILABLE" as const,
-      title: "ArtifactWorkspaceDocument",
-      summary: "另一个图表",
+      title: "E1 Publisher",
+      summary: "另一个发布者",
       duration_ms: null,
-      artifact_refs: [secondChartRef],
+      artifact_refs: [],
     };
     const trace = await buildResolutionTrace({
       ...material,
       nodes: [...complete.nodes, extraNode],
     });
-    const extraDetail = await detail(
+    const extraDetail = await publicNodeDetail(
       trace,
-      secondChartRef,
-      "artifact-workspace-chart-document",
-      "artifact-workspace-chart-document@3.0.0",
+      extraPublisherId,
+      "e1-analysis-publication",
+      "e1-analysis-publication@1.0.0",
     );
     const details = [...(await detailsFixture(trace)), extraDetail];
     expect(() => verifyFalcon24ResolutionTraceGate(trace, details)).toThrow(
-      "FALCON24_RESOLUTION_TRACE_CHART_CARDINALITY_INVALID",
+      "FALCON24_RESOLUTION_TRACE_PUBLISHER_CARDINALITY_INVALID",
     );
   });
 
-  it("rejects an additional evidence edge inside the required five-node chain", async () => {
+  it("rejects a Publisher missing an exact READY completion edge", async () => {
     const complete = await traceFixture();
     const { trace_hash: _traceHash, ...material } = complete;
     const trace = await buildResolutionTrace({
       ...material,
-      edges: [
-        ...complete.edges,
-        {
-          from_node_id: nodeId(sqlRef),
-          to_node_id: nodeId(derivedEvidenceRef),
-          kind: "EVIDENCE" as const,
-        },
-      ],
+      edges: complete.edges.filter(
+        ({ from_node_id: fromNodeId, to_node_id: toNodeId }) =>
+          fromNodeId !== publisherNodeId || toNodeId !== nodeId(completionRef),
+      ),
     });
     const details = await detailsFixture(trace);
     expect(() => verifyFalcon24ResolutionTraceGate(trace, details)).toThrow(
-      "FALCON24_RESOLUTION_TRACE_EVIDENCE_CLOSURE_INVALID",
+      "FALCON24_RESOLUTION_TRACE_PUBLISHER_ARTIFACT_CLOSURE_REQUIRED",
     );
   });
 });

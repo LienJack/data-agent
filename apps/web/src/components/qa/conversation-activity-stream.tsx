@@ -1,7 +1,7 @@
 "use client";
 
 import type { PublicRunEvent, QaInspectorTarget } from "@data-agent/contracts";
-import { CaretDown, CaretRight, ChartLine, Robot, Table } from "@phosphor-icons/react";
+import { CaretDown, CaretRight, ChartLine, GitBranch, Robot, Table } from "@phosphor-icons/react";
 import { useId, useState } from "react";
 import { ArtifactPreviewPanel } from "@/components/workbench/artifact-preview-panel";
 import { useWorkspaceI18n } from "@/i18n";
@@ -175,6 +175,8 @@ export function ConversationActivityStream({
   runId: string;
   streaming?: boolean;
 }) {
+  const openTrajectory = useQAStore((state) => state.openTrajectory);
+  const terminal = events.findLast((event) => event.run_id === runId && event.type === "terminal");
   return (
     <article className="agent-activity-stream" aria-label="Data Agent 回答">
       <section aria-label="回答与公开执行活动">
@@ -197,6 +199,19 @@ export function ConversationActivityStream({
           return <ProcessDisclosure key={block.id} row={block.row} />;
         })}
       </section>
+      {terminal?.type === "terminal" && terminal.payload.status === "COMPLETED" ? (
+        <button
+          type="button"
+          data-testid="qa-result-trace-entry"
+          data-run-id={runId}
+          data-terminal-status={terminal.payload.status}
+          onClick={() => openTrajectory({ runId, sequence: terminal.sequence })}
+          className="mt-3 inline-flex items-center gap-1.5 rounded-lg border border-[var(--color-border-default)] px-2.5 py-1.5 text-[10px] font-semibold text-[var(--color-accent)] hover:border-[var(--color-accent)]"
+        >
+          <GitBranch aria-hidden="true" size={13} />
+          查看此结果的运行轨迹
+        </button>
+      ) : null}
     </article>
   );
 }

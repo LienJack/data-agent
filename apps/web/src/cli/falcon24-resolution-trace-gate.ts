@@ -76,6 +76,29 @@ function requireExactEvidenceEdge(
   }
 }
 
+function identityValue(detail: ResolutionTraceDetail, label: string): string | null {
+  return detail.identity.find((item) => item.label === label)?.value ?? null;
+}
+
+function artifactNodesOfType(
+  trace: ResolutionTrace,
+  detailsByNode: ReadonlyMap<string, ResolutionTraceDetail>,
+  artifactType: string,
+  schemaName: string,
+  schemaVersion: string,
+) {
+  return trace.nodes.filter(({ kind, title, node_id: nodeId }) => {
+    const detail = detailsByNode.get(nodeId);
+    return (
+      (artifactType === "SqlArtifact" ? kind === "SQL" : kind === "ARTIFACT") &&
+      title === artifactType &&
+      detail?.schema.state === "AVAILABLE" &&
+      detail.schema.schema_name === schemaName &&
+      detail.schema.schema_version === schemaVersion
+    );
+  });
+}
+
 export function verifyFalcon24ResolutionTraceGate(
   trace: ResolutionTrace,
   details: readonly ResolutionTraceDetail[],
@@ -120,54 +143,93 @@ export function verifyFalcon24ResolutionTraceGate(
     }
   }
 
-  const sqlNodes = trace.nodes.filter(({ kind, title, node_id: nodeId }) => {
+  const completedAgentTasks = new Map<string, string>();
+  for (const node of trace.nodes.filter(
+    ({ kind, status }) => kind === "AGENT" && status === "COMPLETED",
+  )) {
+    const detail = detailsByNode.get(node.node_id);
+    const profile = detail ? identityValue(detail, "Agent Profile") : null;
+    const taskId = detail ? identityValue(detail, "Task ID") : null;
+    if (profile && taskId) completedAgentTasks.set(`${profile}\0${taskId}`, profile);
+  }
+  const rootTasks = [...completedAgentTasks.values()].filter(
+    (profile) => profile === "data-agent-orchestrator",
+  );
+  const subagentTasks = [...completedAgentTasks.values()].filter(
+    (profile) => profile !== "data-agent-orchestrator",
+  );
+  if (rootTasks.length !== 1 || subagentTasks.length < 1) {
+    fail("FALCON24_RESOLUTION_TRACE_ROOT_DELEGATION_REQUIRED");
+  }
+
+  const sqlNodes = artifactNodesOfType(
+    trace,
+    detailsByNode,
+    "SqlArtifact",
+    "product-team-artifact",
+    "product-team-artifact@2.0.0",
+  );
+  const productQueryEvidenceNodes = artifactNodesOfType(
+    trace,
+    detailsByNode,
+    "QueryEvidence",
+    "product-team-artifact",
+    "product-team-artifact@2.0.0",
+  );
+  const analysisProgramNodes = artifactNodesOfType(
+    trace,
+    detailsByNode,
+    "AnalysisProgram",
+    "artifact-reference",
+    "artifact-reference@1.0.0",
+  );
+  const derivedAnalysisEvidenceNodes = artifactNodesOfType(
+    trace,
+    detailsByNode,
+    "DerivedAnalysisEvidence",
+    "artifact-reference",
+    "artifact-reference@1.0.0",
+  );
+  const completionNodes = artifactNodesOfType(
+    trace,
+    detailsByNode,
+    "AnalysisCompletionReceipt",
+    "artifact-reference",
+    "artifact-reference@1.0.0",
+  );
+  const chartNodes = artifactNodesOfType(
+    trace,
+    detailsByNode,
+    "ArtifactWorkspaceDocument",
+    "artifact-workspace-chart-document",
+    "artifact-workspace-chart-document@3.0.0",
+  );
+  const productReportNodes = artifactNodesOfType(
+    trace,
+    detailsByNode,
+    "AnalysisReport",
+    "product-team-artifact",
+    "product-team-artifact@2.0.0",
+  );
+  const oracleNodes = trace.nodes.filter(({ kind, title, node_id: nodeId }) => {
     const detail = detailsByNode.get(nodeId);
     return (
-      kind === "SQL" &&
-      title === "SqlArtifact" &&
+      kind === "CONTEXT" &&
+      title.startsWith("Oracle · ") &&
       detail?.schema.state === "AVAILABLE" &&
-      detail.schema.schema_name === "product-team-artifact" &&
-      detail.schema.schema_version === "product-team-artifact@2.0.0"
+      detail.schema.schema_name === "analysis-oracle-receipt" &&
+      detail.schema.schema_version === "analysis-oracle-receipt@1.0.0" &&
+      identityValue(detail, "Analysis node") !== null
     );
   });
-  const productQueryEvidenceNodes = trace.nodes.filter(({ kind, title, node_id: nodeId }) => {
+  const publisherNodes = trace.nodes.filter(({ kind, title, node_id: nodeId }) => {
     const detail = detailsByNode.get(nodeId);
     return (
-      kind === "ARTIFACT" &&
-      title === "QueryEvidence" &&
+      kind === "CONTEXT" &&
+      title === "E1 Publisher" &&
       detail?.schema.state === "AVAILABLE" &&
-      detail.schema.schema_name === "product-team-artifact" &&
-      detail.schema.schema_version === "product-team-artifact@2.0.0"
-    );
-  });
-  const derivedAnalysisEvidenceNodes = trace.nodes.filter(({ kind, title, node_id: nodeId }) => {
-    const detail = detailsByNode.get(nodeId);
-    return (
-      kind === "ARTIFACT" &&
-      title === "DerivedAnalysisEvidence" &&
-      detail?.schema.state === "AVAILABLE" &&
-      detail.schema.schema_name === "artifact-reference" &&
-      detail.schema.schema_version === "artifact-reference@1.0.0"
-    );
-  });
-  const chartNodes = trace.nodes.filter(({ kind, title, node_id: nodeId }) => {
-    const detail = detailsByNode.get(nodeId);
-    return (
-      kind === "ARTIFACT" &&
-      title === "ArtifactWorkspaceDocument" &&
-      detail?.schema.state === "AVAILABLE" &&
-      detail.schema.schema_name === "artifact-workspace-chart-document" &&
-      detail.schema.schema_version === "artifact-workspace-chart-document@3.0.0"
-    );
-  });
-  const productReportNodes = trace.nodes.filter(({ kind, title, node_id: nodeId }) => {
-    const detail = detailsByNode.get(nodeId);
-    return (
-      kind === "ARTIFACT" &&
-      title === "AnalysisReport" &&
-      detail?.schema.state === "AVAILABLE" &&
-      detail.schema.schema_name === "product-team-artifact" &&
-      detail.schema.schema_version === "product-team-artifact@2.0.0"
+      detail.schema.schema_name === "e1-analysis-publication" &&
+      detail.schema.schema_version === "e1-analysis-publication@1.0.0"
     );
   });
 
@@ -176,23 +238,36 @@ export function verifyFalcon24ResolutionTraceGate(
     productQueryEvidenceNodes,
     "FALCON24_RESOLUTION_TRACE_PRODUCT_QUERY_EVIDENCE_CARDINALITY_INVALID",
   );
-  const analysisEvidenceNode = requireExactlyOne(
-    derivedAnalysisEvidenceNodes,
-    "FALCON24_RESOLUTION_TRACE_DERIVED_ANALYSIS_EVIDENCE_CARDINALITY_INVALID",
+  const analysisProgramNode = requireExactlyOne(
+    analysisProgramNodes,
+    "FALCON24_RESOLUTION_TRACE_ANALYSIS_PROGRAM_CARDINALITY_INVALID",
   );
-  const chartNode = requireExactlyOne(
-    chartNodes,
-    "FALCON24_RESOLUTION_TRACE_CHART_CARDINALITY_INVALID",
+  if (
+    derivedAnalysisEvidenceNodes.length < 1 ||
+    oracleNodes.length !== derivedAnalysisEvidenceNodes.length
+  ) {
+    fail("FALCON24_RESOLUTION_TRACE_DERIVED_ANALYSIS_EVIDENCE_CARDINALITY_INVALID");
+  }
+  const completionNode = requireExactlyOne(
+    completionNodes,
+    "FALCON24_RESOLUTION_TRACE_ANALYSIS_COMPLETION_CARDINALITY_INVALID",
   );
+  if (chartNodes.length < 1) fail("FALCON24_RESOLUTION_TRACE_CHART_CARDINALITY_INVALID");
   const reportNode = requireExactlyOne(
     productReportNodes,
     "FALCON24_RESOLUTION_TRACE_REPORT_CARDINALITY_INVALID",
+  );
+  const publisherNode = requireExactlyOne(
+    publisherNodes,
+    "FALCON24_RESOLUTION_TRACE_PUBLISHER_CARDINALITY_INVALID",
   );
 
   for (const [nodes, artifactType] of [
     [sqlNodes, "SqlArtifact"],
     [productQueryEvidenceNodes, "QueryEvidence"],
+    [analysisProgramNodes, "AnalysisProgram"],
     [derivedAnalysisEvidenceNodes, "DerivedAnalysisEvidence"],
+    [completionNodes, "AnalysisCompletionReceipt"],
     [chartNodes, "ArtifactWorkspaceDocument"],
     [productReportNodes, "AnalysisReport"],
   ] as const) {
@@ -209,52 +284,88 @@ export function verifyFalcon24ResolutionTraceGate(
     }
   }
 
-  const exactChain = [
-    [sqlNode.node_id, queryEvidenceNode.node_id, "FALCON24_RESOLUTION_TRACE_SQL_LINEAGE_REQUIRED"],
-    [
-      queryEvidenceNode.node_id,
+  requireExactEvidenceEdge(
+    trace,
+    sqlNode.node_id,
+    queryEvidenceNode.node_id,
+    "FALCON24_RESOLUTION_TRACE_SQL_LINEAGE_REQUIRED",
+  );
+  requireExactEvidenceEdge(
+    trace,
+    analysisProgramNode.node_id,
+    completionNode.node_id,
+    "FALCON24_RESOLUTION_TRACE_ANALYSIS_COMPLETION_LINEAGE_REQUIRED",
+  );
+  for (const oracleNode of oracleNodes) {
+    const detail = detailsByNode.get(oracleNode.node_id);
+    const analysisNodeId = detail ? identityValue(detail, "Analysis node") : null;
+    const matchingEvidence = derivedAnalysisEvidenceNodes.filter((node) => {
+      const evidenceDetail = detailsByNode.get(node.node_id);
+      return evidenceDetail && identityValue(evidenceDetail, "Analysis node") === analysisNodeId;
+    });
+    const analysisEvidenceNode = requireExactlyOne(
+      matchingEvidence,
+      "FALCON24_RESOLUTION_TRACE_ORACLE_EVIDENCE_CARDINALITY_INVALID",
+    );
+    for (const [fromNodeId, code] of [
+      [queryEvidenceNode.node_id, "FALCON24_RESOLUTION_TRACE_ORACLE_QUERY_EVIDENCE_REQUIRED"],
+      [analysisProgramNode.node_id, "FALCON24_RESOLUTION_TRACE_ORACLE_PROGRAM_REQUIRED"],
+      [analysisEvidenceNode.node_id, "FALCON24_RESOLUTION_TRACE_ORACLE_ANALYSIS_EVIDENCE_REQUIRED"],
+    ] as const) {
+      requireExactEvidenceEdge(trace, fromNodeId, oracleNode.node_id, code);
+    }
+    requireExactEvidenceEdge(
+      trace,
+      oracleNode.node_id,
+      publisherNode.node_id,
+      "FALCON24_RESOLUTION_TRACE_ORACLE_PUBLISHER_REQUIRED",
+    );
+    requireExactEvidenceEdge(
+      trace,
+      publisherNode.node_id,
       analysisEvidenceNode.node_id,
-      "FALCON24_RESOLUTION_TRACE_ANALYSIS_EVIDENCE_LINEAGE_REQUIRED",
-    ],
-    [
-      analysisEvidenceNode.node_id,
-      chartNode.node_id,
-      "FALCON24_RESOLUTION_TRACE_CHART_ANALYSIS_LINEAGE_REQUIRED",
-    ],
-    [
-      analysisEvidenceNode.node_id,
-      reportNode.node_id,
-      "FALCON24_RESOLUTION_TRACE_REPORT_ANALYSIS_LINEAGE_REQUIRED",
-    ],
-    [
+      "FALCON24_RESOLUTION_TRACE_PUBLISHER_ANALYSIS_EVIDENCE_REQUIRED",
+    );
+  }
+  for (const target of [completionNode, ...chartNodes, reportNode]) {
+    requireExactEvidenceEdge(
+      trace,
+      publisherNode.node_id,
+      target.node_id,
+      "FALCON24_RESOLUTION_TRACE_PUBLISHER_ARTIFACT_CLOSURE_REQUIRED",
+    );
+  }
+  for (const chartNode of chartNodes) {
+    if (
+      !derivedAnalysisEvidenceNodes.some((evidenceNode) =>
+        trace.edges.some(
+          (edge) =>
+            edge.kind === "EVIDENCE" &&
+            edge.from_node_id === evidenceNode.node_id &&
+            edge.to_node_id === chartNode.node_id,
+        ),
+      )
+    ) {
+      fail("FALCON24_RESOLUTION_TRACE_CHART_ANALYSIS_LINEAGE_REQUIRED");
+    }
+    requireExactEvidenceEdge(
+      trace,
       chartNode.node_id,
       reportNode.node_id,
       "FALCON24_RESOLUTION_TRACE_REPORT_CHART_LINEAGE_REQUIRED",
-    ],
-  ] as const;
-  for (const [fromNodeId, toNodeId, code] of exactChain) {
-    requireExactEvidenceEdge(trace, fromNodeId, toNodeId, code);
+    );
   }
-  const requiredNodeIds = new Set([
-    sqlNode.node_id,
-    queryEvidenceNode.node_id,
-    analysisEvidenceNode.node_id,
-    chartNode.node_id,
-    reportNode.node_id,
-  ]);
-  const allowedEvidenceEdges = new Set(
-    exactChain.map(([fromNodeId, toNodeId]) => `${fromNodeId}\0${toNodeId}`),
-  );
   if (
-    trace.edges.some(
-      (edge) =>
-        edge.kind === "EVIDENCE" &&
-        requiredNodeIds.has(edge.from_node_id) &&
-        requiredNodeIds.has(edge.to_node_id) &&
-        !allowedEvidenceEdges.has(`${edge.from_node_id}\0${edge.to_node_id}`),
+    !derivedAnalysisEvidenceNodes.some((evidenceNode) =>
+      trace.edges.some(
+        (edge) =>
+          edge.kind === "EVIDENCE" &&
+          edge.from_node_id === evidenceNode.node_id &&
+          edge.to_node_id === reportNode.node_id,
+      ),
     )
   ) {
-    fail("FALCON24_RESOLUTION_TRACE_EVIDENCE_CLOSURE_INVALID");
+    fail("FALCON24_RESOLUTION_TRACE_REPORT_ANALYSIS_LINEAGE_REQUIRED");
   }
 
   return {

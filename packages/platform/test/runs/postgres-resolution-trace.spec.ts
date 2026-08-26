@@ -17,6 +17,7 @@ import {
   sandboxResultSchema,
   sha256ContentHash,
 } from "@data-agent/contracts";
+import { analysisResultContractFixture } from "@data-agent/contracts/testing";
 import { describe, expect, it } from "vitest";
 import type { SqlClient, SqlPool, SqlQueryResult } from "../../src/persistence/transaction.js";
 import { createPostgresResolutionTraceProjector } from "../../src/runs/postgres-resolution-trace.js";
@@ -84,6 +85,10 @@ function scriptedPool(
               document_json: null,
               payload_json: null,
               content_bytes: null,
+              authority_epoch: "E1",
+              authority_baseline_id: id(90),
+              authority_baseline_hash: hash("e"),
+              authority_activation_attempt_id: id(91),
               ...row,
             })),
           } as unknown as SqlQueryResult<Row>;
@@ -204,6 +209,14 @@ function authorityRow() {
     attempt_count: 2,
     run_created_at: occurredAt,
     run_updated_at: occurredAt,
+    authority_epoch: "E1",
+    authority_baseline_id: id(90),
+    authority_baseline_hash: hash("e"),
+    authority_activation_attempt_id: id(91),
+    current_authority_epoch: "E1",
+    current_baseline_id: id(90),
+    current_baseline_hash: hash("e"),
+    current_activation_attempt_id: id(91),
   };
 }
 
@@ -739,13 +752,106 @@ async function falcon24DerivedAuthorityRows(
     },
   });
   const resultRefs = [resultRow, tableRow, chartRow].map(referenceFromFixtureRow);
+  const programPayload = {
+    artifact_type: "AnalysisProgram" as const,
+    protocol_version: "analysis-program@1.0.0" as const,
+    brief_ref: {
+      artifact_id: id(80),
+      artifact_type: "ResearchBrief" as const,
+      ...scope,
+      run_id: ids.run,
+      revision: 1,
+      content_hash: hash("8"),
+    },
+    analysis_context_hash: hash("9"),
+    semantic_context_package_hash: hash("b"),
+    operator_registry_digest: hash("f"),
+    nodes: [
+      {
+        node_id: "trend",
+        skill_id: "trend-change@1" as const,
+        metric_refs: [
+          {
+            container_ref: {
+              artifact_id: id(81),
+              artifact_type: "SemanticRelease" as const,
+              ...scope,
+              run_id: ids.run,
+              revision: 1,
+              content_hash: hash("a"),
+            },
+            node_id: "revenue",
+          },
+        ],
+        dimension_refs: ["month"],
+        time_window: {
+          start: "2026-07-01T00:00:00.000Z",
+          end: "2026-08-01T00:00:00.000Z",
+          timezone: "Asia/Shanghai",
+          semantics: "HALF_OPEN" as const,
+        },
+        comparison_window: null,
+        parameters: { grain: "month" },
+        execution_mode: "MODEL_GENERATED" as const,
+        generated_source_policy: "OPEN_ANALYSIS" as const,
+        operator_obligations: [],
+        result_contract: analysisResultContractFixture({
+          semantic_context_hash: hash("b"),
+          contract_id: "falcon24.result",
+          metric_id: "revenue",
+          dimension_id: "month",
+        }),
+        dependency_node_ids: [],
+        activation_rule: { kind: "ALWAYS" as const },
+        criticality: "CRITICAL" as const,
+      },
+    ],
+    budget: {
+      max_steps: 1,
+      max_sql_executions: 1,
+      max_sandbox_executions: 1,
+      max_series_rows: 5_000,
+      max_group_rows: 5_000,
+      max_elapsed_ms: 60_000,
+    },
+    compiler_kind: "DETERMINISTIC_DEFAULT" as const,
+    compiler_version: "analysis-program-compiler@1.0.0",
+    program_hash: hash("c"),
+  };
+  const programInputRefs = collectL2ResearchPayloadArtifactReferences(programPayload);
+  const programDraft = parseL2ResearchDocumentCandidate({
+    envelope: {
+      artifact_id: id(43),
+      artifact_type: "AnalysisProgram",
+      ...scope,
+      run_id: ids.run,
+      revision: 1,
+      parent_ref: null,
+      attempt_id: ids.attempt,
+      producer: { kind: "deterministic", id: "analysis-program-compiler@1" },
+      input_refs: programInputRefs,
+      schema_version: "1.0.0",
+      semantic_version: "1.0.0",
+      policy_version: "falcon24-analysis-policy@1.0.0",
+      model_profile_version: "deepseek-v4-flash@1.0.0",
+      content_hash: hash("0"),
+      status: "COMMITTED",
+      created_at: occurredAt,
+    },
+    payload: programPayload,
+  });
+  const programContentHash = await computeL2ResearchEnvelopeContentHash(programDraft);
+  const programDocument = parseL2ResearchDocumentCandidate({
+    ...programDraft,
+    envelope: { ...programDraft.envelope, content_hash: programContentHash },
+  });
   const analysisProgramRef = {
-    artifact_id: id(43),
+    artifact_id: programDocument.envelope.artifact_id,
     artifact_type: "AnalysisProgram" as const,
     ...scope,
     run_id: ids.run,
-    revision: 1,
-    content_hash: hash("c"),
+    revision: programDocument.envelope.revision,
+    content_hash: programContentHash,
   };
   const materializationReceiptRef = {
     artifact_id: id(49),
@@ -955,9 +1061,84 @@ async function falcon24DerivedAuthorityRows(
     receiptRow,
     resultRows: [resultRow, tableRow, chartRow] as const,
     supportRows: [
-      referenceOnlyRow(analysisProgramRef),
+      {
+        artifact_id: analysisProgramRef.artifact_id,
+        artifact_type: analysisProgramRef.artifact_type,
+        revision: analysisProgramRef.revision,
+        content_hash: analysisProgramRef.content_hash,
+        document_json: programDocument,
+        created_at: occurredAt,
+      },
       referenceOnlyRow(materializationReceiptRef),
+      ...programInputRefs.map(referenceOnlyRow),
     ],
+  };
+}
+
+async function falcon24AnalysisCompletionRow(
+  analysis: Awaited<ReturnType<typeof falcon24DerivedAuthorityRows>>,
+) {
+  const analysisProgramRow = analysis.supportRows[0];
+  if (!analysisProgramRow) throw new Error("analysis program fixture missing");
+  const analysisProgramRef = referenceFromFixtureRow(analysisProgramRow);
+  const payload = {
+    artifact_type: "AnalysisCompletionReceipt" as const,
+    protocol_version: "analysis-completion@1.0.0" as const,
+    analysis_program_ref: analysisProgramRef,
+    node_results: [
+      {
+        node_id: "trend",
+        criticality: "CRITICAL" as const,
+        status: "SUCCEEDED" as const,
+        evidence_ref: analysis.derivedRef,
+        reason_codes: [],
+      },
+    ],
+    budget_usage: {
+      steps: 1,
+      model_calls: 3,
+      sql_executions: 1,
+      sandbox_executions: 1,
+      series_rows: 1,
+      group_rows: 0,
+      elapsed_ms: 20,
+    },
+    terminal: "READY" as const,
+    limitation_codes: [],
+    completion_hash: hash("6"),
+  };
+  const draft = parseL2ResearchDocumentCandidate({
+    envelope: {
+      artifact_id: id(94),
+      artifact_type: "AnalysisCompletionReceipt",
+      ...scope,
+      run_id: ids.run,
+      revision: 1,
+      parent_ref: null,
+      attempt_id: ids.attempt,
+      producer: { kind: "deterministic", id: "falcon24-analysis-completion@1" },
+      input_refs: collectL2ResearchPayloadArtifactReferences(payload),
+      schema_version: "1.0.0",
+      semantic_version: "1.0.0",
+      policy_version: "falcon24-analysis-policy@1.0.0",
+      model_profile_version: "deepseek-v4-flash@1.0.0",
+      content_hash: hash("0"),
+      status: "COMMITTED",
+      created_at: occurredAt,
+    },
+    payload,
+  });
+  const contentHash = await computeL2ResearchEnvelopeContentHash(draft);
+  return {
+    artifact_id: draft.envelope.artifact_id,
+    artifact_type: draft.envelope.artifact_type,
+    revision: draft.envelope.revision,
+    content_hash: contentHash,
+    document_json: parseL2ResearchDocumentCandidate({
+      ...draft,
+      envelope: { ...draft.envelope, content_hash: contentHash },
+    }),
+    created_at: occurredAt,
   };
 }
 
@@ -1074,6 +1255,32 @@ async function researchQueryEvidenceRow() {
 }
 
 describe("PostgreSQL Resolution Trace projector", () => {
+  it("fails closed when the Run is not bound to the exact current E1 baseline", async () => {
+    for (const staleAuthority of [
+      { ...authorityRow(), current_authority_epoch: null },
+      { ...authorityRow(), current_baseline_id: id(92) },
+      { ...authorityRow(), current_baseline_hash: hash("f") },
+      { ...authorityRow(), current_activation_attempt_id: id(93) },
+    ]) {
+      const { capability, authorizer } = issueCapability();
+      const { pool } = scriptedPool((text) => {
+        if (text.includes("from runs as run")) {
+          return { rows: [staleAuthority], rowCount: 1 };
+        }
+        return undefined;
+      });
+
+      const result = await createPostgresResolutionTraceProjector({ pool, authorizer }).loadTrace(
+        capability,
+        { scope, run_id: ids.run },
+      );
+      expect(result).toMatchObject({
+        ok: false,
+        error: { code: "RESOLUTION_TRACE_E1_AUTHORITY_MISMATCH" },
+      });
+    }
+  });
+
   it("resolves the current attempt from ACTIVE run_attempts authority", async () => {
     const row = await eventRow();
     const { capability, authorizer } = issueCapability();
@@ -1722,6 +1929,7 @@ describe("PostgreSQL Resolution Trace projector", () => {
     });
     const projector = createPostgresResolutionTraceProjector({ pool, authorizer });
     const trace = await projector.loadTrace(capability, { scope, run_id: ids.run });
+    if (!trace.ok) throw new Error(trace.error.code);
     const sqlNodeId = `artifact:${sql.artifact_id}:${sql.revision}`;
     const evidenceNodeId = `artifact:${evidence.artifact_id}:${evidence.revision}`;
     const chartNodeId = `artifact:${chart.artifact_id}:${chart.revision}`;
@@ -1857,6 +2065,41 @@ describe("PostgreSQL Resolution Trace projector", () => {
         error: { code: "RESOLUTION_TRACE_ARTIFACT_REFERENCE_MISSING" },
       });
     }
+  });
+
+  it("fails closed when a READY completion has no unique current E1 publication", async () => {
+    const row = await eventRow();
+    const sql = await productTeamSqlArtifactRow();
+    const evidence = await productTeamQueryEvidenceRow(sql);
+    const analysis = await falcon24DerivedAuthorityRows(evidence);
+    const completion = await falcon24AnalysisCompletionRow(analysis);
+    const { capability, authorizer } = issueCapability();
+    const { pool } = scriptedPool((text) => {
+      if (text.includes("from runs as run")) return { rows: [authorityRow()], rowCount: 1 };
+      if (text.includes("from run_events")) return { rows: [row], rowCount: 1 };
+      if (text.includes("from artifacts")) {
+        const rows = [
+          sql,
+          evidence,
+          analysis.derivedRow,
+          completion,
+          analysis.receiptRow,
+          ...analysis.resultRows,
+          ...analysis.supportRows,
+        ];
+        return { rows, rowCount: rows.length };
+      }
+      return undefined;
+    });
+
+    const result = await createPostgresResolutionTraceProjector({ pool, authorizer }).loadTrace(
+      capability,
+      { scope, run_id: ids.run },
+    );
+    expect(result).toMatchObject({
+      ok: false,
+      error: { code: "RESOLUTION_TRACE_E1_PUBLICATION_MISSING" },
+    });
   });
 
   it("rejects an ordinary SandboxResult substituted into DerivedAnalysisEvidence", async () => {

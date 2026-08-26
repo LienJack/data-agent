@@ -1,5 +1,6 @@
 import { createHash } from "node:crypto";
 import {
+  type AnalysisOracleReceipt,
   type AnalysisSandboxExecutionReceipt,
   type AppScope,
   type ArtifactReference,
@@ -22,6 +23,7 @@ import {
   computeSandboxExecutionReceiptHash,
   computeSandboxResultHash,
   contentHashSchema,
+  e1AnalysisPublicationReceiptSchema,
   hasDuplicateArtifactReferenceIdentities,
   immutableIdSchema,
   l2ArtifactDocumentSchema,
@@ -49,6 +51,7 @@ import {
   toPublicRunEvent,
   verifyArtifactWorkspaceChartDocumentV2,
   verifyArtifactWorkspaceChartDocumentV3,
+  verifyE1AnalysisPublicationCommand,
   verifyEffectiveRunConfigReceiptCandidate,
   verifyProductTeamArtifactDocument,
 } from "@data-agent/contracts";
@@ -228,6 +231,14 @@ interface RunAuthorityRow {
   readonly attempt_count: string | number;
   readonly run_created_at: Date | string;
   readonly run_updated_at: Date | string;
+  readonly authority_epoch: string;
+  readonly authority_baseline_id: string;
+  readonly authority_baseline_hash: string;
+  readonly authority_activation_attempt_id: string;
+  readonly current_authority_epoch: string | null;
+  readonly current_baseline_id: string | null;
+  readonly current_baseline_hash: string | null;
+  readonly current_activation_attempt_id: string | null;
 }
 
 interface ArtifactRow {
@@ -241,6 +252,21 @@ interface ArtifactRow {
   readonly payload_json: unknown | null;
   readonly content_bytes: Uint8Array | null;
   readonly created_at: Date | string;
+  readonly authority_epoch: string | null;
+  readonly authority_baseline_id: string | null;
+  readonly authority_baseline_hash: string | null;
+  readonly authority_activation_attempt_id: string | null;
+}
+
+interface E1PublicationRow {
+  readonly publication_hash: string;
+  readonly public_event_id: string;
+  readonly command_json: unknown;
+  readonly receipt_json: unknown;
+  readonly committed_at: Date | string;
+  readonly outbox_publication_hash: string;
+  readonly outbox_payload_json: unknown;
+  readonly artifact_bindings: unknown;
 }
 
 type AnalysisPublishedDocument =
@@ -268,6 +294,7 @@ interface VerifiedArtifact {
 interface VerifiedRunAuthority {
   readonly scope: AppScope;
   readonly run_id: string;
+  readonly principal_id: string;
   readonly conversation_id: string | null;
   readonly conversation_title: string | null;
   readonly conversation_resource_version: number | null;
@@ -288,7 +315,45 @@ interface VerifiedRunAuthority {
   readonly attempt_count: number;
   readonly run_created_at: string;
   readonly run_updated_at: string;
+  readonly authority: {
+    readonly epoch: "E1";
+    readonly baseline_id: string;
+    readonly baseline_hash: string;
+    readonly activation_attempt_id: string;
+  };
 }
+
+interface VerifiedE1Publication {
+  readonly publication_hash: string;
+  readonly public_event_id: string;
+  readonly committed_at: string;
+  readonly oracle_receipts: readonly AnalysisOracleReceipt[];
+  readonly analysis_program_ref: ArtifactReference;
+  readonly published_references: readonly ArtifactReference[];
+}
+
+const e1PublicationArtifactBindingsSchema = z
+  .array(
+    z.strictObject({
+      ordinal: z.number().int().positive().safe(),
+      role: z.enum([
+        "SANDBOX_RESULT",
+        "SANDBOX_RECEIPT",
+        "DERIVED_EVIDENCE",
+        "COMPLETION_READY",
+        "CHART",
+        "REPORT",
+      ]),
+      reference: artifactReferenceSchema,
+    }),
+  )
+  .min(7)
+  .max(256);
+const e1PublicationOutboxPayloadSchema = z.strictObject({
+  event_name: z.literal("e1_analysis_publication_committed"),
+  publication_hash: contentHashSchema,
+  references: z.array(artifactReferenceSchema).min(7).max(256),
+});
 
 function invalid<T>(code: string, message: string): PortResult<T> {
   return { ok: false, error: { code, message, retryable: false } };
@@ -371,6 +436,14 @@ async function loadRunAuthority(
        run.question,
        coalesce(projection.status, run.status) as run_status,
        run.active_fence,
+       run.authority_epoch,
+       run.authority_baseline_id,
+       run.authority_baseline_hash,
+       run.authority_activation_attempt_id,
+       current_epoch.authority_epoch as current_authority_epoch,
+       current_epoch.baseline_id as current_baseline_id,
+       current_epoch.baseline_hash as current_baseline_hash,
+       current_epoch.activation_attempt_id as current_activation_attempt_id,
        active_attempt.attempt_id as active_attempt_id,
        (select pg_catalog.count(*)
         from run_attempts as attempt
@@ -397,6 +470,10 @@ async function loadRunAuthority(
       and config.tenant_id = run.tenant_id
       and config.environment = run.environment
       and config.run_id = run.run_id
+     left join falcon24_current_authority_epoch as current_epoch
+       on current_epoch.app_id = run.app_id
+      and current_epoch.tenant_id = run.tenant_id
+      and current_epoch.environment = run.environment
      left join lateral (
        select candidate.status
        from run_projections as candidate
@@ -435,6 +512,21 @@ async function loadRunAuthority(
     ],
   );
   return result.rows.map((row) => {
+    if (
+      row.authority_epoch !== "E1" ||
+      row.current_authority_epoch !== "E1" ||
+      row.current_baseline_id === null ||
+      row.current_baseline_hash === null ||
+      row.current_activation_attempt_id === null ||
+      row.authority_baseline_id !== row.current_baseline_id ||
+      row.authority_baseline_hash !== row.current_baseline_hash ||
+      row.authority_activation_attempt_id !== row.current_activation_attempt_id
+    ) {
+      throw new PersistenceBoundaryError(
+        "RESOLUTION_TRACE_E1_AUTHORITY_MISMATCH",
+        "Run 未绑定当前 E1 authority baseline。",
+      );
+    }
     const hasAnyConfig =
       row.config_id !== null ||
       row.config_revision !== null ||
@@ -456,6 +548,7 @@ async function loadRunAuthority(
     return {
       scope,
       run_id: immutableIdSchema.parse(row.run_id),
+      principal_id: immutableIdSchema.parse(row.principal_id),
       conversation_id:
         row.conversation_id === null ? null : immutableIdSchema.parse(row.conversation_id),
       conversation_title:
@@ -495,6 +588,12 @@ async function loadRunAuthority(
       attempt_count: z.coerce.number().int().nonnegative().safe().parse(row.attempt_count),
       run_created_at: iso(row.run_created_at),
       run_updated_at: iso(row.run_updated_at),
+      authority: {
+        epoch: "E1",
+        baseline_id: immutableIdSchema.parse(row.authority_baseline_id),
+        baseline_hash: contentHashSchema.parse(row.authority_baseline_hash),
+        activation_attempt_id: immutableIdSchema.parse(row.authority_activation_attempt_id),
+      },
     };
   });
 }
@@ -728,7 +827,9 @@ const traceArtifactTypes = new Set<ArtifactReference["artifact_type"]>([
   "SqlArtifact",
   "ExecutionReceipt",
   "QueryEvidence",
+  "AnalysisProgram",
   "DerivedAnalysisEvidence",
+  "AnalysisCompletionReceipt",
   "AnalysisReport",
   "ArtifactWorkspaceDocument",
   "SchemaSnapshot",
@@ -825,6 +926,8 @@ async function loadVerifiedArtifacts(
        is_active,
        artifact_id, artifact_type, revision, content_hash,
        document_json, null::jsonb as payload_json, null::bytea as content_bytes,
+       authority_epoch, authority_baseline_id, authority_baseline_hash,
+       authority_activation_attempt_id,
        created_at
      from artifacts
      where app_id = $1 and tenant_id = $2 and environment = $3 and run_id = $4
@@ -834,6 +937,8 @@ async function loadVerifiedArtifacts(
        true as is_active,
        artifact_id, artifact_type, revision, content_hash,
        null::jsonb as document_json, payload_json, content_bytes,
+       null::text as authority_epoch, null::uuid as authority_baseline_id,
+       null::text as authority_baseline_hash, null::uuid as authority_activation_attempt_id,
        committed_at as created_at
      from analysis_system_artifacts
      where app_id = $1 and tenant_id = $2 and environment = $3 and run_id = $4
@@ -843,6 +948,8 @@ async function loadVerifiedArtifacts(
        true as is_active,
        artifact_id, artifact_type, revision, content_hash,
        null::jsonb as document_json, payload_json, null::bytea as content_bytes,
+       null::text as authority_epoch, null::uuid as authority_baseline_id,
+       null::text as authority_baseline_hash, null::uuid as authority_activation_attempt_id,
        committed_at as created_at
      from text2sql_system_artifacts
      where app_id = $1 and tenant_id = $2 and environment = $3 and run_id = $4
@@ -862,6 +969,18 @@ async function loadVerifiedArtifacts(
   }));
   for (const { row, stored } of storedRows) {
     const { reference } = stored;
+    if (
+      row.source_store === "ARTIFACTS" &&
+      (row.authority_epoch !== authority.authority.epoch ||
+        row.authority_baseline_id !== authority.authority.baseline_id ||
+        row.authority_baseline_hash !== authority.authority.baseline_hash ||
+        row.authority_activation_attempt_id !== authority.authority.activation_attempt_id)
+    ) {
+      throw new PersistenceBoundaryError(
+        "RESOLUTION_TRACE_E1_ARTIFACT_AUTHORITY_MISMATCH",
+        "Artifact 未绑定 Run 的 exact E1 authority baseline。",
+      );
+    }
     const location = referenceLocation(reference);
     if (locations.has(location)) {
       throw new PersistenceBoundaryError(
@@ -929,6 +1048,151 @@ async function loadVerifiedArtifacts(
     }
   }
   return artifacts;
+}
+
+function sameReferenceSequence(
+  left: readonly ArtifactReference[],
+  right: readonly ArtifactReference[],
+): boolean {
+  return (
+    left.length === right.length &&
+    left.every(
+      (reference, index) =>
+        artifactReferenceIdentity(reference) ===
+        artifactReferenceIdentity(right[index] as ArtifactReference),
+    )
+  );
+}
+
+async function loadVerifiedE1Publication(
+  client: SqlClient,
+  authority: VerifiedRunAuthority,
+  artifacts: readonly VerifiedArtifact[],
+): Promise<VerifiedE1Publication | null> {
+  const completionPresent = artifacts.some(
+    ({ reference }) => reference.artifact_type === "AnalysisCompletionReceipt",
+  );
+  if (!completionPresent) return null;
+  const result = await client.query<E1PublicationRow>(
+    `select
+       publication.publication_hash,
+       publication.public_event_id,
+       publication.command_json,
+       publication.receipt_json,
+       publication.committed_at,
+       outbox.publication_hash as outbox_publication_hash,
+       outbox.payload_json as outbox_payload_json,
+       coalesce(bindings.items, '[]'::jsonb) as artifact_bindings
+     from e1_analysis_publication_current as current_publication
+     join e1_analysis_publications as publication
+       on publication.app_id = current_publication.app_id
+      and publication.tenant_id = current_publication.tenant_id
+      and publication.environment = current_publication.environment
+      and publication.run_id = current_publication.run_id
+      and publication.publication_hash = current_publication.publication_hash
+      and publication.public_event_id = current_publication.public_event_id
+      and publication.committed_at = current_publication.committed_at
+     join e1_analysis_publication_outbox as outbox
+       on outbox.app_id = publication.app_id
+      and outbox.tenant_id = publication.tenant_id
+      and outbox.environment = publication.environment
+      and outbox.run_id = publication.run_id
+      and outbox.public_event_id = publication.public_event_id
+      and outbox.publication_hash = publication.publication_hash
+     left join lateral (
+       select pg_catalog.jsonb_agg(
+         pg_catalog.jsonb_build_object(
+           'ordinal', binding.ordinal,
+           'role', binding.role,
+           'reference', binding.reference_json
+         ) order by binding.ordinal
+       ) as items
+       from e1_analysis_publication_artifacts as binding
+       where binding.app_id = publication.app_id
+         and binding.tenant_id = publication.tenant_id
+         and binding.environment = publication.environment
+         and binding.run_id = publication.run_id
+         and binding.publication_hash = publication.publication_hash
+     ) as bindings on true
+     where publication.app_id = $1
+       and publication.tenant_id = $2
+       and publication.environment = $3
+       and publication.run_id = $4
+       and publication.principal_id = $5`,
+    [
+      authority.scope.app_id,
+      authority.scope.tenant_id,
+      authority.scope.environment,
+      authority.run_id,
+      authority.principal_id,
+    ],
+  );
+  if (result.rows.length !== 1 || !result.rows[0]) {
+    throw new PersistenceBoundaryError(
+      "RESOLUTION_TRACE_E1_PUBLICATION_MISSING",
+      "READY AnalysisCompletionReceipt 缺少唯一 current E1 publication。",
+    );
+  }
+  try {
+    const row = result.rows[0];
+    const command = await verifyE1AnalysisPublicationCommand(row.command_json);
+    const receipt = e1AnalysisPublicationReceiptSchema.parse(row.receipt_json);
+    const publishedReferences = receipt.references.map((reference) =>
+      artifactReferenceSchema.parse(reference),
+    );
+    const outbox = e1PublicationOutboxPayloadSchema.parse(row.outbox_payload_json);
+    const bindings = e1PublicationArtifactBindingsSchema.parse(row.artifact_bindings);
+    const bindingReferences = bindings.map(({ reference }) => reference);
+    const ordinalSequenceValid = bindings.every(({ ordinal }, index) => ordinal === index + 1);
+    const exactProgram = artifacts.some(
+      ({ reference }) =>
+        artifactReferenceIdentity(reference) ===
+        artifactReferenceIdentity(command.analysis_program_ref),
+    );
+    const artifactIdentities = new Set(
+      artifacts.map(({ reference }) => artifactReferenceIdentity(reference)),
+    );
+    const exactPublishedClosure = publishedReferences.every((reference) =>
+      artifactIdentities.has(artifactReferenceIdentity(reference)),
+    );
+    if (
+      row.publication_hash !== command.publication_hash ||
+      row.outbox_publication_hash !== command.publication_hash ||
+      row.public_event_id !== command.public_event_id ||
+      receipt.created !== true ||
+      receipt.publication_hash !== command.publication_hash ||
+      receipt.public_event_id !== command.public_event_id ||
+      outbox.publication_hash !== command.publication_hash ||
+      command.scope.app_id !== authority.scope.app_id ||
+      command.scope.tenant_id !== authority.scope.tenant_id ||
+      command.scope.environment !== authority.scope.environment ||
+      command.run_id !== authority.run_id ||
+      command.principal_id !== authority.principal_id ||
+      command.worker_fence < 1 ||
+      !ordinalSequenceValid ||
+      hasDuplicateArtifactReferenceIdentities(publishedReferences) ||
+      !sameReferenceSequence(bindingReferences, publishedReferences) ||
+      !sameReferenceSequence(outbox.references, publishedReferences) ||
+      !exactProgram ||
+      !exactPublishedClosure
+    ) {
+      throw new TypeError("RESOLUTION_TRACE_E1_PUBLICATION_CLOSURE_INVALID");
+    }
+    return {
+      publication_hash: command.publication_hash,
+      public_event_id: command.public_event_id,
+      committed_at: iso(row.committed_at),
+      oracle_receipts: command.nodes.map(({ oracle_receipt: oracle }) => oracle),
+      analysis_program_ref: command.analysis_program_ref,
+      published_references: publishedReferences,
+    };
+  } catch (error) {
+    if (error instanceof PersistenceBoundaryError) throw error;
+    throw new PersistenceBoundaryError(
+      "RESOLUTION_TRACE_E1_PUBLICATION_CORRUPT",
+      "E1 publication 未通过 command、Oracle、current、outbox 与 Artifact closure 校验。",
+    );
+  }
 }
 
 function assertContinuousEvents(events: readonly RunRuntimeEvent[]): void {
@@ -1142,15 +1406,118 @@ function artifactNode(artifact: VerifiedArtifact): ResolutionTraceNode {
   };
 }
 
+function e1PublicationNodes(publication: VerifiedE1Publication): ResolutionTraceNode[] {
+  return [
+    ...publication.oracle_receipts.map(
+      (oracle): ResolutionTraceNode => ({
+        node_id: `context:oracle:${oracle.oracle_id}`,
+        kind: "CONTEXT",
+        source_event_id: null,
+        sequence: null,
+        occurred_at: oracle.verified_at,
+        status: "AVAILABLE",
+        title: `Oracle · ${oracle.node_id}`,
+        summary: `${oracle.verdict} · ${oracle.implementation_id} · coverage ${oracle.coverage_ratio}`,
+        duration_ms: null,
+        artifact_refs: [],
+      }),
+    ),
+    {
+      node_id: `context:publisher:${publication.public_event_id}`,
+      kind: "CONTEXT",
+      source_event_id: null,
+      sequence: null,
+      occurred_at: publication.committed_at,
+      status: "AVAILABLE",
+      title: "E1 Publisher",
+      summary: `Atomic publication · ${publication.published_references.length} exact artifacts`,
+      duration_ms: null,
+      artifact_refs: [],
+    },
+  ];
+}
+
+function e1PublicationEdges(
+  publication: VerifiedE1Publication,
+  artifacts: readonly VerifiedArtifact[],
+): ResolutionTraceEdge[] {
+  const nodeByReference = new Map(
+    artifacts.map(({ reference }) => [
+      artifactReferenceIdentity(reference),
+      `artifact:${reference.artifact_id}:${reference.revision}`,
+    ]),
+  );
+  const programNode = nodeByReference.get(
+    artifactReferenceIdentity(publication.analysis_program_ref),
+  );
+  if (!programNode) {
+    throw new PersistenceBoundaryError(
+      "RESOLUTION_TRACE_E1_PROGRAM_NODE_MISSING",
+      "E1 publication 的 AnalysisProgram 未解析到 exact Trace node。",
+    );
+  }
+  const publisherNode = `context:publisher:${publication.public_event_id}`;
+  const edges: ResolutionTraceEdge[] = [];
+  for (const oracle of publication.oracle_receipts) {
+    const oracleNode = `context:oracle:${oracle.oracle_id}`;
+    edges.push({ from_node_id: programNode, to_node_id: oracleNode, kind: "EVIDENCE" });
+    for (const reference of oracle.input_binding.query_evidence_refs) {
+      const queryEvidenceNode = nodeByReference.get(artifactReferenceIdentity(reference));
+      if (!queryEvidenceNode) {
+        throw new PersistenceBoundaryError(
+          "RESOLUTION_TRACE_E1_ORACLE_INPUT_MISSING",
+          "Oracle QueryEvidence 未解析到 exact Trace node。",
+        );
+      }
+      edges.push({ from_node_id: queryEvidenceNode, to_node_id: oracleNode, kind: "EVIDENCE" });
+    }
+    const derivedEvidenceNodes = artifacts.flatMap((artifact) =>
+      "envelope" in artifact.document &&
+      artifact.document.payload.artifact_type === "DerivedAnalysisEvidence" &&
+      artifact.document.payload.node_id === oracle.node_id
+        ? [`artifact:${artifact.reference.artifact_id}:${artifact.reference.revision}`]
+        : [],
+    );
+    if (derivedEvidenceNodes.length !== 1 || !derivedEvidenceNodes[0]) {
+      throw new PersistenceBoundaryError(
+        "RESOLUTION_TRACE_E1_ORACLE_EVIDENCE_MISSING",
+        "Oracle 必须绑定唯一 DerivedAnalysisEvidence node。",
+      );
+    }
+    edges.push({
+      from_node_id: derivedEvidenceNodes[0],
+      to_node_id: oracleNode,
+      kind: "EVIDENCE",
+    });
+    edges.push({ from_node_id: oracleNode, to_node_id: publisherNode, kind: "EVIDENCE" });
+  }
+  for (const reference of publication.published_references) {
+    const target = nodeByReference.get(artifactReferenceIdentity(reference));
+    if (!target) {
+      throw new PersistenceBoundaryError(
+        "RESOLUTION_TRACE_E1_PUBLISHED_NODE_MISSING",
+        "Publisher exact Artifact 未解析到 Trace node。",
+      );
+    }
+    edges.push({ from_node_id: publisherNode, to_node_id: target, kind: "EVIDENCE" });
+  }
+  return edges;
+}
+
 async function projectTrace(
   authority: VerifiedRunAuthority,
   events: readonly RunRuntimeEvent[],
   artifacts: readonly VerifiedArtifact[],
+  publication: VerifiedE1Publication | null,
 ): Promise<ResolutionTrace> {
   assertContinuousEvents(events);
   const eventNodes = events.map(eventNode);
   const artifactNodes = artifacts.map(artifactNode);
-  const nodes: ResolutionTraceNode[] = [...eventNodes, ...artifactNodes];
+  const nodes: ResolutionTraceNode[] = [
+    ...eventNodes,
+    ...artifactNodes,
+    ...(publication ? e1PublicationNodes(publication) : []),
+  ];
   if (authority.config_ref && authority.config_committed_at) {
     nodes.push({
       node_id: `config:${authority.config_ref.config_id}:${authority.config_ref.config_revision}`,
@@ -1205,6 +1572,7 @@ async function projectTrace(
         edges.push({ from_node_id: source, to_node_id: target, kind: "EVIDENCE" });
     }
   }
+  if (publication) edges.push(...e1PublicationEdges(publication, artifacts));
   if (authority.config_ref && eventNodes[0]) {
     edges.push({
       from_node_id: `config:${authority.config_ref.config_id}:${authority.config_ref.config_revision}`,
@@ -1305,6 +1673,7 @@ async function projectDetail(
   trace: ResolutionTrace,
   events: readonly RunRuntimeEvent[],
   artifacts: readonly VerifiedArtifact[],
+  publication: VerifiedE1Publication | null,
   nodeId: string,
 ): Promise<ResolutionTraceDetail | null> {
   const node = trace.nodes.find((candidate) => candidate.node_id === nodeId);
@@ -1329,6 +1698,9 @@ async function projectDetail(
     { label: "当前执行尝试", value: authority.active_attempt_id ?? "当前没有 active attempt" },
     { label: "尝试次数", value: String(authority.attempt_count) },
     { label: "Worker fence", value: String(authority.active_fence) },
+    { label: "Authority epoch", value: authority.authority.epoch },
+    { label: "Authority baseline", value: authority.authority.baseline_id },
+    { label: "Baseline hash", value: authority.authority.baseline_hash },
     { label: "所属对话", value: authority.conversation_title ?? "对话标题不可用" },
     { label: "对话绑定", value: authority.conversation_id ?? "该 Run 没有 Conversation binding" },
     {
@@ -1633,6 +2005,73 @@ async function projectDetail(
       "HISTORICAL_DISPLAY_NAME_UNAVAILABLE",
       "禁止从当前 Catalog 回查名称冒充历史绑定。",
     );
+  } else if (node.node_id.startsWith("context:oracle:") && publication) {
+    const oracle = publication.oracle_receipts.find(
+      ({ oracle_id: oracleId }) => node.node_id === `context:oracle:${oracleId}`,
+    );
+    if (!oracle) {
+      throw new PersistenceBoundaryError(
+        "RESOLUTION_TRACE_E1_ORACLE_NODE_CORRUPT",
+        "Oracle node 无法解析到同一 E1 publication。",
+      );
+    }
+    identity = [
+      ...baseIdentity,
+      ...detailIdentity("Oracle ID", oracle.oracle_id, "ID"),
+      ...detailIdentity("Analysis node", oracle.node_id, "NAME"),
+      ...detailIdentity("Receipt hash", oracle.receipt_hash, "HASH"),
+      ...detailIdentity("Publication hash", publication.publication_hash, "HASH"),
+    ];
+    payload = fieldsSection([
+      { label: "实现", value: oracle.implementation_id },
+      { label: "实现 hash", value: oracle.implementation_hash },
+      { label: "样本数", value: String(oracle.sample_size) },
+      { label: "覆盖率", value: String(oracle.coverage_ratio) },
+      { label: "QueryEvidence 数", value: String(oracle.input_binding.query_evidence_refs.length) },
+    ]);
+    result = fieldsSection([
+      { label: "独立判定", value: oracle.verdict },
+      { label: "Expected terminal", value: oracle.expected_terminal },
+      { label: "限制码", value: oracle.limitation_codes.join(" · ") || "无" },
+      { label: "披露码", value: oracle.disclosure_codes.join(" · ") || "无" },
+    ]);
+    schema = detailSchema("analysis-oracle-receipt", oracle.schema_version, [
+      "oracle_id",
+      "node_id",
+      "implementation_id",
+      "input_binding",
+      "verdict",
+      "expected_terminal",
+      "receipt_hash",
+    ]);
+  } else if (node.node_id.startsWith("context:publisher:") && publication) {
+    if (node.node_id !== `context:publisher:${publication.public_event_id}`) {
+      throw new PersistenceBoundaryError(
+        "RESOLUTION_TRACE_E1_PUBLISHER_NODE_CORRUPT",
+        "Publisher node 无法解析到同一 E1 publication。",
+      );
+    }
+    identity = [
+      ...baseIdentity,
+      ...detailIdentity("Public event ID", publication.public_event_id, "ID"),
+      ...detailIdentity("Publication hash", publication.publication_hash, "HASH"),
+      ...detailIdentity("Baseline hash", authority.authority.baseline_hash, "HASH"),
+    ];
+    payload = fieldsSection([
+      { label: "发布模式", value: "ATOMIC" },
+      { label: "Authority epoch", value: authority.authority.epoch },
+      { label: "Exact artifact 数", value: String(publication.published_references.length) },
+    ]);
+    result = fieldsSection([
+      { label: "状态", value: "COMMITTED" },
+      { label: "提交时间", value: publication.committed_at },
+    ]);
+    schema = detailSchema("e1-analysis-publication", "e1-analysis-publication@1.0.0", [
+      "publication_hash",
+      "public_event_id",
+      "analysis_program_ref",
+      "references",
+    ]);
   } else if (node.artifact_refs.length > 0) {
     const verifiedReferences = node.artifact_refs.filter((reference) =>
       artifacts.some(
@@ -1677,6 +2116,21 @@ async function projectDetail(
       fields: [],
     };
     const firstDocument = matchingArtifacts[0]?.document;
+    if (
+      firstDocument &&
+      "envelope" in firstDocument &&
+      firstDocument.payload.artifact_type === "DerivedAnalysisEvidence"
+    ) {
+      identity = [
+        ...identity,
+        ...detailIdentity("Analysis node", firstDocument.payload.node_id, "NAME"),
+        ...detailIdentity(
+          "Program hash",
+          firstDocument.payload.analysis_program_ref.content_hash,
+          "HASH",
+        ),
+      ];
+    }
     if (firstDocument && "schema_version" in firstDocument) {
       const schemaName =
         "artifact_ref" in firstDocument
@@ -1890,7 +2344,8 @@ export function createPostgresResolutionTraceProjector(
           if (!authority) return null;
           const events = await loadVerifiedRunEvents(client, capability.scope, authority.run_id);
           const artifacts = await loadVerifiedArtifacts(client, authority, events);
-          return projectTrace(authority, events, artifacts);
+          const publication = await loadVerifiedE1Publication(client, authority, artifacts);
+          return projectTrace(authority, events, artifacts, publication);
         },
       );
     },
@@ -1925,14 +2380,22 @@ export function createPostgresResolutionTraceProjector(
           if (!authority) return null;
           const events = await loadVerifiedRunEvents(client, capability.scope, authority.run_id);
           const artifacts = await loadVerifiedArtifacts(client, authority, events);
-          const trace = await projectTrace(authority, events, artifacts);
+          const publication = await loadVerifiedE1Publication(client, authority, artifacts);
+          const trace = await projectTrace(authority, events, artifacts, publication);
           if (trace.trace_hash !== lookup.data.expected_trace_hash) {
             throw new PersistenceBoundaryError(
               "RESOLUTION_TRACE_SNAPSHOT_STALE",
               "Trace detail 请求绑定的快照已变化。",
             );
           }
-          return projectDetail(authority, trace, events, artifacts, lookup.data.node_id);
+          return projectDetail(
+            authority,
+            trace,
+            events,
+            artifacts,
+            publication,
+            lookup.data.node_id,
+          );
         },
       );
     },

@@ -475,6 +475,10 @@ async function referenceExists(
       and run.tenant_id = artifact.tenant_id
       and run.environment = artifact.environment
       and run.run_id = artifact.run_id
+     join falcon24_current_authority_epoch as current_epoch
+       on current_epoch.app_id = artifact.app_id
+      and current_epoch.tenant_id = artifact.tenant_id
+      and current_epoch.environment = artifact.environment
      where artifact.app_id = $1
        and artifact.tenant_id = $2
        and artifact.environment = $3
@@ -483,7 +487,15 @@ async function referenceExists(
        and artifact.artifact_type = $6
        and artifact.revision = $7
        and artifact.content_hash = $8
-       and run.principal_id = $9`,
+       and run.principal_id = $9
+       and run.authority_epoch = 'E1'
+       and artifact.authority_epoch = run.authority_epoch
+       and artifact.authority_baseline_id = run.authority_baseline_id
+       and artifact.authority_baseline_hash = run.authority_baseline_hash
+       and artifact.authority_activation_attempt_id = run.authority_activation_attempt_id
+       and run.authority_baseline_id = current_epoch.baseline_id
+       and run.authority_baseline_hash = current_epoch.baseline_hash
+       and run.authority_activation_attempt_id = current_epoch.activation_attempt_id`,
     [
       reference.app_id,
       reference.tenant_id,
@@ -512,6 +524,10 @@ async function resolveArtifactDocument(
       and run.tenant_id = artifact.tenant_id
       and run.environment = artifact.environment
       and run.run_id = artifact.run_id
+     join falcon24_current_authority_epoch as current_epoch
+       on current_epoch.app_id = artifact.app_id
+      and current_epoch.tenant_id = artifact.tenant_id
+      and current_epoch.environment = artifact.environment
      where artifact.app_id = $1
        and artifact.tenant_id = $2
        and artifact.environment = $3
@@ -520,7 +536,15 @@ async function resolveArtifactDocument(
        and artifact.artifact_type = $6
        and artifact.revision = $7
        and artifact.content_hash = $8
-       and run.principal_id = $9`,
+       and run.principal_id = $9
+       and run.authority_epoch = 'E1'
+       and artifact.authority_epoch = run.authority_epoch
+       and artifact.authority_baseline_id = run.authority_baseline_id
+       and artifact.authority_baseline_hash = run.authority_baseline_hash
+       and artifact.authority_activation_attempt_id = run.authority_activation_attempt_id
+       and run.authority_baseline_id = current_epoch.baseline_id
+       and run.authority_baseline_hash = current_epoch.baseline_hash
+       and run.authority_activation_attempt_id = current_epoch.activation_attempt_id`,
     [
       reference.app_id,
       reference.tenant_id,

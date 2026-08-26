@@ -104,6 +104,7 @@ export function ChatInput() {
           </label>
           <textarea
             id="qa-composer-input"
+            data-testid="qa-question-input"
             ref={inputRef}
             value={input}
             onChange={(event) => setInput(event.target.value)}
@@ -154,6 +155,7 @@ export function ChatInput() {
               {sending ? (
                 <button
                   type="button"
+                  data-testid="qa-submit-question"
                   onClick={() => void stopMessage()}
                   aria-label="停止当前分析"
                   title="停止当前分析"

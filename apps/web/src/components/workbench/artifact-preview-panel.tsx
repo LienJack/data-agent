@@ -25,6 +25,16 @@ export function ArtifactPreviewPanel({
   const [offset, setOffset] = useState(0);
   const [state, setState] = useState<PreviewState>({ kind: "loading" });
   const generation = useRef(0);
+  const authorityKey = artifactReferenceIdentity(reference);
+  const previousAuthorityKey = useRef(authorityKey);
+
+  useEffect(() => {
+    if (previousAuthorityKey.current === authorityKey) return;
+    previousAuthorityKey.current = authorityKey;
+    generation.current += 1;
+    setOffset(0);
+    setState({ kind: "loading" });
+  }, [authorityKey]);
 
   useEffect(() => {
     const currentGeneration = generation.current + 1;

@@ -91,5 +91,8 @@ describe("ChatMessage activity ownership", () => {
     expect(html).toContain("直接回答</h2>");
     expect(html).not.toContain("子代理");
     expect(html).not.toContain("qa-subagent-");
+    expect(html).toContain('data-testid="qa-result-trace-entry"');
+    expect(html).toContain(`data-run-id="${runId}"`);
+    expect(html).toContain('data-terminal-status="COMPLETED"');
   });
 });

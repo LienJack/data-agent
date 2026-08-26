@@ -162,6 +162,7 @@ export function ArtifactWorkspace({
       data-artifact-type={preview.source_ref.artifact_type}
       data-artifact-revision={preview.source_ref.revision}
       data-content-hash={preview.source_ref.content_hash}
+      data-run-id={preview.source_ref.run_id}
       data-testid="artifact-preview-ready"
     >
       <header className="flex flex-wrap items-center justify-between gap-3 border-b border-[var(--color-border-default)] px-4 py-3">

@@ -47,6 +47,7 @@ import {
   useQAActiveConversationId,
   useQAConnection,
   useQAEvents,
+  useQAStore,
   useQATrajectoryFocus,
 } from "@/lib/qa-store";
 import {
@@ -1308,7 +1309,7 @@ function TraceWorkbench({
         </div>
         {selected && (
           <TraceInspector
-            key={selected.node_id}
+            key={`${selectedRecord?.run_id ?? "unknown"}:${traces.find(({ run_id: runId }) => runId === selectedRecord?.run_id)?.trace_hash ?? "unknown"}:${selected.node_id}`}
             node={selected}
             detail={detail}
             detailError={detailError}
@@ -1633,6 +1634,8 @@ export function ResolutionTracePanel({
   readonly authorityFailureMessage?: string | null;
 }) {
   const [tab, setTab] = useState<TraceTab>(initialTab);
+  const openConversation = useQAStore((state) => state.openConversation);
+  const returnSequence = trace.nodes.findLast(({ sequence }) => sequence !== null)?.sequence ?? 1;
   const traceAuthorityKey = `${trace.run_id}:${trace.trace_hash}`;
   const [detectedAuthorityFailure, setDetectedAuthorityFailure] = useState<{
     readonly traceAuthorityKey: string;
@@ -1671,6 +1674,15 @@ export function ResolutionTracePanel({
           </p>
         </div>
         <div className="flex items-center" aria-label="运行与证据视图" role="tablist">
+          <button
+            type="button"
+            data-testid="resolution-trace-return-to-result"
+            data-run-id={trace.run_id}
+            onClick={() => openConversation({ runId: trace.run_id, sequence: returnSequence })}
+            className="mr-2 inline-flex rounded border border-[var(--color-border-default)] px-2 py-1 text-[10px] text-[var(--color-accent)]"
+          >
+            返回结果
+          </button>
           {tabs.map(({ id, label, icon: Icon }) => (
             <button
               key={id}
@@ -1692,6 +1704,7 @@ export function ResolutionTracePanel({
         {tab === "overview" && <Overview trace={trace} sql={sql} />}
         {tab === "trace" && (
           <TraceWorkbench
+            key={traceAuthorityKey}
             traces={traces}
             focusedRunId={trace.run_id}
             focusedSequence={focusSequence}
