@@ -2,7 +2,8 @@ import {
   buildProviderDispatchEnvelopeCandidate,
   buildProviderResponseArtifactDocument,
   buildProviderTaskArtifactDocument,
-} from "@data-agent/contracts";
+} from "@data-agent/contracts/providers";
+import { DEFAULT_RUN_EXECUTION_POLICY } from "@data-agent/contracts/runs";
 import { describe, expect, it } from "vitest";
 import type { SqlPool, SqlQueryResult } from "../../src/persistence/transaction.js";
 import { createPostgresProviderInvocationStore } from "../../src/providers/postgres-provider-invocation-store.js";
@@ -59,6 +60,7 @@ function workerLease() {
     lease_token: 3,
     worker_fence: 4,
     expires_at: "2026-08-16T00:05:00.000Z",
+    execution_policy: DEFAULT_RUN_EXECUTION_POLICY,
     payload: {
       kind: "START_L2_RESEARCH",
       effective_config_ref: { config_id: ids.config, config_revision: 1, config_hash: hash("b") },

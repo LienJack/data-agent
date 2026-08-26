@@ -1,5 +1,6 @@
 import { createHash } from "node:crypto";
-import { buildSensitiveExecutionArtifactReceipt } from "@data-agent/contracts";
+import { buildSensitiveExecutionArtifactReceipt } from "@data-agent/contracts/artifacts";
+import { DEFAULT_RUN_EXECUTION_POLICY } from "@data-agent/contracts/runs";
 import { describe, expect, it } from "vitest";
 import type { SqlPool, SqlQueryResult } from "../../src/persistence/transaction.js";
 import { createSensitiveExecutionArtifactAuthority } from "../../src/storage/sensitive-execution-artifact-authority.js";
@@ -31,6 +32,7 @@ const lease = {
   lease_token: 1,
   worker_fence: 7,
   expires_at: "2026-08-17T00:05:00.000Z",
+  execution_policy: DEFAULT_RUN_EXECUTION_POLICY,
   payload: {
     kind: "START_L2_RESEARCH",
     effective_config_ref: {
