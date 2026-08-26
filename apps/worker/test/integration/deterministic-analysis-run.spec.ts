@@ -2,7 +2,10 @@ import {
   type AnalysisCompletionReceiptPayload,
   type AnalysisProgramPayload,
   type ArtifactReference,
+  collectL2ResearchPayloadArtifactReferences,
+  computeL2ResearchEnvelopeContentHash,
   type DerivedAnalysisEvidencePayload,
+  parseL2ResearchDocumentCandidate,
   sha256ContentHash,
 } from "@data-agent/contracts";
 import {
@@ -35,6 +38,51 @@ function ref<const T extends ArtifactReference["artifact_type"]>(
     revision: 1,
     content_hash,
   };
+}
+
+async function researchDocument(
+  payload: AnalysisProgramPayload | DerivedAnalysisEvidencePayload | AnalysisCompletionReceiptPayload,
+  suffix: number,
+  schemaVersion: string,
+) {
+  const draft = parseL2ResearchDocumentCandidate({
+    envelope: {
+      artifact_id: id(suffix),
+      artifact_type: payload.artifact_type,
+      app_id: id(1),
+      tenant_id: id(2),
+      environment: "test",
+      run_id: id(3),
+      revision: 1,
+      parent_ref: null,
+      attempt_id: id(99),
+      producer: { kind: "deterministic", id: "derived-analysis-test@1" },
+      input_refs: collectL2ResearchPayloadArtifactReferences(payload),
+      schema_version: schemaVersion,
+      semantic_version: "1.0.0",
+      policy_version: "analysis-program-policy@1.0.0",
+      model_profile_version: "deepseek-v4-flash@1.0.0",
+      content_hash: hash("0"),
+      status: "CANDIDATE",
+      created_at: "2026-08-25T00:00:00.000Z",
+    },
+    payload,
+  });
+  return parseL2ResearchDocumentCandidate({
+    ...draft,
+    envelope: {
+      ...draft.envelope,
+      content_hash: await computeL2ResearchEnvelopeContentHash(draft),
+    },
+  });
+}
+
+function researchRef(document: Awaited<ReturnType<typeof researchDocument>>) {
+  return ref(
+    document.envelope.artifact_type,
+    Number(document.envelope.artifact_id.slice(-12)),
+    document.envelope.content_hash,
+  );
 }
 
 async function runAcceptedEcommerceTrend() {
@@ -138,7 +186,10 @@ async function runAcceptedEcommerceTrend() {
     compiler_version: "analysis-program-compiler@1.0.0",
     program_hash: hash("a"),
   };
-  const planRef = ref("AnalysisProgram", 5, await sha256ContentHash(plan));
+  const planDocument = await researchDocument(plan, 5, "1.0.0");
+  const planRef = researchRef(planDocument) as ArtifactReference & {
+    readonly artifact_type: "AnalysisProgram";
+  };
   const fixture: DeterministicAnalysisFixture = {
     fixture_id: testCase.case_id,
     skill_id: "trend-change@1",
@@ -187,11 +238,13 @@ async function runAcceptedEcommerceTrend() {
   };
   const independent = await evaluateDeterministicAnalysis({ fixture, evidence });
   if (independent.verdict !== "PASS") throw new Error(independent.hard_failures.join(","));
-  const evidenceRef = ref("DerivedAnalysisEvidence", 10, await sha256ContentHash(evidence));
+  const evidenceDocument = await researchDocument(evidence, 10, "2.0.0");
+  const evidenceRef = researchRef(evidenceDocument) as ArtifactReference & {
+    readonly artifact_type: "DerivedAnalysisEvidence";
+  };
   const chart = await buildDerivedAnalysisChartDocument({
     document_ref: ref("ArtifactWorkspaceDocument", 11),
-    evidence_ref: evidenceRef,
-    evidence,
+    evidence_document: evidenceDocument,
     semantic_context: {
       package_id: id(12),
       package_hash: contentHash(testCase.semantic_frontier.semantic_release_hash),
@@ -227,13 +280,12 @@ async function runAcceptedEcommerceTrend() {
     limitation_codes: [],
     completion_hash: hash("1"),
   };
-  const completionRef = ref("AnalysisCompletionReceipt", 14, await sha256ContentHash(completion));
+  const completionDocument = await researchDocument(completion, 14, "1.0.0");
+  const completionRef = researchRef(completionDocument);
   const projection = await buildDeterministicAnalysisRunProjection({
-    analysis_program_ref: planRef,
-    analysis_program: plan,
-    completion_ref: completionRef,
-    completion,
-    evidence: [{ ref: evidenceRef, payload: evidence }],
+    analysis_program_document: planDocument,
+    completion_document: completionDocument,
+    evidence_documents: [{ document: evidenceDocument }],
     charts: [chart],
     findings: [
       {
@@ -248,11 +300,9 @@ async function runAcceptedEcommerceTrend() {
     ],
   });
   const reportProjection = await buildDeterministicAnalysisRunProjection({
-    analysis_program_ref: planRef,
-    analysis_program: plan,
-    completion_ref: completionRef,
-    completion,
-    evidence: [{ ref: evidenceRef, payload: evidence }],
+    analysis_program_document: planDocument,
+    completion_document: completionDocument,
+    evidence_documents: [{ document: evidenceDocument }],
     charts: [chart],
     findings: [
       {

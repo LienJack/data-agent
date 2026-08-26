@@ -3,6 +3,7 @@ import {
   type AnalysisCompletionReceiptPayload,
   type AnalysisProgramPayload,
   type ArtifactReference,
+  artifactReferenceSchema,
   collectL2ResearchPayloadArtifactReferences,
   computeL2ResearchEnvelopeContentHash,
   type DerivedAnalysisEvidencePayload,
@@ -10,6 +11,7 @@ import {
   parseL2ResearchDocumentCandidate,
   type ResearchBriefV3Payload,
   researchArtifactCommitInputSchema,
+  type VersionedL2ResearchDocumentCandidate,
 } from "@data-agent/contracts/artifacts";
 import { canonicalizeJson, sha256ContentHash } from "@data-agent/contracts/common";
 import {
@@ -108,9 +110,10 @@ function schemaVersion(payload: AnalysisPayload): string {
   return tuple[1];
 }
 
-async function candidate(input: {
+export async function buildAnalysisResearchArtifactCommit(input: {
   readonly payload: AnalysisPayload;
   readonly lease: Parameters<AnalysisArtifactCommitPort["commitL2"]>[0]["lease"];
+  readonly principal_id: string;
   readonly idempotency_key: string;
   readonly created_at: string;
 }) {
@@ -138,12 +141,41 @@ async function candidate(input: {
     },
     payload: input.payload,
   });
-  return parseL2ResearchDocumentCandidate({
+  const document = parseL2ResearchDocumentCandidate({
     ...draft,
     envelope: {
       ...draft.envelope,
       content_hash: await computeL2ResearchEnvelopeContentHash(draft),
     },
+  });
+  const command = researchArtifactCommitInputSchema.parse({
+    schema_version: "1.0.0",
+    scope: input.lease.scope,
+    run_id: input.lease.run_id,
+    principal_id: input.principal_id,
+    idempotency_key: input.idempotency_key,
+    commit_id: deterministicAnalysisUuid(
+      `analysis-l2-commit\0${input.lease.run_id}\0${input.idempotency_key}`,
+    ),
+    attempt_id: input.lease.attempt_id,
+    worker_fence: input.lease.worker_fence,
+    candidate: document,
+    expected_parent_ref: null,
+  });
+  const reference = artifactReferenceSchema.parse({
+    artifact_id: document.envelope.artifact_id,
+    artifact_type: document.envelope.artifact_type,
+    app_id: document.envelope.app_id,
+    tenant_id: document.envelope.tenant_id,
+    environment: document.envelope.environment,
+    run_id: document.envelope.run_id,
+    revision: document.envelope.revision,
+    content_hash: document.envelope.content_hash,
+  });
+  return Object.freeze({
+    document: document as VersionedL2ResearchDocumentCandidate,
+    command,
+    reference,
   });
 }
 
@@ -156,29 +188,16 @@ export function createResearchAnalysisArtifactPort(input: {
 
   return Object.freeze({
     async commitL2(command: Parameters<AnalysisArtifactCommitPort["commitL2"]>[0]) {
-      const document = await candidate({
+      const prepared = await buildAnalysisResearchArtifactCommit({
         payload: command.payload,
         lease: command.lease,
+        principal_id: command.principal_id,
         idempotency_key: command.idempotency_key,
         created_at: now().toISOString(),
       });
-      const commit = researchArtifactCommitInputSchema.parse({
-        schema_version: "1.0.0",
-        scope: command.lease.scope,
-        run_id: command.lease.run_id,
-        principal_id: command.principal_id,
-        idempotency_key: command.idempotency_key,
-        commit_id: deterministicAnalysisUuid(
-          `analysis-l2-commit\0${command.lease.run_id}\0${command.idempotency_key}`,
-        ),
-        attempt_id: command.lease.attempt_id,
-        worker_fence: command.lease.worker_fence,
-        candidate: document,
-        expected_parent_ref: null,
-      });
       const result = await input.authority.commitCurrent(
         input.capabilities.forArtifactType(command.payload.artifact_type),
-        commit,
+        prepared.command,
       );
       if (!result.ok) throw new TypeError(result.error.code);
       return result.value.reference;

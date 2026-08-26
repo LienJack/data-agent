@@ -2,8 +2,10 @@ import {
   type AnalysisCompletionReceiptPayload,
   type AnalysisProgramPayload,
   type ArtifactReference,
+  collectL2ResearchPayloadArtifactReferences,
+  computeL2ResearchEnvelopeContentHash,
   type DerivedAnalysisEvidencePayload,
-  sha256ContentHash,
+  parseL2ResearchDocumentCandidate,
 } from "@data-agent/contracts";
 import { analysisResultContractFixture } from "@data-agent/contracts/testing";
 import { describe, expect, it } from "vitest";
@@ -31,6 +33,51 @@ function ref<const T extends ArtifactReference["artifact_type"]>(
     revision: 1,
     content_hash,
   };
+}
+
+async function researchDocument(
+  payload: AnalysisProgramPayload | DerivedAnalysisEvidencePayload | AnalysisCompletionReceiptPayload,
+  suffix: number,
+  schemaVersion: string,
+) {
+  const draft = parseL2ResearchDocumentCandidate({
+    envelope: {
+      artifact_id: id(suffix),
+      artifact_type: payload.artifact_type,
+      app_id: id(1),
+      tenant_id: id(2),
+      environment: "test",
+      run_id: id(3),
+      revision: 1,
+      parent_ref: null,
+      attempt_id: id(99),
+      producer: { kind: "deterministic", id: "derived-analysis-test@1" },
+      input_refs: collectL2ResearchPayloadArtifactReferences(payload),
+      schema_version: schemaVersion,
+      semantic_version: "1.0.0",
+      policy_version: "analysis-program-policy@1.0.0",
+      model_profile_version: "deepseek-v4-flash@1.0.0",
+      content_hash: hash("0"),
+      status: "CANDIDATE",
+      created_at: "2026-08-25T00:00:00.000Z",
+    },
+    payload,
+  });
+  return parseL2ResearchDocumentCandidate({
+    ...draft,
+    envelope: {
+      ...draft.envelope,
+      content_hash: await computeL2ResearchEnvelopeContentHash(draft),
+    },
+  });
+}
+
+function researchRef(document: Awaited<ReturnType<typeof researchDocument>>) {
+  return ref(
+    document.envelope.artifact_type,
+    Number(document.envelope.artifact_id.slice(-12)),
+    document.envelope.content_hash,
+  );
 }
 
 async function fixture(result?: DerivedAnalysisEvidencePayload["result"]) {
@@ -79,7 +126,10 @@ async function fixture(result?: DerivedAnalysisEvidencePayload["result"]) {
     compiler_version: "planner-v1",
     program_hash: hash("b"),
   };
-  const planRef = ref("AnalysisProgram", 5, await sha256ContentHash(plan));
+  const planDocument = await researchDocument(plan, 5, "1.0.0");
+  const planRef = researchRef(planDocument) as ArtifactReference & {
+    readonly artifact_type: "AnalysisProgram";
+  };
   const evidence: DerivedAnalysisEvidencePayload = {
     artifact_type: "DerivedAnalysisEvidence",
     protocol_version: "derived-analysis-evidence@2.0.0",
@@ -130,7 +180,10 @@ async function fixture(result?: DerivedAnalysisEvidencePayload["result"]) {
     mandatory_disclosures: [],
     derivation_hash: hash("1"),
   };
-  const evidenceRef = ref("DerivedAnalysisEvidence", 10, await sha256ContentHash(evidence));
+  const evidenceDocument = await researchDocument(evidence, 10, "2.0.0");
+  const evidenceRef = researchRef(evidenceDocument) as ArtifactReference & {
+    readonly artifact_type: "DerivedAnalysisEvidence";
+  };
   const completion: AnalysisCompletionReceiptPayload = {
     artifact_type: "AnalysisCompletionReceipt",
     protocol_version: "analysis-completion@1.0.0",
@@ -157,13 +210,17 @@ async function fixture(result?: DerivedAnalysisEvidencePayload["result"]) {
     limitation_codes: [],
     completion_hash: hash("2"),
   };
+  const completionDocument = await researchDocument(completion, 11, "1.0.0");
   return {
     plan,
+    planDocument,
     planRef,
     evidence,
+    evidenceDocument,
     evidenceRef,
     completion,
-    completionRef: ref("AnalysisCompletionReceipt", 11, await sha256ContentHash(completion)),
+    completionDocument,
+    completionRef: researchRef(completionDocument),
   };
 }
 
@@ -172,8 +229,7 @@ describe("Derived analysis projection", () => {
     const input = await fixture();
     const chart = await buildDerivedAnalysisChartDocument({
       document_ref: ref("ArtifactWorkspaceDocument", 12),
-      evidence_ref: input.evidenceRef,
-      evidence: input.evidence,
+      evidence_document: input.evidenceDocument,
       semantic_context: {
         package_id: id(13),
         package_hash: hash("3"),
@@ -212,8 +268,7 @@ describe("Derived analysis projection", () => {
     });
     const chart = await buildDerivedAnalysisChartDocument({
       document_ref: ref("ArtifactWorkspaceDocument", 15),
-      evidence_ref: contribution.evidenceRef,
-      evidence: contribution.evidence,
+      evidence_document: contribution.evidenceDocument,
       semantic_context: {
         package_id: id(13),
         package_hash: hash("3"),
@@ -241,8 +296,7 @@ describe("Derived analysis projection", () => {
     await expect(
       buildDerivedAnalysisChartDocument({
         document_ref: ref("ArtifactWorkspaceDocument", 16),
-        evidence_ref: forecast.evidenceRef,
-        evidence: forecast.evidence,
+        evidence_document: forecast.evidenceDocument,
         semantic_context: {
           package_id: id(13),
           package_hash: hash("3"),
@@ -256,11 +310,9 @@ describe("Derived analysis projection", () => {
   it("builds a replay-stable public run projection and rejects uncommitted evidence", async () => {
     const input = await fixture();
     const projectionInput = {
-      analysis_program_ref: input.planRef,
-      analysis_program: input.plan,
-      completion_ref: input.completionRef,
-      completion: input.completion,
-      evidence: [{ ref: input.evidenceRef, payload: input.evidence }],
+      analysis_program_document: input.planDocument,
+      completion_document: input.completionDocument,
+      evidence_documents: [{ document: input.evidenceDocument }],
       findings: [
         {
           finding_id: "fact-1",
@@ -284,8 +336,13 @@ describe("Derived analysis projection", () => {
     await expect(
       buildDeterministicAnalysisRunProjection({
         ...projectionInput,
-        evidence: [
-          { ref: { ...input.evidenceRef, content_hash: hash("9") }, payload: input.evidence },
+        evidence_documents: [
+          {
+            document: {
+              ...input.evidenceDocument,
+              envelope: { ...input.evidenceDocument.envelope, content_hash: hash("9") },
+            },
+          },
         ],
       }),
     ).rejects.toThrow("ANALYSIS_RUN_PROJECTION_REFERENCE_INVALID");
