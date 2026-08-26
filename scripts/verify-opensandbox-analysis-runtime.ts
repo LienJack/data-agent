@@ -36,12 +36,16 @@ const profile = (optional("ANALYSIS_SANDBOX_PROBE_PROFILE") ??
   "CORE_ANALYSIS") as AnalysisSandboxProfile;
 const agentImage = required("ANALYSIS_SANDBOX_PROBE_AGENT_IMAGE");
 const operatorImage = required("ANALYSIS_SANDBOX_PROBE_OPERATOR_IMAGE");
+const useServerProxy = requiredBoolean("ANALYSIS_SANDBOX_USE_SERVER_PROXY");
+if (useServerProxy) {
+  throw new Error("OPENSANDBOX_LOCAL_PROBE_DIRECT_ENDPOINT_REQUIRED");
+}
 const runtime = createOpenSandboxAnalysisRuntime({
   config: {
     domain: required("ANALYSIS_SANDBOX_SERVER_DOMAIN"),
     protocol: required("ANALYSIS_SANDBOX_SERVER_PROTOCOL") === "https" ? "https" : "http",
     api_key: required("ANALYSIS_SANDBOX_API_KEY"),
-    use_server_proxy: requiredBoolean("ANALYSIS_SANDBOX_USE_SERVER_PROXY"),
+    use_server_proxy: useServerProxy,
     request_timeout_seconds: 120,
     ready_timeout_seconds: 180,
     sandbox_timeout_seconds: 600,
@@ -66,6 +70,8 @@ const report: Record<string, unknown> = {
   agent_image: agentImage,
   operator_image: operatorImage,
   registry_digest: REGISTRY_DIGEST,
+  endpoint_mode: "DIRECT",
+  use_server_proxy: useServerProxy,
   checks: {},
 };
 

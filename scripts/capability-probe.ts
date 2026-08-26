@@ -45,6 +45,8 @@ const openSandboxAttestationSchema = z.strictObject({
   }),
   local_probe: z.strictObject({
     status: z.literal("PASS"),
+    endpoint_mode: z.literal("DIRECT"),
+    use_server_proxy: z.literal(false),
     pids_limit: z.number().int().min(128),
     secure_access: z.literal(false),
     production_isolation_proven: z.literal(false),

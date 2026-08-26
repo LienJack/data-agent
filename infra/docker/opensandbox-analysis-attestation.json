@@ -37,6 +37,8 @@
   },
   "local_probe": {
     "status": "PASS",
+    "endpoint_mode": "DIRECT",
+    "use_server_proxy": false,
     "pids_limit": 128,
     "secure_access": false,
     "production_isolation_proven": false,

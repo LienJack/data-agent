@@ -111,6 +111,12 @@ pnpm --filter @data-agent/worker exec vitest run test/runs/opensandbox-analysis-
 uv run --project services/sandbox pytest -q services/sandbox/tests/operators
 ```
 
+本机运行 `sandbox:analysis:probe` 时，SDK 客户端可以直接访问 Docker 映射出的
+Sandbox endpoint，必须设置 `ANALYSIS_SANDBOX_USE_SERVER_PROXY=false`；探针会对
+`true` 直接 fail-closed。只有 Worker 自身运行在 Docker/Kubernetes 中、无法直连
+endpoint 时，才使用 server proxy；`compose.yaml` 的 deploy Worker 因此保持 `true`。
+两种模式不能混用为同一份本机验收证据。
+
 ML 与 Causal profile 使用相同 Dockerfile，分别指定对应 lock 和镜像标签。升级依赖时必须同步更新：
 
 1. 三个 `opensandbox-analysis-*-requirements.lock` 的 hash lock；
