@@ -22,6 +22,7 @@ import type {
 import type { AuthoritativeModelCertificationReceipt } from "../providers/index.js";
 import type { AuthoritativeReleaseManifest } from "./release-manifest.js";
 
+export * from "./authority-epoch.js";
 export * from "./effective-config.js";
 export * from "./interruption.js";
 export * from "./public-events.js";

@@ -91,6 +91,10 @@ values (
   '00000000-0000-4000-8000-00000000da01','local',
   'sha256:5353535353535353535353535353535353535353535353535353535353535353'
 );
+select test_support.activate_falcon24_e1_fixture(
+  '00000000-0000-4000-8000-000000007501'::uuid,'local',
+  '00000000-0000-4000-8000-000000007502'::uuid,
+  '00000000-0000-4000-8000-000000007503'::uuid,false,6);
 insert into app_data_agent.runs (
   app_id,tenant_id,environment,run_id,principal_id,status,active_fence,question
 ) values (

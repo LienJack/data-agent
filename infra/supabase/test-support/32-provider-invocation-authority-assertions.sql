@@ -515,6 +515,10 @@ insert into platform.deployment_mappings (
   '00000000-0000-4000-8000-00000000da01','local',
   'sha256:9c9c9c9c9c9c9c9c9c9c9c9c9c9c9c9c9c9c9c9c9c9c9c9c9c9c9c9c9c9c9c9c'
 );
+select test_support.activate_falcon24_e1_fixture(
+  '00000000-0000-4000-8000-000000005401'::uuid,'local',
+  '00000000-0000-4000-8000-000000005402'::uuid,
+  '00000000-0000-4000-8000-00000000549c'::uuid,false,5);
 create role data_agent_u3_job_session_smoke login inherit;
 grant data_agent_job_authority to data_agent_u3_job_session_smoke with inherit true;
 set session authorization data_agent_u3_job_session_smoke;

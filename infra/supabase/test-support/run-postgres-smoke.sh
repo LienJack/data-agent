@@ -267,6 +267,310 @@ run_reset_only_guard_probe() {
   rm -f "$reset_output"
 }
 
+run_falcon24_e1_unactivated_probe() {
+  docker exec "$container_name" \
+    psql -X -q -v ON_ERROR_STOP=1 -U postgres -d "$database_name" \
+    -c "
+      do \$falcon24_e1_unactivated\$
+      begin
+        if exists(select 1 from app_data_agent.falcon24_current_authority_epoch) then
+          raise exception 'FALCON24_E1_UNEXPECTED_CURRENT_AUTHORITY';
+        end if;
+        begin
+          insert into app_data_agent.runs(
+            app_id,tenant_id,environment,run_id,principal_id,status,question)
+          values(
+            '00000000-0000-4000-8000-00000000da01'::uuid,
+            '00000000-0000-4000-8000-00000000aa99'::uuid,'e1-preflight',
+            '00000000-0000-4000-8000-00000000a999'::uuid,
+            '00000000-0000-4000-8000-000000001999'::uuid,'QUEUED',
+            'Falcon24 E1 unactivated probe');
+          raise exception 'FALCON24_E1_UNACTIVATED_RUN_ACCEPTED';
+        exception when sqlstate '55000' then
+          if sqlerrm<>'FALCON24_E1_NOT_ACTIVE' then raise; end if;
+        end;
+      end
+      \$falcon24_e1_unactivated\$;
+    " >/dev/null
+}
+
+run_falcon24_e1_legacy_state_guard_probe() {
+  migration_file=$1
+  guard_database="${database_name}_falcon24_e1_legacy"
+  guard_output=$(mktemp)
+  docker exec "$container_name" \
+    createdb -U postgres -T "$database_name" "$guard_database"
+  docker exec "$container_name" \
+    psql -X -q -v ON_ERROR_STOP=1 -U postgres -d "$guard_database" \
+    -c "
+      insert into app_data_agent.workspaces(
+        app_id,workspace_id,environment,slug,display_name)
+      values(
+        '00000000-0000-4000-8000-00000000da01'::uuid,
+        '00000000-0000-4000-8000-00000000aa99'::uuid,'e1-legacy-guard',
+        'falcon24-e1-legacy-guard','Falcon24 E1 legacy migration guard');
+      insert into app_data_agent.memberships(
+        app_id,tenant_id,environment,principal_id,membership_role)
+      values(
+        '00000000-0000-4000-8000-00000000da01'::uuid,
+        '00000000-0000-4000-8000-00000000aa99'::uuid,'e1-legacy-guard',
+        '00000000-0000-4000-8000-000000001999'::uuid,'owner');
+      insert into app_data_agent.runs(
+        app_id,tenant_id,environment,run_id,principal_id,status,question)
+      values(
+        '00000000-0000-4000-8000-00000000da01'::uuid,
+        '00000000-0000-4000-8000-00000000aa99'::uuid,'e1-legacy-guard',
+        '00000000-0000-4000-8000-00000000a999'::uuid,
+        '00000000-0000-4000-8000-000000001999'::uuid,'QUEUED',
+        'Falcon24 E1 legacy migration guard');
+    " >/dev/null
+  if docker exec -i "$container_name" \
+    psql -X -v ON_ERROR_STOP=1 -U postgres -d "$guard_database" \
+    <"$migration_file" >"$guard_output" 2>&1; then
+    echo "Falcon24 E1 migration unexpectedly accepted legacy Runtime state." >&2
+    rm -f "$guard_output"
+    exit 1
+  fi
+  if ! rg -q "FALCON24_E1_LEGACY_RUNTIME_STATE_PRESENT" "$guard_output"; then
+    echo "Falcon24 E1 migration rejected legacy state without the stable marker." >&2
+    sed -n '1,120p' "$guard_output" >&2
+    rm -f "$guard_output"
+    exit 1
+  fi
+  guard_state=$(
+    docker exec "$container_name" \
+      psql -X -q -A -t -v ON_ERROR_STOP=1 -U postgres -d "$guard_database" \
+      -c "
+        select
+          (select pg_catalog.count(*) from app_data_agent.runs)::text || ':' ||
+          (pg_catalog.to_regclass('app_data_agent.falcon24_authority_baselines') is null)::text || ':' ||
+          (select pg_catalog.count(*) from platform.migration_ledger
+            where owner_kind='app'
+              and app_id='00000000-0000-4000-8000-00000000da01'::uuid
+              and migration_version=
+                '20260725010775_app_data_agent_falcon24_e1_authority')::text;
+      "
+  )
+  if [ "$guard_state" != "1:true:0" ]; then
+    echo "Falcon24 E1 legacy guard changed state: $guard_state" >&2
+    rm -f "$guard_output"
+    exit 1
+  fi
+  rm -f "$guard_output"
+  docker exec "$container_name" dropdb -U postgres "$guard_database"
+}
+
+run_falcon24_e1_activation_run_race_probe() {
+  race_database="${database_name}_falcon24_e1_race"
+  docker exec "$container_name" \
+    createdb -U postgres -T "$database_name" "$race_database"
+  docker exec "$container_name" \
+    psql -X -q -v ON_ERROR_STOP=1 -U postgres -d "$race_database" \
+    -c "
+      do \$falcon24_e1_race_setup\$
+      declare
+        race_app constant uuid:='00000000-0000-4000-8000-00000000da01'::uuid;
+        race_tenant constant uuid:='00000000-0000-4000-8000-00000000aa44'::uuid;
+        race_principal constant uuid:='00000000-0000-4000-8000-000000001044'::uuid;
+        race_staging constant uuid:='00000000-0000-4000-8000-000000007144'::uuid;
+        race_baseline constant uuid:='00000000-0000-4000-8000-000000007244'::uuid;
+        race_attempt constant uuid:='00000000-0000-4000-8000-000000007344'::uuid;
+        retained_hash constant text:=
+          'sha256:aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa';
+        component text; baseline_key text; receipt jsonb; baseline jsonb;
+        receipt_hashes jsonb:='{}'::jsonb;
+      begin
+        insert into platform.deployment_mappings(
+          deployment_id,app_id,environment,deployment_key_hash)
+        values(
+          '00000000-0000-4000-8000-00000000de01'::uuid,race_app,'test',
+          'sha256:1111111111111111111111111111111111111111111111111111111111111111');
+        insert into app_data_agent.workspaces(
+          app_id,workspace_id,environment,slug,display_name)
+        values(race_app,race_tenant,'test','falcon24-e1-race',
+          'Falcon24 E1 activation race');
+        insert into app_data_agent.memberships(
+          app_id,tenant_id,environment,principal_id,membership_role)
+        values(race_app,race_tenant,'test',race_principal,'owner');
+        insert into app_data_agent.falcon24_e1_staging_sessions(
+          app_id,tenant_id,environment,staging_id,retained_assets_hash,status,
+          created_by,created_at,updated_at)
+        values(race_app,race_tenant,'test',race_staging,retained_hash,'STAGED',
+          race_principal,pg_catalog.clock_timestamp(),pg_catalog.clock_timestamp());
+        foreach component in array array['AGENT_PROFILES','DATASET','LLM_CONFIGURATION',
+            'OPERATOR_REGISTRY','SANDBOX_RUNTIME','SEMANTIC_RELEASE']::text[] loop
+          baseline_key:=case component when 'AGENT_PROFILES' then 'agent_profiles'
+            when 'DATASET' then 'dataset'
+            when 'LLM_CONFIGURATION' then 'llm_configuration'
+            when 'OPERATOR_REGISTRY' then 'operator_registry'
+            when 'SANDBOX_RUNTIME' then 'sandbox_runtime'
+            else 'semantic_release' end;
+          receipt:=pg_catalog.jsonb_build_object(
+            'schema_version','falcon24-e1-staging-receipt@1.0.0',
+            'staging_id',race_staging,'component',component,
+            'subject_hash',
+              'sha256:bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb',
+            'evidence_hash',
+              'sha256:cccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccc',
+            'production_isolation_proven',false);
+          receipt:=receipt||pg_catalog.jsonb_build_object(
+            'receipt_hash',app_data_agent.u2_canonical_sha256(receipt));
+          insert into app_data_agent.falcon24_e1_staging_receipts(
+            app_id,tenant_id,environment,staging_id,component,subject_hash,evidence_hash,
+            production_isolation_proven,receipt_hash,receipt_document,created_at)
+          values(race_app,race_tenant,'test',race_staging,component,
+            receipt->>'subject_hash',receipt->>'evidence_hash',false,
+            receipt->>'receipt_hash',receipt,pg_catalog.clock_timestamp());
+          receipt_hashes:=receipt_hashes||pg_catalog.jsonb_build_object(
+            baseline_key,receipt->>'receipt_hash');
+        end loop;
+        baseline:=pg_catalog.jsonb_build_object(
+          'schema_version','falcon24-authority-baseline@1.0.0',
+          'baseline_id',race_baseline,'authority_epoch','E1',
+          'source_commit',pg_catalog.repeat('d',40),'retained_assets_hash',retained_hash,
+          'web_build_hash',
+            'sha256:eeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeee',
+          'staging_receipts',receipt_hashes,
+          'acceptance_contracts',pg_catalog.jsonb_build_object(
+            'oracle','sha256:1111111111111111111111111111111111111111111111111111111111111111',
+            'qualification','sha256:2222222222222222222222222222222222222222222222222222222222222222',
+            'campaign','sha256:3333333333333333333333333333333333333333333333333333333333333333',
+            'qa_e2e','sha256:4444444444444444444444444444444444444444444444444444444444444444',
+            'trace_ui','sha256:5555555555555555555555555555555555555555555555555555555555555555',
+            'reclamation','sha256:6666666666666666666666666666666666666666666666666666666666666666'),
+          'production_isolation_proven',false,'production_gate','HOLD');
+        baseline:=baseline||pg_catalog.jsonb_build_object(
+          'baseline_hash',app_data_agent.u2_canonical_sha256(baseline));
+        insert into app_data_agent.falcon24_authority_baselines(
+          app_id,tenant_id,environment,baseline_id,authority_epoch,staging_id,
+          baseline_hash,baseline_document,source_commit,retained_assets_hash,
+          web_build_hash,production_isolation_proven,production_gate,status,
+          created_by,created_at)
+        values(race_app,race_tenant,'test',race_baseline,'E1',race_staging,
+          baseline->>'baseline_hash',baseline,baseline->>'source_commit',retained_hash,
+          baseline->>'web_build_hash',false,'HOLD','STAGED',race_principal,
+          pg_catalog.clock_timestamp());
+        insert into app_data_agent.falcon24_e1_activation_attempts(
+          app_id,tenant_id,environment,attempt_id,baseline_id,expected_baseline_hash,
+          status,created_by,created_at)
+        values(race_app,race_tenant,'test',race_attempt,race_baseline,
+          baseline->>'baseline_hash','OPEN',race_principal,pg_catalog.clock_timestamp());
+      end
+      \$falcon24_e1_race_setup\$;
+    " >/dev/null
+
+  docker exec "$container_name" \
+    psql -X -q -v ON_ERROR_STOP=1 -U postgres -d "$race_database" \
+    -c "
+      begin;
+      select pg_catalog.set_config(
+        'data_agent.app_id','00000000-0000-4000-8000-00000000da01',true);
+      select pg_catalog.set_config(
+        'data_agent.tenant_id','00000000-0000-4000-8000-00000000aa44',true);
+      select pg_catalog.set_config('data_agent.environment','test',true);
+      select pg_catalog.set_config(
+        'data_agent.principal_id','00000000-0000-4000-8000-000000001044',true);
+      select pg_catalog.set_config('data_agent.role','owner',true);
+      select pg_catalog.set_config(
+        'data_agent.deployment_id','00000000-0000-4000-8000-00000000de01',true);
+      do \$falcon24_e1_race_activate\$
+      declare baseline_hash text; command jsonb;
+      begin
+        select row.baseline_hash into strict baseline_hash
+        from app_data_agent.falcon24_authority_baselines row
+        where row.app_id='00000000-0000-4000-8000-00000000da01'::uuid
+          and row.tenant_id='00000000-0000-4000-8000-00000000aa44'::uuid
+          and row.environment='test'
+          and row.baseline_id='00000000-0000-4000-8000-000000007244'::uuid;
+        command:=pg_catalog.jsonb_build_object(
+          'schema_version','falcon24-e1-authority-activate@1.0.0',
+          'attempt_id','00000000-0000-4000-8000-000000007344'::uuid,
+          'baseline_id','00000000-0000-4000-8000-000000007244'::uuid,
+          'expected_baseline_hash',baseline_hash);
+        command:=command||pg_catalog.jsonb_build_object(
+          'command_hash',app_data_agent.u2_canonical_sha256(command));
+        perform app_data_agent.activate_falcon24_e1_authority(command);
+      end
+      \$falcon24_e1_race_activate\$;
+      select pg_catalog.pg_sleep(2);
+      commit;
+    " >/dev/null &
+  activation_pid=$!
+  sleep 0.5
+
+  docker exec "$container_name" \
+    psql -X -q -v ON_ERROR_STOP=1 -U postgres -d "$race_database" \
+    -c "
+      do \$falcon24_e1_race_run_before_commit\$
+      begin
+        perform pg_catalog.set_config(
+          'data_agent.app_id','00000000-0000-4000-8000-00000000da01',true);
+        perform pg_catalog.set_config(
+          'data_agent.tenant_id','00000000-0000-4000-8000-00000000aa44',true);
+        perform pg_catalog.set_config('data_agent.environment','test',true);
+        perform pg_catalog.set_config(
+          'data_agent.principal_id','00000000-0000-4000-8000-000000001044',true);
+        perform pg_catalog.set_config('data_agent.role','owner',true);
+        perform pg_catalog.set_config(
+          'data_agent.deployment_id','00000000-0000-4000-8000-00000000de01',true);
+        begin
+          insert into app_data_agent.runs(
+            app_id,tenant_id,environment,run_id,principal_id,status,question)
+          values(
+            '00000000-0000-4000-8000-00000000da01'::uuid,
+            '00000000-0000-4000-8000-00000000aa44'::uuid,'test',
+            '00000000-0000-4000-8000-00000000a441'::uuid,
+            '00000000-0000-4000-8000-000000001044'::uuid,'QUEUED',
+            'Falcon24 E1 race before activation commit');
+          raise exception 'FALCON24_E1_PARTIAL_ACTIVATION_OBSERVED';
+        exception when sqlstate '55000' then
+          if sqlerrm<>'FALCON24_E1_NOT_ACTIVE' then raise; end if;
+        end;
+      end
+      \$falcon24_e1_race_run_before_commit\$;
+    " >/dev/null
+  wait "$activation_pid"
+
+  race_binding=$(
+    docker exec "$container_name" \
+      psql -X -q -A -t -v ON_ERROR_STOP=1 -U postgres -d "$race_database" \
+      -c "
+        do \$falcon24_e1_race_run_after_commit\$
+        begin
+          perform pg_catalog.set_config(
+            'data_agent.app_id','00000000-0000-4000-8000-00000000da01',false);
+          perform pg_catalog.set_config(
+            'data_agent.tenant_id','00000000-0000-4000-8000-00000000aa44',false);
+          perform pg_catalog.set_config('data_agent.environment','test',false);
+          perform pg_catalog.set_config(
+            'data_agent.principal_id','00000000-0000-4000-8000-000000001044',false);
+          perform pg_catalog.set_config('data_agent.role','owner',false);
+          perform pg_catalog.set_config(
+            'data_agent.deployment_id','00000000-0000-4000-8000-00000000de01',false);
+          insert into app_data_agent.runs(
+            app_id,tenant_id,environment,run_id,principal_id,status,question)
+          values(
+            '00000000-0000-4000-8000-00000000da01'::uuid,
+            '00000000-0000-4000-8000-00000000aa44'::uuid,'test',
+            '00000000-0000-4000-8000-00000000a442'::uuid,
+            '00000000-0000-4000-8000-000000001044'::uuid,'QUEUED',
+            'Falcon24 E1 race after activation commit');
+        end
+        \$falcon24_e1_race_run_after_commit\$;
+        select authority_epoch||':'||authority_baseline_id::text||':'||
+          authority_activation_attempt_id::text
+        from app_data_agent.runs
+        where run_id='00000000-0000-4000-8000-00000000a442'::uuid;
+      "
+  )
+  if [ "$race_binding" != \
+    "E1:00000000-0000-4000-8000-000000007244:00000000-0000-4000-8000-000000007344" ]; then
+    echo "Falcon24 E1 activation/Run race exposed an incomplete binding: $race_binding" >&2
+    exit 1
+  fi
+  docker exec "$container_name" dropdb -U postgres "$race_database"
+}
+
 assert_runtime_prefix_fail_closed() {
   target_database=$1
   migration_prefix=$2
@@ -1522,11 +1826,17 @@ for sql_file in $(find "$infra_dir/apps/data-agent/migrations" -type f -name '*.
       apply_sql "$sql_file"
       verify_commercial_archive_history_probe
       ;;
+    20260725010775_app_data_agent_falcon24_e1_authority.sql)
+      run_falcon24_e1_legacy_state_guard_probe "$sql_file"
+      apply_sql "$sql_file"
+      ;;
     *)
       apply_sql "$sql_file"
       ;;
   esac
 done
+run_falcon24_e1_unactivated_probe
+run_falcon24_e1_activation_run_race_probe
 apply_sql "$script_dir/10-fixtures.sql"
 apply_sql "$script_dir/28-schema-discovery-authority-assertions.sql"
 

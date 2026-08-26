@@ -950,6 +950,10 @@ values
     '00000000-0000-4000-8000-000000001011',
     'analyst'
   );
+select test_support.activate_falcon24_e1_fixture(
+  '00000000-0000-4000-8000-00000000aa33'::uuid,'test',
+  '00000000-0000-4000-8000-000000001010'::uuid,
+  '00000000-0000-4000-8000-00000000de01'::uuid,false,4);
 insert into app_data_agent.runs (
   app_id,
   tenant_id,

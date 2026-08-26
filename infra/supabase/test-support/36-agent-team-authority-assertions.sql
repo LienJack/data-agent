@@ -181,6 +181,10 @@ values (
   '00000000-0000-4000-8000-00000000589c','00000000-0000-4000-8000-00000000da01',
   'local','sha256:9999999999999999999999999999999999999999999999999999999999999999'
 );
+select test_support.activate_falcon24_e1_fixture(
+  '00000000-0000-4000-8000-000000005801'::uuid,'local',
+  '00000000-0000-4000-8000-000000005802'::uuid,
+  '00000000-0000-4000-8000-00000000589c'::uuid,false,7);
 select pg_catalog.set_config('data_agent.app_id','00000000-0000-4000-8000-00000000da01',true);
 select pg_catalog.set_config('data_agent.tenant_id','00000000-0000-4000-8000-000000005801',true);
 select pg_catalog.set_config('data_agent.environment','local',true);

@@ -12,10 +12,10 @@
 
 ## U2 - PostgreSQL E1 Authority
 
-- [ ] 先验证 migration frontier，再创建 10775 source/manifest/rendered migration。
-- [ ] 实现 Epoch/baseline/staging/gate authority、Run binding 与空运行面 preflight。
-- [ ] 运行 renderer/inventory、Contracts/Platform tests 和 PostgreSQL 17 smoke。
-- [ ] 创建 U2 scoped commit。
+- [x] 先验证 migration frontier，再创建 10775 source/manifest/rendered migration。
+- [x] 实现 Epoch/baseline/staging/gate authority、Run binding 与空运行面 preflight。
+- [x] 运行 renderer/inventory、Contracts/Platform tests 和 PostgreSQL 17 smoke。
+- [x] 创建 U2 scoped commit。
 
 ## U3 - Fresh Bootstrap
 

@@ -12,6 +12,7 @@ import {
   verifyFalcon24ResolutionTraceUiGateReceipt,
   verifyFalcon24SandboxReclamationReceipt,
 } from "@data-agent/contracts/evals";
+import { falcon24AuthorityPersistenceBindingSchema } from "@data-agent/contracts/runs";
 import { canonicalImmutableIdSchema } from "@data-agent/contracts/workspaces";
 import { z } from "zod";
 import {
@@ -35,6 +36,7 @@ const qualificationRowSchema = z.strictObject({
   tenant_id: canonicalImmutableIdSchema,
   environment: z.string().min(1).max(64),
   principal_id: canonicalImmutableIdSchema,
+  ...falcon24AuthorityPersistenceBindingSchema.shape,
   qualification_id: falcon24QualificationIdSchema,
   qualification_version: z.number().int().positive().safe(),
   source_commit: z.string().regex(/^[0-9a-f]{40}$/u),

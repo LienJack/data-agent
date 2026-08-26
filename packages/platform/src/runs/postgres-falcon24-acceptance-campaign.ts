@@ -12,6 +12,7 @@ import {
   verifyFalcon24ResolutionTraceUiGateReceipt,
   verifyFalcon24SandboxReclamationReceipt,
 } from "@data-agent/contracts/evals";
+import { falcon24AuthorityPersistenceBindingSchema } from "@data-agent/contracts/runs";
 import { canonicalImmutableIdSchema } from "@data-agent/contracts/workspaces";
 import { z } from "zod";
 import {
@@ -42,6 +43,7 @@ const campaignRowSchema = z.strictObject({
   tenant_id: canonicalImmutableIdSchema,
   environment: z.string().min(1).max(64),
   principal_id: canonicalImmutableIdSchema,
+  ...falcon24AuthorityPersistenceBindingSchema.shape,
   campaign_id: campaignIdSchema,
   campaign_version: z.number().int().positive().safe(),
   source_fingerprint: contentHashSchema,

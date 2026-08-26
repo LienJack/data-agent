@@ -219,6 +219,124 @@ values (
   20
 );
 
+create function test_support.activate_falcon24_e1_fixture(
+  requested_tenant_id uuid,requested_environment text,requested_principal_id uuid,
+  requested_deployment_id uuid,requested_production_isolation_proven boolean,
+  requested_seed integer)
+returns void language plpgsql volatile security definer set search_path='' as $function$
+declare staging_id uuid:=pg_catalog.format('00000000-0000-4000-8000-%s',
+    pg_catalog.lpad((7100+requested_seed)::text,12,'0'))::uuid;
+  baseline_id uuid:=pg_catalog.format('00000000-0000-4000-8000-%s',
+    pg_catalog.lpad((7200+requested_seed)::text,12,'0'))::uuid;
+  attempt_id uuid:=pg_catalog.format('00000000-0000-4000-8000-%s',
+    pg_catalog.lpad((7300+requested_seed)::text,12,'0'))::uuid;
+  retained_hash constant text:='sha256:aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa';
+  component text; baseline_key text; receipt jsonb; command jsonb; baseline jsonb;
+  receipt_hashes jsonb:='{}'::jsonb;
+begin
+  perform pg_catalog.set_config('data_agent.app_id',
+    '00000000-0000-4000-8000-00000000da01',true);
+  perform pg_catalog.set_config('data_agent.tenant_id',requested_tenant_id::text,true);
+  perform pg_catalog.set_config('data_agent.environment',requested_environment,true);
+  perform pg_catalog.set_config('data_agent.principal_id',requested_principal_id::text,true);
+  perform pg_catalog.set_config('data_agent.role','owner',true);
+  perform pg_catalog.set_config('data_agent.deployment_id',requested_deployment_id::text,true);
+
+  command:=pg_catalog.jsonb_build_object(
+    'schema_version','falcon24-e1-staging-session-begin@1.0.0',
+    'staging_id',staging_id,'retained_assets_hash',retained_hash);
+  command:=command||pg_catalog.jsonb_build_object(
+    'command_hash',app_data_agent.u2_canonical_sha256(command));
+  perform app_data_agent.begin_falcon24_e1_staging_session(command);
+
+  foreach component in array array['AGENT_PROFILES','DATASET','LLM_CONFIGURATION',
+      'OPERATOR_REGISTRY','SANDBOX_RUNTIME','SEMANTIC_RELEASE']::text[] loop
+    baseline_key:=case component when 'AGENT_PROFILES' then 'agent_profiles'
+      when 'DATASET' then 'dataset' when 'LLM_CONFIGURATION' then 'llm_configuration'
+      when 'OPERATOR_REGISTRY' then 'operator_registry'
+      when 'SANDBOX_RUNTIME' then 'sandbox_runtime' else 'semantic_release' end;
+    receipt:=pg_catalog.jsonb_build_object(
+      'schema_version','falcon24-e1-staging-receipt@1.0.0','staging_id',staging_id,
+      'component',component,
+      'subject_hash','sha256:bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb',
+      'evidence_hash','sha256:cccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccc',
+      'production_isolation_proven',
+        component='SANDBOX_RUNTIME' and requested_production_isolation_proven);
+    receipt:=receipt||pg_catalog.jsonb_build_object(
+      'receipt_hash',app_data_agent.u2_canonical_sha256(receipt));
+    command:=pg_catalog.jsonb_build_object(
+      'schema_version','falcon24-e1-staging-receipt-record@1.0.0','receipt',receipt);
+    command:=command||pg_catalog.jsonb_build_object(
+      'command_hash',app_data_agent.u2_canonical_sha256(command));
+    perform app_data_agent.record_falcon24_e1_staging_receipt(command);
+    receipt_hashes:=receipt_hashes||pg_catalog.jsonb_build_object(
+      baseline_key,receipt->>'receipt_hash');
+  end loop;
+
+  baseline:=pg_catalog.jsonb_build_object(
+    'schema_version','falcon24-authority-baseline@1.0.0','baseline_id',baseline_id,
+    'authority_epoch','E1','source_commit',pg_catalog.repeat('d',40),
+    'retained_assets_hash',retained_hash,
+    'web_build_hash','sha256:eeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeee',
+    'staging_receipts',receipt_hashes,
+    'acceptance_contracts',pg_catalog.jsonb_build_object(
+      'oracle','sha256:1111111111111111111111111111111111111111111111111111111111111111',
+      'qualification','sha256:2222222222222222222222222222222222222222222222222222222222222222',
+      'campaign','sha256:3333333333333333333333333333333333333333333333333333333333333333',
+      'qa_e2e','sha256:4444444444444444444444444444444444444444444444444444444444444444',
+      'trace_ui','sha256:5555555555555555555555555555555555555555555555555555555555555555',
+      'reclamation','sha256:6666666666666666666666666666666666666666666666666666666666666666'),
+    'production_isolation_proven',requested_production_isolation_proven,
+    'production_gate',case when requested_production_isolation_proven then 'GO' else 'HOLD' end);
+  baseline:=baseline||pg_catalog.jsonb_build_object(
+    'baseline_hash',app_data_agent.u2_canonical_sha256(baseline));
+  command:=pg_catalog.jsonb_build_object(
+    'schema_version','falcon24-e1-baseline-stage@1.0.0','staging_id',staging_id,
+    'baseline',baseline);
+  command:=command||pg_catalog.jsonb_build_object(
+    'command_hash',app_data_agent.u2_canonical_sha256(command));
+  perform app_data_agent.stage_falcon24_e1_authority_baseline(command);
+
+  command:=pg_catalog.jsonb_build_object(
+    'schema_version','falcon24-e1-activation-attempt-begin@1.0.0',
+    'attempt_id',attempt_id,'baseline_id',baseline_id,
+    'expected_baseline_hash',baseline->>'baseline_hash');
+  command:=command||pg_catalog.jsonb_build_object(
+    'command_hash',app_data_agent.u2_canonical_sha256(command));
+  perform app_data_agent.begin_falcon24_e1_activation_attempt(command);
+  command:=pg_catalog.jsonb_build_object(
+    'schema_version','falcon24-e1-authority-activate@1.0.0',
+    'attempt_id',attempt_id,'baseline_id',baseline_id,
+    'expected_baseline_hash',baseline->>'baseline_hash');
+  command:=command||pg_catalog.jsonb_build_object(
+    'command_hash',app_data_agent.u2_canonical_sha256(command));
+  perform app_data_agent.activate_falcon24_e1_authority(command);
+end
+$function$;
+
+select test_support.activate_falcon24_e1_fixture(
+  '00000000-0000-4000-8000-00000000aa11'::uuid,'test',
+  '00000000-0000-4000-8000-000000001001'::uuid,
+  '00000000-0000-4000-8000-00000000de01'::uuid,false,1);
+select test_support.activate_falcon24_e1_fixture(
+  '00000000-0000-4000-8000-00000000aa22'::uuid,'test',
+  '00000000-0000-4000-8000-000000001003'::uuid,
+  '00000000-0000-4000-8000-00000000de01'::uuid,false,2);
+select test_support.activate_falcon24_e1_fixture(
+  '00000000-0000-4000-8000-00000000aa11'::uuid,'prod',
+  '00000000-0000-4000-8000-000000001005'::uuid,
+  '00000000-0000-4000-8000-00000000de02'::uuid,true,3);
+
+select pg_catalog.set_config(
+  'data_agent.app_id','00000000-0000-4000-8000-00000000da01',false);
+select pg_catalog.set_config(
+  'data_agent.tenant_id','00000000-0000-4000-8000-00000000aa11',false);
+select pg_catalog.set_config('data_agent.environment','test',false);
+select pg_catalog.set_config(
+  'data_agent.principal_id','00000000-0000-4000-8000-000000001001',false);
+select pg_catalog.set_config('data_agent.role','owner',false);
+select pg_catalog.set_config(
+  'data_agent.deployment_id','00000000-0000-4000-8000-00000000de01',false);
 insert into app_data_agent.runs (
   app_id,
   tenant_id,
@@ -228,25 +346,38 @@ insert into app_data_agent.runs (
   status,
   question
 )
-values
-  (
-    '00000000-0000-4000-8000-00000000da01'::uuid,
-    '00000000-0000-4000-8000-00000000aa11'::uuid,
-    'test',
-    '00000000-0000-4000-8000-00000000a101'::uuid,
-    '00000000-0000-4000-8000-000000001001'::uuid,
-    'RUNNING',
-    'tenant one private question'
-  ),
-  (
-    '00000000-0000-4000-8000-00000000da01'::uuid,
-    '00000000-0000-4000-8000-00000000aa22'::uuid,
-    'test',
-    '00000000-0000-4000-8000-00000000a102'::uuid,
-    '00000000-0000-4000-8000-000000001003'::uuid,
-    'RUNNING',
-    'tenant two private question'
-  );
+values (
+  '00000000-0000-4000-8000-00000000da01'::uuid,
+  '00000000-0000-4000-8000-00000000aa11'::uuid,
+  'test',
+  '00000000-0000-4000-8000-00000000a101'::uuid,
+  '00000000-0000-4000-8000-000000001001'::uuid,
+  'RUNNING',
+  'tenant one private question'
+);
+
+select pg_catalog.set_config(
+  'data_agent.tenant_id','00000000-0000-4000-8000-00000000aa22',false);
+select pg_catalog.set_config(
+  'data_agent.principal_id','00000000-0000-4000-8000-000000001003',false);
+insert into app_data_agent.runs (
+  app_id,
+  tenant_id,
+  environment,
+  run_id,
+  principal_id,
+  status,
+  question
+)
+values (
+  '00000000-0000-4000-8000-00000000da01'::uuid,
+  '00000000-0000-4000-8000-00000000aa22'::uuid,
+  'test',
+  '00000000-0000-4000-8000-00000000a102'::uuid,
+  '00000000-0000-4000-8000-000000001003'::uuid,
+  'RUNNING',
+  'tenant two private question'
+);
 
 insert into app_data_agent.datasets (
   app_id,
