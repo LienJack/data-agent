@@ -29,7 +29,20 @@ const providerToolCallSchema = z.strictObject({
 export type RootAgentHarnessErrorCode =
   | "ROOT_AGENT_RESPONSE_INVALID"
   | "ROOT_AGENT_TOOL_CALL_INVALID"
-  | "ROOT_AGENT_DECISION_REJECTED";
+  | "ROOT_AGENT_DECISION_REJECTED"
+  | "ROOT_AGENT_DECISION_CATALOG_CORRELATION_MISMATCH"
+  | "ROOT_AGENT_SELECTED_PROFILE_NOT_IN_FROZEN_CATALOG"
+  | "ROOT_AGENT_REQUESTED_UNSUPPORTED_OUTPUT_ARTIFACT"
+  | "ROOT_AGENT_PROVIDED_UNSUPPORTED_INPUT_ARTIFACT"
+  | "ROOT_AGENT_SELECTED_UNSUPPORTED_UPSTREAM_ARTIFACT";
+
+const SAFE_ROOT_CATALOG_REJECTION_CODES = new Set<RootAgentHarnessErrorCode>([
+  "ROOT_AGENT_DECISION_CATALOG_CORRELATION_MISMATCH",
+  "ROOT_AGENT_SELECTED_PROFILE_NOT_IN_FROZEN_CATALOG",
+  "ROOT_AGENT_REQUESTED_UNSUPPORTED_OUTPUT_ARTIFACT",
+  "ROOT_AGENT_PROVIDED_UNSUPPORTED_INPUT_ARTIFACT",
+  "ROOT_AGENT_SELECTED_UNSUPPORTED_UPSTREAM_ARTIFACT",
+]);
 
 export class RootAgentHarnessError extends Error {
   override readonly name = "RootAgentHarnessError";
@@ -143,6 +156,15 @@ export async function normalizeRootAgentProviderTurn(input: {
     );
   } catch (error) {
     if (error instanceof RootAgentHarnessError) throw error;
+    if (
+      error instanceof TypeError &&
+      SAFE_ROOT_CATALOG_REJECTION_CODES.has(error.message as RootAgentHarnessErrorCode)
+    ) {
+      throw new RootAgentHarnessError(
+        error.message as RootAgentHarnessErrorCode,
+        "Root Agent decision failed a frozen capability catalog closure check.",
+      );
+    }
     throw new RootAgentHarnessError(
       "ROOT_AGENT_DECISION_REJECTED",
       "Root Agent decision did not close over the frozen capability catalog.",

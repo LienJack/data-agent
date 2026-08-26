@@ -2,8 +2,10 @@ import { describe, expect, it } from "vitest";
 import { sha256ContentHash } from "../src/common/index.js";
 import {
   buildFalcon24AcceptanceRunManifest,
+  buildFalcon24ResolutionTraceGateReceipt,
   buildFalcon24SandboxReclamationReceipt,
   verifyFalcon24AcceptanceRunManifest,
+  verifyFalcon24ResolutionTraceGateReceipt,
   verifyFalcon24SandboxReclamationReceipt,
 } from "../src/evals/falcon24-acceptance-campaign.js";
 import { falcon24AnalysisCaseIdSchema } from "../src/evals/falcon24-agent-analysis.js";
@@ -76,5 +78,27 @@ describe("Falcon24 acceptance campaign contracts", () => {
         management_observation_hash: hash("0"),
       }),
     ).rejects.toThrow("FALCON24_SANDBOX_MANAGEMENT_OBSERVATION_HASH_INVALID");
+  });
+
+  it("hashes the exact successful Resolution Trace gate closure", async () => {
+    const receipt = await buildFalcon24ResolutionTraceGateReceipt({
+      schema_version: "falcon24-resolution-trace-gate-receipt@1.0.0",
+      campaign_id: "falcon24-root-v13-final",
+      run_id: id(1),
+      trace_hash: hash("a"),
+      node_count: 10,
+      edge_count: 9,
+      detail_count: 10,
+      sql_node_count: 1,
+      query_evidence_node_count: 1,
+      analysis_evidence_node_count: 1,
+      chart_node_count: 1,
+      report_node_count: 1,
+      verified_at: "2026-08-26T00:00:00.000Z",
+    });
+    await expect(verifyFalcon24ResolutionTraceGateReceipt(receipt)).resolves.toEqual(receipt);
+    await expect(
+      verifyFalcon24ResolutionTraceGateReceipt({ ...receipt, chart_node_count: 2 }),
+    ).rejects.toThrow("FALCON24_RESOLUTION_TRACE_GATE_RECEIPT_HASH_INVALID");
   });
 });

@@ -1,4 +1,5 @@
 import {
+  DEFAULT_RUN_EXECUTION_POLICY,
   hashRunProjection,
   replayRunProjection,
   runRuntimeEventSchema,
@@ -132,6 +133,7 @@ const lease = runWorkLeaseSchema.parse({
   worker_fence: 1,
   expires_at: "2026-07-25T00:01:00.000Z",
   payload: {},
+  execution_policy: DEFAULT_RUN_EXECUTION_POLICY,
 });
 const acceptedHash = await sha256ContentHash(accepted);
 const leasedHash = await sha256ContentHash(leased);

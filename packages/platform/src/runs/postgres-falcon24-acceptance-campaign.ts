@@ -5,7 +5,9 @@ import {
   falcon24AcceptanceFailureLayerSchema,
   falcon24AcceptanceRunManifestSchema,
   falcon24AgentAnalysisRunResultSchema,
+  falcon24ResolutionTraceGateReceiptSchema,
   falcon24SandboxReclamationReceiptSchema,
+  verifyFalcon24ResolutionTraceGateReceipt,
   verifyFalcon24SandboxReclamationReceipt,
 } from "@data-agent/contracts/evals";
 import { canonicalImmutableIdSchema } from "@data-agent/contracts/workspaces";
@@ -67,9 +69,18 @@ const campaignRunRowSchema = z.strictObject({
   run_variant: z.enum(["COLD", "WARM"]),
   repetition: z.number().int().min(1).max(3),
   status: runStatusSchema,
+  claim_fence_hash: contentHashSchema.nullable(),
+  claim_fence_consumed_at: timestampSchema.nullable(),
   trace_closure_hash: contentHashSchema.nullable(),
+  trace_gate_receipt_hash: contentHashSchema.nullable(),
+  trace_gate_receipt: falcon24ResolutionTraceGateReceiptSchema.nullable(),
   result_hash: contentHashSchema.nullable(),
   result_document: falcon24AgentAnalysisRunResultSchema.nullable(),
+  sandbox_reclamation_recovery_hash: contentHashSchema.nullable(),
+  sandbox_reclamation_claim_hash: contentHashSchema.nullable(),
+  sandbox_reclamation_claimed_at: timestampSchema.nullable(),
+  sandbox_reclamation_claim_expires_at: timestampSchema.nullable(),
+  sandbox_reclamation_claim_consumed_at: timestampSchema.nullable(),
   sandbox_reclamation_hash: contentHashSchema.nullable(),
   sandbox_reclamation_receipt: falcon24SandboxReclamationReceiptSchema.nullable(),
   claimed_at: timestampSchema.nullable(),
@@ -83,6 +94,7 @@ const claimInputSchema = z.strictObject({
   case_id: caseIdSchema,
   run_variant: z.enum(["COLD", "WARM"]),
   repetition: z.number().int().min(1).max(3),
+  claim_fence_token: canonicalImmutableIdSchema,
 });
 
 const holdInputSchema = z.strictObject({
@@ -95,9 +107,13 @@ const holdInputSchema = z.strictObject({
 const completeInputSchema = z.strictObject({
   campaign_id: campaignIdSchema,
   run_id: canonicalImmutableIdSchema,
-  trace_closure_hash: contentHashSchema,
   result_document: falcon24AgentAnalysisRunResultSchema,
   sandbox_reclamation_hash: contentHashSchema,
+});
+const traceStageInputSchema = z.strictObject({
+  campaign_id: campaignIdSchema,
+  run_id: canonicalImmutableIdSchema,
+  receipt: falcon24ResolutionTraceGateReceiptSchema,
 });
 const stageInputSchema = z.strictObject({
   campaign_id: campaignIdSchema,
@@ -107,9 +123,19 @@ const stageInputSchema = z.strictObject({
 const reclamationRecordInputSchema = z.strictObject({
   campaign_id: campaignIdSchema,
   run_id: canonicalImmutableIdSchema,
+  reclamation_claim_token: canonicalImmutableIdSchema,
   receipt: falcon24SandboxReclamationReceiptSchema,
 });
 const runIdentityInputSchema = z.strictObject({
+  campaign_id: campaignIdSchema,
+  run_id: canonicalImmutableIdSchema,
+});
+const reclamationClaimInputSchema = runIdentityInputSchema.extend({
+  runtime_attestation_hash: contentHashSchema,
+  reclamation_recovery_token: canonicalImmutableIdSchema,
+  reclamation_claim_token: canonicalImmutableIdSchema,
+});
+const pendingFailedRunSchema = z.strictObject({
   campaign_id: campaignIdSchema,
   run_id: canonicalImmutableIdSchema,
 });
@@ -126,20 +152,39 @@ const STABLE_DATABASE_ERRORS = new Set([
   "FALCON24_CAMPAIGN_CHANGE_REQUIRED",
   "FALCON24_RUN_CLAIM_INVALID",
   "FALCON24_CAMPAIGN_NOT_FOUND",
+  "FALCON24_CAMPAIGN_LOAD_INVALID",
+  "FALCON24_CAMPAIGN_RUN_LOAD_INVALID",
   "FALCON24_CAMPAIGN_HOLD",
   "FALCON24_RUN_ORDER_OR_STATE_INVALID",
   "FALCON24_RUN_SCHEDULE_MISMATCH",
   "FALCON24_RUN_ALREADY_CLAIMED",
+  "FALCON24_QUESTION_ACCEPTANCE_INVALID",
+  "FALCON24_SUBMIT_RUN_PREEXISTS",
+  "FALCON24_QUESTION_ACCEPTANCE_NOT_READY",
+  "FALCON24_SUBMIT_ACCEPTANCE_NOT_ATOMIC",
+  "FALCON24_SUBMIT_FENCE_MISMATCH",
+  "FALCON24_SUBMIT_FENCE_ALREADY_CONSUMED",
+  "FALCON24_SUBMIT_FENCE_REQUIRED",
+  "FALCON24_RUN_ACCEPTED_RECOVERY_REQUIRED",
   "FALCON24_CAMPAIGN_HOLD_INVALID",
   "FALCON24_CAMPAIGN_HOLD_REPLAY_MISMATCH",
   "FALCON24_CAMPAIGN_ALREADY_PASSED",
   "FALCON24_RUN_NOT_CLAIMED",
   "FALCON24_RESULT_STAGE_INVALID",
   "FALCON24_RESULT_STAGE_REPLAY_MISMATCH",
+  "FALCON24_TRACE_STAGE_INVALID",
+  "FALCON24_TRACE_STAGE_REPLAY_MISMATCH",
+  "FALCON24_TRACE_STAGE_REQUIRED",
+  "FALCON24_TRACE_GATE_RECEIPT_LOAD_INVALID",
   "FALCON24_ACTUAL_RUN_REQUIRED",
+  "FALCON24_ACTUAL_RUN_NOT_TERMINAL",
   "FALCON24_ACTUAL_RUN_NOT_SUCCEEDED",
   "FALCON24_RESULT_STAGE_REQUIRED",
   "FALCON24_SANDBOX_RECLAMATION_RECORD_INVALID",
+  "FALCON24_SANDBOX_RECLAMATION_CLAIM_INVALID",
+  "FALCON24_SANDBOX_RECLAMATION_ALREADY_CLAIMED",
+  "FALCON24_SANDBOX_RECLAMATION_CLAIM_REQUIRED",
+  "FALCON24_SANDBOX_RECLAMATION_CLAIM_MISMATCH",
   "FALCON24_SANDBOX_RECLAMATION_REPLAY_MISMATCH",
   "FALCON24_SANDBOX_RECLAMATION_REQUIRED",
   "FALCON24_SANDBOX_ATTESTATION_MISMATCH",
@@ -150,6 +195,8 @@ const STABLE_DATABASE_ERRORS = new Set([
   "FALCON24_RESULTS_LOAD_INVALID",
   "FALCON24_RUN_RESULT_LOAD_INVALID",
   "FALCON24_RUN_NOT_FOUND",
+  "FALCON24_PENDING_FAILED_RUN_AMBIGUOUS",
+  "RUN_EXECUTION_POLICY_CORRUPT",
 ]);
 
 function mapDatabaseError(error: unknown) {
@@ -196,6 +243,91 @@ export function createPostgresFalcon24AcceptanceCampaignAuthority(input: {
   readonly authorizer: TransactionalCapabilityAuthorizer;
 }) {
   return Object.freeze({
+    async load(capabilityInput: unknown, candidate: { readonly campaign_id: unknown }) {
+      const request = z.strictObject({ campaign_id: campaignIdSchema }).parse(candidate);
+      const command = await commandWithHash({
+        schema_version: "falcon24-acceptance-campaign-load@1.0.0" as const,
+        campaign_id: request.campaign_id,
+      });
+      return withAppTransaction(
+        input.pool,
+        input.authorizer,
+        capabilityInput,
+        {
+          access: "READ",
+          allowed_roles: ["OWNER", "ANALYST"],
+          operation_name: "falcon24-acceptance.load-campaign",
+          map_database_error: mapDatabaseError,
+        },
+        async ({ client }) => {
+          const result = await client.query<JsonRow>(
+            "select app_data_agent.load_falcon24_acceptance_campaign($1::jsonb) as value",
+            [command],
+          );
+          const raw = exact(result.rows);
+          if (raw === null) return null;
+          return assertCampaignIdentity(campaignRowSchema.parse(raw), request);
+        },
+      );
+    },
+
+    async loadRun(capabilityInput: unknown, candidate: unknown) {
+      const request = runIdentityInputSchema.parse(candidate);
+      const command = await commandWithHash({
+        schema_version: "falcon24-acceptance-campaign-run-load@1.0.0" as const,
+        ...request,
+      });
+      return withAppTransaction(
+        input.pool,
+        input.authorizer,
+        capabilityInput,
+        {
+          access: "READ",
+          allowed_roles: ["OWNER", "ANALYST"],
+          operation_name: "falcon24-acceptance.load-run",
+          correlation_id: request.run_id,
+          map_database_error: mapDatabaseError,
+        },
+        async ({ client }) => {
+          const result = await client.query<JsonRow>(
+            "select app_data_agent.load_falcon24_acceptance_campaign_run($1::jsonb) as value",
+            [command],
+          );
+          const raw = exact(result.rows);
+          if (raw === null) return null;
+          const run = campaignRunRowSchema.parse(raw);
+          if (run.campaign_id !== request.campaign_id || run.run_id !== request.run_id) {
+            throw new PersistenceBoundaryError(
+              "FALCON24_CAMPAIGN_DATABASE_CONTRACT_INVALID",
+              "Falcon24 Run escaped its exact campaign/run identity.",
+            );
+          }
+          return run;
+        },
+      );
+    },
+
+    async loadPendingFailedRun(capabilityInput: unknown) {
+      return withAppTransaction(
+        input.pool,
+        input.authorizer,
+        capabilityInput,
+        {
+          access: "READ",
+          allowed_roles: ["OWNER", "ANALYST"],
+          operation_name: "falcon24-acceptance.load-pending-failed-run",
+          map_database_error: mapDatabaseError,
+        },
+        async ({ client }) => {
+          const result = await client.query<JsonRow>(
+            "select app_data_agent.load_falcon24_pending_failed_run() as value",
+          );
+          const raw = exact(result.rows);
+          return raw === null ? null : pendingFailedRunSchema.parse(raw);
+        },
+      );
+    },
+
     async begin(capabilityInput: unknown, candidate: unknown) {
       const manifest = falcon24AcceptanceRunManifestSchema.parse(candidate);
       const command = await commandWithHash({
@@ -239,8 +371,11 @@ export function createPostgresFalcon24AcceptanceCampaignAuthority(input: {
     async claim(capabilityInput: unknown, candidate: unknown) {
       const request = claimInputSchema.parse(candidate);
       const command = await commandWithHash({
-        schema_version: "falcon24-acceptance-run-claim@1.0.0" as const,
+        schema_version: "falcon24-acceptance-run-claim@2.0.0" as const,
         ...request,
+      });
+      const expectedFenceHash = await sha256ContentHash({
+        claim_fence_token: request.claim_fence_token,
       });
       return withAppTransaction(
         input.pool,
@@ -266,7 +401,9 @@ export function createPostgresFalcon24AcceptanceCampaignAuthority(input: {
             run.case_id !== request.case_id ||
             run.run_variant !== request.run_variant ||
             run.repetition !== request.repetition ||
-            run.status !== "CLAIMED"
+            run.status !== "CLAIMED" ||
+            run.claim_fence_hash !== expectedFenceHash ||
+            run.claim_fence_consumed_at !== null
           ) {
             throw new PersistenceBoundaryError(
               "FALCON24_CAMPAIGN_DATABASE_CONTRACT_INVALID",
@@ -281,7 +418,7 @@ export function createPostgresFalcon24AcceptanceCampaignAuthority(input: {
     async hold(capabilityInput: unknown, candidate: unknown) {
       const request = holdInputSchema.parse(candidate);
       const command = await commandWithHash({
-        schema_version: "falcon24-acceptance-campaign-hold@1.0.0" as const,
+        schema_version: "falcon24-acceptance-campaign-hold@2.0.0" as const,
         ...request,
       });
       return withAppTransaction(
@@ -354,6 +491,8 @@ export function createPostgresFalcon24AcceptanceCampaignAuthority(input: {
             campaignRun.campaign_id !== request.campaign_id ||
             campaignRun.run_id !== request.run_id ||
             campaignRun.status !== "CLAIMED" ||
+            campaignRun.claim_fence_hash === null ||
+            campaignRun.claim_fence_consumed_at === null ||
             campaignRun.result_hash !== resultHash ||
             campaignRun.result_document?.run_id !== request.run_id
           ) {
@@ -367,6 +506,176 @@ export function createPostgresFalcon24AcceptanceCampaignAuthority(input: {
       );
     },
 
+    async stageTrace(capabilityInput: unknown, candidate: unknown) {
+      const request = traceStageInputSchema.parse(candidate);
+      const receipt = await verifyFalcon24ResolutionTraceGateReceipt(request.receipt);
+      if (receipt.campaign_id !== request.campaign_id || receipt.run_id !== request.run_id) {
+        throw new TypeError("FALCON24_TRACE_STAGE_IDENTITY_INVALID");
+      }
+      const command = await commandWithHash({
+        schema_version: "falcon24-acceptance-trace-stage@1.0.0" as const,
+        campaign_id: request.campaign_id,
+        run_id: request.run_id,
+        trace_closure_hash: receipt.trace_hash,
+        trace_gate_receipt_hash: receipt.receipt_hash,
+        trace_gate_receipt: receipt,
+      });
+      return withAppTransaction(
+        input.pool,
+        input.authorizer,
+        capabilityInput,
+        {
+          access: "WRITE",
+          allowed_roles: ["OWNER", "ANALYST"],
+          operation_name: "falcon24-acceptance.stage-trace",
+          correlation_id: request.run_id,
+          map_database_error: mapDatabaseError,
+        },
+        async ({ client }) => {
+          const result = await client.query<JsonRow>(
+            "select app_data_agent.stage_falcon24_acceptance_trace($1::jsonb) as value",
+            [command],
+          );
+          const campaignRun = campaignRunRowSchema.parse(exact(result.rows));
+          if (
+            campaignRun.campaign_id !== request.campaign_id ||
+            campaignRun.run_id !== request.run_id ||
+            campaignRun.status !== "CLAIMED" ||
+            campaignRun.claim_fence_hash === null ||
+            campaignRun.claim_fence_consumed_at === null ||
+            campaignRun.trace_closure_hash !== receipt.trace_hash ||
+            campaignRun.trace_gate_receipt_hash !== receipt.receipt_hash ||
+            campaignRun.trace_gate_receipt?.receipt_hash !== receipt.receipt_hash
+          ) {
+            throw new PersistenceBoundaryError(
+              "FALCON24_CAMPAIGN_DATABASE_CONTRACT_INVALID",
+              "Falcon24 Trace stage RPC 返回了不同的轨迹闭包。",
+            );
+          }
+          return campaignRun;
+        },
+      );
+    },
+
+    async loadTraceGate(capabilityInput: unknown, candidate: unknown) {
+      const request = runIdentityInputSchema.parse(candidate);
+      const command = await commandWithHash({
+        schema_version: "falcon24-acceptance-trace-gate-load@1.0.0" as const,
+        ...request,
+      });
+      return withAppTransaction(
+        input.pool,
+        input.authorizer,
+        capabilityInput,
+        {
+          access: "READ",
+          allowed_roles: ["OWNER", "ANALYST"],
+          operation_name: "falcon24-acceptance.load-trace-gate",
+          correlation_id: request.run_id,
+          map_database_error: mapDatabaseError,
+        },
+        async ({ client }) => {
+          const result = await client.query<JsonRow>(
+            "select app_data_agent.load_falcon24_acceptance_trace_gate($1::jsonb) as value",
+            [command],
+          );
+          const raw = exact(result.rows);
+          if (raw === null) return null;
+          const receipt = await verifyFalcon24ResolutionTraceGateReceipt(raw);
+          if (receipt.campaign_id !== request.campaign_id || receipt.run_id !== request.run_id) {
+            throw new PersistenceBoundaryError(
+              "FALCON24_CAMPAIGN_DATABASE_CONTRACT_INVALID",
+              "Falcon24 Trace gate receipt escaped its exact campaign/run identity.",
+            );
+          }
+          return receipt;
+        },
+      );
+    },
+
+    async claimSandboxReclamation(capabilityInput: unknown, candidate: unknown) {
+      const request = reclamationClaimInputSchema.parse(candidate);
+      const command = await commandWithHash({
+        schema_version: "falcon24-sandbox-reclamation-claim@1.0.0" as const,
+        ...request,
+      });
+      const expectedClaimHash = await sha256ContentHash({
+        reclamation_claim_token: request.reclamation_claim_token,
+      });
+      const expectedRecoveryHash = await sha256ContentHash({
+        reclamation_recovery_token: request.reclamation_recovery_token,
+      });
+      return withAppTransaction(
+        input.pool,
+        input.authorizer,
+        capabilityInput,
+        {
+          access: "WRITE",
+          allowed_roles: ["OWNER", "ANALYST"],
+          operation_name: "falcon24-acceptance.claim-sandbox-reclamation",
+          correlation_id: request.run_id,
+          map_database_error: mapDatabaseError,
+        },
+        async ({ client }) => {
+          const result = await client.query<JsonRow>(
+            "select app_data_agent.claim_falcon24_sandbox_reclamation($1::jsonb) as value",
+            [command],
+          );
+          const campaignRun = campaignRunRowSchema.parse(exact(result.rows));
+          if (
+            campaignRun.campaign_id !== request.campaign_id ||
+            campaignRun.run_id !== request.run_id
+          ) {
+            throw new PersistenceBoundaryError(
+              "FALCON24_CAMPAIGN_DATABASE_CONTRACT_INVALID",
+              "Falcon24 Sandbox reclamation claim escaped its exact identity.",
+            );
+          }
+          if (campaignRun.sandbox_reclamation_receipt !== null) {
+            const receipt = await verifyFalcon24SandboxReclamationReceipt(
+              campaignRun.sandbox_reclamation_receipt,
+            );
+            if (
+              receipt.campaign_id !== request.campaign_id ||
+              receipt.run_id !== request.run_id ||
+              campaignRun.sandbox_reclamation_hash !== receipt.receipt_hash ||
+              campaignRun.sandbox_reclamation_recovery_hash !== expectedRecoveryHash ||
+              campaignRun.sandbox_reclamation_claim_hash === null ||
+              campaignRun.sandbox_reclamation_claimed_at === null ||
+              campaignRun.sandbox_reclamation_claim_expires_at === null ||
+              campaignRun.sandbox_reclamation_claim_consumed_at === null
+            ) {
+              throw new PersistenceBoundaryError(
+                "FALCON24_CAMPAIGN_DATABASE_CONTRACT_INVALID",
+                "Falcon24 completed Sandbox reclamation claim is not durably closed.",
+              );
+            }
+            return { disposition: "COMPLETED" as const, receipt };
+          }
+          if (
+            campaignRun.status !== "CLAIMED" ||
+            campaignRun.claim_fence_hash === null ||
+            campaignRun.claim_fence_consumed_at === null ||
+            campaignRun.trace_closure_hash === null ||
+            campaignRun.trace_gate_receipt_hash === null ||
+            campaignRun.trace_gate_receipt === null ||
+            campaignRun.sandbox_reclamation_recovery_hash !== expectedRecoveryHash ||
+            campaignRun.sandbox_reclamation_claim_hash !== expectedClaimHash ||
+            campaignRun.sandbox_reclamation_claimed_at === null ||
+            campaignRun.sandbox_reclamation_claim_expires_at === null ||
+            campaignRun.sandbox_reclamation_claim_consumed_at !== null ||
+            campaignRun.sandbox_reclamation_hash !== null
+          ) {
+            throw new PersistenceBoundaryError(
+              "FALCON24_CAMPAIGN_DATABASE_CONTRACT_INVALID",
+              "Falcon24 Sandbox reclamation claim was not atomically persisted.",
+            );
+          }
+          return { disposition: "CLAIMED" as const, receipt: null };
+        },
+      );
+    },
+
     async complete(capabilityInput: unknown, candidate: unknown) {
       const request = completeInputSchema.parse(candidate);
       if (request.result_document.run_id !== request.run_id) {
@@ -374,14 +683,13 @@ export function createPostgresFalcon24AcceptanceCampaignAuthority(input: {
       }
       const resultHash = await sha256ContentHash(request.result_document);
       const command = await commandWithHash({
-        schema_version: "falcon24-acceptance-run-complete@1.0.0" as const,
+        schema_version: "falcon24-acceptance-run-complete@2.0.0" as const,
         campaign_id: request.campaign_id,
         run_id: request.run_id,
-        trace_closure_hash: request.trace_closure_hash,
         expected_result_hash: resultHash,
         sandbox_reclamation_hash: request.sandbox_reclamation_hash,
       });
-      return withAppTransaction(
+      const completed = await withAppTransaction(
         input.pool,
         input.authorizer,
         capabilityInput,
@@ -410,6 +718,92 @@ export function createPostgresFalcon24AcceptanceCampaignAuthority(input: {
           return campaign;
         },
       );
+      if (completed.ok || completed.error.code !== "PERSISTENCE_TRANSACTION_FAILED") {
+        return completed;
+      }
+
+      const [loadRunCommand, loadCampaignCommand] = await Promise.all([
+        commandWithHash({
+          schema_version: "falcon24-acceptance-campaign-run-load@1.0.0" as const,
+          campaign_id: request.campaign_id,
+          run_id: request.run_id,
+        }),
+        commandWithHash({
+          schema_version: "falcon24-acceptance-campaign-load@1.0.0" as const,
+          campaign_id: request.campaign_id,
+        }),
+      ]);
+      const recovered = await withAppTransaction(
+        input.pool,
+        input.authorizer,
+        capabilityInput,
+        {
+          access: "READ",
+          allowed_roles: ["OWNER", "ANALYST"],
+          operation_name: "falcon24-acceptance.complete-recover",
+          correlation_id: request.run_id,
+          map_database_error: mapDatabaseError,
+        },
+        async ({ client }) => {
+          const [runResult, campaignResult] = await Promise.all([
+            client.query<JsonRow>(
+              "select app_data_agent.load_falcon24_acceptance_campaign_run($1::jsonb) as value",
+              [loadRunCommand],
+            ),
+            client.query<JsonRow>(
+              "select app_data_agent.load_falcon24_acceptance_campaign($1::jsonb) as value",
+              [loadCampaignCommand],
+            ),
+          ]);
+          const campaignRun = campaignRunRowSchema.parse(exact(runResult.rows));
+          const campaign = assertCampaignIdentity(
+            campaignRowSchema.parse(exact(campaignResult.rows)),
+            request,
+          );
+          if (
+            campaignRun.campaign_id !== request.campaign_id ||
+            campaignRun.run_id !== request.run_id
+          ) {
+            throw new PersistenceBoundaryError(
+              "FALCON24_CAMPAIGN_DATABASE_CONTRACT_INVALID",
+              "Falcon24 completion recovery escaped its exact identity.",
+            );
+          }
+          return { campaign, campaign_run: campaignRun } as const;
+        },
+      );
+      if (!recovered.ok) {
+        return {
+          ok: false as const,
+          error: {
+            code: "FALCON24_FINALIZE_OUTCOME_UNKNOWN",
+            message: "Falcon24 finalize 提交结果未知，必须先从 PostgreSQL 权威恢复。",
+            retryable: false,
+          },
+        };
+      }
+      if (
+        recovered.value.campaign_run.status === "VERIFIED" &&
+        recovered.value.campaign_run.result_hash === resultHash &&
+        recovered.value.campaign_run.sandbox_reclamation_hash ===
+          request.sandbox_reclamation_hash &&
+        recovered.value.campaign_run.trace_closure_hash !== null &&
+        recovered.value.campaign_run.trace_gate_receipt_hash !== null &&
+        recovered.value.campaign_run.trace_gate_receipt !== null &&
+        (recovered.value.campaign.status === "READY" ||
+          recovered.value.campaign.status === "PASSED")
+      ) {
+        return { ok: true as const, value: recovered.value.campaign };
+      }
+      if (recovered.value.campaign_run.status === "CLAIMED") return completed;
+      return {
+        ok: false as const,
+        error: {
+          code: "FALCON24_FINALIZE_OUTCOME_UNKNOWN",
+          message: "Falcon24 finalize 权威状态与提交命令不一致。",
+          retryable: false,
+        },
+      };
     },
 
     async recordSandboxReclamation(capabilityInput: unknown, candidate: unknown) {
@@ -422,10 +816,14 @@ export function createPostgresFalcon24AcceptanceCampaignAuthority(input: {
         schema_version: "falcon24-sandbox-reclamation-record@1.0.0" as const,
         campaign_id: request.campaign_id,
         run_id: request.run_id,
+        reclamation_claim_token: request.reclamation_claim_token,
         sandbox_reclamation_hash: receipt.receipt_hash,
         sandbox_reclamation_receipt: receipt,
       });
-      return withAppTransaction(
+      const expectedClaimHash = await sha256ContentHash({
+        reclamation_claim_token: request.reclamation_claim_token,
+      });
+      const recorded = await withAppTransaction(
         input.pool,
         input.authorizer,
         capabilityInput,
@@ -446,6 +844,15 @@ export function createPostgresFalcon24AcceptanceCampaignAuthority(input: {
             campaignRun.campaign_id !== request.campaign_id ||
             campaignRun.run_id !== request.run_id ||
             campaignRun.status !== "CLAIMED" ||
+            campaignRun.claim_fence_hash === null ||
+            campaignRun.claim_fence_consumed_at === null ||
+            campaignRun.trace_closure_hash === null ||
+            campaignRun.trace_gate_receipt_hash === null ||
+            campaignRun.trace_gate_receipt === null ||
+            campaignRun.sandbox_reclamation_claim_hash !== expectedClaimHash ||
+            campaignRun.sandbox_reclamation_claimed_at === null ||
+            campaignRun.sandbox_reclamation_claim_expires_at === null ||
+            campaignRun.sandbox_reclamation_claim_consumed_at === null ||
             campaignRun.sandbox_reclamation_hash !== receipt.receipt_hash ||
             campaignRun.sandbox_reclamation_receipt?.receipt_hash !== receipt.receipt_hash
           ) {
@@ -457,6 +864,83 @@ export function createPostgresFalcon24AcceptanceCampaignAuthority(input: {
           return campaignRun;
         },
       );
+      if (recorded.ok || recorded.error.code !== "PERSISTENCE_TRANSACTION_FAILED") {
+        return recorded;
+      }
+
+      const loadCommand = await commandWithHash({
+        schema_version: "falcon24-acceptance-campaign-run-load@1.0.0" as const,
+        campaign_id: request.campaign_id,
+        run_id: request.run_id,
+      });
+      const recovered = await withAppTransaction(
+        input.pool,
+        input.authorizer,
+        capabilityInput,
+        {
+          access: "READ",
+          allowed_roles: ["OWNER", "ANALYST"],
+          operation_name: "falcon24-acceptance.record-sandbox-reclamation-recover",
+          correlation_id: request.run_id,
+          map_database_error: mapDatabaseError,
+        },
+        async ({ client }) => {
+          const result = await client.query<JsonRow>(
+            "select app_data_agent.load_falcon24_acceptance_campaign_run($1::jsonb) as value",
+            [loadCommand],
+          );
+          return campaignRunRowSchema.parse(exact(result.rows));
+        },
+      );
+      if (!recovered.ok) {
+        return {
+          ok: false as const,
+          error: {
+            code: "FALCON24_SANDBOX_RECLAMATION_OUTCOME_UNKNOWN",
+            message: "Falcon24 Sandbox 回收提交结果未知，必须先从 PostgreSQL 权威恢复。",
+            retryable: false,
+          },
+        };
+      }
+      const recoveredRun = recovered.value;
+      if (
+        recoveredRun.campaign_id !== request.campaign_id ||
+        recoveredRun.run_id !== request.run_id
+      ) {
+        return {
+          ok: false as const,
+          error: {
+            code: "FALCON24_SANDBOX_RECLAMATION_OUTCOME_UNKNOWN",
+            message: "Falcon24 Sandbox 回收恢复越过 exact campaign/run identity。",
+            retryable: false,
+          },
+        };
+      }
+      if (
+        recoveredRun.sandbox_reclamation_claim_hash === expectedClaimHash &&
+        recoveredRun.sandbox_reclamation_claim_consumed_at !== null &&
+        recoveredRun.sandbox_reclamation_hash === receipt.receipt_hash &&
+        recoveredRun.sandbox_reclamation_receipt?.receipt_hash === receipt.receipt_hash
+      ) {
+        return { ok: true as const, value: recoveredRun };
+      }
+      if (
+        recoveredRun.status === "CLAIMED" &&
+        recoveredRun.sandbox_reclamation_claim_hash === expectedClaimHash &&
+        recoveredRun.sandbox_reclamation_claim_consumed_at === null &&
+        recoveredRun.sandbox_reclamation_hash === null &&
+        recoveredRun.sandbox_reclamation_receipt === null
+      ) {
+        return recorded;
+      }
+      return {
+        ok: false as const,
+        error: {
+          code: "FALCON24_SANDBOX_RECLAMATION_OUTCOME_UNKNOWN",
+          message: "Falcon24 Sandbox 回收权威状态与提交命令不一致。",
+          retryable: false,
+        },
+      };
     },
 
     async loadSandboxReclamation(capabilityInput: unknown, candidate: unknown) {

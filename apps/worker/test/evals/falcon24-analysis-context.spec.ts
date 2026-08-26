@@ -5,7 +5,7 @@ import {
   buildSemanticRetrievalReceipt,
   type SemanticContextCommitResult,
 } from "@data-agent/contracts/context";
-import type { RunWorkLease } from "@data-agent/contracts/runs";
+import { DEFAULT_RUN_EXECUTION_POLICY, type RunWorkLease } from "@data-agent/contracts/runs";
 import { FALCON24_AGENT_ANALYSIS_CASES } from "@data-agent/evals";
 import { describe, expect, it } from "vitest";
 import { compileFalcon24AnalysisContext } from "../../src/evals/falcon24-analysis-context.js";
@@ -30,6 +30,7 @@ const lease = {
   lease_token: 1,
   worker_fence: 1,
   expires_at: "2026-08-24T12:01:00.000Z",
+  execution_policy: DEFAULT_RUN_EXECUTION_POLICY,
   payload: {},
 } as const satisfies RunWorkLease;
 

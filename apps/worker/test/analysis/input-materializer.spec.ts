@@ -7,7 +7,7 @@ import {
   verifyAnalysisInputMaterializationReceipt,
 } from "@data-agent/contracts/artifacts";
 import { sha256ContentHash } from "@data-agent/contracts/common";
-import type { RunWorkLease } from "@data-agent/contracts/runs";
+import { DEFAULT_RUN_EXECUTION_POLICY, type RunWorkLease } from "@data-agent/contracts/runs";
 import { Float64, Table, tableToIPC, Utf8, vectorFromArray } from "apache-arrow";
 import { describe, expect, it, vi } from "vitest";
 import { verifyGovernedAnalysisInputs } from "../../src/analysis/governed-analysis-input.js";
@@ -52,6 +52,7 @@ const lease: RunWorkLease = {
   lease_token: 1,
   worker_fence: 1,
   expires_at: "2026-08-24T00:05:00.000Z",
+  execution_policy: DEFAULT_RUN_EXECUTION_POLICY,
   payload: {},
 };
 

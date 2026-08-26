@@ -1,3 +1,4 @@
+import { DEFAULT_RUN_EXECUTION_POLICY } from "@data-agent/contracts";
 import { describe, expect, it, vi } from "vitest";
 import type { SqlPool } from "../../src/index.js";
 import { createPostgresProviderInvocationSmokeJob } from "../../src/providers/postgres-provider-invocation-smoke-job.js";
@@ -74,6 +75,7 @@ describe("Postgres Provider invocation smoke job", () => {
         lease_token: 1,
         worker_fence: 1,
         expires_at: "2026-08-17T00:00:30.000Z",
+        execution_policy: DEFAULT_RUN_EXECUTION_POLICY,
         payload: { kind: "START_L2_RESEARCH" },
       },
       precondition: {
@@ -135,7 +137,7 @@ describe("Postgres Provider invocation smoke job", () => {
     );
     expect(query).toHaveBeenCalledWith(
       expect.stringContaining("claim_provider_invocation_smoke_work"),
-      ["worker-u3-smoke", 30_000, runId, commandId],
+      ["worker-u3-smoke", 30_000, runId, commandId, DEFAULT_RUN_EXECUTION_POLICY],
     );
     expect(release).toHaveBeenCalledOnce();
   });

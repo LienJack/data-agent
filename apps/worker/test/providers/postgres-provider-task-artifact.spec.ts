@@ -1,4 +1,7 @@
-import { buildProviderTaskArtifactDocument } from "@data-agent/contracts";
+import {
+  buildProviderTaskArtifactDocument,
+  DEFAULT_RUN_EXECUTION_POLICY,
+} from "@data-agent/contracts";
 import type { AppCapability, PostgresProviderInvocationStore } from "@data-agent/platform";
 import { describe, expect, it, vi } from "vitest";
 import { createPostgresProviderTaskArtifactAuthority } from "../../src/providers/postgres-provider-task-artifact.js";
@@ -32,6 +35,7 @@ const workerLease = {
   lease_token: 2,
   worker_fence: 3,
   expires_at: "2026-08-16T10:05:00.000Z",
+  execution_policy: DEFAULT_RUN_EXECUTION_POLICY,
   payload: {
     kind: "START_L2_RESEARCH",
     effective_config_ref: { config_id: ids.config, config_revision: 1, config_hash: hash("a") },

@@ -2,6 +2,7 @@ import {
   type ArtifactReference,
   artifactReferenceIdentity,
   buildProductTeamArtifactDocument,
+  DEFAULT_RUN_EXECUTION_POLICY,
   type ProductTeamArtifactDocument,
   type RunWorkLease,
 } from "@data-agent/contracts";
@@ -30,6 +31,7 @@ const lease: RunWorkLease = {
   lease_token: 1,
   worker_fence: 1,
   expires_at: "2026-08-24T00:05:00.000Z",
+  execution_policy: DEFAULT_RUN_EXECUTION_POLICY,
   payload: {},
 };
 const analysisProgramRef: ArtifactReference = {

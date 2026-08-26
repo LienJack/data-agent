@@ -2244,6 +2244,28 @@
       "postcondition": {
         "checksum_occurrences": 2
       }
+    },
+    {
+      "id": "10769",
+      "migration_name": "20260725010769_app_data_agent_falcon24_trace_gate_authority.sql",
+      "source_directory": "infra/supabase/apps/data-agent/migration-sources/10769",
+      "segments": [
+        "00-preamble.sql.inc",
+        "20-trace-gate-authority.sql.inc",
+        "25-submit-fence-authority.sql.inc",
+        "30-campaign-read-authority.sql.inc",
+        "35-run-work-attempt-budget.sql.inc",
+        "37-provider-worker-lease-policy.sql.inc",
+        "40-finalization-authority.sql.inc",
+        "80-grants.sql.inc",
+        "90-postconditions.sql.inc",
+        "99-ledger.sql.inc"
+      ],
+      "placeholder": "__FALCON24_TRACE_GATE_AUTHORITY_MIGRATION_CHECKSUM__",
+      "checksum_header": "falcon24_trace_gate_authority_migration_checksum",
+      "postcondition": {
+        "checksum_occurrences": 2
+      }
     }
   ],
   "exceptions": [

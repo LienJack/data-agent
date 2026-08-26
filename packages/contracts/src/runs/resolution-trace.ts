@@ -1,5 +1,10 @@
 import { z } from "zod";
-import { artifactReferenceFor, artifactReferenceSchema } from "../artifacts/envelope.js";
+import {
+  type ArtifactReference,
+  artifactReferenceFor,
+  artifactReferenceIdentity,
+  artifactReferenceSchema,
+} from "../artifacts/envelope.js";
 import {
   contentHashSchema,
   deepFreeze,
@@ -95,6 +100,18 @@ function compareEdges(
   return edgeIdentity(left).localeCompare(edgeIdentity(right));
 }
 
+export function hasDuplicateArtifactReferenceIdentities(
+  references: readonly ArtifactReference[],
+): boolean {
+  const identities = new Set<string>();
+  for (const reference of references) {
+    const identity = artifactReferenceIdentity(reference);
+    if (identities.has(identity)) return true;
+    identities.add(identity);
+  }
+  return false;
+}
+
 function addTraceIssues(
   trace: z.infer<typeof resolutionTraceDraftSchema>,
   ctx: z.RefinementCtx,
@@ -142,6 +159,13 @@ function addTraceIssues(
         path: ["nodes", index, "artifact_refs"],
       });
     }
+    if (hasDuplicateArtifactReferenceIdentities(node.artifact_refs)) {
+      ctx.addIssue({
+        code: "custom",
+        message: "RESOLUTION_TRACE_ARTIFACT_REFERENCE_DUPLICATE",
+        path: ["nodes", index, "artifact_refs"],
+      });
+    }
     const previous = trace.nodes[index - 1];
     if (previous && compareNodes(previous, node) >= 0) {
       ctx.addIssue({
@@ -179,6 +203,59 @@ function addTraceIssues(
       });
     }
   });
+
+  const nodesById = new Map(trace.nodes.map((node) => [node.node_id, node]));
+  for (const [edgeIndex, edge] of trace.edges.entries()) {
+    if (edge.kind !== "PRODUCED") continue;
+    const source = nodesById.get(edge.from_node_id);
+    const target = nodesById.get(edge.to_node_id);
+    const targetReference =
+      target && ["ARTIFACT", "SQL"].includes(target.kind) && target.artifact_refs.length === 1
+        ? target.artifact_refs[0]
+        : undefined;
+    if (
+      !source ||
+      source.source_event_id === null ||
+      !targetReference ||
+      !source.artifact_refs.some(
+        (reference) =>
+          artifactReferenceIdentity(reference) === artifactReferenceIdentity(targetReference),
+      )
+    ) {
+      ctx.addIssue({
+        code: "custom",
+        message: "RESOLUTION_TRACE_EVENT_ARTIFACT_PRODUCED_EDGE_INVALID",
+        path: ["edges", edgeIndex],
+      });
+    }
+  }
+
+  for (const [nodeIndex, node] of trace.nodes.entries()) {
+    if (node.source_event_id === null || node.artifact_refs.length === 0) continue;
+    for (const [referenceIndex, reference] of node.artifact_refs.entries()) {
+      const referenceIdentity = artifactReferenceIdentity(reference);
+      const artifactNodes = trace.nodes.filter(
+        (candidate) =>
+          ["ARTIFACT", "SQL"].includes(candidate.kind) &&
+          candidate.artifact_refs.length === 1 &&
+          artifactReferenceIdentity(candidate.artifact_refs[0] as ArtifactReference) ===
+            referenceIdentity,
+      );
+      const producedEdges = trace.edges.filter(
+        (edge) =>
+          edge.kind === "PRODUCED" &&
+          edge.from_node_id === node.node_id &&
+          artifactNodes.some((artifactNode) => artifactNode.node_id === edge.to_node_id),
+      );
+      if (artifactNodes.length !== 1 || producedEdges.length !== 1) {
+        ctx.addIssue({
+          code: "custom",
+          message: "RESOLUTION_TRACE_EVENT_ARTIFACT_PRODUCED_EDGE_INVALID",
+          path: ["nodes", nodeIndex, "artifact_refs", referenceIndex],
+        });
+      }
+    }
+  }
 }
 
 export const resolutionTraceSchema = resolutionTraceDraftSchema
@@ -284,7 +361,12 @@ export const resolutionTraceDetailSchema = z.strictObject({
 });
 
 export function verifyResolutionTraceDetail(input: unknown): ResolutionTraceDetail {
-  return deepFreeze(resolutionTraceDetailSchema.parse(input));
+  try {
+    return deepFreeze(resolutionTraceDetailSchema.parse(input));
+  } catch (error) {
+    if (error instanceof TypeError && error.message.startsWith("RESOLUTION_TRACE_")) throw error;
+    throw new TypeError("RESOLUTION_TRACE_DETAIL_SCHEMA_INVALID");
+  }
 }
 
 export async function buildResolutionTrace(
@@ -302,7 +384,13 @@ export async function buildResolutionTrace(
 }
 
 export async function verifyResolutionTrace(input: unknown): Promise<ResolutionTrace> {
-  const trace = resolutionTraceSchema.parse(input);
+  let trace: ResolutionTrace;
+  try {
+    trace = resolutionTraceSchema.parse(input);
+  } catch (error) {
+    if (error instanceof TypeError && error.message.startsWith("RESOLUTION_TRACE_")) throw error;
+    throw new TypeError("RESOLUTION_TRACE_SCHEMA_INVALID");
+  }
   const { trace_hash, ...material } = trace;
   if ((await sha256ContentHash(material)) !== trace_hash)
     throw new TypeError("RESOLUTION_TRACE_HASH_MISMATCH");

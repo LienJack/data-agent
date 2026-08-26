@@ -2,15 +2,19 @@ import { execFile } from "node:child_process";
 import { createHash, randomUUID } from "node:crypto";
 import { mkdir, readFile, writeFile } from "node:fs/promises";
 import { dirname, resolve } from "node:path";
+import { pathToFileURL } from "node:url";
 import { promisify } from "node:util";
+import type { BuiltinTeamProfileSetSnapshot } from "@data-agent/agent-runtime";
 import { sha256ContentHash } from "@data-agent/contracts/common";
 import {
   buildFalcon24AcceptanceRunManifest,
+  buildFalcon24ResolutionTraceGateReceipt,
   FALCON24_STRICT_ACCEPTANCE_POLICY_ID,
   type Falcon24AcceptanceFailureLayer,
   falcon24AcceptanceCampaignIdSchema,
 } from "@data-agent/contracts/evals";
 import { buildFalcon24AgentAnalysisAcceptanceSuite } from "@data-agent/evals";
+import { createPostgresRepository, type SqlPool } from "@data-agent/platform/persistence";
 import {
   createPostgresFalcon24AcceptanceCampaignAuthority,
   createPostgresRunControl,
@@ -20,11 +24,17 @@ import {
   resolveRuntimeRepositoryRoot,
 } from "@data-agent/platform/runtime-config";
 import { z } from "zod";
+import {
+  resolveBuiltinTeamMaterializationInput,
+  verifyCurrentBuiltinTeamAuthority,
+} from "@/lib/builtin-team-authority";
 import { deriveRunCommandIdentities } from "@/lib/run-command-identity";
 import {
   closeWorkspaceIdentityRuntime,
+  getAgentProfileRegistry,
   getEffectiveConfigResolver,
   getResolutionTraceProjector,
+  getSkillRegistry,
   getWorkspaceAuthority,
   getWorkspaceDataRepository,
   getWorkspaceSqlPool,
@@ -124,6 +134,166 @@ function failureAt(
   return { failure_layer: failureLayer, failure_code: stableErrorCode(error) };
 }
 
+export function requireSucceededFalcon24Run(
+  run: { readonly run_id: string; readonly status: string } | null,
+  expectedRunId: string,
+): void {
+  if (!run || run.run_id !== expectedRunId || run.status !== "SUCCEEDED") {
+    throw new Error("FALCON24_ACTUAL_RUN_NOT_SUCCEEDED");
+  }
+}
+
+export function projectFalcon24AcceptanceStatus(
+  campaignRun: { readonly status: string } | null,
+  persistedRun: { readonly status: string } | null,
+) {
+  return Object.freeze({
+    terminal: "STATUS" as const,
+    hard_stopped:
+      campaignRun?.status === "HOLD" ||
+      (persistedRun !== null && ["FAILED", "CANCELLED"].includes(persistedRun.status)),
+  });
+}
+
+type CampaignHoldResult =
+  | { readonly ok: true; readonly value: unknown }
+  | { readonly ok: false; readonly error: { readonly code: string } };
+
+export class Falcon24CampaignHoldDiagnosticError extends Error {
+  override readonly name = "Falcon24CampaignHoldDiagnosticError";
+  readonly code: string;
+  readonly hold_failure_code: string;
+
+  constructor(originalError: unknown, holdError: unknown) {
+    const originalCode = stableErrorCode(originalError);
+    super(originalCode, { cause: originalError });
+    this.code = originalCode;
+    this.hold_failure_code = stableErrorCode(holdError);
+  }
+}
+
+export async function holdCampaignAfterFailure(input: {
+  readonly originalError: unknown;
+  readonly hold: () => Promise<CampaignHoldResult>;
+}): Promise<never> {
+  let result: CampaignHoldResult;
+  try {
+    result = await input.hold();
+  } catch (holdError) {
+    throw new Falcon24CampaignHoldDiagnosticError(input.originalError, holdError);
+  }
+  if (!result.ok && result.error.code === "FALCON24_CAMPAIGN_HOLD_REPLAY_MISMATCH") {
+    throw input.originalError;
+  }
+  if (!result.ok) {
+    throw new Falcon24CampaignHoldDiagnosticError(input.originalError, result.error);
+  }
+  throw input.originalError;
+}
+
+export async function reconcileClaimedFalcon24Run<T>(input: {
+  readonly run_status: "PLANNED" | "CLAIMED" | "VERIFIED" | "HOLD";
+  readonly load_binding: () => Promise<T | null>;
+  readonly hold: (failureCode: string) => Promise<CampaignHoldResult>;
+}): Promise<
+  | { readonly kind: "NO_EXISTING_CLAIM" }
+  | { readonly kind: "EXISTING_RUN_ACCEPTED"; readonly binding: T }
+> {
+  if (input.run_status !== "CLAIMED") return { kind: "NO_EXISTING_CLAIM" };
+  let binding: T | null;
+  try {
+    binding = await input.load_binding();
+  } catch (error) {
+    return holdCampaignAfterFailure({
+      originalError: error,
+      hold: () => input.hold(stableErrorCode(error)),
+    });
+  }
+  if (binding !== null) return { kind: "EXISTING_RUN_ACCEPTED", binding };
+  const orphanedClaim = new Error("FALCON24_CLAIM_ORPHANED");
+  let holdResult: CampaignHoldResult;
+  try {
+    holdResult = await input.hold("FALCON24_CLAIM_ORPHANED");
+  } catch (holdError) {
+    throw new Falcon24CampaignHoldDiagnosticError(orphanedClaim, holdError);
+  }
+  if (!holdResult.ok && holdResult.error.code === "FALCON24_RUN_ACCEPTED_RECOVERY_REQUIRED") {
+    const recovered = await input.load_binding();
+    if (recovered !== null) return { kind: "EXISTING_RUN_ACCEPTED", binding: recovered };
+    throw new Falcon24CampaignHoldDiagnosticError(
+      new Error("FALCON24_ACCEPTED_BINDING_MISSING"),
+      holdResult.error,
+    );
+  }
+  if (!holdResult.ok) {
+    throw new Falcon24CampaignHoldDiagnosticError(orphanedClaim, holdResult.error);
+  }
+  throw orphanedClaim;
+}
+
+export async function claimFalcon24RunWithUnknownOutcomeRecovery<
+  T extends {
+    readonly status: string;
+    readonly claim_fence_hash: string | null;
+    readonly claim_fence_consumed_at: string | null;
+  },
+>(input: {
+  readonly expected_fence_hash: string;
+  readonly claim: () => Promise<T>;
+  readonly load: () => Promise<T | null>;
+  readonly hold: (failureCode: string) => Promise<CampaignHoldResult>;
+}): Promise<T> {
+  try {
+    return await input.claim();
+  } catch (error) {
+    let current: T | null = null;
+    try {
+      current = await input.load();
+    } catch {
+      // The original claim outcome remains primary; HOLD persistence below is the fail-closed gate.
+    }
+    if (
+      current?.status === "CLAIMED" &&
+      current.claim_fence_hash === input.expected_fence_hash &&
+      current.claim_fence_consumed_at === null
+    ) {
+      return current;
+    }
+    return holdCampaignAfterFailure({
+      originalError: error,
+      hold: () => input.hold(stableErrorCode(error)),
+    });
+  }
+}
+
+export async function recoverAcceptedFalcon24RunAfterSubmitFailure<T>(input: {
+  readonly original_error: unknown;
+  readonly load_binding: () => Promise<T | null>;
+  readonly hold: (failureCode: string) => Promise<CampaignHoldResult>;
+}): Promise<T> {
+  let binding: T | null = null;
+  try {
+    binding = await input.load_binding();
+  } catch {
+    // The original submit outcome stays primary while the durable HOLD path arbitrates the race.
+  }
+  if (binding !== null) return binding;
+  let holdResult: CampaignHoldResult;
+  try {
+    holdResult = await input.hold(stableErrorCode(input.original_error));
+  } catch (holdError) {
+    throw new Falcon24CampaignHoldDiagnosticError(input.original_error, holdError);
+  }
+  if (!holdResult.ok && holdResult.error.code === "FALCON24_RUN_ACCEPTED_RECOVERY_REQUIRED") {
+    const recovered = await input.load_binding();
+    if (recovered !== null) return recovered;
+  }
+  if (!holdResult.ok) {
+    throw new Falcon24CampaignHoldDiagnosticError(input.original_error, holdResult.error);
+  }
+  throw input.original_error;
+}
+
 function sourceDirtyPath(statusLine: string): string {
   const path = statusLine.slice(3).trim();
   const renameTarget = path.includes(" -> ") ? path.split(" -> ").at(-1) : path;
@@ -176,6 +346,77 @@ export async function committedSourceFingerprint(root: string): Promise<string> 
   });
 }
 
+export interface Falcon24SubmitGuard {
+  assert_active(): Promise<void>;
+  release(): Promise<void>;
+}
+
+export async function acquireFalcon24SubmitGuard(
+  pool: SqlPool,
+  lockMaterial: string,
+): Promise<Falcon24SubmitGuard | null> {
+  const client = await pool.connect();
+  try {
+    const acquired = z.strictObject({ acquired: z.boolean() }).parse(
+      (
+        await client.query<{ readonly acquired: boolean }>(
+          `select pg_catalog.pg_try_advisory_lock(
+               pg_catalog.hashtextextended($1::text, 0)
+             ) as acquired`,
+          [lockMaterial],
+        )
+      ).rows[0],
+    ).acquired;
+    if (!acquired) {
+      client.release();
+      return null;
+    }
+  } catch (error) {
+    client.release(error instanceof Error ? error : new Error("FALCON24_SUBMIT_GUARD_FAILED"));
+    throw error;
+  }
+
+  let released = false;
+  return Object.freeze({
+    async assert_active() {
+      if (released) throw new Error("FALCON24_SUBMIT_GUARD_RELEASED");
+      await client.query("select pg_catalog.pg_backend_pid() as backend_pid");
+    },
+    async release() {
+      if (released) return;
+      released = true;
+      try {
+        const unlocked = z.strictObject({ unlocked: z.boolean() }).parse(
+          (
+            await client.query<{ readonly unlocked: boolean }>(
+              `select pg_catalog.pg_advisory_unlock(
+                   pg_catalog.hashtextextended($1::text, 0)
+                 ) as unlocked`,
+              [lockMaterial],
+            )
+          ).rows[0],
+        ).unlocked;
+        if (!unlocked) throw new Error("FALCON24_SUBMIT_GUARD_OWNERSHIP_LOST");
+        client.release();
+      } catch (error) {
+        client.release(error instanceof Error ? error : new Error("FALCON24_SUBMIT_GUARD_FAILED"));
+        throw error;
+      }
+    },
+  });
+}
+
+async function releaseFalcon24SubmitGuard(
+  guard: Falcon24SubmitGuard,
+  preservePrimaryFailure: boolean,
+): Promise<void> {
+  try {
+    await guard.release();
+  } catch (error) {
+    if (!preservePrimaryFailure) throw error;
+  }
+}
+
 async function main(): Promise<void> {
   const root = resolveRuntimeRepositoryRoot(process.cwd());
   const environment = loadRuntimeEnvironment({ cwd: root, environment: process.env }).environment;
@@ -210,7 +451,48 @@ async function main(): Promise<void> {
     pool: getWorkspaceSqlPool(),
     authorizer: workspaceAuthority.authorizer,
   });
+  const runRepository = createPostgresRepository(
+    getWorkspaceSqlPool(),
+    workspaceAuthority.authorizer,
+  );
   const suite = await buildFalcon24AgentAnalysisAcceptanceSuite();
+
+  const loadBuiltinTeamAuthority = async (): Promise<{
+    readonly snapshot: BuiltinTeamProfileSetSnapshot;
+    readonly frozen_contract_hash: string;
+  }> => {
+    const defaults = requireValue(
+      await getEffectiveConfigResolver().getWorkspaceDefaults(capability),
+    );
+    const contextPolicy = defaults?.revision.defaults.context_policy;
+    const safetyPolicy = defaults?.revision.defaults.execution_safety_policy;
+    if (!contextPolicy || !safetyPolicy) {
+      throw new Error("FALCON24_BUILTIN_TEAM_POLICY_BINDINGS_REQUIRED");
+    }
+    const [profileItems, skillItems] = await Promise.all([
+      getAgentProfileRegistry().listManagedV2(capability).then(requireValue),
+      getSkillRegistry().list(capability, false).then(requireValue),
+    ]);
+    const snapshot = await verifyCurrentBuiltinTeamAuthority({
+      materialization_input: await resolveBuiltinTeamMaterializationInput({
+        pool: getWorkspaceSqlPool(),
+        capability,
+        deployment_id: scope.deploymentId,
+        context_policy_ref: contextPolicy,
+        execution_safety_policy_ref: safetyPolicy,
+      }),
+      profile_items: profileItems,
+      skill_items: skillItems,
+    });
+    return {
+      snapshot,
+      frozen_contract_hash: await sha256ContentHash({
+        schema_version: "falcon24-frozen-contract@1.0.0",
+        suite_hash: suite.suite_hash,
+        builtin_team_profile_set_hash: snapshot.profile_set_hash,
+      }),
+    };
+  };
 
   if (command === "manifest") {
     requireStrictPolicy(environment);
@@ -221,6 +503,7 @@ async function main(): Promise<void> {
         await readFile(resolve(root, "infra/docker/opensandbox-analysis-attestation.json"), "utf8"),
       ),
     );
+    const builtinAuthority = await loadBuiltinTeamAuthority();
     const runs = suite.cases.flatMap((testCase) =>
       (["COLD", "WARM"] as const).flatMap((variant) =>
         [1, 2, 3].map((repetition) => ({
@@ -243,7 +526,7 @@ async function main(): Promise<void> {
       campaign_id: campaignId,
       campaign_version: campaignVersion,
       source_fingerprint: sourceFingerprint,
-      frozen_contract_hash: suite.suite_hash,
+      frozen_contract_hash: builtinAuthority.frozen_contract_hash,
       runtime_attestation_hash: runtimeAttestationHash,
       runs,
     });
@@ -259,7 +542,8 @@ async function main(): Promise<void> {
       campaign_id: campaignId,
       campaign_version: campaign.campaign_version,
       source_fingerprint: sourceFingerprint,
-      frozen_contract_hash: suite.suite_hash,
+      frozen_contract_hash: builtinAuthority.frozen_contract_hash,
+      builtin_team_profile_set_hash: builtinAuthority.snapshot.profile_set_hash,
       runtime_attestation_hash: runtimeAttestationHash,
       run_count: runs.length,
       output_path: outputPath,
@@ -281,23 +565,45 @@ async function main(): Promise<void> {
     variant,
     repetition,
   });
+  const claimFenceToken = randomUUID();
+  const claim = {
+    campaign_id: campaignId,
+    run_ordinal: runOrdinal,
+    run_id: identities.run_id,
+    case_id: testCase.case_id,
+    run_variant: variant,
+    repetition,
+    claim_fence_token: claimFenceToken,
+  } as const;
 
   if (command === "status") {
-    const result = await getWorkspaceDataRepository().getRunBinding(capability, identities.run_id);
+    const [binding, campaignRun, persistedRun] = await Promise.all([
+      getWorkspaceDataRepository().getRunBinding(capability, identities.run_id).then(requireValue),
+      campaignAuthority
+        .loadRun(capability, { campaign_id: campaignId, run_id: identities.run_id })
+        .then(requireValue),
+      runRepository.getRun(capability, { run_id: identities.run_id }).then(requireValue),
+    ]);
     report({
-      terminal: "READY",
+      ...projectFalcon24AcceptanceStatus(campaignRun, persistedRun),
       campaign_id: campaignId,
       run_ordinal: runOrdinal,
       case_id: testCase.case_id,
       run_variant: variant,
       repetition,
       run_id: identities.run_id,
-      binding: requireValue(result),
+      campaign_run: campaignRun,
+      persisted_run: persistedRun,
+      binding,
     });
     return;
   }
 
   const loadAndVerifyTrace = async () => {
+    const persistedRun = requireValue(
+      await runRepository.getRun(capability, { run_id: identities.run_id }),
+    );
+    requireSucceededFalcon24Run(persistedRun, identities.run_id);
     const projector = getResolutionTraceProjector();
     const trace = requireValue(
       await projector.loadTrace(capability, { scope: capability.scope, run_id: identities.run_id }),
@@ -321,9 +627,24 @@ async function main(): Promise<void> {
   };
 
   if (command === "trace") {
-    requireStrictPolicy(environment);
     try {
+      requireStrictPolicy(environment);
       const { trace, verified } = await loadAndVerifyTrace();
+      const traceGateReceipt = await buildFalcon24ResolutionTraceGateReceipt({
+        schema_version: "falcon24-resolution-trace-gate-receipt@1.0.0",
+        campaign_id: campaignId,
+        run_id: identities.run_id,
+        trace_hash: trace.trace_hash,
+        ...verified,
+        verified_at: new Date().toISOString(),
+      });
+      requireValue(
+        await campaignAuthority.stageTrace(capability, {
+          campaign_id: campaignId,
+          run_id: identities.run_id,
+          receipt: traceGateReceipt,
+        }),
+      );
       report({
         terminal: "TRACE_VERIFIED",
         campaign_id: campaignId,
@@ -333,19 +654,21 @@ async function main(): Promise<void> {
         repetition,
         run_id: identities.run_id,
         trace_hash: trace.trace_hash,
+        trace_gate_receipt_hash: traceGateReceipt.receipt_hash,
         ...verified,
       });
       return;
     } catch (error) {
       const failure = failureAt("PUBLISHER", error);
-      requireValue(
-        await campaignAuthority.hold(capability, {
-          campaign_id: campaignId,
-          run_id: identities.run_id,
-          ...failure,
-        }),
-      );
-      throw error;
+      await holdCampaignAfterFailure({
+        originalError: error,
+        hold: () =>
+          campaignAuthority.hold(capability, {
+            campaign_id: campaignId,
+            run_id: identities.run_id,
+            ...failure,
+          }),
+      });
     }
   }
 
@@ -372,10 +695,10 @@ async function main(): Promise<void> {
     return;
   }
 
-  requireStrictPolicy(environment);
   if (command === "finalize") {
     let failureLayer: Falcon24AcceptanceFailureLayer = "PUBLISHER";
     try {
+      requireStrictPolicy(environment);
       const resultDocument = requireValue(
         await campaignAuthority.loadRunResult(capability, {
           campaign_id: campaignId,
@@ -391,6 +714,26 @@ async function main(): Promise<void> {
         throw new Error("FALCON24_ANALYSIS_RESULT_IDENTITY_INVALID");
       }
       const { trace, verified } = await loadAndVerifyTrace();
+      const traceGateReceipt = requireValue(
+        await campaignAuthority.loadTraceGate(capability, {
+          campaign_id: campaignId,
+          run_id: identities.run_id,
+        }),
+      );
+      if (
+        !traceGateReceipt ||
+        traceGateReceipt.trace_hash !== trace.trace_hash ||
+        traceGateReceipt.node_count !== verified.node_count ||
+        traceGateReceipt.edge_count !== verified.edge_count ||
+        traceGateReceipt.detail_count !== verified.detail_count ||
+        traceGateReceipt.sql_node_count !== verified.sql_node_count ||
+        traceGateReceipt.query_evidence_node_count !== verified.query_evidence_node_count ||
+        traceGateReceipt.analysis_evidence_node_count !== verified.analysis_evidence_node_count ||
+        traceGateReceipt.chart_node_count !== verified.chart_node_count ||
+        traceGateReceipt.report_node_count !== verified.report_node_count
+      ) {
+        throw new Error("FALCON24_TRACE_STAGE_REQUIRED");
+      }
       failureLayer = "SANDBOX_RECLAMATION";
       const receipt = requireValue(
         await campaignAuthority.loadSandboxReclamation(capability, {
@@ -403,7 +746,6 @@ async function main(): Promise<void> {
         await campaignAuthority.complete(capability, {
           campaign_id: campaignId,
           run_id: identities.run_id,
-          trace_closure_hash: trace.trace_hash,
           result_document: resultDocument,
           sandbox_reclamation_hash: receipt.receipt_hash,
         }),
@@ -414,113 +756,269 @@ async function main(): Promise<void> {
         run_ordinal: runOrdinal,
         run_id: identities.run_id,
         trace_hash: trace.trace_hash,
+        trace_gate_receipt_hash: traceGateReceipt.receipt_hash,
         sandbox_reclamation_hash: receipt.receipt_hash,
         ...verified,
       });
       return;
     } catch (error) {
+      if (stableErrorCode(error) === "FALCON24_FINALIZE_OUTCOME_UNKNOWN") {
+        throw error;
+      }
       const failure = failureAt(failureLayer, error);
-      requireValue(
-        await campaignAuthority.hold(capability, {
-          campaign_id: campaignId,
-          run_id: identities.run_id,
-          ...failure,
-        }),
-      );
-      throw error;
+      await holdCampaignAfterFailure({
+        originalError: error,
+        hold: () =>
+          campaignAuthority.hold(capability, {
+            campaign_id: campaignId,
+            run_id: identities.run_id,
+            ...failure,
+          }),
+      });
     }
   }
 
-  const claim = {
-    campaign_id: campaignId,
-    run_ordinal: runOrdinal,
-    run_id: identities.run_id,
-    case_id: testCase.case_id,
-    run_variant: variant,
-    repetition,
-  } as const;
-  requireValue(await campaignAuthority.claim(capability, claim));
-  try {
-    const defaults = requireValue(
-      await getEffectiveConfigResolver().getWorkspaceDefaults(capability),
-    );
-    if (!defaults?.revision.defaults.model || !defaults.revision.defaults.datasource) {
-      throw new Error("FALCON24_ANALYSIS_DEFAULTS_REQUIRED");
-    }
-    const conversations = getWorkspaceDataRepository();
-    const existing = requireValue(
-      await conversations.getConversation(capability, identities.conversationId),
-    );
-    if (!existing) {
-      requireValue(
-        await conversations.createConversation(capability, {
-          schema_version: "workspace-conversation-create@1.0.0",
-          conversation_id: identities.conversationId,
-          title: `Falcon24 ${campaignId} ${testCase.case_id} ${variant}-${repetition}`,
-          datasource_id: defaults.revision.defaults.datasource.resource_id,
-          model_id: null,
-          model_profile_id: defaults.revision.defaults.model.resource_id,
-        }),
-      );
-    }
-    const submitted = await startQuestionRun({
-      capability,
-      conversation_id: identities.conversationId,
-      files: [],
-      idempotency_key: identities.idempotencyKey,
-      principal_id: scope.principalId,
-      question: testCase.question,
-      rollout_bootstrap_mode: environment.DATA_AGENT_DISPATCH_BOOTSTRAP_MODE,
-      scope: capability.scope,
-      workspace_id: scope.workspaceId,
-    });
-    if (submitted.kind !== "CREATED") {
-      throw new Error(
-        submitted.kind === "ERROR" ? submitted.error.code : "FALCON24_ANALYSIS_RESOLUTION_REQUIRED",
-      );
-    }
+  const submitGuard = await acquireFalcon24SubmitGuard(
+    getWorkspaceSqlPool(),
+    [
+      "falcon24-submit-guard@1.0.0",
+      capability.scope.app_id,
+      capability.scope.tenant_id,
+      capability.scope.environment,
+      scope.principalId,
+      campaignId,
+      identities.run_id,
+    ].join("\0"),
+  );
+  if (!submitGuard) {
     report({
-      terminal: "SUBMITTED",
+      terminal: "SUBMIT_IN_PROGRESS",
       campaign_id: campaignId,
       run_ordinal: runOrdinal,
       case_id: testCase.case_id,
       run_variant: variant,
       repetition,
       run_id: identities.run_id,
-      projection: submitted.projection,
     });
-  } catch (error) {
-    const failure = failureAt("ROOT_ROUTING", error);
-    requireValue(
-      await campaignAuthority.hold(capability, {
+    return;
+  }
+  let submitFailed = false;
+  try {
+    const currentRun = requireValue(
+      await campaignAuthority.loadRun(capability, {
         campaign_id: campaignId,
         run_id: identities.run_id,
-        ...failure,
       }),
     );
+    if (!currentRun) throw new Error("FALCON24_RUN_NOT_FOUND");
+    if (currentRun.status !== "PLANNED" && currentRun.status !== "CLAIMED") {
+      throw new Error("FALCON24_RUN_ORDER_OR_STATE_INVALID");
+    }
+
+    const preflight = await (async () => {
+      try {
+        requireStrictPolicy(environment);
+        const [campaign, builtinAuthority, sourceFingerprint, runtimeAttestationHash] =
+          await Promise.all([
+            campaignAuthority.load(capability, { campaign_id: campaignId }).then(requireValue),
+            loadBuiltinTeamAuthority(),
+            committedSourceFingerprint(root),
+            sha256ContentHash(
+              JSON.parse(
+                await readFile(
+                  resolve(root, "infra/docker/opensandbox-analysis-attestation.json"),
+                  "utf8",
+                ),
+              ),
+            ),
+          ]);
+        const expectedCampaignStatus = currentRun.status === "CLAIMED" ? "RUNNING" : "READY";
+        if (
+          campaign?.status !== expectedCampaignStatus ||
+          campaign.next_run_ordinal !== runOrdinal ||
+          campaign.frozen_contract_hash !== builtinAuthority.frozen_contract_hash ||
+          campaign.source_fingerprint !== sourceFingerprint ||
+          campaign.runtime_attestation_hash !== runtimeAttestationHash
+        ) {
+          throw new Error("FALCON24_CAMPAIGN_FROZEN_AUTHORITY_MISMATCH");
+        }
+        const defaults = requireValue(
+          await getEffectiveConfigResolver().getWorkspaceDefaults(capability),
+        );
+        const model = defaults?.revision.defaults.model;
+        const datasource = defaults?.revision.defaults.datasource;
+        if (!model || !datasource) {
+          throw new Error("FALCON24_ANALYSIS_DEFAULTS_REQUIRED");
+        }
+        return { builtinAuthority, datasource, model };
+      } catch (error) {
+        return holdCampaignAfterFailure({
+          originalError: error,
+          hold: () =>
+            campaignAuthority.hold(capability, {
+              campaign_id: campaignId,
+              run_id: identities.run_id,
+              ...failureAt("ROOT_ROUTING", error),
+            }),
+        });
+      }
+    })();
+
+    const reconciled = await reconcileClaimedFalcon24Run({
+      run_status: currentRun.status,
+      load_binding: () =>
+        getWorkspaceDataRepository()
+          .getRunBinding(capability, identities.run_id)
+          .then(requireValue),
+      hold: (failureCode) =>
+        campaignAuthority.hold(capability, {
+          campaign_id: campaignId,
+          run_id: identities.run_id,
+          failure_layer: "ROOT_ROUTING",
+          failure_code: failureCode,
+        }),
+    });
+    if (reconciled.kind === "EXISTING_RUN_ACCEPTED") {
+      report({
+        terminal: "SUBMITTED_RECOVERED",
+        campaign_id: campaignId,
+        run_ordinal: runOrdinal,
+        case_id: testCase.case_id,
+        run_variant: variant,
+        repetition,
+        run_id: identities.run_id,
+        projection: reconciled.binding,
+      });
+      return;
+    }
+
+    await submitGuard.assert_active();
+    const expectedFenceHash = await sha256ContentHash({ claim_fence_token: claimFenceToken });
+    await claimFalcon24RunWithUnknownOutcomeRecovery({
+      expected_fence_hash: expectedFenceHash,
+      claim: () => campaignAuthority.claim(capability, claim).then(requireValue),
+      load: () =>
+        campaignAuthority
+          .loadRun(capability, { campaign_id: campaignId, run_id: identities.run_id })
+          .then(requireValue),
+      hold: (failureCode) =>
+        campaignAuthority.hold(capability, {
+          campaign_id: campaignId,
+          run_id: identities.run_id,
+          failure_layer: "ROOT_ROUTING",
+          failure_code: failureCode,
+        }),
+    });
+    try {
+      const conversations = getWorkspaceDataRepository();
+      const existing = requireValue(
+        await conversations.getConversation(capability, identities.conversationId),
+      );
+      if (!existing) {
+        requireValue(
+          await conversations.createConversation(capability, {
+            schema_version: "workspace-conversation-create@1.0.0",
+            conversation_id: identities.conversationId,
+            title: `Falcon24 ${campaignId} ${testCase.case_id} ${variant}-${repetition}`,
+            datasource_id: preflight.datasource.resource_id,
+            model_id: null,
+            model_profile_id: preflight.model.resource_id,
+          }),
+        );
+      }
+      await submitGuard.assert_active();
+      const submitted = await startQuestionRun({
+        acceptance_fence: {
+          campaign_id: campaignId,
+          run_id: identities.run_id,
+          claim_fence_token: claimFenceToken,
+        },
+        capability,
+        conversation_id: identities.conversationId,
+        files: [],
+        idempotency_key: identities.idempotencyKey,
+        principal_id: scope.principalId,
+        question: testCase.question,
+        rollout_bootstrap_mode: environment.DATA_AGENT_DISPATCH_BOOTSTRAP_MODE,
+        scope: capability.scope,
+        workspace_id: scope.workspaceId,
+        expected_subagent_profile_refs: preflight.builtinAuthority.snapshot.profile_refs,
+      });
+      if (submitted.kind !== "CREATED") {
+        throw new Error(
+          submitted.kind === "ERROR"
+            ? submitted.error.code
+            : "FALCON24_ANALYSIS_RESOLUTION_REQUIRED",
+        );
+      }
+      report({
+        terminal: "SUBMITTED",
+        campaign_id: campaignId,
+        run_ordinal: runOrdinal,
+        case_id: testCase.case_id,
+        run_variant: variant,
+        repetition,
+        run_id: identities.run_id,
+        projection: submitted.projection,
+      });
+    } catch (error) {
+      const recoveredBinding = await recoverAcceptedFalcon24RunAfterSubmitFailure({
+        original_error: error,
+        load_binding: () =>
+          getWorkspaceDataRepository()
+            .getRunBinding(capability, identities.run_id)
+            .then(requireValue),
+        hold: (failureCode) =>
+          campaignAuthority.hold(capability, {
+            campaign_id: campaignId,
+            run_id: identities.run_id,
+            failure_layer: "ROOT_ROUTING",
+            failure_code: failureCode,
+          }),
+      });
+      report({
+        terminal: "SUBMITTED_RECOVERED",
+        campaign_id: campaignId,
+        run_ordinal: runOrdinal,
+        case_id: testCase.case_id,
+        run_variant: variant,
+        repetition,
+        run_id: identities.run_id,
+        projection: recoveredBinding,
+      });
+      return;
+    }
+  } catch (error) {
+    submitFailed = true;
     throw error;
+  } finally {
+    await releaseFalcon24SubmitGuard(submitGuard, submitFailed);
   }
 }
 
-await main()
-  .catch((error: unknown) => {
-    report({
-      terminal: "HOLD",
-      reason_code: stableErrorCode(error),
-      error_name:
-        error instanceof Error && /^[A-Za-z][A-Za-z0-9_.]{0,127}$/u.test(error.name)
-          ? error.name
-          : null,
-      validation_issues:
-        error instanceof z.ZodError
-          ? error.issues.slice(0, 16).map((issue) => ({
-              path: issue.path.length === 0 ? "$" : issue.path.map(String).join("."),
-              code: issue.code,
-            }))
-          : [],
+if (process.argv[1] && import.meta.url === pathToFileURL(resolve(process.argv[1])).href) {
+  await main()
+    .catch((error: unknown) => {
+      report({
+        terminal: "HOLD",
+        reason_code: stableErrorCode(error),
+        error_name:
+          error instanceof Error && /^[A-Za-z][A-Za-z0-9_.]{0,127}$/u.test(error.name)
+            ? error.name
+            : null,
+        validation_issues:
+          error instanceof z.ZodError
+            ? error.issues.slice(0, 16).map((issue) => ({
+                path: issue.path.length === 0 ? "$" : issue.path.map(String).join("."),
+                code: issue.code,
+              }))
+            : [],
+        hold_failure_code:
+          error instanceof Falcon24CampaignHoldDiagnosticError ? error.hold_failure_code : null,
+      });
+      process.exitCode = 2;
+    })
+    .finally(async () => {
+      await closeWorkspaceIdentityRuntime();
     });
-    process.exitCode = 2;
-  })
-  .finally(async () => {
-    await closeWorkspaceIdentityRuntime();
-  });
+}

@@ -53,7 +53,6 @@ export interface ProductionTeamToolsDependencies {
   readonly text2sql: Text2SqlQueryRuntimePort;
   readonly semantic_release: FrozenSemanticReleaseReadPort;
   readonly governed_analysis?: GovernedAgentAnalysisPort | null;
-  readonly max_text2sql_candidate_attempts?: 1 | 2;
 }
 
 class ProductionTeamToolError extends Error {
@@ -215,7 +214,8 @@ export function createProductionTeamTools(
   dependencies: ProductionTeamToolsDependencies,
   factoryInput: ProductionTeamToolFactoryInput,
 ): ProductProfileToolPort {
-  const maxText2SqlCandidateAttempts = dependencies.max_text2sql_candidate_attempts ?? 2;
+  const maxText2SqlCandidateAttempts =
+    factoryInput.lease.execution_policy.max_text2sql_candidate_attempts;
   const state: {
     prepared: PreparedText2SqlContext | null;
     candidate: Text2SqlQueryCandidate | null;

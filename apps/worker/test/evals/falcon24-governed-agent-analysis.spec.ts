@@ -2,6 +2,7 @@ import {
   type AnalysisContext,
   type ArtifactReference,
   buildAnalysisContext,
+  DEFAULT_RUN_EXECUTION_POLICY,
   type RunWorkLease,
   sha256ContentHash,
 } from "@data-agent/contracts";
@@ -34,6 +35,7 @@ const lease: RunWorkLease = {
   lease_token: 1,
   worker_fence: 1,
   expires_at: "2026-08-24T00:05:00.000Z",
+  execution_policy: DEFAULT_RUN_EXECUTION_POLICY,
   payload: {},
 };
 

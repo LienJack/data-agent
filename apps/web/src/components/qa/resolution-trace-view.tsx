@@ -21,6 +21,7 @@ import { useParams } from "next/navigation";
 import {
   type ReactNode,
   type PointerEvent as ReactPointerEvent,
+  useCallback,
   useEffect,
   useMemo,
   useRef,
@@ -108,12 +109,33 @@ function errorMessage(error: unknown): string {
 
 function authoritativeTraceFailureCode(error: unknown): string | null {
   if (error instanceof ApiRequestError && error.code) {
-    return authoritativeTraceFailureCodes.has(error.code) ? error.code : null;
+    return error.code.startsWith("RESOLUTION_TRACE_") ||
+      authoritativeTraceFailureCodes.has(error.code)
+      ? error.code
+      : null;
   }
-  if (error instanceof Error && authoritativeTraceFailureCodes.has(error.message)) {
-    return error.message;
+  if (error instanceof Error) {
+    return error.message.startsWith("RESOLUTION_TRACE_") ||
+      authoritativeTraceFailureCodes.has(error.message)
+      ? error.message
+      : null;
   }
   return null;
+}
+
+function authoritativeTraceFailureMessage(error: unknown): string | null {
+  return authoritativeTraceFailureCode(error) ? `权威轨迹已阻断：${errorMessage(error)}` : null;
+}
+
+export type ResolutionTraceDetailFailure =
+  | { readonly status: "authority"; readonly message: string }
+  | { readonly status: "detail"; readonly message: string };
+
+export function resolveResolutionTraceDetailFailure(error: unknown): ResolutionTraceDetailFailure {
+  const authorityMessage = authoritativeTraceFailureMessage(error);
+  return authorityMessage
+    ? { status: "authority", message: authorityMessage }
+    : { status: "detail", message: errorMessage(error) };
 }
 
 function sameResolutionTraceRequest(
@@ -145,21 +167,19 @@ export function resolveResolutionTraceLoadFailure(
   error: unknown,
 ): LoadState {
   if (!stateMatchesResolutionTraceRequest(current, request)) return current;
-  const authorityCode = authoritativeTraceFailureCode(error);
-  if (authorityCode) {
+  const authorityMessage = authoritativeTraceFailureMessage(error);
+  if (authorityMessage) {
     return {
       status: "error",
       request,
-      message: `权威轨迹已阻断：${errorMessage(error)}`,
+      message: authorityMessage,
     };
   }
-  return current.status === "ready"
-    ? current
-    : {
-        status: "error",
-        request,
-        message: errorMessage(error),
-      };
+  return {
+    status: "error",
+    request,
+    message: errorMessage(error),
+  };
 }
 
 type ResolutionTraceLoadResult = {
@@ -725,6 +745,7 @@ function TraceWorkbench({
   initialDetails = [],
   connectionState = null,
   requestPerformances = [],
+  onAuthoritativeFailure,
 }: {
   traces: readonly ResolutionTrace[];
   focusedRunId?: string | null;
@@ -733,6 +754,7 @@ function TraceWorkbench({
   initialDetails?: readonly ResolutionTraceDetail[];
   connectionState?: RunConnectionState | null;
   requestPerformances?: readonly ObservedModelRequestPerformance[];
+  onAuthoritativeFailure(message: string): void;
 }) {
   const model = useMemo(() => buildConversationResolutionTraceWorkbenchModel(traces), [traces]);
   const focused = model.records.find(
@@ -920,11 +942,16 @@ function TraceWorkbench({
         }
       })
       .catch((error: unknown) => {
-        if (!controller.signal.aborted)
-          setDetailError(error instanceof Error ? error.message : "公开详情加载失败");
+        if (controller.signal.aborted) return;
+        const failure = resolveResolutionTraceDetailFailure(error);
+        if (failure.status === "authority") {
+          onAuthoritativeFailure(failure.message);
+          return;
+        }
+        setDetailError(failure.message);
       });
     return () => controller.abort();
-  }, [selectedNodeId, selectedRecord, workspaceId]);
+  }, [onAuthoritativeFailure, selectedNodeId, selectedRecord, workspaceId]);
   useEffect(() => {
     if (!selectedNodeId) return;
     const index = listItems.findIndex(
@@ -1558,6 +1585,7 @@ export function ResolutionTracePanel({
   initialDetails = [],
   connectionState = null,
   requestPerformances = [],
+  authorityFailureMessage = null,
 }: {
   readonly trace: ResolutionTrace;
   readonly traces?: readonly ResolutionTrace[];
@@ -1571,8 +1599,31 @@ export function ResolutionTracePanel({
   readonly initialDetails?: readonly ResolutionTraceDetail[];
   readonly connectionState?: RunConnectionState | null;
   readonly requestPerformances?: readonly ObservedModelRequestPerformance[];
+  readonly authorityFailureMessage?: string | null;
 }) {
   const [tab, setTab] = useState<TraceTab>(initialTab);
+  const traceAuthorityKey = `${trace.run_id}:${trace.trace_hash}`;
+  const [detectedAuthorityFailure, setDetectedAuthorityFailure] = useState<{
+    readonly traceAuthorityKey: string;
+    readonly message: string;
+  } | null>(null);
+  const visibleAuthorityFailure =
+    authorityFailureMessage ??
+    (detectedAuthorityFailure?.traceAuthorityKey === traceAuthorityKey
+      ? detectedAuthorityFailure.message
+      : null);
+  const handleAuthoritativeFailure = useCallback(
+    (message: string) => setDetectedAuthorityFailure({ traceAuthorityKey, message }),
+    [traceAuthorityKey],
+  );
+
+  if (visibleAuthorityFailure) {
+    return (
+      <div className="p-5 text-xs text-red-700" role="alert">
+        {visibleAuthorityFailure}
+      </div>
+    );
+  }
 
   return (
     <div className="flex h-full min-h-0 w-full min-w-0 flex-col overflow-hidden bg-[var(--color-bg-primary)]">
@@ -1611,6 +1662,7 @@ export function ResolutionTracePanel({
             initialDetails={initialDetails}
             connectionState={connectionState}
             requestPerformances={requestPerformances}
+            onAuthoritativeFailure={handleAuthoritativeFailure}
           />
         )}
         {tab === "team" && (

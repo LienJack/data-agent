@@ -5,7 +5,9 @@ import {
   buildRunConfigResolutionReceiptCandidate,
   buildWorkspaceDefaultsCasUpdateCommandCandidate,
   buildWorkspaceDefaultsRevisionCandidate,
+  DEFAULT_RUN_EXECUTION_POLICY,
   type RunConfigRequest,
+  sha256ContentHash,
 } from "@data-agent/contracts";
 import { describe, expect, it } from "vitest";
 import type { SqlPool, SqlQueryResult } from "../../src/persistence/transaction.js";
@@ -499,6 +501,7 @@ function workerLease(config_ref: {
     lease_token: 7,
     worker_fence: 2,
     expires_at: "2026-08-16T10:05:00.000Z",
+    execution_policy: DEFAULT_RUN_EXECUTION_POLICY,
     payload: { kind: "START_L2_RESEARCH" as const, effective_config_ref: config_ref },
   };
 }
@@ -728,6 +731,112 @@ describe("PostgreSQL effective config resolver", () => {
     );
     expect(calls).toHaveLength(1);
     expect(calls[0]?.values).toEqual([command, request]);
+  });
+
+  it("accepts the Falcon24 Run and consumes its claim fence through one database RPC", async () => {
+    const authority = access();
+    const request = await questionRequest();
+    const effectiveConfig = await acceptedEffectiveReceipt(request);
+    const resolution = await buildRunConfigResolutionReceiptCandidate({
+      ...resolutionBase(request),
+      operation: "QUESTION_RUN",
+      run_id: ids.run,
+      conversation_ref: request.conversation_ref,
+      admission: "READY",
+      unavailable_reasons: [],
+      effective_config_ref: {
+        config_id: effectiveConfig.config_id,
+        config_revision: effectiveConfig.config_revision,
+        config_hash: effectiveConfig.config_hash,
+      },
+      required_action: null,
+      bootstrap_job_config: null,
+    });
+    const claimFenceHash = await sha256ContentHash({ claim_fence_token: ids.attempt });
+    const scripted = scriptedPool((text) => {
+      if (text.includes("accept_falcon24_question_run_with_effective_config")) {
+        return {
+          rows: [
+            {
+              value: {
+                acceptance: questionAcceptanceValue(resolution, effectiveConfig),
+                submit_fence: {
+                  campaign_id: "falcon24-root-v14-final",
+                  run_id: ids.run,
+                  claim_fence_hash: claimFenceHash,
+                  claim_fence_consumed_at: "2026-08-26T04:00:00.000Z",
+                },
+              },
+            },
+          ],
+          rowCount: 1,
+        };
+      }
+      return undefined;
+    });
+
+    const result = await createPostgresEffectiveConfigResolver({
+      pool: scripted.pool,
+      authorizer: authority.authorizer,
+    }).resolveAndAccept(authority.capability, {
+      request,
+      command,
+      acceptance_fence: {
+        campaign_id: "falcon24-root-v14-final",
+        run_id: ids.run,
+        claim_fence_token: ids.attempt,
+      },
+    });
+
+    expect(result).toEqual({ ok: true, value: resolution });
+    const acceptanceIndex = scripted.calls.findIndex((call) =>
+      call.text.includes("accept_falcon24_question_run_with_effective_config"),
+    );
+    const commitIndex = scripted.calls.findIndex((call) => call.text === "COMMIT");
+    expect(acceptanceIndex).toBeGreaterThan(-1);
+    expect(commitIndex).toBeGreaterThan(acceptanceIndex);
+    expect(scripted.calls[acceptanceIndex]?.values[2]).toMatchObject({
+      schema_version: "falcon24-question-run-acceptance@1.0.0",
+      campaign_id: "falcon24-root-v14-final",
+      run_id: ids.run,
+      claim_fence_token: ids.attempt,
+      command_hash: expect.stringMatching(/^sha256:[0-9a-f]{64}$/),
+    });
+  });
+
+  it.each([
+    "FALCON24_QUESTION_ACCEPTANCE_INVALID",
+    "FALCON24_SUBMIT_RUN_PREEXISTS",
+    "FALCON24_QUESTION_ACCEPTANCE_NOT_READY",
+  ])("preserves the fenced acceptance database rejection %s", async (marker) => {
+    const authority = access();
+    const request = await questionRequest();
+    const scripted = scriptedPool((text) => {
+      if (text.includes("accept_falcon24_question_run_with_effective_config")) {
+        throw new Error(marker);
+      }
+      return undefined;
+    });
+
+    const result = await createPostgresEffectiveConfigResolver({
+      pool: scripted.pool,
+      authorizer: authority.authorizer,
+    }).resolveAndAccept(authority.capability, {
+      request,
+      command,
+      acceptance_fence: {
+        campaign_id: "falcon24-root-v14-final",
+        run_id: ids.run,
+        claim_fence_token: ids.attempt,
+      },
+    });
+
+    expect(result).toMatchObject({
+      ok: false,
+      error: { code: marker, retryable: false },
+    });
+    expect(scripted.calls.some(({ text }) => text === "ROLLBACK")).toBe(true);
+    expect(scripted.calls.some(({ text }) => text === "COMMIT")).toBe(false);
   });
 
   it("rejects internally valid but different Resolution and Effective optional evaluations", async () => {

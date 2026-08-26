@@ -1,6 +1,8 @@
 import {
   type AgentProductProfileRegistryItemV2,
   type ArtifactWorkspaceChartDocumentV2,
+  buildFalcon24RunExecutionPolicy,
+  DEFAULT_RUN_EXECUTION_POLICY,
   type ProductTeamArtifactDocument,
   type RunWorkLease,
   verifyArtifactWorkspaceChartDocumentV2,
@@ -65,6 +67,7 @@ describe("Production Team governed chart publication", () => {
       worker_fence: 1,
       lease_duration_ms: 30_000,
       expires_at: "2026-08-22T01:00:30.000Z",
+      execution_policy: DEFAULT_RUN_EXECUTION_POLICY,
       payload: { kind: "START_DATA_AGENT_TEAM" },
     } as unknown as RunWorkLease;
     const config = await buildWorkerEffectiveConfigFixture({
@@ -254,6 +257,12 @@ describe("Production Team governed chart publication", () => {
       lease_token: 1,
       worker_fence: 11,
       expires_at: "2026-08-22T01:00:30.000Z",
+      execution_policy: buildFalcon24RunExecutionPolicy({
+        campaign_id: "falcon24-root-v13-final-20260826",
+        case_id: "falcon24-business-review-18m",
+        run_variant: "COLD",
+        repetition: 1,
+      }),
       payload: { kind: "START_DATA_AGENT_TEAM" },
     } as unknown as RunWorkLease;
     const config = await buildWorkerEffectiveConfigFixture({
@@ -442,6 +451,7 @@ describe("Production Team governed chart publication", () => {
       lease_token: 1,
       worker_fence: 1,
       expires_at: "2026-08-22T01:00:30.000Z",
+      execution_policy: DEFAULT_RUN_EXECUTION_POLICY,
       payload: { kind: "START_DATA_AGENT_TEAM" },
     } as unknown as RunWorkLease;
     const config = await buildWorkerEffectiveConfigFixture({

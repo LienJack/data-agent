@@ -39,6 +39,104 @@ async function catalog(profileIds: readonly string[]) {
 }
 
 describe("Root Agent Harness", () => {
+  it("reports the exact frozen-catalog closure rejection for a stale analysis Profile", async () => {
+    const frozenCatalog = await buildSubagentCapabilityCatalogSnapshot({
+      schema_version: "subagent-capability-catalog-snapshot@1.0.0",
+      catalog_id: id(4),
+      scope,
+      run_id: runId,
+      principal_id: id(5),
+      policy_version: "root-harness@1.0.0",
+      items: [
+        {
+          profile_ref: {
+            profile_id: "governed-text2sql-agent",
+            revision: 3,
+            revision_hash: hash("a"),
+          },
+          discovery: {
+            schema_version: "subagent-discovery-descriptor@1.0.0",
+            display_name: "Text2SQL",
+            description: "Produces accepted QueryEvidence.",
+            when_to_use: ["Use for governed database values."],
+            when_not_to_use: ["Do not use for prose-only work."],
+            examples: [],
+            accepted_input_artifact_types: [],
+            produced_artifact_types: ["QueryEvidence"],
+            access_mode: "READ_ONLY",
+          },
+        },
+        {
+          profile_ref: {
+            profile_id: "governed-analysis-agent",
+            revision: 1,
+            revision_hash: hash("b"),
+          },
+          discovery: {
+            schema_version: "subagent-discovery-descriptor@1.0.0",
+            display_name: "Analysis",
+            description: "Runs governed statistical analysis.",
+            when_to_use: ["Use for multi-step analysis."],
+            when_not_to_use: ["Do not use for simple lookups."],
+            examples: [],
+            accepted_input_artifact_types: [],
+            produced_artifact_types: ["AnalysisReport"],
+            access_mode: "READ_ONLY",
+          },
+        },
+      ].sort((left, right) =>
+        left.profile_ref.profile_id.localeCompare(right.profile_ref.profile_id),
+      ),
+    });
+    const budget = {
+      timeout_ms: 30_000,
+      max_steps: 8,
+      max_input_tokens: 20_000,
+      max_output_tokens: 4_000,
+      max_tool_calls: 4,
+      max_context_bytes: 32_768,
+    };
+    const promise = normalizeRootAgentProviderTurn({
+      scope,
+      run_id: runId,
+      catalog: frozenCatalog,
+      output_text: "",
+      tool_calls: [
+        {
+          tool_call_id: "query",
+          tool_name: "delegate_to_subagent@2",
+          arguments: {
+            profile_id: "governed-text2sql-agent",
+            objective: "Prepare accepted evidence.",
+            requested_artifact_types: ["QueryEvidence"],
+            input_artifact_refs: [],
+            upstream_accepted_output: null,
+            requested_budget: budget,
+          },
+        },
+        {
+          tool_call_id: "analysis",
+          tool_name: "delegate_to_subagent@2",
+          arguments: {
+            profile_id: "governed-analysis-agent",
+            objective: "Analyze the accepted evidence.",
+            requested_artifact_types: ["AnalysisReport"],
+            input_artifact_refs: [],
+            upstream_accepted_output: {
+              producer_tool_call_id: "query",
+              artifact_type: "QueryEvidence",
+            },
+            requested_budget: budget,
+          },
+        },
+      ],
+    });
+
+    await expect(promise).rejects.toMatchObject({
+      code: "ROOT_AGENT_SELECTED_UNSUPPORTED_UPSTREAM_ARTIFACT",
+    });
+  });
+
   it("keeps one canonical delegation Tool schema as catalog inventory changes", async () => {
     const before = await sha256ContentHash(
       z.toJSONSchema(SUBAGENT_DELEGATION_TOOL_DESCRIPTOR.input_schema),

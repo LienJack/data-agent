@@ -1,4 +1,4 @@
-import type { RunWorkLease } from "@data-agent/contracts";
+import { DEFAULT_RUN_EXECUTION_POLICY, type RunWorkLease } from "@data-agent/contracts";
 import { describe, expect, it, vi } from "vitest";
 import { createProviderSmokeExecutor } from "../../src/providers/provider-smoke-executor.js";
 import { createRunExecutionContext } from "../../src/runs/run-execution-context.js";
@@ -28,6 +28,7 @@ function createRunWorkLeaseFixture(): RunWorkLease {
     lease_token: 1,
     worker_fence: 1,
     expires_at: "2026-08-17T00:00:30.000Z",
+    execution_policy: DEFAULT_RUN_EXECUTION_POLICY,
     payload: { kind: "START_L2_RESEARCH" },
   };
 }

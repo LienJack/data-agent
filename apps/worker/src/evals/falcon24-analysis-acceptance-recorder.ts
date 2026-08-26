@@ -1,13 +1,11 @@
-import { readFile } from "node:fs/promises";
-import { resolve } from "node:path";
 import type { ArtifactReference } from "@data-agent/contracts/artifacts";
 import {
   type Falcon24AgentAnalysisCase,
   type Falcon24AgentAnalysisRunResult,
   falcon24AgentAnalysisRunResultSchema,
   falcon24AnalysisOracleReceiptSchema,
-  verifyFalcon24AcceptanceRunManifest,
 } from "@data-agent/contracts/evals";
+import type { RunExecutionPolicy } from "@data-agent/contracts/runs";
 import type { AnalysisExecutionResult } from "../analysis/executor.js";
 
 export interface Falcon24AnalysisAcceptanceRecorder {
@@ -21,6 +19,7 @@ export interface Falcon24AnalysisAcceptanceRecorder {
     readonly execution: AnalysisExecutionResult;
     readonly chart_ref: ArtifactReference;
     readonly completed_at: string;
+    readonly execution_policy: RunExecutionPolicy;
   }): Promise<void>;
 }
 
@@ -30,7 +29,6 @@ function single<T>(values: readonly T[], code: string): T {
 }
 
 export function createFalcon24AnalysisAcceptanceRecorder(input: {
-  readonly manifest_path: string;
   readonly stage_result: (input: {
     readonly campaign_id: string;
     readonly result: Falcon24AgentAnalysisRunResult;
@@ -40,13 +38,16 @@ export function createFalcon24AnalysisAcceptanceRecorder(input: {
   const append = async (
     recordInput: Parameters<Falcon24AnalysisAcceptanceRecorder["record"]>[0],
   ) => {
-    const manifest = await verifyFalcon24AcceptanceRunManifest(
-      JSON.parse(await readFile(input.manifest_path, "utf8")),
-    );
+    const metadata = recordInput.execution_policy;
+    if (metadata.mode === "DEFAULT") return;
     const runId = recordInput.execution.analysis_program_ref.run_id;
-    const metadata = manifest.runs.find(({ run_id: candidate }) => candidate === runId);
-    if (!metadata || metadata.case_id !== recordInput.test_case.case_id) {
-      throw new TypeError("FALCON24_ANALYSIS_RUN_MANIFEST_MISMATCH");
+    if (
+      metadata.campaign_id === null ||
+      metadata.case_id !== recordInput.test_case.case_id ||
+      metadata.run_variant === null ||
+      metadata.repetition === null
+    ) {
+      throw new TypeError("FALCON24_ANALYSIS_RUN_EXECUTION_POLICY_MISMATCH");
     }
     if (recordInput.execution.provider_invocation_refs.length === 0) {
       throw new TypeError("FALCON24_ANALYSIS_PROVIDER_INVOCATION_REF_REQUIRED");
@@ -82,7 +83,7 @@ export function createFalcon24AnalysisAcceptanceRecorder(input: {
       chart_dataset_hash: oracleReceipt.chart_dataset_hash,
       completed_at: recordInput.completed_at,
     });
-    await input.stage_result({ campaign_id: manifest.campaign_id, result });
+    await input.stage_result({ campaign_id: metadata.campaign_id, result });
   };
   return Object.freeze({
     record(recordInput: Parameters<Falcon24AnalysisAcceptanceRecorder["record"]>[0]) {
@@ -90,21 +91,5 @@ export function createFalcon24AnalysisAcceptanceRecorder(input: {
       writeQueue = next.catch(() => undefined);
       return next;
     },
-  });
-}
-
-export function createEnvironmentFalcon24AnalysisAcceptanceRecorder(
-  environment: NodeJS.ProcessEnv,
-  stageResult: (input: {
-    readonly campaign_id: string;
-    readonly result: Falcon24AgentAnalysisRunResult;
-  }) => Promise<void>,
-  cwd = process.cwd(),
-): Falcon24AnalysisAcceptanceRecorder | null {
-  const manifestPath = environment.FALCON24_ANALYSIS_RUN_MANIFEST?.trim();
-  if (!manifestPath) return null;
-  return createFalcon24AnalysisAcceptanceRecorder({
-    manifest_path: resolve(cwd, manifestPath),
-    stage_result: stageResult,
   });
 }

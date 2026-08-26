@@ -1,9 +1,12 @@
 import {
   type AppScope,
   type ArtifactReference,
+  buildFalcon24RunExecutionPolicy,
+  DEFAULT_RUN_EXECUTION_POLICY,
   effectiveConfigRunLeasePayloadSchema,
   RUN_RETRY_MAX_ATTEMPTS,
   RUN_RETRY_MIN_DELAY_MS,
+  type RunExecutionPolicy,
   type RunRuntimeEvent,
   type RunWorkLease,
   sha256ContentHash,
@@ -34,6 +37,12 @@ const principalId = "80000000-0000-4000-8000-000000000005";
 const commandId = "80000000-0000-4000-8000-000000000004";
 const payloadHash = `sha256:${"1".repeat(64)}`;
 const workflowRevision = `sha256:${"2".repeat(64)}`;
+const strictExecutionPolicy = buildFalcon24RunExecutionPolicy({
+  campaign_id: "falcon24-root-v12-final",
+  case_id: "falcon24-business-review-18m",
+  run_variant: "COLD",
+  repetition: 1,
+});
 let effectiveConfigFixture: Awaited<ReturnType<typeof buildWorkerEffectiveConfigFixture>> | null =
   null;
 
@@ -61,6 +70,7 @@ function lease(
   workerId = `worker-${attemptNo}`,
   deliveryAttemptNo = attemptNo,
   commandKind: "START_DATA_AGENT_TEAM" | "START_L2_RESEARCH" = "START_L2_RESEARCH",
+  executionPolicy: RunExecutionPolicy = DEFAULT_RUN_EXECUTION_POLICY,
 ): RunWorkLease {
   const suffix = String(attemptNo).padStart(2, "0");
   const rawLease = {
@@ -78,6 +88,7 @@ function lease(
     lease_token: workerFence,
     worker_fence: workerFence,
     expires_at: "2026-07-26T00:05:00.000Z",
+    execution_policy: executionPolicy,
     payload: {
       kind: "START_L2_RESEARCH",
     },
@@ -148,9 +159,9 @@ async function harness(
     execution_timeout_ms?: number;
     heartbeat_interval_ms?: number;
     side_effect_timeout_ms?: number;
-    max_run_attempts?: number;
     on_run_failure?: RunWorkerRunnerDependencies["on_run_failure"];
     reconcile_run_failures?: RunWorkerRunnerDependencies["reconcile_run_failures"];
+    effective_config_loader?: RunWorkerRunnerDependencies["effective_config_loader"];
   }> = {},
 ) {
   const runtime = new InMemoryRunRuntime();
@@ -164,13 +175,15 @@ async function harness(
   const {
     on_run_failure: onRunFailure,
     reconcile_run_failures: reconcileRunFailures,
+    effective_config_loader: effectiveConfigLoader,
     ...runtimeTiming
   } = timing;
   const runner = createRunWorkerRunner({
     queue: runtime,
     event_store: runtime,
     executor,
-    effective_config_loader: createEffectiveConfigFixtureLoader(effectiveConfigFixture),
+    effective_config_loader:
+      effectiveConfigLoader ?? createEffectiveConfigFixtureLoader(effectiveConfigFixture),
     now: () => new Date("2026-07-26T00:01:00.000Z"),
     create_id: createIdFactory(),
     ...runtimeTiming,
@@ -726,6 +739,7 @@ describe("Run Worker Runner", () => {
   });
 
   it("strict acceptance 在第一次交付请求 RETRY 时立即失败且不调度重试", async () => {
+    const onRunFailure = vi.fn(async () => ({ ok: true as const, value: undefined }));
     const { runtime, runner } = await harness(
       {
         async execute() {
@@ -736,9 +750,9 @@ describe("Run Worker Runner", () => {
           };
         },
       },
-      { max_run_attempts: 1 },
+      { on_run_failure: onRunFailure },
     );
-    runtime.enqueueLease(lease(1, 1));
+    runtime.enqueueLease(lease(1, 1, "worker-1", 1, "START_L2_RESEARCH", strictExecutionPolicy));
 
     const result = await runner.runOnce({ scope, worker_id: "worker-1" });
 
@@ -747,6 +761,137 @@ describe("Run Worker Runner", () => {
     expect(
       runtime.eventsFor(runId).find(({ event_type }) => event_type === "run.failed"),
     ).toMatchObject({ payload: { error_code: "RUN_ATTEMPT_BUDGET_EXHAUSTED" } });
+    expect(onRunFailure).toHaveBeenCalledWith({
+      lease: expect.objectContaining({ run_id: runId }),
+      error_code: "RUN_ATTEMPT_BUDGET_EXHAUSTED",
+      execution_policy: strictExecutionPolicy,
+    });
+  });
+
+  it("带 HOLD hook 的 Worker 领取普通 Run 时仍保留默认重试预算", async () => {
+    const onRunFailure = vi.fn(async () => ({ ok: true as const, value: undefined }));
+    const { runtime, runner } = await harness(
+      {
+        async execute() {
+          return {
+            kind: "RETRY",
+            error_code: "MODEL_PROVIDER_TEMPORARY_FAILURE",
+            retry_delay_ms: RUN_RETRY_MIN_DELAY_MS,
+          };
+        },
+      },
+      { on_run_failure: onRunFailure },
+    );
+    runtime.enqueueLease(lease(1, 1));
+
+    await expect(runner.runOnce({ scope, worker_id: "worker-1" })).resolves.toMatchObject({
+      ok: true,
+      value: { kind: "RETRY_SCHEDULED" },
+    });
+    expect(runtime.retried).toHaveLength(1);
+    expect(onRunFailure).not.toHaveBeenCalled();
+  });
+
+  it("缺失 execution policy 的旧 Lease 在执行前 fail closed", async () => {
+    const execute = vi.fn(async () => ({ kind: "COMPLETED" as const }));
+    const { runtime, runner } = await harness({ execute });
+    const { execution_policy: _policy, ...invalidLease } = lease(1, 1);
+    runtime.enqueueLease(invalidLease as unknown as RunWorkLease);
+
+    await expect(runner.runOnce({ scope, worker_id: "worker-1" })).resolves.toMatchObject({
+      ok: false,
+      error: { code: "WORKER_LEASE_INVALID" },
+    });
+    expect(execute).not.toHaveBeenCalled();
+  });
+
+  it("strict acceptance 的初始 heartbeat 失败会终结 Run 且数据库重投也不再次执行", async () => {
+    const execute = vi.fn(async () => ({ kind: "COMPLETED" as const }));
+    const onRunFailure = vi.fn(async () => ({ ok: true as const, value: undefined }));
+    const { runtime, runner } = await harness({ execute }, { on_run_failure: onRunFailure });
+    vi.spyOn(runtime, "heartbeat").mockRejectedValueOnce(new Error("heartbeat failed"));
+    runtime.enqueueLease(lease(1, 1, "worker-1", 1, "START_L2_RESEARCH", strictExecutionPolicy));
+
+    await expect(runner.runOnce({ scope, worker_id: "worker-1" })).resolves.toMatchObject({
+      ok: true,
+      value: { kind: "FAILED" },
+    });
+    expect(execute).not.toHaveBeenCalled();
+    expect(runtime.completed).toHaveLength(1);
+    expect(runtime.retried).toHaveLength(0);
+    expect(onRunFailure).toHaveBeenCalledWith({
+      lease: expect.objectContaining({ run_id: runId }),
+      error_code: "RUN_QUEUE_HEARTBEAT_FAILED",
+      execution_policy: strictExecutionPolicy,
+    });
+
+    runtime.enqueueLease(lease(2, 2, "worker-2", 2, "START_L2_RESEARCH", strictExecutionPolicy));
+    await expect(runner.runOnce({ scope, worker_id: "worker-2" })).resolves.toMatchObject({
+      ok: true,
+      value: { kind: "TERMINAL_RECONCILED" },
+    });
+    expect(execute).not.toHaveBeenCalled();
+  });
+
+  it("strict acceptance 的 Effective Config 失败统一落 run.failed 与 HOLD hook", async () => {
+    const execute = vi.fn(async () => ({ kind: "COMPLETED" as const }));
+    const onRunFailure = vi.fn(async () => ({ ok: true as const, value: undefined }));
+    const { runtime, runner } = await harness(
+      { execute },
+      {
+        on_run_failure: onRunFailure,
+        effective_config_loader: async () => ({
+          ok: false,
+          error: {
+            code: "EFFECTIVE_CONFIG_WORKER_CONSUMPTION_INVALID",
+            message: "config invalid",
+            retryable: false,
+          },
+        }),
+      },
+    );
+    runtime.enqueueLease(lease(1, 1, "worker-1", 1, "START_L2_RESEARCH", strictExecutionPolicy));
+
+    await expect(runner.runOnce({ scope, worker_id: "worker-1" })).resolves.toMatchObject({
+      ok: true,
+      value: { kind: "FAILED" },
+    });
+    expect(execute).not.toHaveBeenCalled();
+    expect(runtime.completed).toHaveLength(1);
+    expect(runtime.retried).toHaveLength(0);
+    expect(onRunFailure).toHaveBeenCalledWith({
+      lease: expect.objectContaining({ run_id: runId }),
+      error_code: "EFFECTIVE_CONFIG_WORKER_CONSUMPTION_INVALID",
+      execution_policy: strictExecutionPolicy,
+    });
+  });
+
+  it("strict acceptance 的 Snapshot 读取失败统一落 run.failed 且不启动 Executor", async () => {
+    const execute = vi.fn(async () => ({ kind: "COMPLETED" as const }));
+    const onRunFailure = vi.fn(async () => ({ ok: true as const, value: undefined }));
+    const { runtime, runner } = await harness({ execute }, { on_run_failure: onRunFailure });
+    vi.spyOn(runtime, "loadLatestSnapshot").mockResolvedValueOnce({
+      ok: false,
+      error: {
+        code: "RUN_SNAPSHOT_LOAD_FAILED",
+        message: "snapshot failed",
+        retryable: true,
+      },
+    });
+    runtime.enqueueLease(lease(1, 1, "worker-1", 1, "START_L2_RESEARCH", strictExecutionPolicy));
+
+    await expect(runner.runOnce({ scope, worker_id: "worker-1" })).resolves.toMatchObject({
+      ok: true,
+      value: { kind: "FAILED" },
+    });
+    expect(execute).not.toHaveBeenCalled();
+    expect(runtime.completed).toHaveLength(1);
+    expect(runtime.retried).toHaveLength(0);
+    expect(onRunFailure).toHaveBeenCalledWith({
+      lease: expect.objectContaining({ run_id: runId }),
+      error_code: "RUN_SNAPSHOT_LOAD_FAILED",
+      execution_policy: strictExecutionPolicy,
+    });
   });
 
   it("strict acceptance 以 durable run.failed 驱动 campaign HOLD 后才确认 Queue", async () => {
@@ -768,7 +913,7 @@ describe("Run Worker Runner", () => {
     );
     runtime = harnessResult.runtime;
     const { runner } = harnessResult;
-    runtime.enqueueLease(lease(1, 1));
+    runtime.enqueueLease(lease(1, 1, "worker-1", 1, "START_L2_RESEARCH", strictExecutionPolicy));
 
     await expect(runner.runOnce({ scope, worker_id: "worker-1" })).resolves.toMatchObject({
       ok: true,
@@ -777,6 +922,7 @@ describe("Run Worker Runner", () => {
     expect(onRunFailure).toHaveBeenCalledWith({
       lease: expect.objectContaining({ run_id: runId }),
       error_code: "FALCON24_Q1_FAILED",
+      execution_policy: strictExecutionPolicy,
     });
     expect(
       runtime.eventsFor(runId).some(({ event_type: eventType }) => eventType === "run.failed"),
@@ -800,13 +946,8 @@ describe("Run Worker Runner", () => {
       const failed = runtime
         ?.eventsFor(runId)
         .find(({ event_type: eventType }) => eventType === "run.failed");
-      if (failed?.event_type !== "run.failed") {
-        return { ok: true as const, value: undefined };
-      }
-      return onRunFailure({
-        lease: lease(2, 2, "worker-2", 2),
-        error_code: failed.payload.error_code,
-      });
+      expect(failed === undefined || failed.event_type === "run.failed").toBe(true);
+      return { ok: true as const, value: undefined };
     });
     const harnessResult = await harness(
       {
@@ -818,24 +959,26 @@ describe("Run Worker Runner", () => {
     );
     runtime = harnessResult.runtime;
     const { runner } = harnessResult;
-    runtime.enqueueLease(lease(1, 1));
+    runtime.enqueueLease(lease(1, 1, "worker-1", 1, "START_L2_RESEARCH", strictExecutionPolicy));
 
     await expect(runner.runOnce({ scope, worker_id: "worker-1" })).resolves.toMatchObject({
       ok: false,
       error: { code: "FALCON24_CAMPAIGN_HOLD_TEMPORARY_FAILURE" },
     });
-    expect(runtime.completed).toHaveLength(1);
+    expect(runtime.completed).toHaveLength(0);
     expect(
       runtime.eventsFor(runId).filter(({ event_type }) => event_type === "run.failed"),
     ).toHaveLength(1);
 
-    await expect(runner.runOnce({ scope, worker_id: "worker-1" })).resolves.toMatchObject({
+    runtime.enqueueLease(lease(2, 2, "worker-2", 2, "START_L2_RESEARCH", strictExecutionPolicy));
+    await expect(runner.runOnce({ scope, worker_id: "worker-2" })).resolves.toMatchObject({
       ok: true,
-      value: { kind: "IDLE" },
+      value: { kind: "TERMINAL_RECONCILED" },
     });
     expect(onRunFailure).toHaveBeenNthCalledWith(2, {
       lease: expect.objectContaining({ run_id: runId, worker_fence: 2 }),
       error_code: "FALCON24_Q1_FAILED",
+      execution_policy: strictExecutionPolicy,
     });
     expect(runtime.completed).toHaveLength(1);
     expect(reconcileRunFailures).toHaveBeenCalledTimes(2);
@@ -851,13 +994,8 @@ describe("Run Worker Runner", () => {
       const failed = runtime
         ?.eventsFor(runId)
         .find(({ event_type: eventType }) => eventType === "run.failed");
-      if (failed?.event_type !== "run.failed") {
-        return { ok: true as const, value: undefined };
-      }
-      return onRunFailure({
-        lease: lease(2, 2, "worker-2", 2),
-        error_code: failed.payload.error_code,
-      });
+      expect(failed === undefined || failed.event_type === "run.failed").toBe(true);
+      return { ok: true as const, value: undefined };
     });
     const harnessResult = await harness(
       {
@@ -869,21 +1007,23 @@ describe("Run Worker Runner", () => {
     );
     runtime = harnessResult.runtime;
     const { runner } = harnessResult;
-    runtime.enqueueLease(lease(1, 1));
+    runtime.enqueueLease(lease(1, 1, "worker-1", 1, "START_L2_RESEARCH", strictExecutionPolicy));
 
     await expect(runner.runOnce({ scope, worker_id: "worker-1" })).resolves.toMatchObject({
       ok: false,
       error: { code: "RUN_FAILURE_HOOK_FAILED" },
     });
-    expect(runtime.completed).toHaveLength(1);
+    expect(runtime.completed).toHaveLength(0);
 
-    await expect(runner.runOnce({ scope, worker_id: "worker-1" })).resolves.toMatchObject({
+    runtime.enqueueLease(lease(2, 2, "worker-2", 2, "START_L2_RESEARCH", strictExecutionPolicy));
+    await expect(runner.runOnce({ scope, worker_id: "worker-2" })).resolves.toMatchObject({
       ok: true,
-      value: { kind: "IDLE" },
+      value: { kind: "TERMINAL_RECONCILED" },
     });
     expect(onRunFailure).toHaveBeenLastCalledWith({
       lease: expect.objectContaining({ run_id: runId, worker_fence: 2 }),
       error_code: "FALCON24_Q2_ORACLE_FAILED",
+      execution_policy: strictExecutionPolicy,
     });
     expect(runtime.completed).toHaveLength(1);
     expect(

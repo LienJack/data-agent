@@ -6,7 +6,6 @@ import {
 import {
   buildWorkspaceDefaultsCasUpdateCommandCandidate,
   type ModelCatalogEntry,
-  sha256ContentHash,
   type VersionedResourceReference,
 } from "@data-agent/contracts";
 import {
@@ -27,6 +26,11 @@ import {
   type QaReadinessState,
   runQaReadinessBootstrap,
 } from "../../../../scripts/qa-readiness-bootstrap";
+import {
+  BUILTIN_TEAM_ROLE_MODEL_IDS as ROLE_MODEL_IDS,
+  resolveBuiltinTeamMaterializationInput,
+  verifyCurrentBuiltinTeamAuthority,
+} from "../lib/builtin-team-authority";
 import { ECOMMERCE_DEMO_DATASOURCE_ID } from "../lib/ecommerce-demo-bootstrap";
 import {
   closeEcommerceDemoConnectorPools,
@@ -46,12 +50,6 @@ import { createSchemaDiscoveryRuntime } from "../lib/schema-discovery-runtime";
 const CONFIRMATION_VARIABLE = "DATA_AGENT_ALLOW_QA_READINESS_BOOTSTRAP";
 const LOCAL_DEPLOYMENT_ID = "00000000-0000-4000-8000-000000000001";
 const PROFILE_IDS = DATA_AGENT_SPECIALIST_PROFILE_IDS;
-const ROLE_MODEL_IDS = {
-  "governed-analysis-agent": "00000000-0000-4000-8000-000000005a04",
-  "governed-text2sql-agent": "00000000-0000-4000-8000-000000005a01",
-  "report-writing-agent": "00000000-0000-4000-8000-000000005a02",
-  "semantic-management-agent": "00000000-0000-4000-8000-000000005a03",
-} as const satisfies Readonly<Record<DataAgentSpecialistProfileId, string>>;
 const ROLE_LABELS = {
   "governed-analysis-agent": "Governed analysis specialist",
   "governed-text2sql-agent": "Text2SQL specialist",
@@ -294,8 +292,30 @@ async function createDependencies(input: {
   }
 
   async function teamProfilesReady(): Promise<boolean> {
-    const listed = requireValue(await profiles.listDiscoverable(input.capability));
-    return listed.map((item) => item.revision.profile_id).join(",") === PROFILE_IDS.join(",");
+    const currentResources = await resources();
+    const [profileItems, skillItems] = await Promise.all([
+      profiles.listManagedV2(input.capability).then(requireValue),
+      skills.list(input.capability, false).then(requireValue),
+    ]);
+    try {
+      await verifyCurrentBuiltinTeamAuthority({
+        materialization_input: await resolveBuiltinTeamMaterializationInput({
+          pool: sqlPool,
+          capability: input.capability,
+          deployment_id: input.deploymentId,
+          context_policy_ref: currentResources.context,
+          execution_safety_policy_ref: currentResources.safety,
+        }),
+        profile_items: profileItems,
+        skill_items: skillItems,
+      });
+      return true;
+    } catch (error) {
+      if (error instanceof TypeError && error.message === "BUILTIN_TEAM_PROFILE_SET_STALE") {
+        return false;
+      }
+      throw error;
+    }
   }
 
   async function inspect(): Promise<QaReadinessState> {
@@ -416,97 +436,29 @@ async function createDependencies(input: {
     requireValue(await defaults.updateWorkspaceDefaults(input.capability, command));
   }
 
-  async function modelReferences(): Promise<
-    Readonly<Record<DataAgentSpecialistProfileId, VersionedResourceReference>>
-  > {
-    const result = await input.pool.query<{
-      model_profile_id: string;
-      resource_revision: string;
-      resource_hash: string;
-    }>(
-      `select catalog.model_profile_id::text,
-              catalog.config_version::text as resource_revision,
-              app_data_agent.u2_canonical_sha256(pg_catalog.to_jsonb(catalog)-'credential_ref')
-                as resource_hash
-         from platform.list_model_catalog($1::uuid,$2::uuid) catalog
-        where catalog.model_profile_id=any($3::uuid[])
-        order by catalog.model_profile_id`,
-      [input.deploymentId, input.capability.principal, Object.values(ROLE_MODEL_IDS)],
-    );
-    const byId = new Map(result.rows.map((row) => [row.model_profile_id, row]));
-    return Object.fromEntries(
-      PROFILE_IDS.map((profileId) => {
-        const row = byId.get(ROLE_MODEL_IDS[profileId]);
-        if (!row) throw new Error("QA_READINESS_MODEL_PROFILE_REQUIRED");
-        return [
-          profileId,
-          {
-            resource_id: row.model_profile_id,
-            resource_revision: Number(row.resource_revision),
-            resource_hash: row.resource_hash,
-          },
-        ];
-      }),
-    ) as Readonly<Record<DataAgentSpecialistProfileId, VersionedResourceReference>>;
-  }
-
-  async function specialistPolicyReferences(
-    kind: "context" | "safety",
-    source: VersionedResourceReference,
-  ): Promise<Readonly<Record<DataAgentSpecialistProfileId, VersionedResourceReference>>> {
-    const entries = await Promise.all(
-      PROFILE_IDS.map(
-        async (profileId) =>
-          [
-            profileId,
-            {
-              resource_id: operationId(
-                input.capability,
-                `qa-readiness-${kind}-policy`,
-                `${profileId}:v1`,
-              ),
-              resource_revision: 1,
-              resource_hash: await sha256ContentHash({
-                schema_version: "specialist-policy-binding@1.0.0",
-                kind,
-                profile_id: profileId,
-                source,
-              }),
-            },
-          ] as const,
-      ),
-    );
-    return Object.fromEntries(entries) as Readonly<
-      Record<DataAgentSpecialistProfileId, VersionedResourceReference>
-    >;
-  }
-
   async function ensureTeamProfiles(): Promise<void> {
     const currentResources = await resources();
     if (!currentResources.snapshot || !(await defaultsReady(currentResources))) {
       throw new Error("QA_READINESS_DEFAULTS_REQUIRED");
     }
-    let sequence = 0;
     const result = await materializeBuiltinTeamProfiles(
       {
-        scope,
-        model_profile_refs: await modelReferences(),
-        context_policy_refs: await specialistPolicyReferences("context", currentResources.context),
-        execution_safety_policy_refs: await specialistPolicyReferences(
-          "safety",
-          currentResources.safety,
-        ),
+        ...(await resolveBuiltinTeamMaterializationInput({
+          pool: sqlPool,
+          capability: input.capability,
+          deployment_id: input.deploymentId,
+          context_policy_ref: currentResources.context,
+          execution_safety_policy_ref: currentResources.safety,
+        })),
         capability_input: input.capability,
         actor_principal_id: input.capability.principal,
-        create_id: () => {
-          sequence += 1;
-          return operationId(
+        create_operation_id: (material) =>
+          operationId(
             input.capability,
             "qa-readiness-team-materialization",
-            `builtin-team:v3:${sequence}`,
-          );
-        },
-        idempotency_prefix: "qa-readiness:builtin-team:v3",
+            `builtin-team:v4:${material}`,
+          ),
+        idempotency_prefix: "qa-readiness:builtin-team:v4",
       },
       { skills, profiles },
     );

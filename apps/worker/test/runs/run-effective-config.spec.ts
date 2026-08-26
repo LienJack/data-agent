@@ -2,6 +2,7 @@ import {
   type AppScope,
   buildContextReceiptBindingCandidate,
   buildEffectiveRunConfigReceiptCandidate,
+  DEFAULT_RUN_EXECUTION_POLICY,
   type EffectiveRunConfigReceiptCandidate,
   type PortResult,
   type RunRuntimeEvent,
@@ -234,6 +235,7 @@ function lease(config: EffectiveRunConfigReceiptCandidate, attempt = 1): RunWork
     lease_token: attempt,
     worker_fence: attempt,
     expires_at: "2026-08-16T10:05:00.000Z",
+    execution_policy: DEFAULT_RUN_EXECUTION_POLICY,
     payload: { kind: "START_L2_RESEARCH", effective_config_ref: configRef(config) },
   };
 }

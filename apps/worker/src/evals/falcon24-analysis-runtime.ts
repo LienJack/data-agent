@@ -1,4 +1,5 @@
 import { type ArtifactReference, artifactReferenceSchema } from "@data-agent/contracts/artifacts";
+import { FALCON24_STRICT_ACCEPTANCE_POLICY_ID } from "@data-agent/contracts/evals";
 import type { ResearchArtifactAuthorityPort } from "@data-agent/contracts/ports";
 import type { RunWorkLease } from "@data-agent/contracts/runs";
 import { falcon24AnalysisOutputJsonSchema } from "@data-agent/evals";
@@ -31,7 +32,6 @@ import {
 } from "../analysis/research-artifact-port.js";
 import { createEnvironmentOpenSandboxAnalysisRuntime } from "../runs/opensandbox-analysis-runtime.js";
 import type { ResearchAuthorityCapabilityResolver } from "../runs/research-authority-capabilities.js";
-import type { Falcon24StrictAcceptanceExecutionPolicy } from "./falcon24-acceptance-execution-policy.js";
 import type { Falcon24AnalysisAcceptanceRecorder } from "./falcon24-analysis-acceptance-recorder.js";
 import { resolveFalcon24AnalysisCase } from "./falcon24-analysis-case-resolver.js";
 import { createFalcon24AnalysisDataOracle } from "./falcon24-analysis-data-oracle.js";
@@ -69,6 +69,41 @@ function schemaType(column: Falcon24AnalysisQueryColumn) {
   if (column.kind === "FLOAT64") return "NUMBER" as const;
   if (column.kind === "DATE") return "DATE" as const;
   return "STRING" as const;
+}
+
+export function isFalcon24StrictAnalysisLease(lease: RunWorkLease): boolean {
+  const policy = lease.execution_policy;
+  return (
+    policy.policy_id === FALCON24_STRICT_ACCEPTANCE_POLICY_ID &&
+    policy.mode === "FALCON24_STRICT" &&
+    policy.campaign_id !== null &&
+    policy.case_id !== null &&
+    policy.run_variant !== null &&
+    policy.repetition !== null &&
+    policy.max_run_attempts === 1 &&
+    policy.max_provider_attempts_per_call === 1 &&
+    policy.max_root_turns === 1 &&
+    policy.max_text2sql_candidate_attempts === 1 &&
+    policy.analysis_repair_budget_per_category === 0 &&
+    policy.max_file_transfer_attempts === 1 &&
+    !policy.allow_stage_recovery &&
+    policy.hold_on_failure
+  );
+}
+
+function assertFalcon24AnalysisLeasePolicy(lease: RunWorkLease): string {
+  if (!isFalcon24StrictAnalysisLease(lease)) {
+    throw new TypeError("FALCON24_ANALYSIS_RUN_EXECUTION_POLICY_MISMATCH");
+  }
+  const caseId = lease.execution_policy.case_id;
+  if (!caseId) throw new TypeError("FALCON24_ANALYSIS_RUN_EXECUTION_POLICY_MISMATCH");
+  return caseId;
+}
+
+function assertFalcon24ResolvedCase(policyCaseId: string, resolvedCaseId: string): void {
+  if (policyCaseId !== resolvedCaseId) {
+    throw new TypeError("FALCON24_ANALYSIS_RUN_EXECUTION_POLICY_MISMATCH");
+  }
 }
 
 function referenceFactory() {
@@ -125,18 +160,14 @@ export function createFalcon24AnalysisRuntime(input: {
   readonly environment: NodeJS.ProcessEnv;
   readonly now?: () => Date;
   readonly acceptance_recorder?: Falcon24AnalysisAcceptanceRecorder | null;
-  readonly execution_policy?: Falcon24StrictAcceptanceExecutionPolicy | null;
 }): GovernedAgentAnalysisPort {
   const inputEncryption = resolveAnalysisInputEncryption(input.environment);
   if (!inputEncryption) throw new TypeError("ANALYSIS_INPUT_ENCRYPTION_CONFIG_REQUIRED");
   const sourceEncryption = resolveAnalysisPythonSourceEncryption(input.environment);
   if (!sourceEncryption) throw new TypeError("ANALYSIS_PYTHON_SOURCE_ENCRYPTION_CONFIG_REQUIRED");
-  const sandboxRuntime = createEnvironmentOpenSandboxAnalysisRuntime(input.environment, {
-    ...(input.execution_policy
-      ? { max_file_transfer_attempts: input.execution_policy.max_file_transfer_attempts }
-      : {}),
-  });
-  if (!sandboxRuntime) throw new TypeError("ANALYSIS_OPENSANDBOX_RUNTIME_REQUIRED");
+  if (!createEnvironmentOpenSandboxAnalysisRuntime(input.environment)) {
+    throw new TypeError("ANALYSIS_OPENSANDBOX_RUNTIME_REQUIRED");
+  }
   const now = input.now ?? (() => new Date());
   const artifacts: AnalysisArtifactCommitPort = createResearchAnalysisArtifactPort({
     authority: input.research_authority,
@@ -182,6 +213,10 @@ export function createFalcon24AnalysisRuntime(input: {
       console.error(JSON.stringify(event));
     },
     create_executor(runtime) {
+      const sandboxRuntime = createEnvironmentOpenSandboxAnalysisRuntime(input.environment, {
+        max_file_transfer_attempts: runtime.lease.execution_policy.max_file_transfer_attempts,
+      });
+      if (!sandboxRuntime) throw new TypeError("ANALYSIS_OPENSANDBOX_RUNTIME_REQUIRED");
       const spec = FALCON24_ANALYSIS_QUERY_SPECS[runtime.test_case.case_id];
       const queries = createFalcon24GovernedAnalysisQueryPort({
         query_evidence_ref: runtime.accepted_query_evidence_ref,
@@ -242,25 +277,29 @@ export function createFalcon24AnalysisRuntime(input: {
         progress(event) {
           console.info(JSON.stringify(event));
         },
-        ...(input.execution_policy
-          ? {
-              repair_budget_per_category:
-                input.execution_policy.analysis_repair_budget_per_category,
-              allow_stage_recovery: input.execution_policy.allow_stage_recovery,
-            }
-          : {}),
+        repair_budget_per_category:
+          runtime.lease.execution_policy.analysis_repair_budget_per_category,
+        allow_stage_recovery: runtime.lease.execution_policy.allow_stage_recovery,
         now,
       });
     },
   });
   return Object.freeze({
     analyze(command: Parameters<GovernedAgentAnalysisPort["analyze"]>[0]) {
+      const policyCaseId = assertFalcon24AnalysisLeasePolicy(command.lease);
+      const testCase = resolveFalcon24AnalysisCase(command.semantic_context.package);
+      assertFalcon24ResolvedCase(policyCaseId, testCase.case_id);
       return falcon24.analyze({
         ...command,
-        test_case: resolveFalcon24AnalysisCase(command.semantic_context.package),
+        test_case: testCase,
       });
     },
   });
 }
 
-export const falcon24AnalysisRuntimeInternals = Object.freeze({ referenceFactory, schemaType });
+export const falcon24AnalysisRuntimeInternals = Object.freeze({
+  assertFalcon24AnalysisLeasePolicy,
+  assertFalcon24ResolvedCase,
+  referenceFactory,
+  schemaType,
+});

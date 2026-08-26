@@ -160,6 +160,22 @@ describe("App-aware PostgreSQL transaction", () => {
     expect(fixture.releases()).toBe(1);
   });
 
+  it("opens an explicit repeatable-read read-only snapshot when requested", async () => {
+    const fixture = recordingPool();
+    const authority = issueCapability("VIEWER");
+
+    const result = await withAppTransaction(
+      fixture.pool,
+      authority.authorizer,
+      authority.capability,
+      { access: "READ", snapshot: "REPEATABLE_READ" },
+      async () => "snapshot",
+    );
+
+    expect(result).toEqual({ ok: true, value: "snapshot" });
+    expect(fixture.calls[0]?.text).toBe("BEGIN ISOLATION LEVEL REPEATABLE READ READ ONLY");
+  });
+
   it("rolls back, releases the client and redacts unknown database errors", async () => {
     const fixture = recordingPool({ failWork: true });
     const authority = issueCapability();
@@ -310,6 +326,11 @@ describe("App-aware PostgreSQL transaction", () => {
     {
       marker: "DA_RUN_ALREADY_EXISTS",
       code: "RUN_ALREADY_EXISTS",
+      retryable: false,
+    },
+    {
+      marker: "RUN_EXECUTION_POLICY_CORRUPT",
+      code: "RUN_QUEUE_DATABASE_CONTRACT_INVALID",
       retryable: false,
     },
   ])(

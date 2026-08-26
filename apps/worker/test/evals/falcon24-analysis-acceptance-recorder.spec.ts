@@ -1,9 +1,7 @@
-import { mkdtemp, rm, writeFile } from "node:fs/promises";
-import { tmpdir } from "node:os";
-import { join } from "node:path";
 import {
-  buildFalcon24AcceptanceRunManifest,
+  buildFalcon24RunExecutionPolicy,
   canonicalizeJson,
+  DEFAULT_RUN_EXECUTION_POLICY,
   STATISTICAL_OPERATOR_REGISTRY_DIGEST,
   sha256ContentHash,
 } from "@data-agent/contracts";
@@ -13,17 +11,13 @@ import {
   falcon24AnalysisOracleReceiptSchema,
 } from "@data-agent/contracts/evals";
 import { FALCON24_AGENT_ANALYSIS_CASES } from "@data-agent/evals";
-import { afterEach, describe, expect, it } from "vitest";
+import { describe, expect, it } from "vitest";
 import type { AnalysisExecutionResult } from "../../src/analysis/executor.js";
-import {
-  createEnvironmentFalcon24AnalysisAcceptanceRecorder,
-  createFalcon24AnalysisAcceptanceRecorder,
-} from "../../src/evals/falcon24-analysis-acceptance-recorder.js";
+import { createFalcon24AnalysisAcceptanceRecorder } from "../../src/evals/falcon24-analysis-acceptance-recorder.js";
 
 const id = (suffix: number) => `37000000-0000-4000-8000-${String(suffix).padStart(12, "0")}`;
 const hash = (character: string) => `sha256:${character.repeat(64)}` as const;
 const scope = { app_id: id(1), tenant_id: id(2), environment: "test" } as const;
-const temporaryDirectories: string[] = [];
 
 function reference(
   artifactType:
@@ -44,17 +38,8 @@ function reference(
   } as const;
 }
 
-afterEach(async () => {
-  await Promise.all(
-    temporaryDirectories.splice(0).map((directory) => rm(directory, { recursive: true })),
-  );
-});
-
 describe("Falcon24 analysis acceptance recorder", () => {
   it("writes one strict, idempotent Agent run result from runtime evidence", async () => {
-    const directory = await mkdtemp(join(tmpdir(), "falcon24-recorder-"));
-    temporaryDirectories.push(directory);
-    const manifestPath = join(directory, "manifest.json");
     const manifestRuns = FALCON24_AGENT_ANALYSIS_CASES.flatMap((testCase, caseIndex) =>
       (["COLD", "WARM"] as const).flatMap((runVariant, variantIndex) =>
         [1, 2, 3].map((repetition) => ({
@@ -65,16 +50,12 @@ describe("Falcon24 analysis acceptance recorder", () => {
         })),
       ),
     );
-    const manifest = await buildFalcon24AcceptanceRunManifest({
-      schema_version: "falcon24-analysis-run-manifest@2.0.0" as const,
+    const executionPolicy = buildFalcon24RunExecutionPolicy({
       campaign_id: "falcon24-root-v13-final",
-      campaign_version: 13,
-      source_fingerprint: hash("e"),
-      frozen_contract_hash: hash("f"),
-      runtime_attestation_hash: hash("d"),
-      runs: manifestRuns,
+      case_id: manifestRuns[0]?.case_id ?? "falcon24-business-review-18m",
+      run_variant: "COLD",
+      repetition: 1,
     });
-    await writeFile(manifestPath, JSON.stringify(manifest));
     const testCase = FALCON24_AGENT_ANALYSIS_CASES[0];
     const metadata = manifestRuns[0];
     if (!testCase || !metadata) throw new TypeError("acceptance fixture missing");
@@ -142,7 +123,6 @@ describe("Falcon24 analysis acceptance recorder", () => {
     } as unknown as AnalysisExecutionResult;
     let stagedResult: Falcon24AgentAnalysisRunResult | null = null;
     const recorder = createFalcon24AnalysisAcceptanceRecorder({
-      manifest_path: manifestPath,
       async stage_result({ campaign_id: campaignId, result }) {
         expect(campaignId).toBe("falcon24-root-v13-final");
         if (stagedResult && canonicalizeJson(stagedResult) !== canonicalizeJson(result)) {
@@ -161,6 +141,7 @@ describe("Falcon24 analysis acceptance recorder", () => {
       execution,
       chart_ref: reference("ArtifactWorkspaceDocument", metadata.run_id, 11),
       completed_at: "2026-08-24T12:00:00.000Z",
+      execution_policy: executionPolicy,
     };
 
     await recorder.record(input);
@@ -197,14 +178,29 @@ describe("Falcon24 analysis acceptance recorder", () => {
     ).rejects.toThrow("FALCON24_ANALYSIS_RUN_RESULT_REPLAY_MISMATCH");
   });
 
-  it("has no filesystem result fallback and requires only the frozen manifest", () => {
-    const stage = async () => {};
-    expect(createEnvironmentFalcon24AnalysisAcceptanceRecorder({}, stage)).toBeNull();
-    expect(
-      createEnvironmentFalcon24AnalysisAcceptanceRecorder(
-        { FALCON24_ANALYSIS_RUN_MANIFEST: "manifest.json" },
-        stage,
-      ),
-    ).not.toBeNull();
+  it("does not stage ordinary runs and has no manifest compatibility path", async () => {
+    const testCase = FALCON24_AGENT_ANALYSIS_CASES[0];
+    if (!testCase) throw new Error("Falcon24 acceptance case fixture is empty");
+    let staged = false;
+    const recorder = createFalcon24AnalysisAcceptanceRecorder({
+      async stage_result() {
+        staged = true;
+      },
+    });
+    await recorder.record({
+      test_case: testCase,
+      semantic_context_ref: {
+        package_id: id(20),
+        package_revision: 1,
+        package_hash: hash("a"),
+      },
+      execution: {
+        analysis_program_ref: reference("AnalysisProgram", id(21), 22),
+      } as unknown as AnalysisExecutionResult,
+      chart_ref: reference("ArtifactWorkspaceDocument", id(21), 23),
+      completed_at: "2026-08-24T12:00:00.000Z",
+      execution_policy: DEFAULT_RUN_EXECUTION_POLICY,
+    });
+    expect(staged).toBe(false);
   });
 });

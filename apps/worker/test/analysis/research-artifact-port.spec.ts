@@ -2,6 +2,7 @@ import {
   type AnalysisProgramPayload,
   type ArtifactReference,
   analysisProgramPayloadSchema,
+  DEFAULT_RUN_EXECUTION_POLICY,
   STATISTICAL_OPERATOR_REGISTRY_DIGEST,
 } from "@data-agent/contracts";
 import { describe, expect, it, vi } from "vitest";
@@ -152,6 +153,7 @@ const lease = {
   lease_token: 1,
   worker_fence: 2,
   expires_at: "2026-08-24T00:02:00.000Z",
+  execution_policy: DEFAULT_RUN_EXECUTION_POLICY,
   payload: {},
 } as const;
 

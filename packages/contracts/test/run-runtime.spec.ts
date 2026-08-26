@@ -1,7 +1,9 @@
 import { describe, expect, it } from "vitest";
 import { canonicalizeJson, sha256ContentHash } from "../src/common/index.js";
 import {
+  buildFalcon24RunExecutionPolicy,
   computeMastraSnapshotBindingHash,
+  DEFAULT_RUN_EXECUTION_POLICY,
   hashRunProjection,
   mastraSnapshotBindingSchema,
   reduceRunProjection,
@@ -207,6 +209,7 @@ describe("持久 Run Runtime Contract", () => {
       lease_token: 6,
       worker_fence: 6,
       expires_at: "2026-07-25T12:01:00.000Z",
+      execution_policy: DEFAULT_RUN_EXECUTION_POLICY,
       payload: { kind: "RESUME_RUN" },
     } as const;
 
@@ -223,8 +226,26 @@ describe("持久 Run Runtime Contract", () => {
         lease_duration_ms: 4_999,
       }).success,
     ).toBe(false);
-    const { delivery_attempt_no: _omitted, ...withoutBudget } = lease;
-    expect(runWorkLeaseSchema.safeParse(withoutBudget).success).toBe(false);
+    const { delivery_attempt_no: _deliveryAttempt, ...withoutDeliveryAttempt } = lease;
+    expect(runWorkLeaseSchema.safeParse(withoutDeliveryAttempt).success).toBe(false);
+    const { execution_policy: _executionPolicy, ...withoutExecutionPolicy } = lease;
+    expect(runWorkLeaseSchema.safeParse(withoutExecutionPolicy).success).toBe(false);
+
+    const strictPolicy = buildFalcon24RunExecutionPolicy({
+      campaign_id: "falcon24-root-v12-final",
+      case_id: "falcon24-business-review-18m",
+      run_variant: "COLD",
+      repetition: 1,
+    });
+    expect(runWorkLeaseSchema.safeParse({ ...lease, execution_policy: strictPolicy }).success).toBe(
+      true,
+    );
+    expect(
+      runWorkLeaseSchema.safeParse({
+        ...lease,
+        execution_policy: { ...strictPolicy, max_run_attempts: 2 },
+      }).success,
+    ).toBe(false);
   });
 
   it("从 Durable Event 唯一重建 Projection，Live 与 Replay Hash 一致", async () => {

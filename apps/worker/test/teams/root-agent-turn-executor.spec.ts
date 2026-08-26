@@ -1,4 +1,9 @@
-import { buildSubagentCapabilityCatalogSnapshot, type RunWorkLease } from "@data-agent/contracts";
+import {
+  buildFalcon24RunExecutionPolicy,
+  buildSubagentCapabilityCatalogSnapshot,
+  DEFAULT_RUN_EXECUTION_POLICY,
+  type RunWorkLease,
+} from "@data-agent/contracts";
 import { describe, expect, it, vi } from "vitest";
 import { createRunExecutionContext } from "../../src/runs/run-execution-context.js";
 import { createRootAgentTurnExecutor } from "../../src/teams/root-agent-turn-executor.js";
@@ -45,6 +50,7 @@ describe("Root Agent direct-answer review", () => {
       lease_token: 1,
       worker_fence: 1,
       expires_at: "2026-08-25T10:05:00.000Z",
+      execution_policy: DEFAULT_RUN_EXECUTION_POLICY,
       payload: {
         schema_version: "effective-config-team-lease@3.0.0",
         kind: "START_DATA_AGENT_TEAM",
@@ -139,8 +145,17 @@ describe("Root Agent direct-answer review", () => {
       ok: true,
       value: { output_text: direct, tool_calls: [], projection: {} },
     });
+    const strictLease: RunWorkLease = {
+      ...lease,
+      execution_policy: buildFalcon24RunExecutionPolicy({
+        campaign_id: "falcon24-root-v13-final",
+        case_id: "falcon24-business-review-18m",
+        run_variant: "COLD",
+        repetition: 1,
+      }),
+    };
     const strictContext = createRunExecutionContext({
-      lease,
+      lease: strictLease,
       effective_config: consumed.effective_config,
       context_receipt: consumed.context_receipt,
       run_signal: new AbortController().signal,
@@ -155,12 +170,12 @@ describe("Root Agent direct-answer review", () => {
       append_side_effect_event: vi.fn(),
       append_display_event: vi.fn(async () => ({ ok: true as const, value: { sequence: 1 } })),
     });
-    const strictResult = await createRootAgentTurnExecutor({ max_turns: 1 }).decide({
-      lease,
+    const strictResult = await createRootAgentTurnExecutor().decide({
+      lease: strictLease,
       restored_snapshot: null,
       context: strictContext,
       signal: new AbortController().signal,
-      deadline_at: lease.expires_at,
+      deadline_at: strictLease.expires_at,
     });
     expect(strictResult.ok).toBe(true);
     expect(invoke).toHaveBeenCalledOnce();

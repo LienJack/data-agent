@@ -147,6 +147,11 @@ const DATABASE_RUNTIME_FAILURES: Readonly<Record<string, DatabaseRuntimeFailure>
     message: "Attempt Budget 结算时发现 Run Projection 不一致。",
     retryable: false,
   },
+  RUN_EXECUTION_POLICY_CORRUPT: {
+    code: "RUN_QUEUE_DATABASE_CONTRACT_INVALID",
+    message: "Run Queue 读取到损坏或不完整的执行策略。",
+    retryable: false,
+  },
 });
 
 export function mapDatabaseRuntimeFailure(error: unknown): PortResult<never> | null {

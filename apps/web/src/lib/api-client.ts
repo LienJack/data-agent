@@ -49,6 +49,13 @@ export class ApiRequestError extends Error {
   }
 }
 
+function resolutionTraceDecodeError(error: unknown, fallbackCode: string): ApiRequestError {
+  const observed =
+    typeof error === "object" && error !== null && "message" in error ? String(error.message) : "";
+  const code = observed.startsWith("RESOLUTION_TRACE_") ? observed : fallbackCode;
+  return new ApiRequestError(200, code, false, `权威轨迹响应未通过契约校验 (${code})`);
+}
+
 export class DeferredRunAdmissionError extends Error {
   override readonly name = "DeferredRunAdmissionError";
 
@@ -314,7 +321,11 @@ export async function fetchResolutionTrace(
     {},
     resolvedWorkspace,
   );
-  return verifyResolutionTrace(response.data);
+  try {
+    return await verifyResolutionTrace(response.data);
+  } catch (error) {
+    throw resolutionTraceDecodeError(error, "RESOLUTION_TRACE_SCHEMA_INVALID");
+  }
 }
 
 export async function fetchResolutionTraceDetail(
@@ -331,7 +342,11 @@ export async function fetchResolutionTraceDetail(
     { signal },
     resolvedWorkspace,
   );
-  return verifyResolutionTraceDetail(response.data);
+  try {
+    return verifyResolutionTraceDetail(response.data);
+  } catch (error) {
+    throw resolutionTraceDecodeError(error, "RESOLUTION_TRACE_DETAIL_SCHEMA_INVALID");
+  }
 }
 
 export async function fetchSqlHistory(

@@ -1,5 +1,6 @@
 import {
   canonicalImmutableIdSchema,
+  DEFAULT_RUN_EXECUTION_POLICY,
   type PortResult,
   providerResponseArtifactReferenceSchema,
   runtimeIdentifierSchema,
@@ -153,14 +154,23 @@ export function createPostgresProviderInvocationSmokeJob(input: {
         },
         async ({ client }) => {
           const result = await client.query<JsonValueRow>(
-            `select app_data_agent.claim_provider_invocation_smoke_work(
+            `select case when claimed.value is null then null else
+               pg_catalog.jsonb_set(
+                 claimed.value,
+                 '{lease,execution_policy}'::text[],
+                 $5::jsonb,
+                 true
+               )
+             end as value
+             from (select app_data_agent.claim_provider_invocation_smoke_work(
                $1::text, $2::integer, $3::uuid, $4::uuid
-             ) as value`,
+             ) as value) as claimed`,
             [
               requested.data.worker_id,
               requested.data.lease_duration_ms,
               requested.data.expected_run_id,
               requested.data.expected_command_id,
+              DEFAULT_RUN_EXECUTION_POLICY,
             ],
           );
           if (result.rows.length !== 1) throw new Error("PROVIDER_INVOCATION_SMOKE_CARDINALITY");

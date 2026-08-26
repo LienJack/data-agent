@@ -27,6 +27,7 @@ const mocks = vi.hoisted(() => ({
   resolveRollout: vi.fn(),
   commitDeferred: vi.fn(),
   freezeCatalog: vi.fn(),
+  listProfiles: vi.fn(),
 }));
 
 vi.mock("@/lib/workspace-request", () => ({
@@ -46,14 +47,7 @@ vi.mock("@/lib/workspace-identity", () => ({
     commitDeferred: mocks.commitDeferred,
   }),
   getAgentProfileRegistry: () => ({
-    listDiscoverable: async () => ({
-      ok: true,
-      value: [
-        { revision: { profile_id: "governed-text2sql-agent" } },
-        { revision: { profile_id: "report-writing-agent" } },
-        { revision: { profile_id: "semantic-management-agent" } },
-      ],
-    }),
+    listDiscoverable: mocks.listProfiles,
   }),
   getEffectiveConfigResolver: () => ({
     getWorkspaceDefaults: mocks.getDefaults,
@@ -152,6 +146,24 @@ beforeEach(() => {
     run_id: ids.run,
     snapshot_hash: H1,
     items: [],
+  });
+  mocks.listProfiles.mockResolvedValue({
+    ok: true,
+    value: [
+      {
+        revision: {
+          profile_id: "governed-text2sql-agent",
+          revision: 3,
+          revision_hash: H1,
+        },
+      },
+      {
+        revision: { profile_id: "report-writing-agent", revision: 3, revision_hash: H1 },
+      },
+      {
+        revision: { profile_id: "semantic-management-agent", revision: 4, revision_hash: H1 },
+      },
+    ],
   });
 });
 
@@ -261,6 +273,27 @@ describe("startQuestionRun use-case", () => {
         kind: "ERROR",
       }),
     );
+    expect(mocks.resolveAndAccept).not.toHaveBeenCalled();
+  });
+
+  it("strict acceptance 在冻结前拒绝 Profile revision 漂移", async () => {
+    const expected = [
+      {
+        profile_id: "governed-text2sql-agent",
+        revision: 3,
+        revision_hash: `sha256:${"2".repeat(64)}`,
+      },
+    ];
+
+    await expect(
+      startQuestionRun({ ...input(), expected_subagent_profile_refs: expected }),
+    ).resolves.toEqual(
+      expect.objectContaining({
+        error: expect.objectContaining({ code: "SUBAGENT_CATALOG_PROFILE_SET_MISMATCH" }),
+        kind: "ERROR",
+      }),
+    );
+    expect(mocks.freezeCatalog).not.toHaveBeenCalled();
     expect(mocks.resolveAndAccept).not.toHaveBeenCalled();
   });
 });

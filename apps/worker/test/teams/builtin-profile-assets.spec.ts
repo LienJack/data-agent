@@ -37,8 +37,13 @@ describe("built-in Team product assets", () => {
     });
 
     expect(materialized.skill_revisions).toHaveLength(10);
+    expect(
+      materialized.skill_revisions.find(
+        ({ skill_id: skillId }) => skillId === "00000000-0000-4000-8000-000000002401",
+      )?.revision,
+    ).toBe(2);
     expect(materialized.profile_revisions.map(({ profile_id }) => profile_id)).toEqual(profiles);
-    expect(materialized.profile_revisions.map(({ revision }) => revision)).toEqual([2, 3, 3, 4]);
+    expect(materialized.profile_revisions.map(({ revision }) => revision)).toEqual([3, 3, 3, 4]);
     expect(
       materialized.profile_revisions.find(
         ({ profile_id: profileId }) => profileId === "governed-analysis-agent",

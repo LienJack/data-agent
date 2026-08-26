@@ -6,6 +6,7 @@ import {
   resolutionTraceSchema,
   sqlHistoryResultSchema,
   verifyResolutionTrace,
+  verifyResolutionTraceDetail,
   verifySqlHistoryEntry,
   verifySqlHistoryResult,
 } from "../src/runs/index.js";
@@ -61,11 +62,30 @@ describe("resolution trace contracts", () => {
           duration_ms: null,
           artifact_refs: [reference("SqlArtifact", 20)],
         },
+        {
+          node_id: `artifact:${id(20)}:1`,
+          kind: "SQL",
+          source_event_id: null,
+          sequence: null,
+          occurred_at: occurredAt,
+          status: "AVAILABLE",
+          title: "SqlArtifact",
+          summary: "已提交 SQL Artifact",
+          duration_ms: null,
+          artifact_refs: [reference("SqlArtifact", 20)],
+        },
       ],
-      edges: [{ from_node_id: `event:${id(7)}`, to_node_id: `event:${id(8)}`, kind: "SEQUENCE" }],
+      edges: [
+        {
+          from_node_id: `event:${id(7)}`,
+          to_node_id: `artifact:${id(20)}:1`,
+          kind: "PRODUCED",
+        },
+        { from_node_id: `event:${id(7)}`, to_node_id: `event:${id(8)}`, kind: "SEQUENCE" },
+      ],
     });
 
-    expect(trace.nodes.map(({ sequence }) => sequence)).toEqual([1, 2]);
+    expect(trace.nodes.map(({ sequence }) => sequence)).toEqual([1, 2, null]);
     expect(trace.trace_hash).toMatch(/^sha256:/);
     await expect(verifyResolutionTrace(trace)).resolves.toEqual(trace);
     await expect(
@@ -121,6 +141,134 @@ describe("resolution trace contracts", () => {
         ],
       }),
     ).rejects.toThrow();
+  });
+
+  it("rejects duplicate ArtifactReference identity inside one trace node", async () => {
+    const duplicatedReference = reference("SqlArtifact", 20);
+
+    await expect(
+      buildResolutionTrace({
+        schema_version: "resolution-trace@1.0.0",
+        scope,
+        run_id: id(4),
+        conversation_id: null,
+        config_ref: null,
+        nodes: [
+          {
+            node_id: `event:${id(7)}`,
+            kind: "TOOL",
+            source_event_id: id(7),
+            sequence: 1,
+            occurred_at: occurredAt,
+            status: "COMPLETED",
+            title: "SQL sandbox",
+            summary: "查询完成",
+            duration_ms: 12,
+            artifact_refs: [duplicatedReference, duplicatedReference],
+          },
+        ],
+        edges: [],
+      }),
+    ).rejects.toThrow("RESOLUTION_TRACE_ARTIFACT_REFERENCE_DUPLICATE");
+  });
+
+  it("requires exactly one PRODUCED edge for every event ArtifactReference", async () => {
+    const producedReference = reference("QueryEvidence", 21);
+    const nodes = [
+      {
+        node_id: `event:${id(7)}`,
+        kind: "TOOL" as const,
+        source_event_id: id(7),
+        sequence: 1,
+        occurred_at: occurredAt,
+        status: "COMPLETED" as const,
+        title: "SQL sandbox",
+        summary: "查询完成",
+        duration_ms: 12,
+        artifact_refs: [producedReference],
+      },
+      {
+        node_id: `artifact:${producedReference.artifact_id}:1`,
+        kind: "ARTIFACT" as const,
+        source_event_id: null,
+        sequence: null,
+        occurred_at: occurredAt,
+        status: "AVAILABLE" as const,
+        title: "QueryEvidence",
+        summary: "已提交查询证据",
+        duration_ms: null,
+        artifact_refs: [producedReference],
+      },
+    ];
+    const eventNodeValue = nodes[0] as (typeof nodes)[number];
+    const artifactNodeValue = nodes[1] as (typeof nodes)[number];
+    const draft = {
+      schema_version: "resolution-trace@1.0.0" as const,
+      scope,
+      run_id: id(4),
+      conversation_id: null,
+      config_ref: null,
+      nodes,
+    };
+
+    await expect(buildResolutionTrace({ ...draft, edges: [] })).rejects.toThrow(
+      "RESOLUTION_TRACE_EVENT_ARTIFACT_PRODUCED_EDGE_INVALID",
+    );
+    await expect(
+      buildResolutionTrace({
+        ...draft,
+        edges: [
+          {
+            from_node_id: eventNodeValue.node_id,
+            to_node_id: artifactNodeValue.node_id,
+            kind: "PRODUCED" as const,
+          },
+        ],
+      }),
+    ).resolves.toMatchObject({ edges: [{ kind: "PRODUCED" }] });
+
+    await expect(
+      buildResolutionTrace({
+        ...draft,
+        nodes: [{ ...eventNodeValue, artifact_refs: [] }, artifactNodeValue],
+        edges: [
+          {
+            from_node_id: eventNodeValue.node_id,
+            to_node_id: artifactNodeValue.node_id,
+            kind: "PRODUCED" as const,
+          },
+        ],
+      }),
+    ).rejects.toThrow("RESOLUTION_TRACE_EVENT_ARTIFACT_PRODUCED_EDGE_INVALID");
+
+    await expect(
+      buildResolutionTrace({
+        ...draft,
+        nodes: [
+          eventNodeValue,
+          {
+            ...artifactNodeValue,
+            artifact_refs: [reference("QueryEvidence", 22)],
+          },
+        ],
+        edges: [
+          {
+            from_node_id: eventNodeValue.node_id,
+            to_node_id: artifactNodeValue.node_id,
+            kind: "PRODUCED" as const,
+          },
+        ],
+      }),
+    ).rejects.toThrow("RESOLUTION_TRACE_EVENT_ARTIFACT_PRODUCED_EDGE_INVALID");
+  });
+
+  it("maps trace and detail schema failures to stable authority codes", async () => {
+    await expect(
+      verifyResolutionTrace({ schema_version: "resolution-trace@1.0.0" }),
+    ).rejects.toThrow("RESOLUTION_TRACE_SCHEMA_INVALID");
+    expect(() =>
+      verifyResolutionTraceDetail({ schema_version: "resolution-trace-detail@2.0.0" }),
+    ).toThrow("RESOLUTION_TRACE_DETAIL_SCHEMA_INVALID");
   });
 
   it("rejects unknown or private fields instead of leaking them into the public wire", async () => {

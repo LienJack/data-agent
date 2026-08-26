@@ -1,4 +1,9 @@
-import type { AppScope, PortResult, RunWorkLease } from "@data-agent/contracts";
+import {
+  type AppScope,
+  DEFAULT_RUN_EXECUTION_POLICY,
+  type PortResult,
+  type RunWorkLease,
+} from "@data-agent/contracts";
 import { describe, expect, it, vi } from "vitest";
 import { createResearchWorkflowExecutor } from "../../src/runs/research-workflow-executor.js";
 import {
@@ -34,6 +39,7 @@ function lease(): RunWorkLease {
     lease_token: 2,
     worker_fence: 3,
     expires_at: "2026-08-16T10:05:00.000Z",
+    execution_policy: DEFAULT_RUN_EXECUTION_POLICY,
     payload: { kind: "START_L2_RESEARCH" },
   };
 }

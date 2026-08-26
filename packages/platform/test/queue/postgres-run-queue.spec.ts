@@ -1,3 +1,7 @@
+import {
+  buildFalcon24RunExecutionPolicy,
+  DEFAULT_RUN_EXECUTION_POLICY,
+} from "@data-agent/contracts";
 import { describe, expect, it } from "vitest";
 import type { SqlClient, SqlPool, SqlQueryResult } from "../../src/persistence/transaction.js";
 import { createPostgresRunQueue } from "../../src/queue/postgres-run-queue.js";
@@ -66,7 +70,7 @@ function scriptedPool(
   return { calls, pool };
 }
 
-function leaseRow() {
+function leaseRow(executionPolicy: unknown = DEFAULT_RUN_EXECUTION_POLICY) {
   return {
     principal_id: ids.principal,
     outbox_id: ids.outbox,
@@ -82,6 +86,7 @@ function leaseRow() {
     lease_token: "3",
     worker_fence: "4",
     lease_expires_at: "2026-07-25T00:01:00.000Z",
+    execution_policy: executionPolicy,
   };
 }
 
@@ -115,6 +120,7 @@ describe("PostgreSQL Run Queue", () => {
         lease_token: 3,
         worker_fence: 4,
         expires_at: "2026-07-25T00:01:00.000Z",
+        execution_policy: DEFAULT_RUN_EXECUTION_POLICY,
         payload: { kind: "START_L2_RESEARCH", run_id: ids.run },
       },
     });
@@ -126,6 +132,7 @@ describe("PostgreSQL Run Queue", () => {
       ids.tenant,
       "test",
       ids.principal,
+      DEFAULT_RUN_EXECUTION_POLICY,
     ]);
     const claim = fixture.calls.find(({ text }) => text.includes("claim_run_work"));
     expect(claim?.text).toContain(
@@ -136,6 +143,61 @@ describe("PostgreSQL Run Queue", () => {
     );
     expect(claim?.text).toContain("command.payload_json ? 'effective_config_ref'");
     expect(claim?.text).toContain("work.expires_at as lease_expires_at");
+    expect(claim?.text).toContain(
+      "app_data_agent.resolve_falcon24_run_execution_policy(run.run_id)",
+    );
+    expect(claim?.text).not.toContain("join app_data_agent.falcon24_acceptance_campaign_runs");
+    expect(claim?.text).not.toContain("join app_data_agent.falcon24_acceptance_campaigns");
+  });
+
+  it("atomically binds strict Falcon and default execution policy to the exact leased Run", async () => {
+    const strictPolicy = buildFalcon24RunExecutionPolicy({
+      campaign_id: "falcon24-root-v12-final",
+      case_id: "falcon24-business-review-18m",
+      run_variant: "COLD",
+      repetition: 1,
+    });
+    const fixture = scriptedPool((text) =>
+      text.includes("claim_run_work") ? { rows: [leaseRow(strictPolicy)], rowCount: 1 } : undefined,
+    );
+    const authority = issueCapability();
+    const queue = createPostgresRunQueue(fixture.pool, authority.authorizer, authority.capability, {
+      lease_duration_ms: 30_000,
+    });
+
+    await expect(queue.lease({ scope, worker_id: "worker-a" })).resolves.toMatchObject({
+      ok: true,
+      value: {
+        run_id: ids.run,
+        execution_policy: strictPolicy,
+      },
+    });
+  });
+
+  it("rolls back a claim whose exact execution policy violates the frozen closure", async () => {
+    const fixture = scriptedPool((text) =>
+      text.includes("claim_run_work")
+        ? {
+            rows: [
+              leaseRow({
+                ...DEFAULT_RUN_EXECUTION_POLICY,
+                max_run_attempts: 1,
+              }),
+            ],
+            rowCount: 1,
+          }
+        : undefined,
+    );
+    const authority = issueCapability();
+    const queue = createPostgresRunQueue(fixture.pool, authority.authorizer, authority.capability, {
+      lease_duration_ms: 30_000,
+    });
+
+    await expect(queue.lease({ scope, worker_id: "worker-a" })).resolves.toMatchObject({
+      ok: false,
+      error: { code: "RUN_QUEUE_DATABASE_CONTRACT_INVALID", retryable: false },
+    });
+    expect(fixture.calls.some(({ text }) => text === "ROLLBACK")).toBe(true);
   });
 
   it("heartbeats, completes and retries only the exact active lease", async () => {
@@ -234,6 +296,7 @@ describe("PostgreSQL Run Queue", () => {
       lease_token: 3,
       worker_fence: 4,
       expires_at: "2026-07-25T00:01:00.000Z",
+      execution_policy: DEFAULT_RUN_EXECUTION_POLICY,
       payload: { kind: "START_L2_RESEARCH" },
     } as const;
 

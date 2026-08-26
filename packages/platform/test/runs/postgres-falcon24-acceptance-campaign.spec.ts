@@ -1,5 +1,6 @@
 import {
   buildFalcon24AcceptanceRunManifest,
+  buildFalcon24ResolutionTraceGateReceipt,
   buildFalcon24SandboxReclamationReceipt,
   falcon24AnalysisCaseIdSchema,
   STATISTICAL_OPERATOR_REGISTRY_DIGEST,
@@ -80,9 +81,18 @@ function run(overrides: Record<string, unknown> = {}) {
     run_variant: "COLD",
     repetition: 1,
     status: "CLAIMED",
+    claim_fence_hash: hash("f"),
+    claim_fence_consumed_at: now,
     trace_closure_hash: null,
+    trace_gate_receipt_hash: null,
+    trace_gate_receipt: null,
     result_hash: null,
     result_document: null,
+    sandbox_reclamation_recovery_hash: null,
+    sandbox_reclamation_claim_hash: null,
+    sandbox_reclamation_claimed_at: null,
+    sandbox_reclamation_claim_expires_at: null,
+    sandbox_reclamation_claim_consumed_at: null,
     sandbox_reclamation_hash: null,
     sandbox_reclamation_receipt: null,
     claimed_at: now,
@@ -213,6 +223,24 @@ async function reclamationReceipt() {
   });
 }
 
+async function traceGateReceipt() {
+  return buildFalcon24ResolutionTraceGateReceipt({
+    schema_version: "falcon24-resolution-trace-gate-receipt@1.0.0" as const,
+    campaign_id: "falcon24-root-v13-final",
+    run_id: ids.run,
+    trace_hash: hash("d"),
+    node_count: 10,
+    edge_count: 9,
+    detail_count: 10,
+    sql_node_count: 1,
+    query_evidence_node_count: 1,
+    analysis_evidence_node_count: 1,
+    chart_node_count: 1,
+    report_node_count: 1,
+    verified_at: now,
+  });
+}
+
 async function manifest() {
   return buildFalcon24AcceptanceRunManifest({
     schema_version: "falcon24-analysis-run-manifest@2.0.0",
@@ -257,6 +285,109 @@ function scriptedPool(handler: (text: string, values?: readonly unknown[]) => un
 }
 
 describe("PostgreSQL Falcon24 acceptance campaign authority", () => {
+  it("loads the database-authoritative frozen campaign identity", async () => {
+    const auth = authority();
+    const scripted = scriptedPool((text) =>
+      text.includes("load_falcon24_acceptance_campaign(") ? campaign() : undefined,
+    );
+    const port = createPostgresFalcon24AcceptanceCampaignAuthority({
+      pool: scripted.pool,
+      authorizer: auth.authorizer,
+    });
+
+    await expect(
+      port.load(auth.capability, { campaign_id: "falcon24-root-v13-final" }),
+    ).resolves.toMatchObject({
+      ok: true,
+      value: {
+        campaign_id: "falcon24-root-v13-final",
+        frozen_contract_hash: hash("b"),
+      },
+    });
+    expect(
+      scripted.calls.find(({ text }) => text.includes("load_falcon24_acceptance_campaign("))
+        ?.values,
+    ).toEqual([
+      expect.objectContaining({
+        schema_version: "falcon24-acceptance-campaign-load@1.0.0",
+        campaign_id: "falcon24-root-v13-final",
+        command_hash: expect.stringMatching(/^sha256:[0-9a-f]{64}$/),
+      }),
+    ]);
+  });
+
+  it("loads the exact campaign run before deciding whether submit may proceed", async () => {
+    const auth = authority();
+    const scripted = scriptedPool((text) =>
+      text.includes("load_falcon24_acceptance_campaign_run") ? run() : undefined,
+    );
+    const port = createPostgresFalcon24AcceptanceCampaignAuthority({
+      pool: scripted.pool,
+      authorizer: auth.authorizer,
+    });
+
+    await expect(
+      port.loadRun(auth.capability, {
+        campaign_id: "falcon24-root-v13-final",
+        run_id: ids.run,
+      }),
+    ).resolves.toMatchObject({
+      ok: true,
+      value: {
+        campaign_id: "falcon24-root-v13-final",
+        run_id: ids.run,
+        status: "CLAIMED",
+      },
+    });
+    expect(
+      scripted.calls.find(({ text }) => text.includes("load_falcon24_acceptance_campaign_run"))
+        ?.values,
+    ).toEqual([
+      expect.objectContaining({
+        schema_version: "falcon24-acceptance-campaign-run-load@1.0.0",
+        campaign_id: "falcon24-root-v13-final",
+        run_id: ids.run,
+      }),
+    ]);
+  });
+
+  it("loads only the database-authoritative current FAILED campaign run", async () => {
+    const auth = authority();
+    const scripted = scriptedPool((text) =>
+      text.includes("load_falcon24_pending_failed_run")
+        ? { campaign_id: "falcon24-root-v13-final", run_id: ids.run }
+        : undefined,
+    );
+    const port = createPostgresFalcon24AcceptanceCampaignAuthority({
+      pool: scripted.pool,
+      authorizer: auth.authorizer,
+    });
+
+    await expect(port.loadPendingFailedRun(auth.capability)).resolves.toEqual({
+      ok: true,
+      value: { campaign_id: "falcon24-root-v13-final", run_id: ids.run },
+    });
+    expect(
+      scripted.calls.filter(({ text }) => text.includes("load_falcon24_pending_failed_run")),
+    ).toHaveLength(1);
+  });
+
+  it("returns null when no strict campaign has a current FAILED run", async () => {
+    const auth = authority();
+    const scripted = scriptedPool((text) =>
+      text.includes("load_falcon24_pending_failed_run") ? null : undefined,
+    );
+    const port = createPostgresFalcon24AcceptanceCampaignAuthority({
+      pool: scripted.pool,
+      authorizer: auth.authorizer,
+    });
+
+    await expect(port.loadPendingFailedRun(auth.capability)).resolves.toEqual({
+      ok: true,
+      value: null,
+    });
+  });
+
   it("begins a frozen 30-run zero-retry campaign with a canonical command hash", async () => {
     const auth = authority();
     const frozenManifest = await manifest();
@@ -292,8 +423,12 @@ describe("PostgreSQL Falcon24 acceptance campaign authority", () => {
 
   it("claims only the exact requested ordinal and run identity", async () => {
     const auth = authority();
+    const claimFenceToken = id(6);
+    const claimFenceHash = await sha256ContentHash({ claim_fence_token: claimFenceToken });
     const scripted = scriptedPool((text) =>
-      text.includes("claim_falcon24_acceptance_run") ? run() : undefined,
+      text.includes("claim_falcon24_acceptance_run")
+        ? run({ claim_fence_hash: claimFenceHash, claim_fence_consumed_at: null })
+        : undefined,
     );
     const port = createPostgresFalcon24AcceptanceCampaignAuthority({
       pool: scripted.pool,
@@ -308,8 +443,16 @@ describe("PostgreSQL Falcon24 acceptance campaign authority", () => {
         case_id: "falcon24-q1",
         run_variant: "COLD",
         repetition: 1,
+        claim_fence_token: claimFenceToken,
       }),
     ).resolves.toMatchObject({ ok: true, value: { status: "CLAIMED", run_id: ids.run } });
+    expect(
+      scripted.calls.find(({ text }) => text.includes("claim_falcon24_acceptance_run"))
+        ?.values?.[0],
+    ).toMatchObject({
+      schema_version: "falcon24-acceptance-run-claim@2.0.0",
+      claim_fence_token: claimFenceToken,
+    });
   });
 
   it("freezes the first classified failure and rejects a substituted receipt", async () => {
@@ -370,10 +513,23 @@ describe("PostgreSQL Falcon24 acceptance campaign authority", () => {
 
   it("records and reloads the exact management-plane reclamation receipt", async () => {
     const auth = authority();
+    const reclamationClaimToken = id(7);
+    const reclamationClaimHash = await sha256ContentHash({
+      reclamation_claim_token: reclamationClaimToken,
+    });
     const receipt = await reclamationReceipt();
+    const traceReceipt = await traceGateReceipt();
     const scripted = scriptedPool((text) =>
       text.includes("record_falcon24_sandbox_reclamation")
         ? run({
+            trace_closure_hash: traceReceipt.trace_hash,
+            trace_gate_receipt_hash: traceReceipt.receipt_hash,
+            trace_gate_receipt: traceReceipt,
+            sandbox_reclamation_recovery_hash: hash("6"),
+            sandbox_reclamation_claim_hash: reclamationClaimHash,
+            sandbox_reclamation_claimed_at: now,
+            sandbox_reclamation_claim_expires_at: "2026-08-25T08:15:00.000Z",
+            sandbox_reclamation_claim_consumed_at: now,
             sandbox_reclamation_hash: receipt.receipt_hash,
             sandbox_reclamation_receipt: receipt,
           })
@@ -390,6 +546,7 @@ describe("PostgreSQL Falcon24 acceptance campaign authority", () => {
       port.recordSandboxReclamation(auth.capability, {
         campaign_id: "falcon24-root-v13-final",
         run_id: ids.run,
+        reclamation_claim_token: reclamationClaimToken,
         receipt,
       }),
     ).resolves.toMatchObject({
@@ -404,7 +561,314 @@ describe("PostgreSQL Falcon24 acceptance campaign authority", () => {
     ).resolves.toEqual({ ok: true, value: receipt });
   });
 
-  it("completes only after trace/result hashes and a DB-recorded reclamation hash are supplied", async () => {
+  it("recovers an exact reclamation receipt after the COMMIT acknowledgement is lost", async () => {
+    const auth = authority();
+    const receipt = await reclamationReceipt();
+    const traceReceipt = await traceGateReceipt();
+    const reclamationClaimToken = id(7);
+    const reclamationClaimHash = await sha256ContentHash({
+      reclamation_claim_token: reclamationClaimToken,
+    });
+    let connectionNo = 0;
+    let recordCalls = 0;
+    const pool: SqlPool = {
+      async connect() {
+        connectionNo += 1;
+        const recoveryConnection = connectionNo === 2;
+        return {
+          async query<Row extends object = Record<string, unknown>>(text: string) {
+            if (text.includes("backend_context_matches")) {
+              return { rows: [{ allowed: true }], rowCount: 1 } as unknown as SqlQueryResult<Row>;
+            }
+            if (text.includes("record_falcon24_sandbox_reclamation")) {
+              recordCalls += 1;
+              return {
+                rows: [
+                  {
+                    value: run({
+                      trace_closure_hash: traceReceipt.trace_hash,
+                      trace_gate_receipt_hash: traceReceipt.receipt_hash,
+                      trace_gate_receipt: traceReceipt,
+                      sandbox_reclamation_recovery_hash: hash("6"),
+                      sandbox_reclamation_claim_hash: reclamationClaimHash,
+                      sandbox_reclamation_claimed_at: now,
+                      sandbox_reclamation_claim_expires_at: "2026-08-25T08:15:00.000Z",
+                      sandbox_reclamation_claim_consumed_at: now,
+                      sandbox_reclamation_hash: receipt.receipt_hash,
+                      sandbox_reclamation_receipt: receipt,
+                    }),
+                  },
+                ],
+                rowCount: 1,
+              } as unknown as SqlQueryResult<Row>;
+            }
+            if (text.includes("load_falcon24_acceptance_campaign_run")) {
+              return {
+                rows: [
+                  {
+                    value: run({
+                      trace_closure_hash: traceReceipt.trace_hash,
+                      trace_gate_receipt_hash: traceReceipt.receipt_hash,
+                      trace_gate_receipt: traceReceipt,
+                      sandbox_reclamation_recovery_hash: hash("6"),
+                      sandbox_reclamation_claim_hash: reclamationClaimHash,
+                      sandbox_reclamation_claimed_at: now,
+                      sandbox_reclamation_claim_expires_at: "2026-08-25T08:15:00.000Z",
+                      sandbox_reclamation_claim_consumed_at: now,
+                      sandbox_reclamation_hash: receipt.receipt_hash,
+                      sandbox_reclamation_receipt: receipt,
+                    }),
+                  },
+                ],
+                rowCount: 1,
+              } as unknown as SqlQueryResult<Row>;
+            }
+            if (text === "COMMIT" && !recoveryConnection) {
+              throw new Error("commit acknowledgement lost");
+            }
+            return { rows: [], rowCount: 0 } as unknown as SqlQueryResult<Row>;
+          },
+          release() {},
+        } satisfies SqlClient;
+      },
+    };
+    const port = createPostgresFalcon24AcceptanceCampaignAuthority({
+      pool,
+      authorizer: auth.authorizer,
+    });
+
+    await expect(
+      port.recordSandboxReclamation(auth.capability, {
+        campaign_id: "falcon24-root-v13-final",
+        run_id: ids.run,
+        reclamation_claim_token: reclamationClaimToken,
+        receipt,
+      }),
+    ).resolves.toMatchObject({
+      ok: true,
+      value: { sandbox_reclamation_hash: receipt.receipt_hash },
+    });
+    expect(connectionNo).toBe(2);
+    expect(recordCalls).toBe(1);
+  });
+
+  it("durably stages and reloads the exact successful Resolution Trace gate", async () => {
+    const auth = authority();
+    const receipt = await traceGateReceipt();
+    const scripted = scriptedPool((text) =>
+      text.includes("stage_falcon24_acceptance_trace")
+        ? run({
+            trace_closure_hash: receipt.trace_hash,
+            trace_gate_receipt_hash: receipt.receipt_hash,
+            trace_gate_receipt: receipt,
+          })
+        : text.includes("load_falcon24_acceptance_trace_gate")
+          ? receipt
+          : undefined,
+    );
+    const port = createPostgresFalcon24AcceptanceCampaignAuthority({
+      pool: scripted.pool,
+      authorizer: auth.authorizer,
+    });
+
+    await expect(
+      port.stageTrace(auth.capability, {
+        campaign_id: "falcon24-root-v13-final",
+        run_id: ids.run,
+        receipt,
+      }),
+    ).resolves.toMatchObject({
+      ok: true,
+      value: {
+        trace_closure_hash: receipt.trace_hash,
+        trace_gate_receipt_hash: receipt.receipt_hash,
+      },
+    });
+    await expect(
+      port.loadTraceGate(auth.capability, {
+        campaign_id: "falcon24-root-v13-final",
+        run_id: ids.run,
+      }),
+    ).resolves.toEqual({ ok: true, value: receipt });
+  });
+
+  it("durably claims destructive reclamation before any external cleanup", async () => {
+    const auth = authority();
+    const receipt = await traceGateReceipt();
+    const reclamationRecoveryToken = id(6);
+    const reclamationClaimToken = id(7);
+    const reclamationRecoveryHash = await sha256ContentHash({
+      reclamation_recovery_token: reclamationRecoveryToken,
+    });
+    const reclamationClaimHash = await sha256ContentHash({
+      reclamation_claim_token: reclamationClaimToken,
+    });
+    const scripted = scriptedPool((text) =>
+      text.includes("claim_falcon24_sandbox_reclamation")
+        ? run({
+            trace_closure_hash: receipt.trace_hash,
+            trace_gate_receipt_hash: receipt.receipt_hash,
+            trace_gate_receipt: receipt,
+            sandbox_reclamation_recovery_hash: reclamationRecoveryHash,
+            sandbox_reclamation_claim_hash: reclamationClaimHash,
+            sandbox_reclamation_claimed_at: now,
+            sandbox_reclamation_claim_expires_at: "2026-08-25T08:15:00.000Z",
+          })
+        : undefined,
+    );
+    const port = createPostgresFalcon24AcceptanceCampaignAuthority({
+      pool: scripted.pool,
+      authorizer: auth.authorizer,
+    });
+
+    await expect(
+      port.claimSandboxReclamation(auth.capability, {
+        campaign_id: "falcon24-root-v13-final",
+        run_id: ids.run,
+        runtime_attestation_hash: hash("e"),
+        reclamation_recovery_token: reclamationRecoveryToken,
+        reclamation_claim_token: reclamationClaimToken,
+      }),
+    ).resolves.toEqual({ ok: true, value: { disposition: "CLAIMED", receipt: null } });
+    const call = scripted.calls.find(({ text }) =>
+      text.includes("claim_falcon24_sandbox_reclamation"),
+    );
+    expect(call?.values?.[0]).toMatchObject({
+      schema_version: "falcon24-sandbox-reclamation-claim@1.0.0",
+      campaign_id: "falcon24-root-v13-final",
+      run_id: ids.run,
+      runtime_attestation_hash: hash("e"),
+      reclamation_recovery_token: reclamationRecoveryToken,
+      reclamation_claim_token: reclamationClaimToken,
+      command_hash: expect.stringMatching(/^sha256:[0-9a-f]{64}$/),
+    });
+  });
+
+  it("returns the committed receipt from a completed duplicate claim", async () => {
+    const auth = authority();
+    const receipt = await reclamationReceipt();
+    const traceReceipt = await traceGateReceipt();
+    const reclamationRecoveryToken = id(6);
+    const reclamationRecoveryHash = await sha256ContentHash({
+      reclamation_recovery_token: reclamationRecoveryToken,
+    });
+    const scripted = scriptedPool((text) =>
+      text.includes("claim_falcon24_sandbox_reclamation")
+        ? run({
+            status: "VERIFIED",
+            trace_closure_hash: traceReceipt.trace_hash,
+            trace_gate_receipt_hash: traceReceipt.receipt_hash,
+            trace_gate_receipt: traceReceipt,
+            sandbox_reclamation_recovery_hash: reclamationRecoveryHash,
+            sandbox_reclamation_claim_hash: hash("7"),
+            sandbox_reclamation_claimed_at: now,
+            sandbox_reclamation_claim_expires_at: "2026-08-25T08:15:00.000Z",
+            sandbox_reclamation_claim_consumed_at: now,
+            sandbox_reclamation_hash: receipt.receipt_hash,
+            sandbox_reclamation_receipt: receipt,
+            completed_at: now,
+          })
+        : undefined,
+    );
+    const port = createPostgresFalcon24AcceptanceCampaignAuthority({
+      pool: scripted.pool,
+      authorizer: auth.authorizer,
+    });
+
+    await expect(
+      port.claimSandboxReclamation(auth.capability, {
+        campaign_id: "falcon24-root-v13-final",
+        run_id: ids.run,
+        runtime_attestation_hash: hash("e"),
+        reclamation_recovery_token: reclamationRecoveryToken,
+        reclamation_claim_token: id(8),
+      }),
+    ).resolves.toEqual({ ok: true, value: { disposition: "COMPLETED", receipt } });
+  });
+
+  it("fails closed when a completed reclamation is replayed with another recovery token", async () => {
+    const auth = authority();
+    const receipt = await reclamationReceipt();
+    const traceReceipt = await traceGateReceipt();
+    const originalRecoveryHash = await sha256ContentHash({
+      reclamation_recovery_token: id(6),
+    });
+    const scripted = scriptedPool((text) =>
+      text.includes("claim_falcon24_sandbox_reclamation")
+        ? run({
+            status: "VERIFIED",
+            trace_closure_hash: traceReceipt.trace_hash,
+            trace_gate_receipt_hash: traceReceipt.receipt_hash,
+            trace_gate_receipt: traceReceipt,
+            sandbox_reclamation_recovery_hash: originalRecoveryHash,
+            sandbox_reclamation_claim_hash: hash("7"),
+            sandbox_reclamation_claimed_at: now,
+            sandbox_reclamation_claim_expires_at: "2026-08-25T08:15:00.000Z",
+            sandbox_reclamation_claim_consumed_at: now,
+            sandbox_reclamation_hash: receipt.receipt_hash,
+            sandbox_reclamation_receipt: receipt,
+            completed_at: now,
+          })
+        : undefined,
+    );
+    const port = createPostgresFalcon24AcceptanceCampaignAuthority({
+      pool: scripted.pool,
+      authorizer: auth.authorizer,
+    });
+
+    await expect(
+      port.claimSandboxReclamation(auth.capability, {
+        campaign_id: "falcon24-root-v13-final",
+        run_id: ids.run,
+        runtime_attestation_hash: hash("e"),
+        reclamation_recovery_token: id(9),
+        reclamation_claim_token: id(8),
+      }),
+    ).resolves.toMatchObject({
+      ok: false,
+      error: { code: "FALCON24_CAMPAIGN_DATABASE_CONTRACT_INVALID", retryable: false },
+    });
+  });
+
+  it("maps a competing reclamation claim as a stable non-retryable conflict", async () => {
+    const auth = authority();
+    const client: SqlClient = {
+      async query<Row extends object = Record<string, unknown>>(text: string) {
+        if (text.includes("backend_context_matches")) {
+          return { rows: [{ allowed: true }], rowCount: 1 } as unknown as SqlQueryResult<Row>;
+        }
+        if (text.includes("claim_falcon24_sandbox_reclamation")) {
+          throw Object.assign(new Error("FALCON24_SANDBOX_RECLAMATION_ALREADY_CLAIMED"), {
+            code: "55000",
+          });
+        }
+        return { rows: [], rowCount: 0 } as unknown as SqlQueryResult<Row>;
+      },
+      release() {},
+    };
+    const port = createPostgresFalcon24AcceptanceCampaignAuthority({
+      pool: { connect: async () => client },
+      authorizer: auth.authorizer,
+    });
+
+    await expect(
+      port.claimSandboxReclamation(auth.capability, {
+        campaign_id: "falcon24-root-v13-final",
+        run_id: ids.run,
+        runtime_attestation_hash: hash("e"),
+        reclamation_recovery_token: id(6),
+        reclamation_claim_token: id(8),
+      }),
+    ).resolves.toEqual({
+      ok: false,
+      error: expect.objectContaining({
+        code: "FALCON24_SANDBOX_RECLAMATION_ALREADY_CLAIMED",
+        retryable: false,
+      }),
+    });
+  });
+
+  it("completes only by consuming staged trace/result/reclamation authority", async () => {
     const auth = authority();
     const scripted = scriptedPool((text) =>
       text.includes("complete_falcon24_acceptance_run")
@@ -420,7 +884,6 @@ describe("PostgreSQL Falcon24 acceptance campaign authority", () => {
       port.complete(auth.capability, {
         campaign_id: "falcon24-root-v13-final",
         run_id: ids.run,
-        trace_closure_hash: hash("d"),
         result_document: await falconResult(),
         sandbox_reclamation_hash: (await reclamationReceipt()).receipt_hash,
       }),
@@ -437,6 +900,90 @@ describe("PostgreSQL Falcon24 acceptance campaign authority", () => {
     });
     expect(rpc?.values?.[0]).not.toHaveProperty("result_document");
     expect(rpc?.values?.[0]).not.toHaveProperty("sandbox_reclamation_receipt");
+  });
+
+  it("recovers an exact VERIFIED completion after the COMMIT acknowledgement is lost", async () => {
+    const auth = authority();
+    const resultDocument = await falconResult();
+    const resultHash = await sha256ContentHash(resultDocument);
+    const reclamation = await reclamationReceipt();
+    const traceReceipt = await traceGateReceipt();
+    let connectionNo = 0;
+    let completeCalls = 0;
+    const pool: SqlPool = {
+      async connect() {
+        connectionNo += 1;
+        const recoveryConnection = connectionNo === 2;
+        return {
+          async query<Row extends object = Record<string, unknown>>(text: string) {
+            if (text.includes("backend_context_matches")) {
+              return { rows: [{ allowed: true }], rowCount: 1 } as unknown as SqlQueryResult<Row>;
+            }
+            if (text.includes("complete_falcon24_acceptance_run")) {
+              completeCalls += 1;
+              return {
+                rows: [{ value: campaign({ next_run_ordinal: 1, status: "READY" }) }],
+                rowCount: 1,
+              } as unknown as SqlQueryResult<Row>;
+            }
+            if (text.includes("load_falcon24_acceptance_campaign_run")) {
+              return {
+                rows: [
+                  {
+                    value: run({
+                      status: "VERIFIED",
+                      result_hash: resultHash,
+                      result_document: resultDocument,
+                      sandbox_reclamation_hash: reclamation.receipt_hash,
+                      sandbox_reclamation_receipt: reclamation,
+                      sandbox_reclamation_recovery_hash: hash("6"),
+                      sandbox_reclamation_claim_hash: hash("7"),
+                      sandbox_reclamation_claimed_at: now,
+                      sandbox_reclamation_claim_expires_at: "2026-08-25T08:15:00.000Z",
+                      sandbox_reclamation_claim_consumed_at: now,
+                      trace_closure_hash: traceReceipt.trace_hash,
+                      trace_gate_receipt_hash: traceReceipt.receipt_hash,
+                      trace_gate_receipt: traceReceipt,
+                      completed_at: now,
+                    }),
+                  },
+                ],
+                rowCount: 1,
+              } as unknown as SqlQueryResult<Row>;
+            }
+            if (text.includes("load_falcon24_acceptance_campaign(")) {
+              return {
+                rows: [{ value: campaign({ next_run_ordinal: 1, status: "READY" }) }],
+                rowCount: 1,
+              } as unknown as SqlQueryResult<Row>;
+            }
+            if (text === "COMMIT" && !recoveryConnection) {
+              throw new Error("commit acknowledgement lost");
+            }
+            return { rows: [], rowCount: 0 } as unknown as SqlQueryResult<Row>;
+          },
+          release() {},
+        } satisfies SqlClient;
+      },
+    };
+    const port = createPostgresFalcon24AcceptanceCampaignAuthority({
+      pool,
+      authorizer: auth.authorizer,
+    });
+
+    await expect(
+      port.complete(auth.capability, {
+        campaign_id: "falcon24-root-v13-final",
+        run_id: ids.run,
+        result_document: resultDocument,
+        sandbox_reclamation_hash: reclamation.receipt_hash,
+      }),
+    ).resolves.toMatchObject({
+      ok: true,
+      value: { status: "READY", next_run_ordinal: 1 },
+    });
+    expect(connectionNo).toBe(2);
+    expect(completeCalls).toBe(1);
   });
 
   it("maps a stable HOLD database error without making it retryable", async () => {
@@ -466,6 +1013,7 @@ describe("PostgreSQL Falcon24 acceptance campaign authority", () => {
         case_id: "falcon24-q1",
         run_variant: "COLD",
         repetition: 1,
+        claim_fence_token: id(6),
       }),
     ).resolves.toMatchObject({
       ok: false,

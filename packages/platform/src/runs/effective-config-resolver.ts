@@ -33,6 +33,7 @@ import {
   workspaceDefaultsReadResultSchema,
   workspaceDefaultsUpdateResultSchema,
 } from "@data-agent/contracts";
+import { sha256ContentHash } from "@data-agent/contracts/common";
 import { z } from "zod";
 import {
   PersistenceBoundaryError,
@@ -88,6 +89,25 @@ const questionAcceptanceResultSchema = z.strictObject({
   resolution: z.unknown(),
   effective_config: z.unknown().nullable(),
 });
+const falcon24AcceptanceSubmitFenceSchema = z.strictObject({
+  campaign_id: z
+    .string()
+    .min(8)
+    .max(80)
+    .regex(/^falcon24-[a-z0-9._-]*v[1-9][0-9]*[a-z0-9._-]*$/),
+  run_id: canonicalImmutableIdSchema,
+  claim_fence_token: canonicalImmutableIdSchema,
+});
+const falcon24AcceptanceSubmitFenceReceiptSchema = z.strictObject({
+  campaign_id: falcon24AcceptanceSubmitFenceSchema.shape.campaign_id,
+  run_id: canonicalImmutableIdSchema,
+  claim_fence_hash: z.string().regex(/^sha256:[a-f0-9]{64}$/),
+  claim_fence_consumed_at: z.iso.datetime({ offset: true }),
+});
+const falcon24QuestionAcceptanceResultSchema = z.strictObject({
+  acceptance: z.unknown(),
+  submit_fence: falcon24AcceptanceSubmitFenceReceiptSchema,
+});
 
 export type EffectiveConfigLookup = z.infer<typeof effectiveConfigLookupSchema>;
 export type EffectiveConfigWorkerAuthorityInput = Readonly<
@@ -106,6 +126,7 @@ export type EffectiveConfigResolutionInput =
   | Readonly<{
       request: Extract<RunConfigRequest, { operation: "QUESTION_RUN" }>;
       command: EffectiveConfigRunCommandEnvelope;
+      acceptance_fence?: z.infer<typeof falcon24AcceptanceSubmitFenceSchema>;
     }>
   | Readonly<{
       request: Extract<RunConfigRequest, { operation: "SEMANTIC_BOOTSTRAP_JOB" }>;
@@ -151,6 +172,35 @@ const databaseMarkers = new Map<string, { readonly retryable: boolean; readonly 
     "DA_BACKEND_ROLE_REQUIRED",
     { retryable: false, message: "当前数据库角色不能调用 Effective Config Authority。" },
   ],
+  [
+    "FALCON24_SUBMIT_FENCE_INVALID",
+    { retryable: false, message: "Falcon24 submit fence 请求无效。" },
+  ],
+  [
+    "FALCON24_QUESTION_ACCEPTANCE_INVALID",
+    { retryable: false, message: "Falcon24 QUESTION acceptance 请求无效。" },
+  ],
+  [
+    "FALCON24_SUBMIT_RUN_PREEXISTS",
+    { retryable: false, message: "Falcon24 Run 已由非受控提交路径创建。" },
+  ],
+  [
+    "FALCON24_QUESTION_ACCEPTANCE_NOT_READY",
+    { retryable: false, message: "Falcon24 QUESTION acceptance 未形成 READY 证据闭包。" },
+  ],
+  [
+    "FALCON24_SUBMIT_FENCE_MISMATCH",
+    { retryable: false, message: "Falcon24 submit fence 与当前 claim 不一致。" },
+  ],
+  [
+    "FALCON24_SUBMIT_FENCE_ALREADY_CONSUMED",
+    { retryable: false, message: "Falcon24 submit fence 已被消费。" },
+  ],
+  [
+    "FALCON24_SUBMIT_ACCEPTANCE_NOT_ATOMIC",
+    { retryable: false, message: "Falcon24 Run acceptance 与 submit fence 未原子提交。" },
+  ],
+  ["FALCON24_RUN_NOT_CLAIMED", { retryable: false, message: "Falcon24 Run 尚未取得有效 claim。" }],
   [
     "EFFECTIVE_CONFIG_REQUEST_INVALID",
     { retryable: false, message: "Effective Config 请求不符合权威解析契约。" },
@@ -845,6 +895,36 @@ export function createPostgresEffectiveConfigResolver(
           "Run command envelope 与 Run Config Request 不一致。",
         );
       }
+      const acceptanceFence =
+        request.operation === "QUESTION_RUN" && "acceptance_fence" in input
+          ? falcon24AcceptanceSubmitFenceSchema.safeParse(input.acceptance_fence)
+          : null;
+      if (acceptanceFence && !acceptanceFence.success) {
+        return failure("FALCON24_SUBMIT_FENCE_INVALID", "Falcon24 submit fence 请求无效。");
+      }
+      if (
+        acceptanceFence?.success &&
+        (request.operation !== "QUESTION_RUN" || acceptanceFence.data.run_id !== request.run_id)
+      ) {
+        return failure(
+          "FALCON24_SUBMIT_FENCE_MISMATCH",
+          "Falcon24 submit fence 与 QUESTION Run identity 不一致。",
+        );
+      }
+      const fenceCommand = acceptanceFence?.success
+        ? await (async () => {
+            const unsigned = {
+              schema_version: "falcon24-question-run-acceptance@1.0.0" as const,
+              ...acceptanceFence.data,
+            };
+            return { ...unsigned, command_hash: await sha256ContentHash(unsigned) } as const;
+          })()
+        : null;
+      const expectedFenceHash = acceptanceFence?.success
+        ? await sha256ContentHash({
+            claim_fence_token: acceptanceFence.data.claim_fence_token,
+          })
+        : null;
       return withAppTransaction(
         options.pool,
         options.authorizer,
@@ -876,12 +956,19 @@ export function createPostgresEffectiveConfigResolver(
           }
           const result =
             request.operation === "QUESTION_RUN" && command?.success
-              ? await client.query<JsonValueRow>(
-                  `select app_data_agent.accept_question_run_with_effective_config(
-                     $1::jsonb, $2::jsonb
-                   ) as value`,
-                  [command.data, request],
-                )
+              ? fenceCommand
+                ? await client.query<JsonValueRow>(
+                    `select app_data_agent.accept_falcon24_question_run_with_effective_config(
+                       $1::jsonb, $2::jsonb, $3::jsonb
+                     ) as value`,
+                    [command.data, request, fenceCommand],
+                  )
+                : await client.query<JsonValueRow>(
+                    `select app_data_agent.accept_question_run_with_effective_config(
+                       $1::jsonb, $2::jsonb
+                     ) as value`,
+                    [command.data, request],
+                  )
               : await client.query<JsonValueRow>(
                   `select app_data_agent.resolve_semantic_bootstrap_job_config(
                      $1::jsonb
@@ -890,9 +977,13 @@ export function createPostgresEffectiveConfigResolver(
                 );
           try {
             const rawValue = exactValue(result.rows);
+            const fencedAcceptance = fenceCommand
+              ? falcon24QuestionAcceptanceResultSchema.parse(rawValue)
+              : null;
+            const acceptanceValue = fencedAcceptance?.acceptance ?? rawValue;
             const acceptance =
               request.operation === "QUESTION_RUN"
-                ? questionAcceptanceResultSchema.parse(rawValue)
+                ? questionAcceptanceResultSchema.parse(acceptanceValue)
                 : null;
             const resolution = await verifyRunConfigResolutionReceiptCandidate(
               acceptance?.resolution ?? rawValue,
@@ -952,6 +1043,28 @@ export function createPostgresEffectiveConfigResolver(
                 throw new PersistenceBoundaryError(
                   "EFFECTIVE_CONFIG_DATABASE_CONTRACT_INVALID",
                   "非 READY QUESTION Resolution 不能返回 Effective Config Receipt。",
+                  false,
+                );
+              }
+            }
+            if (fenceCommand) {
+              if (resolution.operation !== "QUESTION_RUN" || resolution.admission !== "READY") {
+                throw new PersistenceBoundaryError(
+                  "FALCON24_SUBMIT_FENCE_MISMATCH",
+                  "Falcon24 submit fence 只能消费已原子接受的 QUESTION Run。",
+                  false,
+                );
+              }
+              const consumed = fencedAcceptance?.submit_fence;
+              if (
+                !consumed ||
+                consumed.campaign_id !== fenceCommand.campaign_id ||
+                consumed.run_id !== fenceCommand.run_id ||
+                consumed.claim_fence_hash !== expectedFenceHash
+              ) {
+                throw new PersistenceBoundaryError(
+                  "FALCON24_SUBMIT_FENCE_MISMATCH",
+                  "PostgreSQL 返回了不同的 Falcon24 submit fence。",
                   false,
                 );
               }

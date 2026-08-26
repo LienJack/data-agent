@@ -15,14 +15,16 @@ export const falcon24AcceptanceCampaignIdSchema = z
   .max(80)
   .regex(/^falcon24-[a-z0-9._-]*v[1-9][0-9]*[a-z0-9._-]*$/u);
 
-export const falcon24AcceptanceFailureLayerSchema = z.enum([
+export const FALCON24_ACCEPTANCE_FAILURE_LAYER_ORDER = Object.freeze([
   "ROOT_ROUTING",
   "SQL_DATA_PREPARATION",
   "GOVERNED_OPERATOR",
   "ORACLE",
   "PUBLISHER",
   "SANDBOX_RECLAMATION",
-]);
+] as const);
+
+export const falcon24AcceptanceFailureLayerSchema = z.enum(FALCON24_ACCEPTANCE_FAILURE_LAYER_ORDER);
 
 export const falcon24AcceptanceManifestRunSchema = z.strictObject({
   run_id: immutableIdSchema,
@@ -102,6 +104,44 @@ export async function verifyFalcon24AcceptanceRunManifest(input: unknown) {
     throw new TypeError("FALCON24_ANALYSIS_RUN_MANIFEST_HASH_INVALID");
   }
   return manifest;
+}
+
+const falcon24ResolutionTraceGateReceiptMaterialSchema = z.strictObject({
+  schema_version: z.literal("falcon24-resolution-trace-gate-receipt@1.0.0"),
+  campaign_id: falcon24AcceptanceCampaignIdSchema,
+  run_id: immutableIdSchema,
+  trace_hash: contentHashSchema,
+  node_count: z.number().int().positive().safe(),
+  edge_count: z.number().int().positive().safe(),
+  detail_count: z.number().int().positive().safe(),
+  sql_node_count: z.number().int().positive().safe(),
+  query_evidence_node_count: z.number().int().positive().safe(),
+  analysis_evidence_node_count: z.number().int().positive().safe(),
+  chart_node_count: z.number().int().positive().safe(),
+  report_node_count: z.number().int().positive().safe(),
+  verified_at: timestampSchema,
+});
+
+export const falcon24ResolutionTraceGateReceiptSchema =
+  falcon24ResolutionTraceGateReceiptMaterialSchema.extend({
+    receipt_hash: contentHashSchema,
+  });
+
+export async function buildFalcon24ResolutionTraceGateReceipt(input: unknown) {
+  const material = falcon24ResolutionTraceGateReceiptMaterialSchema.parse(input);
+  return falcon24ResolutionTraceGateReceiptSchema.parse({
+    ...material,
+    receipt_hash: await sha256ContentHash(material),
+  });
+}
+
+export async function verifyFalcon24ResolutionTraceGateReceipt(input: unknown) {
+  const receipt = falcon24ResolutionTraceGateReceiptSchema.parse(input);
+  const { receipt_hash: observedHash, ...material } = receipt;
+  if ((await sha256ContentHash(material)) !== observedHash) {
+    throw new TypeError("FALCON24_RESOLUTION_TRACE_GATE_RECEIPT_HASH_INVALID");
+  }
+  return receipt;
 }
 
 const falcon24SandboxManagementObservationSummarySchema = z.strictObject({
@@ -202,6 +242,9 @@ export async function verifyFalcon24SandboxReclamationReceipt(input: unknown) {
 
 export type Falcon24AcceptanceFailureLayer = z.infer<typeof falcon24AcceptanceFailureLayerSchema>;
 export type Falcon24AcceptanceRunManifest = z.infer<typeof falcon24AcceptanceRunManifestSchema>;
+export type Falcon24ResolutionTraceGateReceipt = z.infer<
+  typeof falcon24ResolutionTraceGateReceiptSchema
+>;
 export type Falcon24SandboxReclamationReceipt = z.infer<
   typeof falcon24SandboxReclamationReceiptSchema
 >;

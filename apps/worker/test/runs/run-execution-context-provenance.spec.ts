@@ -1,4 +1,4 @@
-import type { RunWorkLease } from "@data-agent/contracts";
+import { DEFAULT_RUN_EXECUTION_POLICY, type RunWorkLease } from "@data-agent/contracts";
 import { describe, expect, it } from "vitest";
 import { createResearchWorkflowExecutor } from "../../src/runs/research-workflow-executor.js";
 import type { RunExecutionContext } from "../../src/runs/run-worker-runner.js";
@@ -23,6 +23,7 @@ const lease = {
   lease_token: 1,
   worker_fence: 1,
   expires_at: "2026-08-16T10:05:00.000Z",
+  execution_policy: DEFAULT_RUN_EXECUTION_POLICY,
   payload: {
     kind: "START_L2_RESEARCH",
     effective_config_ref: {

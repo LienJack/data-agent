@@ -128,9 +128,7 @@ export function createDirectRunBoundProviderDispatcher(input: {
   readonly runs: DirectRunReader;
   readonly capability: unknown;
   readonly environment: NodeJS.ProcessEnv;
-  readonly max_attempts_per_call?: 1 | 2;
 }): RunBoundProviderDispatcher {
-  const maxAttemptsPerCall = input.max_attempts_per_call ?? 2;
   const schemas = new ServerModelResponseSchemaRegistry([
     { response_schema_version: DIRECT_QA_RESPONSE_SCHEMA_VERSION, schema: directAnswerSchema },
     {
@@ -552,7 +550,7 @@ export function createDirectRunBoundProviderDispatcher(input: {
           first_ok: first.ok,
           retryable: first.ok ? false : first.error.retryable,
           signal_aborted: signal.aborted,
-          max_attempts_per_call: maxAttemptsPerCall,
+          max_attempts_per_call: lease.execution_policy.max_provider_attempts_per_call,
         })
       )
         return first;

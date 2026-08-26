@@ -1,7 +1,9 @@
 import {
   agentProductProfileRegistryItemSchema,
+  agentProductProfileRegistryItemV2Schema,
   buildAgentProductProfileCommitCommand,
   buildAgentProductProfileRevision,
+  buildAgentProductProfileRevisionV2,
 } from "@data-agent/contracts";
 import { describe, expect, it } from "vitest";
 import { createPostgresAgentProfileRegistry } from "../../src/agents/postgres-agent-profile-registry.js";
@@ -105,7 +107,97 @@ async function fixture() {
   return { command, item };
 }
 
+async function fixtureV2() {
+  const revision = await buildAgentProductProfileRevisionV2({
+    schema_version: "agent-product-profile-revision@2.0.0",
+    scope,
+    profile_id: "governed-analysis-agent",
+    revision: 3,
+    discovery: {
+      schema_version: "subagent-discovery-descriptor@1.0.0",
+      display_name: "Governed Analysis",
+      description: "Consumes accepted QueryEvidence for governed analysis.",
+      when_to_use: ["Use for governed multi-step analysis."],
+      when_not_to_use: ["Do not use for a simple lookup."],
+      examples: [],
+      accepted_input_artifact_types: ["QueryEvidence"],
+      produced_artifact_types: ["AnalysisReport"],
+      access_mode: "READ_ONLY",
+    },
+    runtime_profile_ref: {
+      profile_id: "governed-analysis-agent",
+      revision: 2,
+      profile_hash: hash("1"),
+    },
+    model_profile_ref: { resource_id: id(30), resource_revision: 1, resource_hash: hash("2") },
+    prompt_ref: { prompt_id: "prompt.analysis", revision: 1, prompt_hash: hash("3") },
+    workflow_ref: { workflow_id: "workflow.analysis", revision: 1, workflow_hash: hash("4") },
+    direct_tool_allowlist: ["analysis.program.execute"],
+    skill_refs: [{ skill_id: id(31), revision: 2, revision_hash: hash("5") }],
+    context_policy_ref: { resource_id: id(32), resource_revision: 1, resource_hash: hash("6") },
+    execution_safety_policy_ref: {
+      resource_id: id(33),
+      resource_revision: 1,
+      resource_hash: hash("7"),
+    },
+    expected_output_artifact_types: ["AnalysisReport"],
+    verifier_contract_hash: hash("8"),
+    approval_status: "APPROVED",
+  });
+  return agentProductProfileRegistryItemV2Schema.parse({
+    schema_version: "agent-product-profile-registry-item@2.0.0",
+    revision,
+    head: {
+      schema_version: "agent-product-profile-head@2.0.0",
+      scope,
+      profile_id: revision.profile_id,
+      active_revision: revision.revision,
+      active_revision_hash: revision.revision_hash,
+      lifecycle: "DISABLED",
+      version: 4,
+      updated_at: "2026-08-18T12:00:00.000Z",
+    },
+  });
+}
+
 describe("PostgreSQL Agent Profile Registry", () => {
+  it("lists owner-managed v2 heads without discoverability filtering", async () => {
+    const item = await fixtureV2();
+    const { owner, authorizer } = authorities();
+    const { calls, pool } = scriptedPool((text) =>
+      text.includes("list_agent_profile_revisions_v2(false)")
+        ? {
+            rows: [
+              {
+                value: {
+                  schema_version: "agent-product-profile-list-result@2.0.0",
+                  items: [item],
+                },
+              },
+            ],
+            rowCount: 1,
+          }
+        : undefined,
+    );
+
+    await expect(
+      createPostgresAgentProfileRegistry({ pool, authorizer }).listManagedV2(owner),
+    ).resolves.toMatchObject({ ok: true, value: [item] });
+    expect(calls.some((text) => text.includes("list_agent_profile_revisions_v2(false)"))).toBe(
+      true,
+    );
+  });
+
+  it("denies Analyst access to managed v2 heads before SQL", async () => {
+    const { analyst, authorizer } = authorities();
+    const { calls, pool } = scriptedPool(() => undefined);
+
+    await expect(
+      createPostgresAgentProfileRegistry({ pool, authorizer }).listManagedV2(analyst),
+    ).resolves.toMatchObject({ ok: false });
+    expect(calls).toEqual([]);
+  });
+
   it("commits and lists exact hash-verified profile revisions", async () => {
     const { command, item } = await fixture();
     const { owner, authorizer } = authorities();

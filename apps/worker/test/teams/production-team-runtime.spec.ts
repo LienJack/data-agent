@@ -8,6 +8,7 @@ import {
   type ArtifactReference,
   buildProductTeamArtifactDocument,
   buildSubagentCapabilityCatalogSnapshot,
+  DEFAULT_RUN_EXECUTION_POLICY,
   type ProductTeamArtifactDocument,
   projectSubagentCapabilityCatalogItem,
 } from "@data-agent/contracts";
@@ -211,6 +212,7 @@ async function lease() {
     lease_token: 1,
     worker_fence: 1,
     expires_at: "2026-08-18T12:00:30.000Z",
+    execution_policy: DEFAULT_RUN_EXECUTION_POLICY,
     payload: {
       schema_version: "effective-config-team-lease@3.0.0" as const,
       kind: "START_DATA_AGENT_TEAM" as const,

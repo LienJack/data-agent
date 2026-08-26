@@ -1,4 +1,8 @@
-import { buildSubagentCapabilityCatalogSnapshot, type RunWorkLease } from "@data-agent/contracts";
+import {
+  buildSubagentCapabilityCatalogSnapshot,
+  DEFAULT_RUN_EXECUTION_POLICY,
+  type RunWorkLease,
+} from "@data-agent/contracts";
 import { describe, expect, it, vi } from "vitest";
 import { createRunExecutionContext } from "../../src/runs/run-execution-context.js";
 import { createDataAgentTeamRunner } from "../../src/teams/data-agent-team-runner.js";
@@ -43,6 +47,7 @@ async function harness() {
     lease_token: 1,
     worker_fence: 1,
     expires_at: "2026-08-23T00:05:00.000Z",
+    execution_policy: DEFAULT_RUN_EXECUTION_POLICY,
     payload: {
       schema_version: "effective-config-team-lease@3.0.0",
       kind: "START_DATA_AGENT_TEAM",

@@ -4,6 +4,7 @@ import type {
   AnalysisPythonSourceCommitCommand,
   ArtifactReference,
 } from "@data-agent/contracts";
+import { DEFAULT_RUN_EXECUTION_POLICY } from "@data-agent/contracts";
 import { describe, expect, it } from "vitest";
 import {
   analysisPythonSourceArtifactInternals,
@@ -56,6 +57,7 @@ function fixture() {
     lease_token: 1,
     worker_fence: 1,
     expires_at: "2026-08-24T00:02:00.000Z",
+    execution_policy: DEFAULT_RUN_EXECUTION_POLICY,
     payload: {},
   } as const;
   return { analysisProgram, analysisProgramRef, lease };
@@ -147,11 +149,7 @@ describe("Analysis Python source artifact port", () => {
         source_ref: { artifact_id: result.artifact_id },
       },
     ]);
-    expect(observedCapabilities).toEqual([
-      commitCapability,
-      commitCapability,
-      replayCapability,
-    ]);
+    expect(observedCapabilities).toEqual([commitCapability, commitCapability, replayCapability]);
 
     const decipher = createDecipheriv(
       "aes-256-gcm",

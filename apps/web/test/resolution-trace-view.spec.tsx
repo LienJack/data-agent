@@ -9,6 +9,7 @@ import { describe, expect, it } from "vitest";
 import {
   bindResolutionTraceLoadState,
   ResolutionTracePanel,
+  resolveResolutionTraceDetailFailure,
   resolveResolutionTraceLoadFailure,
   resolveResolutionTraceLoadSuccess,
 } from "@/components/qa/resolution-trace-view";
@@ -19,6 +20,65 @@ const hash = (character: string) => `sha256:${character.repeat(64)}`;
 const scope = { app_id: id(1), tenant_id: id(2), environment: "test" } as const;
 
 describe("Resolution Trace panel", () => {
+  it("promotes every RESOLUTION_TRACE detail error to the authority boundary", () => {
+    const failure = resolveResolutionTraceDetailFailure(
+      new ApiRequestError(
+        404,
+        "RESOLUTION_TRACE_DETAIL_NOT_FOUND_OR_DENIED",
+        false,
+        "轨迹记录不存在或无权访问。 (RESOLUTION_TRACE_DETAIL_NOT_FOUND_OR_DENIED)",
+      ),
+    );
+
+    expect(failure).toEqual({
+      status: "authority",
+      message:
+        "权威轨迹已阻断：轨迹记录不存在或无权访问。 (RESOLUTION_TRACE_DETAIL_NOT_FOUND_OR_DENIED)",
+    });
+    expect(resolveResolutionTraceDetailFailure(new TypeError("Failed to fetch"))).toEqual({
+      status: "detail",
+      message: "Failed to fetch",
+    });
+  });
+
+  it("replaces the whole ready panel when detail authority fails", async () => {
+    const trace = await buildResolutionTrace({
+      schema_version: "resolution-trace@1.0.0",
+      scope,
+      run_id: id(3),
+      conversation_id: id(4),
+      config_ref: null,
+      nodes: [
+        {
+          node_id: `event:${id(5)}`,
+          kind: "TERMINAL",
+          source_event_id: id(5),
+          sequence: 1,
+          occurred_at: "2026-08-18T12:00:00.000Z",
+          status: "COMPLETED",
+          title: "已完成的旧节点",
+          summary: "这些 ready 内容不得保留",
+          duration_ms: 80,
+          artifact_refs: [],
+        },
+      ],
+      edges: [],
+    });
+    const html = renderToStaticMarkup(
+      <ResolutionTracePanel
+        trace={trace}
+        sql={[]}
+        authorityFailureMessage="权威轨迹已阻断：轨迹详情损坏 (RESOLUTION_TRACE_DETAIL_CORRUPT)"
+      />,
+    );
+
+    expect(html).toContain('role="alert"');
+    expect(html).toContain("RESOLUTION_TRACE_DETAIL_CORRUPT");
+    expect(html).not.toContain("运行与证据");
+    expect(html).not.toContain("已完成的旧节点");
+    expect(html).not.toContain("ready 内容");
+  });
+
   it("drops the first successful trace when an authoritative refresh reports corrupt evidence", async () => {
     const trace = await buildResolutionTrace({
       schema_version: "resolution-trace@1.0.0",
@@ -78,7 +138,7 @@ describe("Resolution Trace panel", () => {
     expect(eventStoreCorrupt).not.toHaveProperty("trace");
   });
 
-  it("keeps the last ready trace while a transient refresh request is recovering", async () => {
+  it("clears the last ready trace when the matching refresh request fails", async () => {
     const trace = await buildResolutionTrace({
       schema_version: "resolution-trace@1.0.0",
       scope,
@@ -99,9 +159,17 @@ describe("Resolution Trace panel", () => {
       teamError: null,
     };
 
-    expect(
-      resolveResolutionTraceLoadFailure(ready, ready.request, new TypeError("Failed to fetch")),
-    ).toBe(ready);
+    const failed = resolveResolutionTraceLoadFailure(
+      ready,
+      ready.request,
+      new TypeError("Failed to fetch"),
+    );
+    expect(failed).toEqual({
+      status: "error",
+      request: ready.request,
+      message: "Failed to fetch",
+    });
+    expect(failed).not.toHaveProperty("trace");
   });
 
   it("clears Run A immediately when the requested Run or Workspace changes", async () => {
@@ -429,8 +497,26 @@ describe("Resolution Trace panel", () => {
           duration_ms: 80,
           artifact_refs: [reference],
         },
+        {
+          node_id: `artifact:${reference.artifact_id}:${reference.revision}`,
+          kind: "ARTIFACT",
+          source_event_id: null,
+          sequence: null,
+          occurred_at: "2026-08-18T12:00:00.000Z",
+          status: "AVAILABLE",
+          title: "AnalysisReport",
+          summary: "已提交分析报告",
+          duration_ms: null,
+          artifact_refs: [reference],
+        },
       ],
-      edges: [],
+      edges: [
+        {
+          from_node_id: `event:${id(8)}`,
+          to_node_id: `artifact:${reference.artifact_id}:${reference.revision}`,
+          kind: "PRODUCED",
+        },
+      ],
     });
     const html = renderToStaticMarkup(<ResolutionTracePanel trace={trace} sql={[]} />);
     expect(html).toContain("Artifact 内容");

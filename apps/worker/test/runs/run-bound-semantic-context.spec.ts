@@ -1,4 +1,4 @@
-import type { ContextReceiptBinding } from "@data-agent/contracts";
+import { type ContextReceiptBinding, DEFAULT_RUN_EXECUTION_POLICY } from "@data-agent/contracts";
 import { describe, expect, it, vi } from "vitest";
 import { createRunBoundSemanticContextResolver } from "../../src/runs/run-bound-semantic-context.js";
 import {
@@ -38,6 +38,7 @@ describe("run-bound resolved context", () => {
         lease_token: 2,
         worker_fence: 3,
         expires_at: "2026-08-17T10:00:00.000Z",
+        execution_policy: DEFAULT_RUN_EXECUTION_POLICY,
         payload: { kind: "START_L2_RESEARCH" },
       },
       config,

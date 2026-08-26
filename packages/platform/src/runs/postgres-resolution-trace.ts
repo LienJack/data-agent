@@ -1,15 +1,27 @@
+import { createHash } from "node:crypto";
 import {
+  type AnalysisSandboxExecutionReceipt,
   type AppScope,
   type ArtifactReference,
   type ArtifactWorkspaceChartDocumentV2,
   type ArtifactWorkspaceChartDocumentV3,
+  analysisResultChartIntentSchema,
+  analysisResultChartTemplateIdSchema,
+  analysisResultStageArtifactSchema,
+  analysisResultValueTypeSchema,
+  analysisSandboxExecutionReceiptSchema,
   appScopeSchema,
   artifactReferenceIdentity,
+  artifactReferenceSchema,
   buildResolutionTrace,
   buildSqlHistoryEntry,
+  canonicalizeJson,
+  computeGroundingAuthorityDocumentHash,
   computeL2ArtifactContentHash,
-  computeProductTeamArtifactHash,
+  computeSandboxExecutionReceiptHash,
+  computeSandboxResultHash,
   contentHashSchema,
+  hasDuplicateArtifactReferenceIdentities,
   immutableIdSchema,
   l2ArtifactDocumentSchema,
   type PortResult,
@@ -24,14 +36,21 @@ import {
   type RunRuntimeEvent,
   redactPublicDisplayText,
   resolutionTraceDetailSchema,
+  type SandboxResult,
+  type SchemaSnapshotDocument,
   type SqlHistoryEntry,
   type SqlHistoryResult,
+  type SuccessfulSandboxExecutionReceipt,
+  sandboxResultSchema,
+  schemaSnapshotDocumentSchema,
   sha256ContentHash,
+  successfulSandboxExecutionReceiptSchema,
   timestampSchema,
   toPublicRunEvent,
   verifyArtifactWorkspaceChartDocumentV2,
   verifyArtifactWorkspaceChartDocumentV3,
   verifyEffectiveRunConfigReceiptCandidate,
+  verifyProductTeamArtifactDocument,
 } from "@data-agent/contracts";
 import { z } from "zod";
 import { loadVerifiedRunEvents } from "../events/postgres-run-event-store.js";
@@ -74,6 +93,119 @@ const sqlHistoryLookupSchema = z
     }
   });
 
+const analysisIdentifierSchema = z.string().regex(/^[A-Za-z][A-Za-z0-9._:-]{0,255}$/u);
+const analysisFieldSchema = z.string().regex(/^[A-Za-z_][A-Za-z0-9_]{0,127}$/u);
+const analysisMetricBindingSchema = z.strictObject({
+  semantic_metric_id: analysisIdentifierSchema,
+  field: analysisFieldSchema,
+  unit: z.string().trim().min(1).max(64).nullable(),
+  aggregation: z.enum(["SUM", "COUNT", "COUNT_DISTINCT", "AVG", "MIN", "MAX", "RATIO", "NONE"]),
+  formula_hash: contentHashSchema.nullable(),
+});
+const analysisDimensionBindingSchema = z.strictObject({
+  semantic_dimension_id: analysisIdentifierSchema,
+  field: analysisFieldSchema,
+});
+const analysisLineageBindingSchema = z.strictObject({
+  field: analysisFieldSchema,
+  source_semantic_object_ids: z.array(analysisIdentifierSchema).min(1).max(32),
+  source_physical_fields: z
+    .array(z.string().regex(/^[A-Za-z_][A-Za-z0-9_]{0,127}\.[A-Za-z_][A-Za-z0-9_]{0,127}$/u))
+    .min(1)
+    .max(64),
+  transformation: z.enum(["DIRECT", "AGGREGATION", "FORMULA", "STATISTICAL_OPERATOR"]),
+});
+const analysisPublishedTableColumnSchema = z.strictObject({
+  key: analysisFieldSchema,
+  label_zh: z.string().trim().min(1).max(80),
+  data_type: analysisResultValueTypeSchema.exclude(["JSON"]),
+  nullable: z.boolean(),
+  semantic_object_id: analysisIdentifierSchema,
+  semantic_role: z.enum(["METRIC", "DIMENSION", "DERIVED", "QUALITY"]),
+});
+const analysisPublishedTableDataShape = {
+  table_id: analysisIdentifierSchema,
+  columns: z.array(analysisPublishedTableColumnSchema).min(1).max(128),
+  rows: z.array(z.record(z.string(), z.json())).max(5_000),
+  total_rows: z.number().int().nonnegative().max(5_000),
+} as const;
+function addAnalysisPublishedTableIssues(
+  document: {
+    readonly columns: readonly { readonly key: string }[];
+    readonly rows: readonly Readonly<Record<string, unknown>>[];
+    readonly total_rows: number;
+  },
+  context: z.RefinementCtx,
+): void {
+  const columnKeys = document.columns.map(({ key }) => key);
+  if (
+    new Set(columnKeys).size !== columnKeys.length ||
+    document.total_rows !== document.rows.length ||
+    document.rows.some((row) => {
+      const rowKeys = Object.keys(row);
+      return (
+        rowKeys.length !== columnKeys.length || columnKeys.some((key) => !Object.hasOwn(row, key))
+      );
+    })
+  ) {
+    context.addIssue({
+      code: "custom",
+      message: "Analysis published table must exactly close columns and rows.",
+    });
+  }
+}
+const analysisPublishedTableBodySchema = z
+  .strictObject({
+    ...analysisPublishedTableDataShape,
+    title_zh: z.string().trim().min(1).max(160),
+  })
+  .superRefine(addAnalysisPublishedTableIssues);
+const analysisPublishedChartDatasetSchema = z
+  .strictObject(analysisPublishedTableDataShape)
+  .superRefine(addAnalysisPublishedTableIssues);
+const analysisPublishedResultSchema = z.strictObject({
+  schema_version: z.literal("analysis-published-result@1.0.0"),
+  contract_id: analysisIdentifierSchema,
+  contract_hash: contentHashSchema,
+  semantic_context_hash: contentHashSchema,
+  metrics: z.array(analysisMetricBindingSchema).max(128),
+  dimensions: z.array(analysisDimensionBindingSchema).max(128),
+  grain: z.strictObject({
+    dimension_ids: z.array(analysisIdentifierSchema).max(32),
+    time_dimension_id: analysisIdentifierSchema.nullable(),
+    time_grain: z.enum(["DAY", "WEEK", "MONTH", "QUARTER", "YEAR", "NONE"]),
+  }),
+  lineage: z.array(analysisLineageBindingSchema).min(1).max(256),
+  data: z.record(z.string(), z.json()),
+});
+const analysisPublishedTableSchema = analysisPublishedTableBodySchema.safeExtend({
+  schema_version: z.literal("analysis-published-table@1.0.0"),
+});
+const analysisPublishedChartSchema = z.strictObject({
+  schema_version: z.literal("analysis-published-chart@1.0.0"),
+  chart_id: analysisIdentifierSchema,
+  title_zh: z.string().trim().min(1).max(160),
+  intent: analysisResultChartIntentSchema,
+  template_id: analysisResultChartTemplateIdSchema,
+  bindings: z.strictObject({
+    x_field: analysisFieldSchema,
+    y_fields: z.array(analysisFieldSchema).min(1).max(128),
+    series_field: analysisFieldSchema.nullable(),
+    lower_bound_field: analysisFieldSchema.nullable(),
+    upper_bound_field: analysisFieldSchema.nullable(),
+  }),
+  dataset: analysisPublishedChartDatasetSchema,
+});
+const analysisPublishedDocumentSchema = z.discriminatedUnion("schema_version", [
+  analysisPublishedResultSchema,
+  analysisPublishedTableSchema,
+  analysisPublishedChartSchema,
+]);
+const analysisSystemResultMetadataSchema = z.strictObject({
+  stage_id: immutableIdSchema,
+  artifact: analysisResultStageArtifactSchema,
+});
+
 interface RunAuthorityRow {
   readonly run_id: string;
   readonly principal_id: string;
@@ -98,13 +230,22 @@ interface RunAuthorityRow {
 }
 
 interface ArtifactRow {
+  readonly source_store: "ARTIFACTS" | "ANALYSIS_SYSTEM" | "TEXT2SQL_SYSTEM";
+  readonly is_active: boolean;
   readonly artifact_id: string;
   readonly artifact_type: string;
   readonly revision: string | number;
   readonly content_hash: string;
-  readonly document_json: unknown;
+  readonly document_json: unknown | null;
+  readonly payload_json: unknown | null;
+  readonly content_bytes: Uint8Array | null;
   readonly created_at: Date | string;
 }
+
+type AnalysisPublishedDocument =
+  | z.infer<typeof analysisPublishedResultSchema>
+  | z.infer<typeof analysisPublishedTableSchema>
+  | z.infer<typeof analysisPublishedChartSchema>;
 
 interface VerifiedArtifact {
   readonly reference: ArtifactReference;
@@ -114,7 +255,12 @@ interface VerifiedArtifact {
     | z.infer<typeof productTeamArtifactDocumentSchema>
     | ArtifactWorkspaceChartDocumentV2
     | ArtifactWorkspaceChartDocumentV3
-    | null;
+    | SchemaSnapshotDocument
+    | SandboxResult
+    | AnalysisSandboxExecutionReceipt
+    | SuccessfulSandboxExecutionReceipt
+    | AnalysisPublishedDocument;
+  readonly source_store: ArtifactRow["source_store"];
   readonly created_at: string;
 }
 
@@ -353,121 +499,80 @@ async function loadRunAuthority(
 }
 
 function referenceFromRow(scope: AppScope, runId: string, row: ArtifactRow): ArtifactReference {
-  return {
+  return artifactReferenceSchema.parse({
     artifact_id: immutableIdSchema.parse(row.artifact_id),
-    artifact_type: z
-      .enum([
-        "SqlArtifact",
-        "ExecutionReceipt",
-        "QueryEvidence",
-        "DerivedAnalysisEvidence",
-        "AnalysisReport",
-        "ArtifactWorkspaceDocument",
-        "SchemaSnapshot",
-        "SandboxResult",
-      ])
-      .parse(row.artifact_type),
+    artifact_type: row.artifact_type,
     ...scope,
     run_id: immutableIdSchema.parse(runId),
     revision: z.coerce.number().int().positive().parse(row.revision),
     content_hash: contentHashSchema.parse(row.content_hash),
-  };
+  });
 }
 
-async function requireStoredArtifactReference(
-  client: SqlClient,
-  reference: ArtifactReference,
-): Promise<void> {
-  const exists = await client.query(
-    `select 1
-     from artifacts
-     where app_id = $1
-       and tenant_id = $2
-       and environment = $3
-       and run_id = $4
-       and artifact_id = $5
-       and artifact_type = $6
-       and revision = $7
-       and content_hash = $8
-     limit 1`,
-    [
-      reference.app_id,
-      reference.tenant_id,
-      reference.environment,
-      reference.run_id,
-      reference.artifact_id,
-      reference.artifact_type,
-      reference.revision,
-      reference.content_hash,
-    ],
-  );
-  if (exists.rowCount !== 1) {
+function parseStoredArtifactRelation(
+  scope: AppScope,
+  runId: string,
+  row: ArtifactRow,
+): { readonly reference: ArtifactReference; readonly created_at: string } {
+  try {
+    return {
+      reference: referenceFromRow(scope, runId, row),
+      created_at: iso(row.created_at),
+    };
+  } catch {
     throw new PersistenceBoundaryError(
-      "RESOLUTION_TRACE_ARTIFACT_REFERENCE_MISSING",
-      "Artifact reference 不存在或 exact identity 漂移。",
+      "RESOLUTION_TRACE_ARTIFACT_CORRUPT",
+      "Stored Artifact relational identity 不符合 strict contract。",
     );
   }
 }
 
-async function verifyEventArtifactReferences(
-  client: SqlClient,
-  events: readonly RunRuntimeEvent[],
-): Promise<void> {
-  const verified = new Set<string>();
-  for (const event of events) {
-    for (const reference of eventNode(event).artifact_refs) {
-      const identity = artifactReferenceIdentity(reference);
-      if (verified.has(identity)) continue;
-      await requireStoredArtifactReference(client, reference);
-      verified.add(identity);
-    }
-  }
+function exactReferenceMatches(left: ArtifactReference, right: ArtifactReference): boolean {
+  return artifactReferenceIdentity(left) === artifactReferenceIdentity(right);
 }
 
-async function loadVerifiedArtifacts(
-  client: SqlClient,
-  authority: VerifiedRunAuthority,
-): Promise<VerifiedArtifact[]> {
-  const result = await client.query<ArtifactRow>(
-    `select artifact_id, artifact_type, revision, content_hash, document_json, created_at
-     from artifacts
-     where app_id = $1
-       and tenant_id = $2
-       and environment = $3
-       and run_id = $4
-       and is_active = true
-       and artifact_type = any($5::text[])
-     order by created_at, artifact_id, revision`,
-    [
-      authority.scope.app_id,
-      authority.scope.tenant_id,
-      authority.scope.environment,
-      authority.run_id,
-      [
-        "SqlArtifact",
-        "ExecutionReceipt",
-        "QueryEvidence",
-        "DerivedAnalysisEvidence",
-        "AnalysisReport",
-        "ArtifactWorkspaceDocument",
-        "SchemaSnapshot",
-        "SandboxResult",
-      ],
-    ],
+function rawSha256(bytes: Uint8Array): `sha256:${string}` {
+  return `sha256:${createHash("sha256").update(bytes).digest("hex")}`;
+}
+
+function exactBytes(left: Uint8Array, right: Uint8Array): boolean {
+  return (
+    left.byteLength === right.byteLength && left.every((value, index) => value === right[index])
   );
-  const artifacts: VerifiedArtifact[] = [];
-  for (const row of result.rows) {
-    const reference = referenceFromRow(authority.scope, authority.run_id, row);
-    if (
-      reference.artifact_type === "SchemaSnapshot" ||
-      reference.artifact_type === "SandboxResult"
-    ) {
-      artifacts.push({
-        reference,
-        document: null,
-        created_at: iso(row.created_at),
-      });
-      continue;
+}
+
+async function verifyOrdinaryArtifactDocument(
+  row: ArtifactRow,
+  reference: ArtifactReference,
+): Promise<Exclude<VerifiedArtifact["document"], null>> {
+  try {
+    if (row.source_store !== "ARTIFACTS" || row.document_json === null) {
+      throw new TypeError("RESOLUTION_TRACE_ARTIFACT_STORE_MISMATCH");
+    }
+    if (reference.artifact_type === "SchemaSnapshot") {
+      const document = schemaSnapshotDocumentSchema.parse(row.document_json);
+      if (
+        !exactReferenceMatches(document.artifact_ref, reference) ||
+        document.document_hash !== reference.content_hash ||
+        (await computeGroundingAuthorityDocumentHash(document)) !== reference.content_hash
+      ) {
+        throw new TypeError("RESOLUTION_TRACE_SCHEMA_SNAPSHOT_HASH_MISMATCH");
+      }
+      return document;
+    }
+    if (reference.artifact_type === "SandboxResult") {
+      const document = sandboxResultSchema.parse(row.document_json);
+      if (
+        !exactReferenceMatches(document.result_ref, reference) ||
+        document.result_hash !== reference.content_hash ||
+        (await computeSandboxResultHash(document)) !== reference.content_hash
+      ) {
+        throw new TypeError("RESOLUTION_TRACE_SANDBOX_RESULT_HASH_MISMATCH");
+      }
+      return document;
+    }
+    if (reference.artifact_type === "SandboxExecutionReceipt") {
+      throw new TypeError("RESOLUTION_TRACE_SYSTEM_ARTIFACT_MIRROR_FORBIDDEN");
     }
     const l2Result = l2ArtifactDocumentSchema.safeParse(row.document_json);
     const productResult = productTeamArtifactDocumentSchema.safeParse(row.document_json);
@@ -477,37 +582,22 @@ async function loadVerifiedArtifacts(
       document = l2Result.data;
       computedHash = await computeL2ArtifactContentHash(document);
     } else if (productResult.success) {
-      document = productResult.data;
-      computedHash = await computeProductTeamArtifactHash(document);
+      document = await verifyProductTeamArtifactDocument(productResult.data);
+      computedHash = document.artifact_ref.content_hash;
     } else if (reference.artifact_type === "ArtifactWorkspaceDocument") {
       try {
         document = await verifyArtifactWorkspaceChartDocumentV2(row.document_json);
-        computedHash = contentHashSchema.parse(document.document_ref.content_hash);
       } catch {
-        try {
-          document = await verifyArtifactWorkspaceChartDocumentV3(row.document_json);
-          computedHash = contentHashSchema.parse(document.document_ref.content_hash);
-        } catch {
-          throw new PersistenceBoundaryError(
-            "RESOLUTION_TRACE_ARTIFACT_CORRUPT",
-            "Stored Chart document 未通过 strict schema、dataset hash 与 document hash 校验。",
-          );
-        }
+        document = await verifyArtifactWorkspaceChartDocumentV3(row.document_json);
       }
+      computedHash = contentHashSchema.parse(document.document_ref.content_hash);
     } else {
-      try {
-        const research = await parseAndHashL2ResearchDocumentCandidate(row.document_json);
-        if (research.document.envelope.status !== "COMMITTED") {
-          throw new TypeError("RESOLUTION_TRACE_RESEARCH_ARTIFACT_NOT_COMMITTED");
-        }
-        document = research.document;
-        computedHash = research.content_hash;
-      } catch {
-        throw new PersistenceBoundaryError(
-          "RESOLUTION_TRACE_ARTIFACT_CORRUPT",
-          "Stored Artifact document 不符合 current committed L2、Research L2 或 Product Team 契约。",
-        );
+      const research = await parseAndHashL2ResearchDocumentCandidate(row.document_json);
+      if (research.document.envelope.status !== "COMMITTED") {
+        throw new TypeError("RESOLUTION_TRACE_RESEARCH_ARTIFACT_NOT_COMMITTED");
       }
+      document = research.document;
+      computedHash = research.content_hash;
     }
     const documentReference =
       "envelope" in document
@@ -526,28 +616,267 @@ async function loadVerifiedArtifacts(
       documentReference.content_hash !== reference.content_hash ||
       computedHash !== reference.content_hash
     ) {
+      throw new TypeError("RESOLUTION_TRACE_ARTIFACT_IDENTITY_MISMATCH");
+    }
+    return document;
+  } catch {
+    throw new PersistenceBoundaryError(
+      "RESOLUTION_TRACE_ARTIFACT_CORRUPT",
+      "Stored Artifact document 未通过 strict schema、identity 与 content hash 校验。",
+    );
+  }
+}
+
+async function verifyText2SqlSystemArtifactDocument(
+  row: ArtifactRow,
+  reference: ArtifactReference,
+): Promise<SandboxResult | SuccessfulSandboxExecutionReceipt> {
+  try {
+    if (row.source_store !== "TEXT2SQL_SYSTEM" || row.payload_json === null) {
+      throw new TypeError("RESOLUTION_TRACE_SYSTEM_ARTIFACT_STORE_MISMATCH");
+    }
+    if (reference.artifact_type === "SandboxResult") {
+      const document = sandboxResultSchema.parse(row.payload_json);
+      if (
+        !exactReferenceMatches(document.result_ref, reference) ||
+        (await computeSandboxResultHash(document)) !== reference.content_hash
+      ) {
+        throw new TypeError("RESOLUTION_TRACE_SANDBOX_RESULT_HASH_MISMATCH");
+      }
+      return document;
+    }
+    if (reference.artifact_type === "SandboxExecutionReceipt") {
+      const document = successfulSandboxExecutionReceiptSchema.parse(row.payload_json);
+      if (
+        !exactReferenceMatches(document.receipt_ref, reference) ||
+        (await computeSandboxExecutionReceiptHash(document)) !== reference.content_hash
+      ) {
+        throw new TypeError("RESOLUTION_TRACE_SANDBOX_RECEIPT_HASH_MISMATCH");
+      }
+      return document;
+    }
+    throw new TypeError("RESOLUTION_TRACE_SYSTEM_ARTIFACT_TYPE_INVALID");
+  } catch {
+    throw new PersistenceBoundaryError(
+      "RESOLUTION_TRACE_ARTIFACT_CORRUPT",
+      "Text2SQL System Artifact 未通过唯一 Store、strict schema 与 canonical hash 校验。",
+    );
+  }
+}
+
+async function verifyAnalysisSystemArtifactDocument(
+  row: ArtifactRow,
+  reference: ArtifactReference,
+): Promise<AnalysisSandboxExecutionReceipt | AnalysisPublishedDocument> {
+  try {
+    if (row.source_store !== "ANALYSIS_SYSTEM" || row.payload_json === null) {
+      throw new TypeError("RESOLUTION_TRACE_ANALYSIS_ARTIFACT_STORE_MISMATCH");
+    }
+    if (reference.artifact_type === "SandboxExecutionReceipt") {
+      if (row.content_bytes !== null) {
+        throw new TypeError("RESOLUTION_TRACE_ANALYSIS_RECEIPT_BYTES_FORBIDDEN");
+      }
+      const document = analysisSandboxExecutionReceiptSchema.parse(row.payload_json);
+      const { execution_hash: observedExecutionHash, ...material } = document;
+      if (
+        (await sha256ContentHash({
+          hash_domain: "analysis-sandbox-execution-receipt@1.0.0",
+          value: material,
+        })) !== observedExecutionHash ||
+        (await sha256ContentHash(document)) !== reference.content_hash
+      ) {
+        throw new TypeError("RESOLUTION_TRACE_ANALYSIS_RECEIPT_HASH_MISMATCH");
+      }
+      return document;
+    }
+    if (reference.artifact_type !== "SandboxResult" || row.content_bytes === null) {
+      throw new TypeError("RESOLUTION_TRACE_ANALYSIS_RESULT_BYTES_REQUIRED");
+    }
+    const metadata = analysisSystemResultMetadataSchema.parse(row.payload_json);
+    if (
+      metadata.artifact.content_sha256 !== reference.content_hash ||
+      metadata.artifact.bytes !== row.content_bytes.byteLength ||
+      rawSha256(row.content_bytes) !== reference.content_hash
+    ) {
+      throw new TypeError("RESOLUTION_TRACE_ANALYSIS_RESULT_HASH_MISMATCH");
+    }
+    const decoded = new TextDecoder("utf-8", { fatal: true }).decode(row.content_bytes);
+    const document = analysisPublishedDocumentSchema.parse(JSON.parse(decoded));
+    const expectedSchema = {
+      RESULT: "analysis-published-result@1.0.0",
+      TABLE: "analysis-published-table@1.0.0",
+      CHART: "analysis-published-chart@1.0.0",
+    }[metadata.artifact.artifact_kind];
+    const canonicalBytes = new TextEncoder().encode(canonicalizeJson(document));
+    if (
+      document.schema_version !== expectedSchema ||
+      !exactBytes(canonicalBytes, row.content_bytes)
+    ) {
+      throw new TypeError("RESOLUTION_TRACE_ANALYSIS_RESULT_CANONICAL_MISMATCH");
+    }
+    return document;
+  } catch {
+    throw new PersistenceBoundaryError(
+      "RESOLUTION_TRACE_ARTIFACT_CORRUPT",
+      "Analysis System Artifact 未通过唯一 Store、strict schema 与 canonical hash 校验。",
+    );
+  }
+}
+
+const traceArtifactTypes = new Set<ArtifactReference["artifact_type"]>([
+  "SqlArtifact",
+  "ExecutionReceipt",
+  "QueryEvidence",
+  "DerivedAnalysisEvidence",
+  "AnalysisReport",
+  "ArtifactWorkspaceDocument",
+  "SchemaSnapshot",
+  "SandboxExecutionReceipt",
+  "SandboxResult",
+]);
+
+function referenceLocation(reference: ArtifactReference): string {
+  return `${reference.artifact_id}\0${reference.revision}`;
+}
+
+function artifactInputReferences(
+  document: VerifiedArtifact["document"],
+): readonly ArtifactReference[] {
+  if ("envelope" in document) return document.envelope.input_refs;
+  if ("source_refs" in document) {
+    return Array.isArray(document.source_refs)
+      ? document.source_refs
+      : [...document.source_refs.query_evidence_refs, document.source_refs.derived_evidence_ref];
+  }
+  if ("analysis_program_ref" in document && "outputs" in document) {
+    return [
+      document.analysis_program_ref,
+      ...document.inputs.flatMap((input) => [
+        input.query_evidence_ref,
+        input.input_ref,
+        input.materialization_receipt_ref,
+      ]),
+      ...document.outputs.map(({ reference }) => reference),
+    ];
+  }
+  if (
+    "receipt_ref" in document &&
+    document.receipt_ref.artifact_type === "SandboxExecutionReceipt"
+  ) {
+    return [
+      document.result_artifact_ref,
+      document.sql_artifact_ref,
+      document.execution_permit_ref,
+      document.resource_admission_ref,
+      document.authority_revalidation.policy_receipt_ref,
+    ];
+  }
+  if ("parent_ref" in document && document.parent_ref !== null) return [document.parent_ref];
+  return [];
+}
+
+async function loadVerifiedArtifacts(
+  client: SqlClient,
+  authority: VerifiedRunAuthority,
+  events: readonly RunRuntimeEvent[],
+): Promise<VerifiedArtifact[]> {
+  const result = await client.query<ArtifactRow>(
+    `select
+       'ARTIFACTS'::text as source_store,
+       is_active,
+       artifact_id, artifact_type, revision, content_hash,
+       document_json, null::jsonb as payload_json, null::bytea as content_bytes,
+       created_at
+     from artifacts
+     where app_id = $1 and tenant_id = $2 and environment = $3 and run_id = $4
+     union all
+     select
+       'ANALYSIS_SYSTEM'::text as source_store,
+       true as is_active,
+       artifact_id, artifact_type, revision, content_hash,
+       null::jsonb as document_json, payload_json, content_bytes,
+       committed_at as created_at
+     from analysis_system_artifacts
+     where app_id = $1 and tenant_id = $2 and environment = $3 and run_id = $4
+     union all
+     select
+       'TEXT2SQL_SYSTEM'::text as source_store,
+       true as is_active,
+       artifact_id, artifact_type, revision, content_hash,
+       null::jsonb as document_json, payload_json, null::bytea as content_bytes,
+       committed_at as created_at
+     from text2sql_system_artifacts
+     where app_id = $1 and tenant_id = $2 and environment = $3 and run_id = $4
+     order by created_at, artifact_id, revision`,
+    [
+      authority.scope.app_id,
+      authority.scope.tenant_id,
+      authority.scope.environment,
+      authority.run_id,
+    ],
+  );
+  const artifacts: VerifiedArtifact[] = [];
+  const locations = new Map<string, ArtifactRow["source_store"]>();
+  const storedRows = result.rows.map((row) => ({
+    row,
+    stored: parseStoredArtifactRelation(authority.scope, authority.run_id, row),
+  }));
+  for (const { row, stored } of storedRows) {
+    const { reference } = stored;
+    const location = referenceLocation(reference);
+    if (locations.has(location)) {
       throw new PersistenceBoundaryError(
-        "RESOLUTION_TRACE_ARTIFACT_CORRUPT",
-        "Stored Artifact relational/document/hash identity 不一致。",
+        "RESOLUTION_TRACE_ARTIFACT_AUTHORITY_AMBIGUOUS",
+        "同一 exact Artifact Revision 只能存在于一个权威 Store，禁止 active/inactive 镜像兼容。",
       );
     }
-    const inputReferences =
-      "envelope" in document
-        ? document.envelope.input_refs
-        : Array.isArray(document.source_refs)
-          ? document.source_refs
-          : [
-              ...document.source_refs.query_evidence_refs,
-              document.source_refs.derived_evidence_ref,
-            ];
-    for (const input of inputReferences) {
-      await requireStoredArtifactReference(client, input);
-    }
+    locations.set(location, row.source_store);
+  }
+  const projectedRows = storedRows.filter(
+    ({ row }) => row.source_store !== "ARTIFACTS" || row.is_active,
+  );
+  const references = new Map(
+    projectedRows.map(({ stored }) => [
+      artifactReferenceIdentity(stored.reference),
+      stored.reference,
+    ]),
+  );
+  for (const { row, stored } of projectedRows) {
+    const { reference } = stored;
+    if (!traceArtifactTypes.has(reference.artifact_type)) continue;
+    const document =
+      row.source_store === "ARTIFACTS"
+        ? await verifyOrdinaryArtifactDocument(row, reference)
+        : row.source_store === "ANALYSIS_SYSTEM"
+          ? await verifyAnalysisSystemArtifactDocument(row, reference)
+          : await verifyText2SqlSystemArtifactDocument(row, reference);
     artifacts.push({
       reference,
       document,
-      created_at: iso(row.created_at),
+      source_store: row.source_store,
+      created_at: stored.created_at,
     });
+  }
+  const requiredReferences = [
+    ...events.flatMap((event) => {
+      const eventReferences = eventNode(event).artifact_refs;
+      if (hasDuplicateArtifactReferenceIdentities(eventReferences)) {
+        throw new PersistenceBoundaryError(
+          "RESOLUTION_TRACE_ARTIFACT_REFERENCE_DUPLICATE",
+          "Run Event 的 ArtifactReference identity 不能重复。",
+        );
+      }
+      return eventReferences;
+    }),
+    ...artifacts.flatMap(({ document }) => artifactInputReferences(document)),
+  ];
+  for (const reference of requiredReferences) {
+    if (!references.has(artifactReferenceIdentity(reference))) {
+      throw new PersistenceBoundaryError(
+        "RESOLUTION_TRACE_ARTIFACT_REFERENCE_MISSING",
+        "Artifact reference 不存在或 active exact identity 漂移。",
+      );
+    }
   }
   return artifacts;
 }
@@ -673,7 +1002,6 @@ function eventNode(event: RunRuntimeEvent): ResolutionTraceNode {
 
 function artifactPublicSummary(artifact: VerifiedArtifact): string {
   const document = artifact.document;
-  if (!document) return `${artifact.reference.artifact_type} 内容可通过 exact preview 查看`;
   if ("projection" in document) {
     switch (document.projection.kind) {
       case "SQL":
@@ -690,7 +1018,7 @@ function artifactPublicSummary(artifact: VerifiedArtifact): string {
         return `${document.projection.title} · ${"mark" in document.projection ? document.projection.mark : document.projection.chart_type} · ${document.projection.table.total_rows} 行`;
     }
   }
-  if ("protocol_version" in document.payload) {
+  if ("payload" in document && "protocol_version" in document.payload) {
     if (
       document.payload.artifact_type === "QueryEvidence" &&
       document.payload.protocol_version === "query-evidence@2.0.0"
@@ -699,25 +1027,49 @@ function artifactPublicSummary(artifact: VerifiedArtifact): string {
     }
     return `${document.payload.artifact_type} · ${document.payload.protocol_version} · current Research L2`;
   }
-  switch (document.payload.artifact_type) {
-    case "SqlArtifact":
-      return redactPublicDisplayText(document.payload.sql).slice(0, 2_000);
-    case "ExecutionReceipt":
-      return `${document.payload.row_count} 行 · ${document.payload.replay_state} · ${document.payload.observed_at}`;
-    case "QueryEvidence": {
-      const passed = document.payload.invariant_verdicts.filter(
-        ({ verdict }) => verdict === "PASS",
-      ).length;
-      return `${passed}/${document.payload.invariant_verdicts.length} 项结果不变量通过`;
+  if ("payload" in document) {
+    switch (document.payload.artifact_type) {
+      case "SqlArtifact":
+        return redactPublicDisplayText(document.payload.sql).slice(0, 2_000);
+      case "ExecutionReceipt":
+        return `${document.payload.row_count} 行 · ${document.payload.replay_state} · ${document.payload.observed_at}`;
+      case "QueryEvidence": {
+        if (!("invariant_verdicts" in document.payload)) {
+          return `${artifact.reference.artifact_type} 内容可通过 exact preview 查看`;
+        }
+        const passed = document.payload.invariant_verdicts.filter(
+          ({ verdict }) => verdict === "PASS",
+        ).length;
+        return `${passed}/${document.payload.invariant_verdicts.length} 项结果不变量通过`;
+      }
+      case "AnalysisReport": {
+        if (!("claim_refs" in document.payload) || !("limitations" in document.payload)) {
+          return `${artifact.reference.artifact_type} 内容可通过 exact preview 查看`;
+        }
+        return `${document.payload.title} · ${document.payload.claim_refs.length} 项声明${document.payload.limitations[0] ? ` · 限制：${document.payload.limitations[0]}` : ""}`.slice(
+          0,
+          2_000,
+        );
+      }
+      default:
+        return `${artifact.reference.artifact_type} 内容可通过 exact preview 查看`;
     }
-    case "AnalysisReport":
-      return `${document.payload.title} · ${document.payload.claim_refs.length} 项声明${document.payload.limitations[0] ? ` · 限制：${document.payload.limitations[0]}` : ""}`.slice(
-        0,
-        2_000,
-      );
-    default:
-      return `${artifact.reference.artifact_type} 内容可通过 exact preview 查看`;
   }
+  if ("contract_id" in document && "data" in document)
+    return `治理分析结果 · ${Object.keys(document.data).length} 个字段`;
+  if ("table_id" in document && "title_zh" in document && "total_rows" in document)
+    return `${document.title_zh} · ${document.total_rows} 行`;
+  if ("chart_id" in document && "title_zh" in document && "dataset" in document)
+    return `${document.title_zh} · ${document.intent} · ${document.dataset.total_rows} 行`;
+  if ("analysis_program_ref" in document && "cells" in document && "outputs" in document)
+    return `OpenSandbox 执行完成 · ${document.cells.length} cells · ${document.outputs.length} outputs`;
+  if ("receipt_ref" in document)
+    return `SQL Sandbox 执行完成 · ${document.resource_usage.rows} 行 · ${document.resource_usage.elapsed_ms} ms`;
+  if ("result_ref" in document)
+    return `${document.row_count} 行 · ${document.columns.length} 列 · SandboxResult 已校验`;
+  if ("artifact_type" in document && document.artifact_type === "SchemaSnapshot")
+    return `${document.tables.length} 张表 · ${document.relationships.length} 条关系 · SchemaSnapshot 已校验`;
+  return `${artifact.reference.artifact_type} 内容可通过 exact preview 查看`;
 }
 
 function artifactNode(artifact: VerifiedArtifact): ResolutionTraceNode {
@@ -729,7 +1081,11 @@ function artifactNode(artifact: VerifiedArtifact): ResolutionTraceNode {
     sequence: null,
     occurred_at: artifact.created_at,
     status: "AVAILABLE",
-    title: type,
+    title:
+      "schema_version" in artifact.document &&
+      artifact.document.schema_version.startsWith("analysis-published-")
+        ? `${type} · ${artifact.document.schema_version.split("@")[0]}`
+        : type,
     summary: artifactPublicSummary(artifact),
     duration_ms: null,
     artifact_refs: [artifact.reference],
@@ -773,18 +1129,26 @@ async function projectTrace(
       `artifact:${artifact.reference.artifact_id}:${artifact.reference.revision}`,
     ]),
   );
+  for (const eventNodeValue of eventNodes) {
+    for (const reference of eventNodeValue.artifact_refs) {
+      const target = nodeByReference.get(artifactReferenceIdentity(reference));
+      if (!target) {
+        throw new PersistenceBoundaryError(
+          "RESOLUTION_TRACE_EVENT_ARTIFACT_NODE_MISSING",
+          "Event ArtifactReference 必须解析到同一 Trace 快照中的唯一 Artifact node。",
+        );
+      }
+      edges.push({ from_node_id: eventNodeValue.node_id, to_node_id: target, kind: "PRODUCED" });
+    }
+  }
   for (const artifact of artifacts) {
-    if (!artifact.document) continue;
     const target = nodeByReference.get(artifactReferenceIdentity(artifact.reference));
-    const inputReferences =
-      "envelope" in artifact.document
-        ? artifact.document.envelope.input_refs
-        : Array.isArray(artifact.document.source_refs)
-          ? artifact.document.source_refs
-          : [
-              ...artifact.document.source_refs.query_evidence_refs,
-              artifact.document.source_refs.derived_evidence_ref,
-            ];
+    const inputReferences = new Map(
+      artifactInputReferences(artifact.document).map((reference) => [
+        artifactReferenceIdentity(reference),
+        reference,
+      ]),
+    ).values();
     for (const input of inputReferences) {
       const source = nodeByReference.get(artifactReferenceIdentity(input));
       if (source && target)
@@ -798,15 +1162,22 @@ async function projectTrace(
       kind: "CONTEXT",
     });
   }
-  return buildResolutionTrace({
-    schema_version: "resolution-trace@1.0.0",
-    scope: authority.scope,
-    run_id: authority.run_id,
-    conversation_id: authority.conversation_id,
-    config_ref: authority.config_ref,
-    nodes,
-    edges,
-  });
+  try {
+    return await buildResolutionTrace({
+      schema_version: "resolution-trace@1.0.0",
+      scope: authority.scope,
+      run_id: authority.run_id,
+      conversation_id: authority.conversation_id,
+      config_ref: authority.config_ref,
+      nodes,
+      edges,
+    });
+  } catch {
+    throw new PersistenceBoundaryError(
+      "RESOLUTION_TRACE_PROJECTION_CORRUPT",
+      "Resolution Trace 投影未通过 strict graph contract。",
+    );
+  }
 }
 
 type DetailSection = ResolutionTraceDetail["payload"];
@@ -1452,7 +1823,11 @@ export function createPostgresResolutionTraceProjector(
         options.pool,
         options.authorizer,
         capabilityInput,
-        { access: "READ", operation_name: "resolution-trace.load" },
+        {
+          access: "READ",
+          snapshot: "REPEATABLE_READ",
+          operation_name: "resolution-trace.load",
+        },
         async ({ capability, client }) => {
           assertScope(lookup.data.scope, capability.scope);
           const [authority] = await loadRunAuthority(
@@ -1463,8 +1838,7 @@ export function createPostgresResolutionTraceProjector(
           );
           if (!authority) return null;
           const events = await loadVerifiedRunEvents(client, capability.scope, authority.run_id);
-          await verifyEventArtifactReferences(client, events);
-          const artifacts = await loadVerifiedArtifacts(client, authority);
+          const artifacts = await loadVerifiedArtifacts(client, authority, events);
           return projectTrace(authority, events, artifacts);
         },
       );
@@ -1484,7 +1858,11 @@ export function createPostgresResolutionTraceProjector(
         options.pool,
         options.authorizer,
         capabilityInput,
-        { access: "READ", operation_name: "resolution-trace.detail.load" },
+        {
+          access: "READ",
+          snapshot: "REPEATABLE_READ",
+          operation_name: "resolution-trace.detail.load",
+        },
         async ({ capability, client }) => {
           assertScope(lookup.data.scope, capability.scope);
           const [authority] = await loadRunAuthority(
@@ -1495,8 +1873,7 @@ export function createPostgresResolutionTraceProjector(
           );
           if (!authority) return null;
           const events = await loadVerifiedRunEvents(client, capability.scope, authority.run_id);
-          await verifyEventArtifactReferences(client, events);
-          const artifacts = await loadVerifiedArtifacts(client, authority);
+          const artifacts = await loadVerifiedArtifacts(client, authority, events);
           const trace = await projectTrace(authority, events, artifacts);
           return projectDetail(authority, trace, events, artifacts, lookup.data.node_id);
         },
@@ -1514,7 +1891,7 @@ export function createPostgresResolutionTraceProjector(
         options.pool,
         options.authorizer,
         capabilityInput,
-        { access: "READ", operation_name: "sql-history.list" },
+        { access: "READ", snapshot: "REPEATABLE_READ", operation_name: "sql-history.list" },
         async ({ capability, client }) => {
           assertScope(lookup.data.scope, capability.scope);
           const authorities = await loadRunAuthority(
@@ -1529,7 +1906,7 @@ export function createPostgresResolutionTraceProjector(
             entries.push(
               ...(await projectSqlHistory(
                 authority,
-                await loadVerifiedArtifacts(client, authority),
+                await loadVerifiedArtifacts(client, authority, []),
               )),
             );
           const filteredEntries = entries.filter(

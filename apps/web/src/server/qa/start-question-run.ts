@@ -1,3 +1,4 @@
+import type { AgentProductProfileReferenceV2 } from "@data-agent/contracts/agents";
 import type { AppScope } from "@data-agent/contracts/common";
 import { buildRunConfigRequestCandidate } from "@data-agent/contracts/runs";
 import type { WorkspaceFileReference } from "@data-agent/contracts/workspaces";
@@ -52,6 +53,12 @@ export interface StartQuestionRunInput {
   readonly rollout_bootstrap_mode: string | undefined;
   readonly scope: AppScope;
   readonly workspace_id: string;
+  readonly expected_subagent_profile_refs?: readonly AgentProductProfileReferenceV2[];
+  readonly acceptance_fence?: {
+    readonly campaign_id: string;
+    readonly run_id: string;
+    readonly claim_fence_token: string;
+  };
 }
 
 const inherited = { mode: "INHERIT_DEFAULT" } as const;
@@ -149,6 +156,36 @@ export function createStartQuestionRunUseCase(
     if (!defaults.ok) return { error: defaults.error, kind: "ERROR" } as const;
     if (!selections.ok) return { error: selections.error, kind: "ERROR" } as const;
     if (!profiles.ok) return { error: profiles.error, kind: "ERROR" } as const;
+    if (input.expected_subagent_profile_refs) {
+      const expected = [...input.expected_subagent_profile_refs].sort((left, right) =>
+        left.profile_id.localeCompare(right.profile_id),
+      );
+      const actual = profiles.value
+        .map((item) => ({
+          profile_id: item.revision.profile_id,
+          revision: item.revision.revision,
+          revision_hash: item.revision.revision_hash,
+        }))
+        .sort((left, right) => left.profile_id.localeCompare(right.profile_id));
+      if (
+        actual.length !== expected.length ||
+        actual.some(
+          (item, index) =>
+            item.profile_id !== expected[index]?.profile_id ||
+            item.revision !== expected[index]?.revision ||
+            item.revision_hash !== expected[index]?.revision_hash,
+        )
+      ) {
+        return {
+          error: {
+            code: "SUBAGENT_CATALOG_PROFILE_SET_MISMATCH",
+            message: "Frozen acceptance Profile set changed before Run catalog publication.",
+            retryable: false,
+          },
+          kind: "ERROR",
+        } as const;
+      }
+    }
     if (!defaults.value) {
       return {
         error: {
@@ -229,6 +266,7 @@ export function createStartQuestionRunUseCase(
     }
     const accepted = await dependencies.resolveAndAccept(input.capability, {
       request: configRequest,
+      ...(input.acceptance_fence ? { acceptance_fence: input.acceptance_fence } : {}),
       command: {
         run_id: identities.run_id,
         command_id: identities.command_id,

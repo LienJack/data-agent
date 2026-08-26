@@ -156,6 +156,55 @@ export function createPostgresAgentProfileRegistry(options: PostgresAgentProfile
       );
     },
 
+    listManagedV2(
+      capabilityInput: unknown,
+    ): Promise<PortResult<readonly AgentProductProfileRegistryItemV2[]>> {
+      return withAppTransaction(
+        options.pool,
+        options.authorizer,
+        capabilityInput,
+        {
+          access: "READ",
+          allowed_roles: ["OWNER"],
+          operation_name: "agent-profile.list-managed-v2",
+          correlation_id: "agent-profile-list-managed-v2",
+          map_database_error: databaseError,
+        },
+        async ({ capability, client }) => {
+          const query = await client.query<{ readonly value: unknown }>(
+            "select app_data_agent.list_agent_profile_revisions_v2(false) as value",
+          );
+          const result = agentProductProfileListResultV2Schema.safeParse(query.rows[0]?.value);
+          if (!result.success) {
+            throw new PersistenceBoundaryError(
+              "AGENT_PROFILE_DATABASE_CONTRACT_INVALID",
+              "Managed Agent Profile v2 list is invalid.",
+            );
+          }
+          for (const item of result.data.items) {
+            await verifyAgentProductProfileRevisionV2(item.revision);
+            if (
+              item.revision.scope.app_id !== capability.scope.app_id ||
+              item.revision.scope.tenant_id !== capability.scope.tenant_id ||
+              item.revision.scope.environment !== capability.scope.environment ||
+              item.head.scope.app_id !== capability.scope.app_id ||
+              item.head.scope.tenant_id !== capability.scope.tenant_id ||
+              item.head.scope.environment !== capability.scope.environment ||
+              item.head.profile_id !== item.revision.profile_id ||
+              item.head.active_revision !== item.revision.revision ||
+              item.head.active_revision_hash !== item.revision.revision_hash
+            ) {
+              throw new PersistenceBoundaryError(
+                "AGENT_PROFILE_DATABASE_CONTRACT_INVALID",
+                "Managed Agent Profile v2 list escaped current authority.",
+              );
+            }
+          }
+          return result.data.items;
+        },
+      );
+    },
+
     list(
       capabilityInput: unknown,
       enabledOnly = false,

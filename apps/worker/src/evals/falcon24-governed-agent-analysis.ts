@@ -379,6 +379,7 @@ export function createFalcon24GovernedAgentAnalysisPort(input: {
   readonly public_artifacts: Falcon24PublicArtifactPort;
   readonly public_artifact_capability: unknown;
   readonly create_executor: (context: {
+    readonly lease: Parameters<GovernedAgentAnalysisPort["analyze"]>[0]["lease"];
     readonly analysis_context: AnalysisContext;
     readonly task_id: string;
     readonly max_context_bytes: number;
@@ -445,6 +446,7 @@ export function createFalcon24GovernedAgentAnalysisPort(input: {
       metric_ids: metricIds,
     });
     const executor = input.create_executor({
+      lease: command.lease,
       analysis_context: context,
       task_id: command.task_id,
       max_context_bytes: command.max_context_bytes,
@@ -558,6 +560,7 @@ export function createFalcon24GovernedAgentAnalysisPort(input: {
       execution,
       chart_ref: chartRef,
       completed_at: new Date().toISOString(),
+      execution_policy: command.lease.execution_policy,
     });
     const acceptedArtifactRefs = [
       briefRef,

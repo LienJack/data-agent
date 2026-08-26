@@ -2,6 +2,7 @@ import {
   authorizeCommittedProviderDispatchPermit,
   buildCommittedProviderDispatchPermitReceipt,
   buildProviderDispatchEnvelopeCandidate,
+  DEFAULT_RUN_EXECUTION_POLICY,
   type ProviderDispatchEnvelope,
   type ProviderInvocationPublicProjection,
 } from "@data-agent/contracts";
@@ -153,6 +154,7 @@ function workerLease() {
     lease_token: 3,
     worker_fence: 4,
     expires_at: "2026-08-16T00:05:00.000Z",
+    execution_policy: DEFAULT_RUN_EXECUTION_POLICY,
     payload: {
       kind: "START_L2_RESEARCH",
       effective_config_ref: { config_id: ids.config, config_revision: 1, config_hash: hash("b") },

@@ -1,6 +1,9 @@
 import { describe, expect, it, vi } from "vitest";
 import { buildBuiltinTeamMaterialization } from "../../src/teams/builtin-profile-assets.js";
-import { materializeBuiltinTeamProfiles } from "../../src/teams/materialize-builtin-team.js";
+import {
+  materializeBuiltinTeamProfiles,
+  verifyBuiltinTeamProfileSet,
+} from "../../src/teams/materialize-builtin-team.js";
 
 const id = (suffix: number) => `00000000-0000-4000-8000-${String(suffix).padStart(12, "0")}`;
 const hash = (character: string) => `sha256:${character.repeat(64)}`;
@@ -22,6 +25,7 @@ function refs(offset: number) {
 
 function input() {
   let nextId = 100;
+  const idsByMaterial = new Map<string, string>();
   return {
     scope: { app_id: id(1), tenant_id: id(2), environment: "test" } as const,
     model_profile_refs: refs(10),
@@ -29,27 +33,124 @@ function input() {
     execution_safety_policy_refs: refs(30),
     capability_input: {},
     actor_principal_id: id(3),
-    create_id: () => {
+    create_operation_id: (material: string) => {
+      const existing = idsByMaterial.get(material);
+      if (existing) return existing;
       nextId += 1;
-      return id(nextId);
+      const value = id(nextId);
+      idsByMaterial.set(material, value);
+      return value;
     },
     idempotency_prefix: "builtin-team-v2",
   };
 }
 
+function skillItems(
+  materialized: Awaited<ReturnType<typeof buildBuiltinTeamMaterialization>>,
+  request: ReturnType<typeof input>,
+) {
+  return materialized.skill_revisions.map((revision, index) => ({
+    schema_version: "skill-registry-item@1.0.0" as const,
+    revision,
+    head: {
+      schema_version: "skill-head@1.0.0" as const,
+      scope: request.scope,
+      skill_id: revision.skill_id,
+      active_revision: revision.revision,
+      active_revision_hash: revision.revision_hash,
+      lifecycle: "ENABLED" as const,
+      signer_revocation_version: 0,
+      version: index + 1,
+      updated_at: "2026-08-18T12:00:00.000Z",
+    },
+  }));
+}
+
 describe("built-in Team materialization", () => {
+  it("verifies the exact enabled built-in Profile set and freezes one set hash", async () => {
+    const request = input();
+    const materialized = await buildBuiltinTeamMaterialization(request);
+    const items = materialized.profile_revisions.map((revision, index) => ({
+      schema_version: "agent-product-profile-registry-item@2.0.0" as const,
+      revision,
+      head: {
+        schema_version: "agent-product-profile-head@2.0.0" as const,
+        scope: request.scope,
+        profile_id: revision.profile_id,
+        active_revision: revision.revision,
+        active_revision_hash: revision.revision_hash,
+        lifecycle: "ENABLED" as const,
+        version: index + 1,
+        updated_at: "2026-08-18T12:00:00.000Z",
+      },
+    }));
+
+    const skills = skillItems(materialized, request);
+    await expect(verifyBuiltinTeamProfileSet(request, items, skills)).resolves.toMatchObject({
+      schema_version: "builtin-team-profile-set@1.0.0",
+      materialization_manifest_hash: materialized.manifest_hash,
+      profile_refs: materialized.profile_revisions.map((revision) => ({
+        profile_id: revision.profile_id,
+        revision: revision.revision,
+        revision_hash: revision.revision_hash,
+      })),
+      skill_refs: materialized.skill_revisions.map((revision) => ({
+        skill_id: revision.skill_id,
+        revision: revision.revision,
+        revision_hash: revision.revision_hash,
+      })),
+      profile_set_hash: expect.stringMatching(/^sha256:[a-f0-9]{64}$/u),
+    });
+  });
+
+  it("rejects a stale discovery contract even when all four Profile ids exist", async () => {
+    const request = input();
+    const materialized = await buildBuiltinTeamMaterialization(request);
+    const items = materialized.profile_revisions.map((revision, index) => ({
+      schema_version: "agent-product-profile-registry-item@2.0.0" as const,
+      revision:
+        revision.profile_id === "governed-analysis-agent"
+          ? {
+              ...revision,
+              revision: 1,
+              revision_hash: hash("f"),
+              discovery: {
+                ...revision.discovery,
+                accepted_input_artifact_types: [],
+              },
+            }
+          : revision,
+      head: {
+        schema_version: "agent-product-profile-head@2.0.0" as const,
+        scope: request.scope,
+        profile_id: revision.profile_id,
+        active_revision: revision.profile_id === "governed-analysis-agent" ? 1 : revision.revision,
+        active_revision_hash:
+          revision.profile_id === "governed-analysis-agent" ? hash("f") : revision.revision_hash,
+        lifecycle: "ENABLED" as const,
+        version: index + 1,
+        updated_at: "2026-08-18T12:00:00.000Z",
+      },
+    }));
+
+    await expect(
+      verifyBuiltinTeamProfileSet(request, items as never, skillItems(materialized, request)),
+    ).rejects.toThrow("BUILTIN_TEAM_PROFILE_SET_STALE");
+  });
+
   it("commits all ten Skills before the four product Profiles", async () => {
     const order: string[] = [];
     const profileCommands: unknown[] = [];
     const result = await materializeBuiltinTeamProfiles(input(), {
       skills: {
+        list: vi.fn(async () => ({ ok: true as const, value: [] })),
         commit: vi.fn(async (_capability, command) => {
           order.push(`skill:${command.revision.skill_id}`);
           return { ok: true as const, value: {} as never };
         }),
       },
       profiles: {
-        listDiscoverable: vi.fn(async () => ({ ok: true as const, value: [] })),
+        listManagedV2: vi.fn(async () => ({ ok: true as const, value: [] })),
         commitV2: vi.fn(async (_capability, command) => {
           order.push(`profile:${command.revision.profile_id}`);
           profileCommands.push(command);
@@ -89,11 +190,180 @@ describe("built-in Team materialization", () => {
     );
   });
 
+  it("reads managed heads before mutation and CAS-advances analysis Skill r1/Profile r1", async () => {
+    const request = input();
+    const materialized = await buildBuiltinTeamMaterialization(request);
+    const targetSkill = materialized.skill_revisions.find(
+      ({ skill_id: skillId }) => skillId === "00000000-0000-4000-8000-000000002401",
+    );
+    const targetProfile = materialized.profile_revisions.find(
+      ({ profile_id: profileId }) => profileId === "governed-analysis-agent",
+    );
+    if (!targetSkill || !targetProfile) throw new TypeError("missing analysis fixtures");
+    const order: string[] = [];
+    const skillCommands: unknown[] = [];
+    const profileCommands: unknown[] = [];
+    const staleSkill = {
+      schema_version: "skill-registry-item@1.0.0" as const,
+      revision: { ...targetSkill, revision: 1, revision_hash: hash("d") },
+      head: {
+        schema_version: "skill-head@1.0.0" as const,
+        scope: request.scope,
+        skill_id: targetSkill.skill_id,
+        active_revision: 1,
+        active_revision_hash: hash("d"),
+        lifecycle: "ENABLED" as const,
+        signer_revocation_version: 0,
+        version: 7,
+        updated_at: "2026-08-18T12:00:00.000Z",
+      },
+    };
+    const staleProfile = {
+      schema_version: "agent-product-profile-registry-item@2.0.0" as const,
+      revision: { ...targetProfile, revision: 1, revision_hash: hash("e") },
+      head: {
+        schema_version: "agent-product-profile-head@2.0.0" as const,
+        scope: request.scope,
+        profile_id: targetProfile.profile_id,
+        active_revision: 1,
+        active_revision_hash: hash("e"),
+        lifecycle: "ENABLED" as const,
+        version: 9,
+        updated_at: "2026-08-18T12:00:00.000Z",
+      },
+    };
+
+    const result = await materializeBuiltinTeamProfiles(request, {
+      skills: {
+        list: vi.fn(async () => {
+          order.push("list:skills");
+          return { ok: true as const, value: [staleSkill] as never };
+        }),
+        commit: vi.fn(async (_capability, command) => {
+          order.push("commit:skill");
+          skillCommands.push(command);
+          return { ok: true as const, value: {} as never };
+        }),
+      },
+      profiles: {
+        listManagedV2: vi.fn(async () => {
+          order.push("list:profiles");
+          return { ok: true as const, value: [staleProfile] as never };
+        }),
+        commitV2: vi.fn(async (_capability, command) => {
+          order.push("commit:profile");
+          profileCommands.push(command);
+          return {
+            ok: true as const,
+            value: {
+              ...staleProfile,
+              revision: command.revision,
+              head: {
+                ...staleProfile.head,
+                profile_id: command.revision.profile_id,
+                active_revision: command.revision.revision,
+                active_revision_hash: command.revision.revision_hash,
+              },
+            },
+          };
+        }),
+      },
+    });
+
+    expect(result.ok).toBe(true);
+    expect(order.slice(0, 2).sort()).toEqual(["list:profiles", "list:skills"]);
+    expect(skillCommands).toContainEqual(
+      expect.objectContaining({
+        expected_head_version: 7,
+        revision: expect.objectContaining({ skill_id: targetSkill.skill_id, revision: 2 }),
+      }),
+    );
+    expect(profileCommands).toContainEqual(
+      expect.objectContaining({
+        expected_head_version: 9,
+        revision: expect.objectContaining({ profile_id: targetProfile.profile_id, revision: 3 }),
+      }),
+    );
+  });
+
+  it("CAS-reactivates exact disabled Skill and Product Profile heads", async () => {
+    const request = input();
+    const materialized = await buildBuiltinTeamMaterialization(request);
+    const currentSkills = skillItems(materialized, request).map((item) =>
+      item.revision.skill_id === "00000000-0000-4000-8000-000000002401"
+        ? { ...item, head: { ...item.head, lifecycle: "DISABLED" as const, version: 11 } }
+        : item,
+    );
+    const currentProfiles = materialized.profile_revisions.map((revision, index) => ({
+      schema_version: "agent-product-profile-registry-item@2.0.0" as const,
+      revision,
+      head: {
+        schema_version: "agent-product-profile-head@2.0.0" as const,
+        scope: request.scope,
+        profile_id: revision.profile_id,
+        active_revision: revision.revision,
+        active_revision_hash: revision.revision_hash,
+        lifecycle:
+          revision.profile_id === "governed-analysis-agent"
+            ? ("DISABLED" as const)
+            : ("ENABLED" as const),
+        version: revision.profile_id === "governed-analysis-agent" ? 13 : index + 1,
+        updated_at: "2026-08-18T12:00:00.000Z",
+      },
+    }));
+    const skillCommands: unknown[] = [];
+    const profileCommands: unknown[] = [];
+
+    const result = await materializeBuiltinTeamProfiles(request, {
+      skills: {
+        list: vi.fn(async () => ({ ok: true as const, value: currentSkills })),
+        commit: vi.fn(async (_capability, command) => {
+          skillCommands.push(command);
+          return { ok: true as const, value: {} as never };
+        }),
+      },
+      profiles: {
+        listManagedV2: vi.fn(async () => ({ ok: true as const, value: currentProfiles })),
+        commitV2: vi.fn(async (_capability, command) => {
+          profileCommands.push(command);
+          const current = currentProfiles.find(
+            ({ revision }) => revision.profile_id === command.revision.profile_id,
+          );
+          if (!current) throw new TypeError("missing profile fixture");
+          return {
+            ok: true as const,
+            value: { ...current, head: { ...current.head, lifecycle: "ENABLED" as const } },
+          };
+        }),
+      },
+    });
+
+    expect(result.ok).toBe(true);
+    expect(skillCommands).toEqual([
+      expect.objectContaining({
+        expected_head_version: 11,
+        target_lifecycle: "ENABLED",
+        revision: expect.objectContaining({ revision: 2 }),
+      }),
+    ]);
+    expect(profileCommands).toEqual([
+      expect.objectContaining({
+        expected_head_version: 13,
+        target_lifecycle: "ENABLED",
+        revision: expect.objectContaining({
+          profile_id: "governed-analysis-agent",
+          revision: 3,
+        }),
+      }),
+    ]);
+  });
+
   it("does not commit any Profile after a Skill failure", async () => {
     let skillCalls = 0;
     const profileCommit = vi.fn();
     const result = await materializeBuiltinTeamProfiles(input(), {
       skills: {
+        list: vi.fn(async () => ({ ok: true as const, value: [] })),
         commit: vi.fn(async () => {
           skillCalls += 1;
           return skillCalls === 4
@@ -105,7 +375,7 @@ describe("built-in Team materialization", () => {
         }),
       },
       profiles: {
-        listDiscoverable: vi.fn(async () => ({ ok: true as const, value: [] })),
+        listManagedV2: vi.fn(async () => ({ ok: true as const, value: [] })),
         commitV2: profileCommit,
       },
     });
@@ -153,9 +423,12 @@ describe("built-in Team materialization", () => {
       },
     }));
     const result = await materializeBuiltinTeamProfiles(request, {
-      skills: { commit: vi.fn(async () => ({ ok: true as const, value: {} as never })) },
+      skills: {
+        list: vi.fn(async () => ({ ok: true as const, value: [] })),
+        commit: vi.fn(async () => ({ ok: true as const, value: {} as never })),
+      },
       profiles: {
-        listDiscoverable: vi.fn(async () => ({ ok: true as const, value: [exactItem] })),
+        listManagedV2: vi.fn(async () => ({ ok: true as const, value: [exactItem] })),
         commitV2: profileCommit,
       },
     });
@@ -198,9 +471,12 @@ describe("built-in Team materialization", () => {
       },
     }));
     const existing = await materializeBuiltinTeamProfiles(request, {
-      skills: { commit: vi.fn(async () => ({ ok: true as const, value: {} as never })) },
+      skills: {
+        list: vi.fn(async () => ({ ok: true as const, value: [] })),
+        commit: vi.fn(async () => ({ ok: true as const, value: {} as never })),
+      },
       profiles: {
-        listDiscoverable: vi.fn(async () => ({
+        listManagedV2: vi.fn(async () => ({
           ok: true as const,
           value: [
             {

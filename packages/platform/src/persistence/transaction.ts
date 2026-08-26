@@ -18,7 +18,7 @@ export interface SqlClient {
     text: string,
     values?: readonly unknown[],
   ): Promise<SqlQueryResult<Row>>;
-  release(): void;
+  release(error?: Error): void;
 }
 
 export interface SqlPool {
@@ -42,6 +42,8 @@ export type AppTransactionOptions = AppTransactionCommonOptions &
         readonly access: "READ";
         /** 只允许缩小既有 READ 角色集合，不能扩权到 DEMO。 */
         readonly allowed_roles?: readonly ("OWNER" | "ANALYST" | "VIEWER")[];
+        /** 需要跨多条查询保持同一权威视图时，显式请求只读可重复读快照。 */
+        readonly snapshot?: "REPEATABLE_READ";
       }
     | {
         readonly access: "WRITE";
@@ -217,7 +219,11 @@ export async function withAppTransaction<T>(
 
   let transactionStarted = false;
   try {
-    await client.query("BEGIN");
+    await client.query(
+      options.access === "READ" && options.snapshot === "REPEATABLE_READ"
+        ? "BEGIN ISOLATION LEVEL REPEATABLE READ READ ONLY"
+        : "BEGIN",
+    );
     transactionStarted = true;
     const required = await revalidateCapabilityInTransaction(
       authorizer,
@@ -266,8 +272,8 @@ export function adaptPgPool(pool: Pool): SqlPool {
             rowCount: result.rowCount,
           };
         },
-        release(): void {
-          client.release();
+        release(error?: Error): void {
+          client.release(error);
         },
       };
     },

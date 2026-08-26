@@ -1,3 +1,7 @@
+import {
+  buildFalcon24RunExecutionPolicy,
+  DEFAULT_RUN_EXECUTION_POLICY,
+} from "@data-agent/contracts/runs";
 import { describe, expect, it } from "vitest";
 import {
   createFalcon24AnalysisRuntime,
@@ -37,6 +41,33 @@ function createRuntime(environment: NodeJS.ProcessEnv) {
 }
 
 describe("Falcon24 production analysis runtime", () => {
+  it("只接受与语义案例一致的 exact strict lease policy", () => {
+    const campaignId = "falcon24-root-v13-final-20260826";
+    const caseId = "falcon24-business-review-18m";
+    const strict = buildFalcon24RunExecutionPolicy({
+      campaign_id: campaignId,
+      case_id: caseId,
+      run_variant: "COLD",
+      repetition: 1,
+    });
+    expect(() =>
+      falcon24AnalysisRuntimeInternals.assertFalcon24AnalysisLeasePolicy({
+        execution_policy: strict,
+      } as never),
+    ).not.toThrow();
+    expect(() =>
+      falcon24AnalysisRuntimeInternals.assertFalcon24AnalysisLeasePolicy({
+        execution_policy: DEFAULT_RUN_EXECUTION_POLICY,
+      } as never),
+    ).toThrow("FALCON24_ANALYSIS_RUN_EXECUTION_POLICY_MISMATCH");
+    expect(() =>
+      falcon24AnalysisRuntimeInternals.assertFalcon24ResolvedCase(
+        caseId,
+        "falcon24-delivery-experience-12m",
+      ),
+    ).toThrow("FALCON24_ANALYSIS_RUN_EXECUTION_POLICY_MISMATCH");
+  });
+
   it("constructs the single governed runtime only with all hard controls", () => {
     expect(createRuntime(validEnvironment)).toMatchObject({ analyze: expect.any(Function) });
   });

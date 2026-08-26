@@ -7,6 +7,7 @@ export interface Falcon24ResolutionTraceGateResult {
   readonly detail_count: number;
   readonly sql_node_count: number;
   readonly query_evidence_node_count: number;
+  readonly analysis_evidence_node_count: number;
   readonly chart_node_count: number;
   readonly report_node_count: number;
 }
@@ -48,22 +49,27 @@ function requireAvailableArtifactDetail(detail: ResolutionTraceDetail): void {
   }
 }
 
-function hasCompleteEvidenceCoverage(
+function requireExactlyOne<T>(values: readonly T[], code: string): T {
+  if (values.length !== 1 || values[0] === undefined) fail(code);
+  return values[0];
+}
+
+function requireExactEvidenceEdge(
   trace: ResolutionTrace,
-  fromNodeIds: ReadonlySet<string>,
-  toNodeIds: ReadonlySet<string>,
-): boolean {
-  const evidenceEdges = trace.edges.filter((edge) => edge.kind === "EVIDENCE");
-  return (
-    [...fromNodeIds].every((nodeId) =>
-      evidenceEdges.some((edge) => edge.from_node_id === nodeId && toNodeIds.has(edge.to_node_id)),
-    ) &&
-    [...toNodeIds].every((nodeId) =>
-      evidenceEdges.some(
-        (edge) => fromNodeIds.has(edge.from_node_id) && edge.to_node_id === nodeId,
-      ),
-    )
-  );
+  fromNodeId: string,
+  toNodeId: string,
+  code: string,
+): void {
+  if (
+    trace.edges.filter(
+      (edge) =>
+        edge.kind === "EVIDENCE" &&
+        edge.from_node_id === fromNodeId &&
+        edge.to_node_id === toNodeId,
+    ).length !== 1
+  ) {
+    fail(code);
+  }
 }
 
 export function verifyFalcon24ResolutionTraceGate(
@@ -77,6 +83,10 @@ export function verifyFalcon24ResolutionTraceGate(
     )
   ) {
     fail("FALCON24_RESOLUTION_TRACE_NON_SUCCESS_NODE");
+  }
+  const terminalNodes = trace.nodes.filter(({ kind }) => kind === "TERMINAL");
+  if (terminalNodes.length !== 1 || terminalNodes[0]?.status !== "COMPLETED") {
+    fail("FALCON24_RESOLUTION_TRACE_COMPLETED_TERMINAL_REQUIRED");
   }
 
   const detailsByNode = new Map(details.map((detail) => [detail.node_id, detail]));
@@ -125,6 +135,16 @@ export function verifyFalcon24ResolutionTraceGate(
       detail.schema.schema_version === "product-team-artifact@2.0.0"
     );
   });
+  const derivedAnalysisEvidenceNodes = trace.nodes.filter(({ kind, title, node_id: nodeId }) => {
+    const detail = detailsByNode.get(nodeId);
+    return (
+      kind === "ARTIFACT" &&
+      title === "DerivedAnalysisEvidence" &&
+      detail?.schema.state === "AVAILABLE" &&
+      detail.schema.schema_name === "artifact-reference" &&
+      detail.schema.schema_version === "artifact-reference@1.0.0"
+    );
+  });
   const chartNodes = trace.nodes.filter(({ kind, title, node_id: nodeId }) => {
     const detail = detailsByNode.get(nodeId);
     return (
@@ -132,10 +152,7 @@ export function verifyFalcon24ResolutionTraceGate(
       title === "ArtifactWorkspaceDocument" &&
       detail?.schema.state === "AVAILABLE" &&
       detail.schema.schema_name === "artifact-workspace-chart-document" &&
-      [
-        "artifact-workspace-chart-document@2.0.0",
-        "artifact-workspace-chart-document@3.0.0",
-      ].includes(detail.schema.schema_version)
+      detail.schema.schema_version === "artifact-workspace-chart-document@3.0.0"
     );
   });
   const productReportNodes = trace.nodes.filter(({ kind, title, node_id: nodeId }) => {
@@ -149,16 +166,28 @@ export function verifyFalcon24ResolutionTraceGate(
     );
   });
 
-  if (sqlNodes.length === 0) fail("FALCON24_RESOLUTION_TRACE_SQL_REQUIRED");
-  if (productQueryEvidenceNodes.length === 0) {
-    fail("FALCON24_RESOLUTION_TRACE_PRODUCT_QUERY_EVIDENCE_REQUIRED");
-  }
-  if (chartNodes.length === 0) fail("FALCON24_RESOLUTION_TRACE_CHART_REQUIRED");
-  if (productReportNodes.length === 0) fail("FALCON24_RESOLUTION_TRACE_REPORT_REQUIRED");
+  const sqlNode = requireExactlyOne(sqlNodes, "FALCON24_RESOLUTION_TRACE_SQL_CARDINALITY_INVALID");
+  const queryEvidenceNode = requireExactlyOne(
+    productQueryEvidenceNodes,
+    "FALCON24_RESOLUTION_TRACE_PRODUCT_QUERY_EVIDENCE_CARDINALITY_INVALID",
+  );
+  const analysisEvidenceNode = requireExactlyOne(
+    derivedAnalysisEvidenceNodes,
+    "FALCON24_RESOLUTION_TRACE_DERIVED_ANALYSIS_EVIDENCE_CARDINALITY_INVALID",
+  );
+  const chartNode = requireExactlyOne(
+    chartNodes,
+    "FALCON24_RESOLUTION_TRACE_CHART_CARDINALITY_INVALID",
+  );
+  const reportNode = requireExactlyOne(
+    productReportNodes,
+    "FALCON24_RESOLUTION_TRACE_REPORT_CARDINALITY_INVALID",
+  );
 
   for (const [nodes, artifactType] of [
     [sqlNodes, "SqlArtifact"],
     [productQueryEvidenceNodes, "QueryEvidence"],
+    [derivedAnalysisEvidenceNodes, "DerivedAnalysisEvidence"],
     [chartNodes, "ArtifactWorkspaceDocument"],
     [productReportNodes, "AnalysisReport"],
   ] as const) {
@@ -175,20 +204,52 @@ export function verifyFalcon24ResolutionTraceGate(
     }
   }
 
-  const sqlNodeIds = new Set(sqlNodes.map(({ node_id: nodeId }) => nodeId));
-  const queryEvidenceNodeIds = new Set(
-    productQueryEvidenceNodes.map(({ node_id: nodeId }) => nodeId),
+  const exactChain = [
+    [sqlNode.node_id, queryEvidenceNode.node_id, "FALCON24_RESOLUTION_TRACE_SQL_LINEAGE_REQUIRED"],
+    [
+      queryEvidenceNode.node_id,
+      analysisEvidenceNode.node_id,
+      "FALCON24_RESOLUTION_TRACE_ANALYSIS_EVIDENCE_LINEAGE_REQUIRED",
+    ],
+    [
+      analysisEvidenceNode.node_id,
+      chartNode.node_id,
+      "FALCON24_RESOLUTION_TRACE_CHART_ANALYSIS_LINEAGE_REQUIRED",
+    ],
+    [
+      analysisEvidenceNode.node_id,
+      reportNode.node_id,
+      "FALCON24_RESOLUTION_TRACE_REPORT_ANALYSIS_LINEAGE_REQUIRED",
+    ],
+    [
+      chartNode.node_id,
+      reportNode.node_id,
+      "FALCON24_RESOLUTION_TRACE_REPORT_CHART_LINEAGE_REQUIRED",
+    ],
+  ] as const;
+  for (const [fromNodeId, toNodeId, code] of exactChain) {
+    requireExactEvidenceEdge(trace, fromNodeId, toNodeId, code);
+  }
+  const requiredNodeIds = new Set([
+    sqlNode.node_id,
+    queryEvidenceNode.node_id,
+    analysisEvidenceNode.node_id,
+    chartNode.node_id,
+    reportNode.node_id,
+  ]);
+  const allowedEvidenceEdges = new Set(
+    exactChain.map(([fromNodeId, toNodeId]) => `${fromNodeId}\0${toNodeId}`),
   );
-  const chartNodeIds = new Set(chartNodes.map(({ node_id: nodeId }) => nodeId));
-  const reportNodeIds = new Set(productReportNodes.map(({ node_id: nodeId }) => nodeId));
-  if (!hasCompleteEvidenceCoverage(trace, sqlNodeIds, queryEvidenceNodeIds)) {
-    fail("FALCON24_RESOLUTION_TRACE_SQL_LINEAGE_REQUIRED");
-  }
-  if (!hasCompleteEvidenceCoverage(trace, queryEvidenceNodeIds, chartNodeIds)) {
-    fail("FALCON24_RESOLUTION_TRACE_CHART_LINEAGE_REQUIRED");
-  }
-  if (!hasCompleteEvidenceCoverage(trace, chartNodeIds, reportNodeIds)) {
-    fail("FALCON24_RESOLUTION_TRACE_REPORT_CHART_LINEAGE_REQUIRED");
+  if (
+    trace.edges.some(
+      (edge) =>
+        edge.kind === "EVIDENCE" &&
+        requiredNodeIds.has(edge.from_node_id) &&
+        requiredNodeIds.has(edge.to_node_id) &&
+        !allowedEvidenceEdges.has(`${edge.from_node_id}\0${edge.to_node_id}`),
+    )
+  ) {
+    fail("FALCON24_RESOLUTION_TRACE_EVIDENCE_CLOSURE_INVALID");
   }
 
   return {
@@ -197,6 +258,7 @@ export function verifyFalcon24ResolutionTraceGate(
     detail_count: details.length,
     sql_node_count: sqlNodes.length,
     query_evidence_node_count: productQueryEvidenceNodes.length,
+    analysis_evidence_node_count: derivedAnalysisEvidenceNodes.length,
     chart_node_count: chartNodes.length,
     report_node_count: productReportNodes.length,
   };

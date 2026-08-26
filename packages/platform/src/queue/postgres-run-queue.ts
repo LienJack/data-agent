@@ -1,6 +1,7 @@
 import {
   type AppScope,
   appScopeSchema,
+  DEFAULT_RUN_EXECUTION_POLICY,
   type PortResult,
   type RunQueuePort,
   type RunWorkLease,
@@ -39,6 +40,7 @@ interface RunWorkLeaseRow {
   readonly lease_token: string | number;
   readonly worker_fence: string | number;
   readonly lease_expires_at: Date | string;
+  readonly execution_policy: unknown;
 }
 
 interface TimestampRow {
@@ -92,23 +94,31 @@ function iso(value: Date | string): string {
 }
 
 function leaseFromRow(scope: AppScope, row: RunWorkLeaseRow): RunWorkLease {
-  return runWorkLeaseSchema.parse({
-    scope,
-    principal_id: row.principal_id,
-    outbox_id: row.outbox_id,
-    run_id: row.run_id,
-    command_id: row.command_id,
-    command_kind: row.command_kind,
-    attempt_id: row.attempt_id,
-    attempt_no: row.attempt_no,
-    delivery_attempt_no: row.delivery_attempt_no,
-    lease_duration_ms: row.lease_duration_ms,
-    worker_id: row.worker_id,
-    lease_token: Number(row.lease_token),
-    worker_fence: Number(row.worker_fence),
-    expires_at: iso(row.lease_expires_at),
-    payload: row.payload_json,
-  });
+  try {
+    return runWorkLeaseSchema.parse({
+      scope,
+      principal_id: row.principal_id,
+      outbox_id: row.outbox_id,
+      run_id: row.run_id,
+      command_id: row.command_id,
+      command_kind: row.command_kind,
+      attempt_id: row.attempt_id,
+      attempt_no: row.attempt_no,
+      delivery_attempt_no: row.delivery_attempt_no,
+      lease_duration_ms: row.lease_duration_ms,
+      worker_id: row.worker_id,
+      lease_token: Number(row.lease_token),
+      worker_fence: Number(row.worker_fence),
+      expires_at: iso(row.lease_expires_at),
+      execution_policy: row.execution_policy,
+      payload: row.payload_json,
+    });
+  } catch {
+    throw new PersistenceBoundaryError(
+      "RUN_QUEUE_DATABASE_CONTRACT_INVALID",
+      "Run Queue 返回的 exact lease execution policy 不符合冻结契约。",
+    );
+  }
 }
 
 export function createPostgresRunQueue(
@@ -166,7 +176,11 @@ export function createPostgresRunQueue(
              work.worker_id,
              work.lease_token,
              work.worker_fence,
-             work.expires_at as lease_expires_at
+             work.expires_at as lease_expires_at,
+             pg_catalog.coalesce(
+               app_data_agent.resolve_falcon24_run_execution_policy(run.run_id),
+               $8::jsonb
+             ) as execution_policy
            from app_data_agent.claim_run_work($1::text, $2::integer, $3::integer) as work
            join app_data_agent.runs as run
              on run.app_id = $4::uuid
@@ -194,6 +208,7 @@ export function createPostgresRunQueue(
             capability.scope.tenant_id,
             capability.scope.environment,
             capability.principal,
+            DEFAULT_RUN_EXECUTION_POLICY,
           ],
         );
         const row = result.rows[0];

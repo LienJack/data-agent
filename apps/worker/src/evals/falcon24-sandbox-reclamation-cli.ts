@@ -1,3 +1,4 @@
+import { randomUUID } from "node:crypto";
 import { readFile } from "node:fs/promises";
 import { resolve } from "node:path";
 import { sha256ContentHash } from "@data-agent/contracts/common";
@@ -38,34 +39,90 @@ function requireValue<T>(
   return result.value;
 }
 
+function stableErrorCode(error: unknown): string {
+  const candidate = error instanceof Error ? error.message : null;
+  return typeof candidate === "string" && /^[A-Z][A-Z0-9_]{2,127}$/u.test(candidate)
+    ? candidate
+    : "FALCON24_SANDBOX_RECLAMATION_FAILED";
+}
+
+type CampaignHoldResult =
+  | { readonly ok: true; readonly value: unknown }
+  | { readonly ok: false; readonly error: { readonly code: string } };
+
+export class Falcon24ReclamationHoldDiagnosticError extends Error {
+  override readonly name = "Falcon24ReclamationHoldDiagnosticError";
+  readonly code: string;
+  readonly hold_failure_code: string;
+
+  constructor(originalError: unknown, holdError: unknown) {
+    const originalCode = stableErrorCode(originalError);
+    super(originalCode, { cause: originalError });
+    this.code = originalCode;
+    this.hold_failure_code = stableErrorCode(holdError);
+  }
+}
+
+export async function holdReclamationAfterFailure(input: {
+  readonly originalError: unknown;
+  readonly hold: () => Promise<CampaignHoldResult>;
+}): Promise<never> {
+  if (
+    new Set([
+      "FALCON24_SANDBOX_RECLAMATION_ALREADY_CLAIMED",
+      "FALCON24_SANDBOX_RECLAMATION_OUTCOME_UNKNOWN",
+    ]).has(stableErrorCode(input.originalError))
+  ) {
+    throw input.originalError;
+  }
+  let result: CampaignHoldResult;
+  try {
+    result = await input.hold();
+  } catch (holdError) {
+    throw new Falcon24ReclamationHoldDiagnosticError(input.originalError, holdError);
+  }
+  if (!result.ok && result.error.code !== "FALCON24_CAMPAIGN_HOLD_REPLAY_MISMATCH") {
+    throw new Falcon24ReclamationHoldDiagnosticError(input.originalError, result.error);
+  }
+  throw input.originalError;
+}
+
 export async function reclaimFalcon24RunSandboxes(input: {
-  readonly runtime: Pick<OpenSandboxAnalysisRuntime, "cleanupRun">;
+  readonly runtime: () => Pick<OpenSandboxAnalysisRuntime, "cleanupRun">;
+  readonly claim: () => Promise<
+    | { readonly disposition: "CLAIMED"; readonly receipt: null }
+    | {
+        readonly disposition: "COMPLETED";
+        readonly receipt: Awaited<ReturnType<typeof buildFalcon24SandboxReclamationReceipt>>;
+      }
+  >;
   readonly campaign_id: string;
   readonly run_id: string;
   readonly runtime_attestation_hash: `sha256:${string}`;
 }) {
   const campaignId = falcon24AcceptanceCampaignIdSchema.parse(input.campaign_id);
   const runId = runIdSchema.parse(input.run_id);
-  const cleanup = await input.runtime.cleanupRun({ run_id: runId });
+  const claim = await input.claim();
+  if (claim.disposition === "COMPLETED") {
+    return { disposition: "COMPLETED" as const, receipt: claim.receipt };
+  }
+  const cleanup = await input.runtime().cleanupRun({ run_id: runId });
   if (cleanup.residual !== 0) throw new TypeError("FALCON24_SANDBOX_RECLAMATION_INCOMPLETE");
-  return buildFalcon24SandboxReclamationReceipt({
-    schema_version: "falcon24-sandbox-reclamation-receipt@2.0.0" as const,
-    campaign_id: campaignId,
-    run_id: runId,
-    runtime_attestation_hash: input.runtime_attestation_hash,
-    ...cleanup,
-  });
+  return {
+    disposition: "CLAIMED" as const,
+    receipt: await buildFalcon24SandboxReclamationReceipt({
+      schema_version: "falcon24-sandbox-reclamation-receipt@2.0.0" as const,
+      campaign_id: campaignId,
+      run_id: runId,
+      runtime_attestation_hash: input.runtime_attestation_hash,
+      ...cleanup,
+    }),
+  };
 }
 
 async function main() {
   const root = resolveRuntimeRepositoryRoot(process.cwd());
   const environment = loadRuntimeEnvironment({ cwd: root, environment: process.env }).environment;
-  if (
-    environment.DATA_AGENT_FALCON24_ACCEPTANCE_EXECUTION_POLICY?.trim() !==
-    FALCON24_STRICT_ACCEPTANCE_POLICY_ID
-  ) {
-    throw new TypeError("FALCON24_ACCEPTANCE_EXECUTION_POLICY_REQUIRED");
-  }
   const databaseUrl =
     environment.DATA_AGENT_DATABASE_URL?.trim() ??
     environment.DATA_AGENT_JOB_DATABASE_URL?.trim() ??
@@ -80,17 +137,8 @@ async function main() {
     });
   const campaignId = falcon24AcceptanceCampaignIdSchema.parse(argument("campaign-id"));
   const runId = runIdSchema.parse(argument("run-id"));
-  const attestationPath = resolve(
-    root,
-    argument("runtime-attestation") ?? "infra/docker/opensandbox-analysis-attestation.json",
-  );
-  const runtimeAttestationHash = await sha256ContentHash(
-    JSON.parse(await readFile(attestationPath, "utf8")),
-  );
-  const runtime = createEnvironmentOpenSandboxAnalysisRuntime(environment, {
-    max_file_transfer_attempts: 1,
-  });
-  if (!runtime) throw new TypeError("FALCON24_SANDBOX_RUNTIME_REQUIRED");
+  const reclamationRecoveryToken = runIdSchema.parse(argument("recovery-token") ?? runId);
+  const reclamationClaimToken = runIdSchema.parse(argument("claim-token") ?? randomUUID());
   const pool = new pg.Pool({
     connectionString: databaseUrl,
     application_name: "data-agent-falcon24-sandbox-reclamation",
@@ -106,20 +154,66 @@ async function main() {
       pool: sqlPool,
       authorizer: capabilityAuthority.authorizer,
     });
-    const receipt = await reclaimFalcon24RunSandboxes({
-      runtime,
-      campaign_id: campaignId,
-      run_id: runId,
-      runtime_attestation_hash: runtimeAttestationHash,
-    });
-    requireValue(
-      await campaignAuthority.recordSandboxReclamation(capability, {
+    try {
+      if (
+        environment.DATA_AGENT_FALCON24_ACCEPTANCE_EXECUTION_POLICY?.trim() !==
+        FALCON24_STRICT_ACCEPTANCE_POLICY_ID
+      ) {
+        throw new TypeError("FALCON24_ACCEPTANCE_EXECUTION_POLICY_REQUIRED");
+      }
+      const attestationPath = resolve(
+        root,
+        argument("runtime-attestation") ?? "infra/docker/opensandbox-analysis-attestation.json",
+      );
+      const runtimeAttestationHash = await sha256ContentHash(
+        JSON.parse(await readFile(attestationPath, "utf8")),
+      );
+      const outcome = await reclaimFalcon24RunSandboxes({
+        runtime: () => {
+          const runtime = createEnvironmentOpenSandboxAnalysisRuntime(environment, {
+            max_file_transfer_attempts: 1,
+          });
+          if (!runtime) throw new TypeError("FALCON24_SANDBOX_RUNTIME_REQUIRED");
+          return runtime;
+        },
+        claim: async () => {
+          return requireValue(
+            await campaignAuthority.claimSandboxReclamation(capability, {
+              campaign_id: campaignId,
+              run_id: runId,
+              runtime_attestation_hash: runtimeAttestationHash,
+              reclamation_recovery_token: reclamationRecoveryToken,
+              reclamation_claim_token: reclamationClaimToken,
+            }),
+          );
+        },
         campaign_id: campaignId,
         run_id: runId,
-        receipt,
-      }),
-    );
-    process.stdout.write(`${JSON.stringify(receipt, null, 2)}\n`);
+        runtime_attestation_hash: runtimeAttestationHash,
+      });
+      if (outcome.disposition === "CLAIMED") {
+        requireValue(
+          await campaignAuthority.recordSandboxReclamation(capability, {
+            campaign_id: campaignId,
+            run_id: runId,
+            reclamation_claim_token: reclamationClaimToken,
+            receipt: outcome.receipt,
+          }),
+        );
+      }
+      process.stdout.write(`${JSON.stringify(outcome.receipt, null, 2)}\n`);
+    } catch (error) {
+      await holdReclamationAfterFailure({
+        originalError: error,
+        hold: () =>
+          campaignAuthority.hold(capability, {
+            campaign_id: campaignId,
+            run_id: runId,
+            failure_layer: "SANDBOX_RECLAMATION",
+            failure_code: stableErrorCode(error),
+          }),
+      });
+    }
   } finally {
     await pool.end();
   }
@@ -130,14 +224,20 @@ if (
   process.argv[1]?.endsWith("falcon24-sandbox-reclamation-cli.js")
 ) {
   void main().catch((error: unknown) => {
+    const reasonCode =
+      error instanceof Falcon24ReclamationHoldDiagnosticError ? error.code : stableErrorCode(error);
     process.stderr.write(
       `${JSON.stringify({
-        terminal: "HOLD",
+        terminal: new Set([
+          "FALCON24_SANDBOX_RECLAMATION_ALREADY_CLAIMED",
+          "FALCON24_SANDBOX_RECLAMATION_OUTCOME_UNKNOWN",
+        ]).has(reasonCode)
+          ? "CONFLICT"
+          : "HOLD",
         failure_layer: "SANDBOX_RECLAMATION",
-        reason_code:
-          error instanceof Error && /^[A-Z][A-Z0-9_]{2,127}$/u.test(error.message)
-            ? error.message
-            : "FALCON24_SANDBOX_RECLAMATION_FAILED",
+        reason_code: reasonCode,
+        hold_failure_code:
+          error instanceof Falcon24ReclamationHoldDiagnosticError ? error.hold_failure_code : null,
       })}\n`,
     );
     process.exitCode = 2;

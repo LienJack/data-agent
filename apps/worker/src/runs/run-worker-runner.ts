@@ -13,9 +13,9 @@ import {
   type MastraSnapshotBinding,
   mastraSnapshotBindingSchema,
   type PortResult,
-  RUN_RETRY_MAX_ATTEMPTS,
   RUN_RETRY_MIN_DELAY_MS,
   type RunEventStorePort,
+  type RunExecutionPolicy,
   type RunProjectionRecord,
   type RunQueuePort,
   type RunRuntimeEvent,
@@ -241,10 +241,10 @@ export interface RunWorkerRunnerDependencies {
   readonly execution_timeout_ms?: number;
   readonly heartbeat_interval_ms?: number;
   readonly side_effect_timeout_ms?: number;
-  readonly max_run_attempts?: number;
   readonly on_run_failure?: (input: {
     readonly lease: RunWorkLease;
     readonly error_code: string;
+    readonly execution_policy: RunExecutionPolicy;
   }) => Promise<PortResult<void>>;
   readonly reconcile_run_failures?: () => Promise<PortResult<void>>;
 }
@@ -362,12 +362,6 @@ function processCrashFailure(): PortResult<RunWorkerCycleOutcome> {
 export function createRunWorkerRunner(dependencies: RunWorkerRunnerDependencies): RunWorkerRunner {
   const now = dependencies.now ?? (() => new Date());
   const createId = dependencies.create_id ?? defaultIdFactory;
-  const maxRunAttempts = z
-    .number()
-    .int()
-    .min(1)
-    .max(RUN_RETRY_MAX_ATTEMPTS)
-    .parse(dependencies.max_run_attempts ?? RUN_RETRY_MAX_ATTEMPTS);
   const timing = workerRuntimeTimingSchema.parse({
     execution_timeout_ms: dependencies.execution_timeout_ms ?? 300_000,
     heartbeat_interval_ms: dependencies.heartbeat_interval_ms ?? 15_000,
@@ -386,6 +380,36 @@ export function createRunWorkerRunner(dependencies: RunWorkerRunnerDependencies)
       return failure("RUN_PROJECTION_NOT_FOUND", "Lease 对应的 Run Projection 不存在。", false);
     }
     return success(result.value);
+  }
+
+  async function loadTerminalFailureCode(
+    lease: RunWorkLease,
+    record: RunProjectionRecord,
+  ): Promise<PortResult<string>> {
+    const terminalEventId = record.projection.terminal_event_id;
+    const events = await dependencies.event_store.listEvents({
+      scope: lease.scope,
+      run_id: lease.run_id,
+      after_sequence: record.projection.version - 1,
+      limit: 1,
+    });
+    if (!events.ok) return events;
+    const terminal = events.value[0];
+    if (
+      !terminalEventId ||
+      events.value.length !== 1 ||
+      !terminal ||
+      terminal.event_id !== terminalEventId ||
+      terminal.sequence !== record.projection.version ||
+      terminal.event_type !== "run.failed"
+    ) {
+      return failure(
+        "RUN_FAILURE_TERMINAL_EVENT_INVALID",
+        "FAILED Run 终态事件无法通过 exact event identity 验证。",
+        false,
+      );
+    }
+    return success(terminal.payload.error_code);
   }
 
   async function guardRunningLease(
@@ -809,6 +833,7 @@ export function createRunWorkerRunner(dependencies: RunWorkerRunnerDependencies)
 
   async function failRun(
     lease: RunWorkLease,
+    executionPolicy: RunExecutionPolicy,
     errorCode: string,
   ): Promise<PortResult<RunWorkerCycleOutcome>> {
     const appended = await appendWhileRunning(lease, (record) => ({
@@ -831,20 +856,43 @@ export function createRunWorkerRunner(dependencies: RunWorkerRunnerDependencies)
       if (stale) return stale;
       return appended;
     }
-    const failureHook = await invokeRunFailureHook(lease, errorCode);
+    const failureHook = await invokeRunFailureHook(lease, executionPolicy, errorCode);
+    if (!failureHook.ok) return failureHook;
     const completed = await completeQueue(lease, appended.value.projection, "FAILED");
     if (!completed.ok) return completed;
-    if (!failureHook.ok) return failureHook;
     return completed;
+  }
+
+  async function settleLeasedFailure(
+    lease: RunWorkLease,
+    executionPolicy: RunExecutionPolicy,
+    failed: PortResult<unknown>,
+  ): Promise<PortResult<RunWorkerCycleOutcome>> {
+    if (failed.ok) {
+      throw new TypeError("RUN_WORKER_FAILURE_SETTLEMENT_REQUIRES_FAILURE");
+    }
+    const stale = await reconcileStaleConflict(lease, failed);
+    if (stale) return stale;
+    if (executionPolicy.max_run_attempts === 1)
+      return failRun(lease, executionPolicy, failed.error.code);
+    return failed;
   }
 
   async function invokeRunFailureHook(
     lease: RunWorkLease,
+    executionPolicy: RunExecutionPolicy,
     errorCode: string,
   ): Promise<PortResult<void>> {
-    if (!dependencies.on_run_failure) return success(undefined);
+    if (!executionPolicy.hold_on_failure) return success(undefined);
+    if (!dependencies.on_run_failure) {
+      return failure("RUN_FAILURE_HOOK_REQUIRED", "严格验收 Run 缺少数据库 HOLD hook。", false);
+    }
     try {
-      return await dependencies.on_run_failure({ lease, error_code: errorCode });
+      return await dependencies.on_run_failure({
+        lease,
+        error_code: errorCode,
+        execution_policy: executionPolicy,
+      });
     } catch {
       return failure(
         "RUN_FAILURE_HOOK_FAILED",
@@ -858,10 +906,11 @@ export function createRunWorkerRunner(dependencies: RunWorkerRunnerDependencies)
     lease: RunWorkLease,
     resultValue: unknown,
     context: RunExecutionContext,
+    executionPolicy: RunExecutionPolicy,
   ): Promise<PortResult<RunWorkerCycleOutcome>> {
     const parsed = runExecutorResultSchema.safeParse(resultValue);
     if (!parsed.success) {
-      return failRun(lease, "RUN_EXECUTOR_RESULT_INVALID");
+      return failRun(lease, executionPolicy, "RUN_EXECUTOR_RESULT_INVALID");
     }
 
     const result = parsed.data;
@@ -920,8 +969,8 @@ export function createRunWorkerRunner(dependencies: RunWorkerRunnerDependencies)
       }
 
       case "RETRY": {
-        if (lease.delivery_attempt_no >= maxRunAttempts) {
-          return failRun(lease, "RUN_ATTEMPT_BUDGET_EXHAUSTED");
+        if (lease.delivery_attempt_no >= executionPolicy.max_run_attempts) {
+          return failRun(lease, executionPolicy, "RUN_ATTEMPT_BUDGET_EXHAUSTED");
         }
         const appended = await appendWhileRunning(lease, (record) => ({
           schema_version: "1.0.0",
@@ -973,7 +1022,7 @@ export function createRunWorkerRunner(dependencies: RunWorkerRunnerDependencies)
       }
 
       case "FAILED": {
-        return failRun(lease, result.error_code);
+        return failRun(lease, executionPolicy, result.error_code);
       }
     }
   }
@@ -1024,6 +1073,7 @@ export function createRunWorkerRunner(dependencies: RunWorkerRunnerDependencies)
           false,
         );
       }
+      const executionPolicy = lease.execution_policy;
       const current = await readProjection(lease);
       if (!current.ok) {
         return current;
@@ -1032,6 +1082,12 @@ export function createRunWorkerRunner(dependencies: RunWorkerRunnerDependencies)
         current.value.projection.status === "COMPLETED" ||
         current.value.projection.status === "FAILED"
       ) {
+        if (current.value.projection.status === "FAILED" && executionPolicy.hold_on_failure) {
+          const errorCode = await loadTerminalFailureCode(lease, current.value);
+          if (!errorCode.ok) return errorCode;
+          const failureHook = await invokeRunFailureHook(lease, executionPolicy, errorCode.value);
+          if (!failureHook.ok) return failureHook;
+        }
         const completed = await dependencies.queue.complete({
           lease,
           final_event_sequence: current.value.projection.version,
@@ -1060,17 +1116,33 @@ export function createRunWorkerRunner(dependencies: RunWorkerRunnerDependencies)
         if (stale) return stale;
         return leasedEvent;
       }
-      const initialHeartbeat = await dependencies.queue.heartbeat({ lease });
+      let initialHeartbeat: PortResult<{ readonly expires_at: string }>;
+      try {
+        initialHeartbeat = await dependencies.queue.heartbeat({ lease });
+      } catch {
+        initialHeartbeat = failure(
+          "RUN_QUEUE_HEARTBEAT_FAILED",
+          "Run Queue 初始 Heartbeat 执行失败。",
+          false,
+        );
+      }
       if (!initialHeartbeat.ok) {
-        const stale = await reconcileStaleConflict(lease, initialHeartbeat);
-        if (stale) return stale;
-        return initialHeartbeat;
+        return settleLeasedFailure(lease, executionPolicy, initialHeartbeat);
       }
       // Effective Config consumption is fence-bound and therefore must happen
       // only after the durable run.leased event has advanced the projection to
       // RUNNING for this exact worker fence.
-      const effectiveConfig = await loadEffectiveConfig(lease);
-      if (!effectiveConfig.ok) return effectiveConfig;
+      let effectiveConfig: PortResult<EffectiveConfigWorkerConsumption>;
+      try {
+        effectiveConfig = await loadEffectiveConfig(lease);
+      } catch {
+        effectiveConfig = failure(
+          "EFFECTIVE_CONFIG_WORKER_CONSUMPTION_INVALID",
+          "Effective Config Loader 执行失败。",
+          false,
+        );
+      }
+      if (!effectiveConfig.ok) return settleLeasedFailure(lease, executionPolicy, effectiveConfig);
       const runController = new AbortController();
       const executionDeadlineAt = new Date(
         now().getTime() + timing.execution_timeout_ms,
@@ -1089,7 +1161,7 @@ export function createRunWorkerRunner(dependencies: RunWorkerRunnerDependencies)
       const settleDeadline = () =>
         applyExecutorResult(
           lease,
-          lease.delivery_attempt_no >= maxRunAttempts
+          lease.delivery_attempt_no >= executionPolicy.max_run_attempts
             ? {
                 kind: "FAILED",
                 error_code: "RUN_ATTEMPT_BUDGET_EXHAUSTED",
@@ -1100,11 +1172,11 @@ export function createRunWorkerRunner(dependencies: RunWorkerRunnerDependencies)
                 retry_delay_ms: RUN_RETRY_MIN_DELAY_MS,
               },
           context,
+          executionPolicy,
         );
       const settleHeartbeatFailure = async (error: ContractError) => {
         const heartbeatFailure = { ok: false, error } as const;
-        const stale = await reconcileStaleConflict(lease, heartbeatFailure);
-        return stale ?? heartbeatFailure;
+        return settleLeasedFailure(lease, executionPolicy, heartbeatFailure);
       };
 
       try {
@@ -1121,30 +1193,41 @@ export function createRunWorkerRunner(dependencies: RunWorkerRunnerDependencies)
           return settleDeadline();
         }
         if (restorationOutcome.kind === "ERROR") {
-          if (lease.delivery_attempt_no >= maxRunAttempts) {
-            return failRun(lease, "RUN_ATTEMPT_BUDGET_EXHAUSTED");
+          if (lease.delivery_attempt_no >= executionPolicy.max_run_attempts) {
+            return failRun(lease, executionPolicy, "RUN_ATTEMPT_BUDGET_EXHAUSTED");
           }
           return processCrashFailure();
         }
         const restored = restorationOutcome.value;
         if (!restored.ok) {
-          return restored;
+          return settleLeasedFailure(lease, executionPolicy, restored);
         }
         const restoredSnapshot = restored.value
           ? mastraSnapshotBindingSchema.safeParse(restored.value)
           : null;
         if (restoredSnapshot && !restoredSnapshot.success) {
-          return failure(
-            "RUN_SNAPSHOT_INVALID",
-            "持久层返回的 Snapshot 不满足权威绑定契约。",
+          return settleLeasedFailure(
+            lease,
+            executionPolicy,
+            failure<never>(
+              "RUN_SNAPSHOT_INVALID",
+              "持久层返回的 Snapshot 不满足权威绑定契约。",
+              false,
+            ),
+          );
+        }
+        let restorationHeartbeat: PortResult<{ readonly expires_at: string }>;
+        try {
+          restorationHeartbeat = await context.heartbeat();
+        } catch {
+          restorationHeartbeat = failure(
+            "RUN_QUEUE_HEARTBEAT_FAILED",
+            "Snapshot 恢复后的 Heartbeat 执行失败。",
             false,
           );
         }
-        const restorationHeartbeat = await context.heartbeat();
         if (!restorationHeartbeat.ok) {
-          const stale = await reconcileStaleConflict(lease, restorationHeartbeat);
-          if (stale) return stale;
-          return restorationHeartbeat;
+          return settleLeasedFailure(lease, executionPolicy, restorationHeartbeat);
         }
 
         const executorOutcome = await supervisor.waitFor(() =>
@@ -1172,13 +1255,18 @@ export function createRunWorkerRunner(dependencies: RunWorkerRunnerDependencies)
           ) {
             return staleOutcome(lease, observed.value);
           }
-          if (lease.delivery_attempt_no >= maxRunAttempts) {
-            const exhausted = await failRun(lease, "RUN_ATTEMPT_BUDGET_EXHAUSTED");
+          if (lease.delivery_attempt_no >= executionPolicy.max_run_attempts) {
+            const exhausted = await failRun(lease, executionPolicy, "RUN_ATTEMPT_BUDGET_EXHAUSTED");
             return exhausted;
           }
           return processCrashFailure();
         }
-        const applied = await applyExecutorResult(lease, executorOutcome.value, context);
+        const applied = await applyExecutorResult(
+          lease,
+          executorOutcome.value,
+          context,
+          executionPolicy,
+        );
         return applied;
       } finally {
         supervisor.stop();

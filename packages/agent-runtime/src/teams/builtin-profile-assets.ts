@@ -155,6 +155,7 @@ export const BUILTIN_TEAM_WORKFLOWS = {
 
 interface BuiltinSkillDefinition {
   readonly skill_id: string;
+  readonly revision: number;
   readonly name: string;
   readonly profile_id: DataAgentSpecialistProfileId;
   readonly capabilities: readonly string[];
@@ -164,6 +165,7 @@ interface BuiltinSkillDefinition {
 export const BUILTIN_TEAM_SKILLS: readonly BuiltinSkillDefinition[] = [
   {
     skill_id: "00000000-0000-4000-8000-000000002401",
+    revision: 2,
     name: "Governed Statistical Analysis",
     profile_id: "governed-analysis-agent",
     capabilities: ["analysis.program.execute"],
@@ -171,6 +173,7 @@ export const BUILTIN_TEAM_SKILLS: readonly BuiltinSkillDefinition[] = [
   },
   {
     skill_id: "00000000-0000-4000-8000-000000002101",
+    revision: 1,
     name: "Schema to Candidate",
     profile_id: "semantic-management-agent",
     capabilities: ["semantic.candidate.write", "semantic.catalog.read"],
@@ -178,6 +181,7 @@ export const BUILTIN_TEAM_SKILLS: readonly BuiltinSkillDefinition[] = [
   },
   {
     skill_id: "00000000-0000-4000-8000-000000002102",
+    revision: 1,
     name: "Drift Reanalysis",
     profile_id: "semantic-management-agent",
     capabilities: ["semantic.candidate.write", "semantic.catalog.read"],
@@ -185,6 +189,7 @@ export const BUILTIN_TEAM_SKILLS: readonly BuiltinSkillDefinition[] = [
   },
   {
     skill_id: "00000000-0000-4000-8000-000000002103",
+    revision: 1,
     name: "Metric Maintenance",
     profile_id: "semantic-management-agent",
     capabilities: ["semantic.candidate.write", "semantic.catalog.read"],
@@ -192,6 +197,7 @@ export const BUILTIN_TEAM_SKILLS: readonly BuiltinSkillDefinition[] = [
   },
   {
     skill_id: "00000000-0000-4000-8000-000000002201",
+    revision: 1,
     name: "Question to Query",
     profile_id: "governed-text2sql-agent",
     capabilities: ["semantic.release.read", "sql.compiler.compile"],
@@ -199,6 +205,7 @@ export const BUILTIN_TEAM_SKILLS: readonly BuiltinSkillDefinition[] = [
   },
   {
     skill_id: "00000000-0000-4000-8000-000000002202",
+    revision: 1,
     name: "Ambiguity Resolution",
     profile_id: "governed-text2sql-agent",
     capabilities: ["semantic.release.read"],
@@ -206,6 +213,7 @@ export const BUILTIN_TEAM_SKILLS: readonly BuiltinSkillDefinition[] = [
   },
   {
     skill_id: "00000000-0000-4000-8000-000000002203",
+    revision: 1,
     name: "Bounded Query Repair",
     profile_id: "governed-text2sql-agent",
     capabilities: ["sql.compiler.compile", "sql.sandbox.execute"],
@@ -213,6 +221,7 @@ export const BUILTIN_TEAM_SKILLS: readonly BuiltinSkillDefinition[] = [
   },
   {
     skill_id: "00000000-0000-4000-8000-000000002301",
+    revision: 1,
     name: "Evidence to Report",
     profile_id: "report-writing-agent",
     capabilities: ["evidence.read", "report.project"],
@@ -220,6 +229,7 @@ export const BUILTIN_TEAM_SKILLS: readonly BuiltinSkillDefinition[] = [
   },
   {
     skill_id: "00000000-0000-4000-8000-000000002302",
+    revision: 1,
     name: "Chart Selection",
     profile_id: "report-writing-agent",
     capabilities: ["report.project"],
@@ -227,6 +237,7 @@ export const BUILTIN_TEAM_SKILLS: readonly BuiltinSkillDefinition[] = [
   },
   {
     skill_id: "00000000-0000-4000-8000-000000002303",
+    revision: 1,
     name: "Claim Citation",
     profile_id: "report-writing-agent",
     capabilities: ["evidence.read", "report.project"],
@@ -275,9 +286,9 @@ export async function buildBuiltinTeamMaterialization(input: BuiltinTeamMaterial
         schema_version: "skill-revision@1.0.0",
         scope: input.scope,
         skill_id: skill.skill_id,
-        revision: 1,
+        revision: skill.revision,
         name: skill.name,
-        source_url: `https://builtin.data-agent.invalid/skills/${skill.skill_id}/1`,
+        source_url: `https://builtin.data-agent.invalid/skills/${skill.skill_id}/${skill.revision}`,
         package_hash: packageHash,
         dependency_lock_hash: await sha256ContentHash([]),
         signer_id: BUILTIN_TEAM_SIGNER_ID,

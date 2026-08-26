@@ -12,6 +12,10 @@ import {
   timestampSchema,
   versionIdentifierSchema,
 } from "../common/index.js";
+import {
+  falcon24AcceptanceCampaignIdSchema,
+  falcon24AnalysisCaseIdSchema,
+} from "../evals/index.js";
 
 export const runtimeIdentifierSchema = z
   .string()
@@ -23,6 +27,23 @@ const positiveSafeIntegerSchema = z.number().int().positive().safe();
 const nonNegativeSafeIntegerSchema = z.number().int().nonnegative().safe();
 export const RUN_RETRY_MIN_DELAY_MS = 1_000;
 export const RUN_RETRY_MAX_ATTEMPTS = 5;
+export const DEFAULT_RUN_EXECUTION_POLICY = Object.freeze({
+  schema_version: "run-execution-policy@1.0.0" as const,
+  campaign_id: null,
+  case_id: null,
+  run_variant: null,
+  repetition: null,
+  policy_id: "default-run-retry@1.0.0" as const,
+  mode: "DEFAULT" as const,
+  max_run_attempts: RUN_RETRY_MAX_ATTEMPTS,
+  max_provider_attempts_per_call: 2 as const,
+  max_root_turns: 2 as const,
+  max_text2sql_candidate_attempts: 2 as const,
+  analysis_repair_budget_per_category: 1 as const,
+  max_file_transfer_attempts: 5 as const,
+  allow_stage_recovery: true,
+  hold_on_failure: false,
+});
 export const retryDelayMsSchema = z.number().int().min(RUN_RETRY_MIN_DELAY_MS).max(86_400_000);
 export const runLeaseDurationMsSchema = z.number().int().min(5_000).max(900_000);
 export const runtimeTimestampSchema = timestampSchema.refine(
@@ -786,6 +807,73 @@ export const sideEffectReceiptSchema = z
     }
   });
 
+export const runExecutionPolicySchema = z
+  .strictObject({
+    schema_version: z.literal("run-execution-policy@1.0.0"),
+    campaign_id: falcon24AcceptanceCampaignIdSchema.nullable(),
+    case_id: falcon24AnalysisCaseIdSchema.nullable(),
+    run_variant: z.enum(["COLD", "WARM"]).nullable(),
+    repetition: z.number().int().min(1).max(3).nullable(),
+    policy_id: z.enum(["default-run-retry@1.0.0", "falcon24-strict-zero-retry@1.0.0"]),
+    mode: z.enum(["DEFAULT", "FALCON24_STRICT"]),
+    max_run_attempts: z.number().int().min(1).max(RUN_RETRY_MAX_ATTEMPTS),
+    max_provider_attempts_per_call: z.union([z.literal(1), z.literal(2)]),
+    max_root_turns: z.union([z.literal(1), z.literal(2)]),
+    max_text2sql_candidate_attempts: z.union([z.literal(1), z.literal(2)]),
+    analysis_repair_budget_per_category: z.union([z.literal(0), z.literal(1)]),
+    max_file_transfer_attempts: z.number().int().min(1).max(5),
+    allow_stage_recovery: z.boolean(),
+    hold_on_failure: z.boolean(),
+  })
+  .superRefine((policy, context) => {
+    const strictFalcon = policy.policy_id === "falcon24-strict-zero-retry@1.0.0";
+    if (
+      strictFalcon !== (policy.campaign_id !== null) ||
+      strictFalcon !== (policy.case_id !== null) ||
+      strictFalcon !== (policy.run_variant !== null) ||
+      strictFalcon !== (policy.repetition !== null) ||
+      strictFalcon !== policy.hold_on_failure ||
+      policy.mode !== (strictFalcon ? "FALCON24_STRICT" : "DEFAULT") ||
+      policy.max_run_attempts !== (strictFalcon ? 1 : RUN_RETRY_MAX_ATTEMPTS) ||
+      policy.max_provider_attempts_per_call !== (strictFalcon ? 1 : 2) ||
+      policy.max_root_turns !== (strictFalcon ? 1 : 2) ||
+      policy.max_text2sql_candidate_attempts !== (strictFalcon ? 1 : 2) ||
+      policy.analysis_repair_budget_per_category !== (strictFalcon ? 0 : 1) ||
+      policy.max_file_transfer_attempts !== (strictFalcon ? 1 : 5) ||
+      policy.allow_stage_recovery !== !strictFalcon
+    ) {
+      context.addIssue({
+        code: "custom",
+        message:
+          "Run execution policy identity, retry budget and HOLD behavior must close exactly.",
+      });
+    }
+  });
+
+export function buildFalcon24RunExecutionPolicy(input: {
+  readonly campaign_id: string;
+  readonly case_id: z.infer<typeof falcon24AnalysisCaseIdSchema>;
+  readonly run_variant: "COLD" | "WARM";
+  readonly repetition: number;
+}): RunExecutionPolicy {
+  return deepFreeze(
+    runExecutionPolicySchema.parse({
+      schema_version: "run-execution-policy@1.0.0",
+      ...input,
+      policy_id: "falcon24-strict-zero-retry@1.0.0",
+      mode: "FALCON24_STRICT",
+      max_run_attempts: 1,
+      max_provider_attempts_per_call: 1,
+      max_root_turns: 1,
+      max_text2sql_candidate_attempts: 1,
+      analysis_repair_budget_per_category: 0,
+      max_file_transfer_attempts: 1,
+      allow_stage_recovery: false,
+      hold_on_failure: true,
+    }),
+  );
+}
+
 export const runWorkLeaseSchema = z.strictObject({
   scope: appScopeSchema,
   principal_id: immutableIdSchema,
@@ -801,6 +889,7 @@ export const runWorkLeaseSchema = z.strictObject({
   lease_token: positiveSafeIntegerSchema,
   worker_fence: positiveSafeIntegerSchema,
   expires_at: runtimeTimestampSchema,
+  execution_policy: runExecutionPolicySchema,
   payload: z.record(z.string(), z.json()),
 });
 
@@ -921,4 +1010,5 @@ export type MastraSnapshotBindingBody = z.infer<typeof mastraSnapshotBindingBody
 export type MastraSnapshotBinding = z.infer<typeof mastraSnapshotBindingSchema>;
 export type SideEffectReceipt = z.infer<typeof sideEffectReceiptSchema>;
 export type RunWorkLease = z.infer<typeof runWorkLeaseSchema>;
+export type RunExecutionPolicy = z.infer<typeof runExecutionPolicySchema>;
 export type RunControlCommand = z.infer<typeof runControlCommandSchema>;
