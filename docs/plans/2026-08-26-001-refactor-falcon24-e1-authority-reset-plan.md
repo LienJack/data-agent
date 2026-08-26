@@ -1,10 +1,11 @@
 ---
 title: "refactor: Falcon24 E1 Authority Reset 与 Root Agent 生产链重建"
 type: refactor
-status: proposed
+status: active
 date: 2026-08-26
+approved: 2026-08-26
 origin: .trellis/tasks/08-25-restore-root-agent-routing/handoff-2026-08-26.md
-supersedes_after_approval:
+supersedes:
   - .trellis/tasks/08-25-restore-root-agent-routing/design.md
   - .trellis/tasks/08-25-restore-root-agent-routing/implement.md
 ---
@@ -17,7 +18,7 @@ supersedes_after_approval:
 `Authority Epoch E1`。E1 只继承用户明确要求的定义性资产，所有运行身份、Published Semantic Release、
 Profile materialization、认证回执、Qualification、Campaign、Run、Artifact、Trace 与 Sandbox 回执均重新生成。
 
-实施从当前已提交 HEAD 与本计划提交开始；现有脏 worktree 只作为只读参考，不整体搬运未提交改动。批准后应建立新的
+实施从当前已提交 HEAD 与本计划提交开始；现有脏 worktree 只作为只读参考，不整体搬运未提交改动。实施时应建立新的
 隔离 worktree 实施 E1，保留当前暂停现场以便查阅，但不把其中未提交的 `10775`–`10777`、本地运行数据或历史验收
 Artifact 带入新分支。
 
@@ -25,6 +26,9 @@ Artifact 带入新分支。
 Run、Trace 和提交边界当成必须连续保留的权威状态，因此只能做前向修复、恢复和兼容性核验；现在用户明确放弃 Agent
 运行记录，只保留六类定义资产，最困难的 backfill、旧引用闭包、旧 deep link、旧 receipt parser 和跨版本恢复都不再是
 要求。执行风险因此从“修复历史状态且不得破坏引用”下降为“验证固定资产后，在空运行面重建唯一生产链”。
+
+验收按 G1–G5 逐层放大范围；链路排障与正式门禁分开。出现问题时，先沿 Authority、Root、Text2SQL、QueryEvidence、
+Analysis、Trace/UI 六层定位并排除，再创建一次干净的门禁执行；不允许在正式 slot 中边修边试。
 
 ## Outcome at a Glance
 
@@ -36,7 +40,7 @@ Run、Trace 和提交边界当成必须连续保留的权威状态，因此只�
 | LLM | 重放无敏感 Provider/Model/Profile 配置，重新绑定 SecretRef 并认证 | API key、旧 credential ref、旧 certification receipt |
 | 分析运行时 | 保留 Operator Manifest、实现、lock、image attestation 与方法定义 | 旧 Sandbox、Journal、Stage、Operator Result/Receipt |
 | Agent 执行 | Root V3 是唯一 Router，生产只走通用 Text2SQL/Analysis/Report | Direct QA、正则路由、固定 `query_kind`、Falcon case runtime |
-| 验收 | 新建 `E1-Q1` 资格与 `E1-C1` 30-slot Campaign | v12、v13、v14、v15 编号和历史成绩 |
+| 验收 | G1–G4 共 16 次分层资格；G5 为 `E1-C1` 30-slot Campaign | 把正式 Campaign 当调试循环、v12–v15 历史成绩 |
 
 ## Retention Boundary
 
@@ -138,15 +142,19 @@ Run、Trace 和提交边界当成必须连续保留的权威状态，因此只�
   PostgreSQL fence/transaction 下提交；任何 crash 只能观察 all-old 或 all-new。
 - **R11 — 无历史兼容的真实 UI。** Web 只显示 E1 Run 的 durable public events 和 exact ArtifactReference；无旧 run lookup、
   latest-by-id、raw payload/path fallback。每个成功验收 Run 必须在真实轨迹页面核对内容和 identity。
-- **R12 — 双阶段验收重置。** 新资格叫 `E1-Q1`，最终 Campaign 叫 `E1-C1`。资格 16/16 后才创建 30-slot 最终 Campaign；
-  任一 slot 首次失败即 HOLD，同一 manifest 不重试。
+- **R12 — 五级综合门禁。** `E1-Q1` 包含 G1 单链路探针 1 次、G2 五题最小版 5 次、G3 五题完整版 5 次和 G4 冷启动资格
+  5 次，共 16 次；16/16 后才能创建 G5 `E1-C1`，执行五题 × COLD/WARM × 3 共 30 次。任一正式 attempt 的
+  slot 首次失败即 HOLD，不在原 attempt 内修复、重试、跳过或续跑。
 - **R13 — 可证明的空基线。** E1 激活前后都要证明历史运行表、Artifact store、Campaign、Journal、Stage 与 Sandbox 残留为
   零；仅保留/recreate 清单中的配置与定义性资产。
-- **R14 — 批准前不动实现。** 本文件是评审边界。用户批准前不 reset 当前 worktree、不删除旧数据库、不创建新 worktree、
-  不生成 E1 manifest、不启动 G1。
+- **R14 — 计划与实施分离。** 方向批准不自动启动实施；用户明确要求开始前，不 reset 当前 worktree、不删除旧数据库、
+  不创建新 worktree、不生成 E1 manifest、不启动 G1。
 - **R15 — 环境声明真实。** 本地/开发 E1 可以绑定当前已验证的 locked local Sandbox attestation，但必须保留
   `production_isolation_proven=false` 和 production HOLD；`E1-C1=30/30` 只证明目标环境中的产品链通过，不自动升级为
   生产隔离 GO。生产部署另需满足 release image 与 Kata/gVisor/Cilium 等既定隔离门禁。
+- **R16 — 排障与门禁分离。** 已知链路故障未关闭时，gate runner 必须拒绝 claim slot。正式门禁失败后先退出 gate runner，
+  使用聚焦测试或探针定位并排除根因，再创建新的 immutable attempt；诊断结果不计入 G1–G5，禁止跨 attempt 拼接 PASS，
+  也禁止在失败 Run 上热修后续跑。
 
 ## Scope Boundaries
 
@@ -156,7 +164,7 @@ Run、Trace 和提交边界当成必须连续保留的权威状态，因此只�
 - fresh PostgreSQL 安装、`falcon_db_24` 定向导入、E1 activation authority 与 clean bootstrap；
 - Falcon24 Semantic Release、LLM config、Agent Cards、Operator/Sandbox attestation 的重新 materialize/certify；
 - Root V3、自主 Subagent 路由、通用 Text2SQL、治理分析、独立 Oracle、原子 Publisher；
-- E1-only Trace/API/UI、Sandbox 回收、G1–G4 与 30-slot 最终 Campaign；
+- E1-only Trace/API/UI、Sandbox 回收、六层链路排障、G1–G4 的 16 次资格与 G5 的 30-slot 最终 Campaign；
 - E1 通过后删除旧运行时、旧 parser、旧 Campaign surface 和过时文档。
 
 ### Out of Scope
@@ -208,6 +216,7 @@ DeepSeek、统计库与 Falcon 的版本都已经由本地 commit、lock、image
 | 分析选择 | 模型从语义/方法 registry 计划，Host 验证 obligations | 支持新问题且无 case-specific runtime | 按 case ID/关键词选择固定 program |
 | Oracle | evaluator-only 独立重算 | 防止模型/生产实现自证正确 | 生产算子与 Oracle 共用实现 |
 | 资格编号 | `E1-Q1` / `E1-C1` | 历史成绩已丢弃，编号应体现新权威基线 | 延续 v15 制造虚假连续性 |
+| 故障处理 | 六层链路排障在门禁外完成；G1–G5 只计分 | 先定位单层故障，再用干净 attempt 验证综合链路 | 在正式 slot 中边修边 retry，污染成绩 |
 | 当前脏现场 | 保留为只读参考，新 worktree 从 committed HEAD 开始 | 避免把半完成跨层补丁误当 E1 基线 | reset 当前 worktree 或整体复制 diff |
 | 激活后变更 | 任一 code/contract/build/frozen asset 变化创建下一 Epoch | Epoch baseline 必须 immutable，失败后不能替换 E1 内容 | 在 E1 内偷偷换 baseline 后创建 `E1-Q2` |
 
@@ -223,26 +232,20 @@ flowchart TB
   D[Semantic Release + LLM/Profile + Runtime Attestation]
   R[Root Analysis Trace Implementation]
   E[Freeze Commit Build and E1 Activation]
-  F[Root V3 Run]
-  G[Text2SQL + QueryEvidence]
-  H[Governed Analysis + Oracle]
-  I[Atomic Publisher]
-  J[Trace UI + Reclamation]
-  K[E1 Qualification]
-  L[E1 Final Campaign]
+  Q[G1-G4 Qualification 16 of 16]
+  L[G5 Final Campaign 30 of 30]
+  X[Six-layer Fault Isolation]
 
   A --> B
   B --> C
   C --> D
   D --> R
   R --> E
-  E --> F
-  F --> G
-  G --> H
-  H --> I
-  I --> J
-  J --> K
-  K --> L
+  E --> Q
+  Q --> L
+  Q -. HOLD .-> X
+  L -. HOLD .-> X
+  X -. fix and re-freeze .-> R
 ```
 
 ### E1 Baseline Manifest
@@ -285,18 +288,19 @@ acceptance
 ```
 
 U1 的 retained asset builder 只产生不含代码 commit 的 source manifest；U1–U6、U8、U9 与 U7-A 完成并形成冻结 commit/Web
-build 后，U7-B 再构造运行时 baseline candidate。PostgreSQL activation 必须在同一事务中读取并锁定 staging receipts，确认 dataset、semantic、
-model、profile、operator、sandbox、contract、commit 与 Web build 全部对应 candidate hash 后，才把 E1 从 `STAGED` 推进为
-`ACTIVE`。E1 激活前禁止创建 Question Run、Qualification 或 Campaign。
+build 后，U7-B 再构造运行时 baseline candidate。PostgreSQL activation 必须在同一事务中读取并锁定 staging receipts，确认
+dataset、semantic、model、profile、operator、sandbox、contract、commit 与 Web build 全部对应 candidate hash 后，才把 E1
+从 `STAGED` 推进为 `ACTIVE`。E1 激活前禁止创建 Question Run、Qualification 或 Campaign。
 
 ### Epoch and Reference Rules
 
 1. `authority_epochs` 只有一个 ACTIVE current row；E1 activation 使用 compare-and-set。
-2. `runs`、Effective Config、Qualification 和 Campaign 保存 `authority_epoch` 与 `baseline_hash`，并有复合 FK/constraint。
+2. `runs`、Effective Config、Qualification 和 Campaign 保存 `authority_epoch`、`baseline_hash`、`gate_id` 与 immutable
+   `attempt_id`，并有复合 FK/constraint。
 3. Artifact commit 从已锁 Run 解析 Epoch；请求 payload 不得自行选择 Epoch。
 4. 所有 external input refs（Semantic Release、Schema Snapshot、Model Profile、Operator Registry、Sandbox image）必须等于
    E1 baseline 已激活的 exact ref/hash。
-5. 旧 Epoch、缺 Epoch、不同 baseline hash、未激活 baseline 或跨 Run reference 在 I/O 前失败。
+5. 旧 Epoch、缺 Epoch、不同 baseline hash、未激活 baseline、错误 gate/attempt 或跨 Run reference 在 I/O 前失败。
 
 ### Runtime Path
 
@@ -413,7 +417,8 @@ flowchart TB
 
 **Approach:**
 
-- 新建 immutable baseline、staging receipt 和 current epoch tables/RPC；只有一个 E1 baseline 可以 ACTIVE。
+- 新建 immutable baseline、staging receipt、gate attempt 和 current epoch tables/RPC；只有一个 E1 baseline 可以 ACTIVE，
+  HOLD attempt 不可复活。
 - 为 Run/effective config/qualification/campaign 增加数据库拥有的 Epoch/baseline binding；Artifact commit 在事务内通过 Run 解析。
 - Migration preflight 对运行、Artifact、Campaign、Journal、Stage/outbox 等表做零行断言。该 migration 只支持 fresh install；
   发现旧运行数据立即失败，不 backfill、不 truncate、不暗中删除。
@@ -425,7 +430,7 @@ flowchart TB
 1. fresh PostgreSQL 17 全 migration 后 E1 为 `STAGED`/未激活，Question Run 创建被拒绝。
 2. 写入一条旧 Run、Artifact、Campaign、Journal 或 Stage fixture 后应用 E1 preflight，稳定失败且不删除任何行。
 3. baseline receipts 不完整、hash 不一致或重复 ACTIVE 时 activation 原子拒绝。
-4. E1 激活后创建 Run，数据库强制写入 exact Epoch/baseline；伪造 E0/E2、缺字段或旧 ID 被拒绝。
+4. E1 激活后创建 Run，数据库强制写入 exact Epoch/baseline/gate/attempt；伪造 E0/E2、缺字段或旧 ID 被拒绝。
 5. 同一 Run Artifact commit 成功；跨 Epoch/baseline/run reference 在 I/O 前拒绝。
 6. 并发 activation/Run creation 只能观察未激活或完整 E1，不能观察部分 baseline。
 
@@ -688,11 +693,11 @@ Oracle 或 Publisher。
 
 **Dependencies:** U9。
 
-### U7 — 冻结并激活 E1，执行 E1-Q1 与 E1-C1
+### U7 — 分层排障与 G1–G5 综合门禁
 
-**Purpose:** 用全新 identity 验证唯一生产链；资格只控制风险，不冒充最终 30 次成绩。
+**Purpose:** 先定位并排除具体链路故障，再用全新 immutable attempt 验证完整生产链；前四级资格不冒充最终 30 次验收。
 
-**Requirements:** R1、R7、R11、R12、R13、R15。
+**Requirements:** R1、R7、R11、R12、R13、R15、R16。
 
 **Files:**
 
@@ -712,38 +717,44 @@ Oracle 或 Publisher。
 
 **Approach:**
 
-- U7 分成两个不可颠倒的 gate。`U7-A` 先在 U8 之后实现本节列出的 Qualification/Campaign 合同、CLI、持久化和测试，重跑
+- U7 分成两个不可颠倒的阶段。`U7-A` 先在 U8 之后实现本节列出的 gate 合同、CLI、持久化和测试，重跑
   production import boundary，再把 U1–U6、U8、U9 与 U7-A 的全部代码、migration、contract、spec 和 Web build 固定为一个不再
-  变化的 implementation commit；`U7-B` 才允许做 fresh bootstrap、activation 和真实运行，且不得再修改仓库代码。
-- 任一后续 code/contract/spec/build 变化都会使本轮 baseline candidate 作废，必须从 U7-A 重新冻结并重建 clean environment，
-  不能只改 manifest hash。
+  变化的 implementation commit；`U7-B` 才允许做 final clean bootstrap、E1 activation 和正式门禁运行。
 - 在最终 clean volume 从完整 migration chain 重新安装数据库，重放 U3 bootstrap，materialize 最终 Agent Product Profiles；
-  disposable rehearsal 的 staging identity/receipt 不复制到最终环境。
-- 从冻结 commit、Web build 和最终 staging receipts 构建运行时 `falcon24-authority-baseline@1.0.0`，通过 U2 activation RPC
-  一次性激活 E1；activation 成功后才允许创建 `E1-Q1`。
-- Qualification/Campaign manifest 新增 exact E1 baseline、dataset、suite、semantic release、schema snapshot、model profile/
-  certification、operator registry、sandbox image、contract、code commit 与 Web build refs。
-- `E1-Q1` 固定顺序：G1 1 次单趋势；G2 五题最小版；G3 五题完整原文；G4 五题全新 Conversation/Run/Sandbox，合计
-  16 slots。所有 slot 调用同一 Root V3 production path。
-- 资格 16/16 后才创建 `E1-C1`：五题 × COLD/WARM × 3 = 30 slots，严格串行。
-- preflight 失败发生在 slot claim 前则不创建 Run/不消耗 slot；slot 一旦 claim，任何模型、SQL、Operator、Oracle、Publisher、
-  Trace/UI 或 reclamation 首败都原子 HOLD。不得自动 retry、继续下一 slot或复制新 manifest。
-- E1 baseline 激活后不可替换。若 code commit、baseline component、frozen contract 或 Web build 必须变化，E1 保持原终态并
-  创建下一 Authority Epoch `E2`，资格/最终编号从 `E2-Q1`/`E2-C1` 重新开始；不得创建内容漂移的 `E1-Q2`。
+  disposable rehearsal 的 staging identity/receipt 不复制到最终环境。从冻结 commit、Web build 和最终 staging receipts 构建
+  `falcon24-authority-baseline@1.0.0` 并通过 U2 activation RPC 原子激活 E1。
+- `E1-Q1` 与 `E1-C1` 的每次正式执行都有 immutable `attempt_id` 和 manifest hash；失败 attempt 不能复活、续跑或覆盖。
+- G1–G4 严格按用户定义执行：G1 单链路探针 1 次；G2 五题最小版 5 次；G3 原始五题完整版 5 次；G4 新会话、新 Run、
+  新 Sandbox 的冷启动资格 5 次，共 16 次。所有 slot 调用同一 Root V3 production path，G4 attempt 内无修复、无重试、无残留。
+- G1–G4 在同一 qualification attempt 中 16/16 后才创建 G5 `E1-C1`：五题 × COLD/WARM × 3 共 30 slots，严格串行。
+- gate preflight 发现已知链路问题或必要 receipt 缺失时，在 slot claim 前拒绝，不创建门禁 Run。slot 一旦 claim，任何模型、SQL、
+  Operator、Oracle、Publisher、Trace/UI 或 reclamation 首败都使当前 attempt 原子 HOLD，后续 slot 不启动。
+- HOLD 后必须退出 gate runner，按六层链路从上到下排查：Authority/Environment、Root/Delegation、Semantic/Text2SQL、
+  QueryEvidence/Arrow、Analysis/Oracle/Publisher、Trace/UI/Reclamation。排障使用聚焦测试或单层探针，结果不计入门禁成绩。
+- 根因排除并完成受影响层验证后，创建新的门禁 attempt。Qualification 从 G1 重新开始，Campaign 从 30 个 slot 的第一个重新
+  开始，禁止跨 attempt 拼接 PASS。若修复改变 code、contract、Web build、frozen asset 或 baseline component，则创建 E2 并从
+  G1 开始；只有已证明 baseline bytes 不变的外部瞬态故障，才允许在同一 Epoch 下创建新 attempt。
 - 每个成功 slot 必须有表格/报告/图表、backend trace、真实 UI、Sandbox residual=0 和 PostgreSQL atomic PASS。
 
 **Test scenarios:**
 
-1. baseline 缺 staging receipt、commit/Web build 漂移、环境 attestation 声明不实，或 manifest 缺任一 E1 ref、混入旧
-   v12–v15 ID/hash、slot 顺序不对或重复 Run ID时拒绝。
-2. G1 首败后 G2–G4 未创建 Run；G2/G3/G4 任一首败后后续 slot 不启动，同 manifest 重提拒绝。
-3. 资格未 16/16 时 E1-C1 创建失败；资格通过后 manifest 精确生成 30 个唯一有序 slot。
-4. COLD/WARM 各三次 answer/chart/operator closure 一致且 flake=0；任一不一致 HOLD。
-5. business terminal `HOLD_WITH_SENSITIVITY` 的 Q5 在 Oracle contract 满足时算题目 PASS，不与 campaign failure/HOLD 混淆。
-6. backend receipt、UI receipt、reclamation receipt、Run succeeded 和 publication bundle 任一缺失，slot 不能 PASS。
-7. Campaign 结束后数据库、management API 和 Docker observation 都证明 Sandbox/egress residual=0。
+1. 已知链路故障、必要 receipt 缺失、commit/Web build 漂移或环境 attestation 声明不实时，preflight 在 claim 前拒绝。
+2. 聚焦测试或单层探针即使 PASS 也不能计入 G1–G5；门禁 Run/Artifact 也不能被排障过程改写或复用。
+3. G1 验证一个指标、一个时间维度、一个趋势判断和一张图，六层闭合、轨迹可读且 Sandbox residual=0；否则 attempt HOLD。
+4. G2 精确生成五个核心版 slot，各验证核心指标、核心维度、一张图以及表/Join/口径；任一失败不启动下一门禁。
+5. G3 逐题运行五个 canonical 原文，要求 5/5 Oracle PASS、治理算子闭合和归因完整；Evaluator 不注入生产 SQL/program。
+6. G4 为五题分别创建新 Conversation/Run/Sandbox，5/5 且无修复、无重试、无残留；任何 identity 或 residual 复用都失败。
+7. G1–G4 未在同一 attempt 达到 16/16 时 G5 创建拒绝；通过后 G5 精确生成 30 个唯一有序 slot。
+8. G5 的 COLD/WARM 各三次 answer/chart/operator closure 一致且 flake=0；任一失败立即 HOLD，剩余 slot 未 claim。
+9. HOLD attempt 不能 resume/retry/overwrite；排障关闭根因后只能创建新 attempt。Qualification 新 attempt 从 G1 开始，Campaign
+   新 attempt 从 slot 1 开始，跨 attempt 拼接 16/16 或 30/30 被拒绝。
+10. frozen component 改变强制进入 E2；已证明的外部瞬态故障不改变 baseline hash，但新 attempt 仍使用新 identity 且完整
+    重跑所属阶段。
+11. business terminal `HOLD_WITH_SENSITIVITY` 的 Q5 在 Oracle contract 满足时算题目 PASS，不与 gate attempt 的失败 HOLD 混淆。
+12. Campaign 结束后数据库、management API 和 Docker observation 都证明 Sandbox/egress residual=0。
 
-**Verification outcome:** `E1-Q1=16/16` 且 `E1-C1=30/30`，所有成功结果在真实 UI 可核对；这才是新基线最终验收。
+**Verification outcome:** 同一 frozen E1 baseline 的 winning qualification attempt 达到 G1–G4 16/16，随后 winning G5 attempt
+达到 30/30。失败 attempt 保持可审计但不参与成绩，所有成功结果可在真实 UI 核对。
 
 **Dependencies:** U8。
 
@@ -826,10 +837,12 @@ flowchart TB
 ### Failure Propagation
 
 - baseline 未 ACTIVE：请求在 Run 创建前失败；无 provider/database/Sandbox I/O。
-- Root/Text2SQL/Analysis 失败：Run/slot 失败，Publisher 零部分提交；若 slot 已 claim，Qualification/Campaign HOLD。
+- gate preflight 发现已知链路故障：不 claim 正式 slot，不产生门禁成绩。
+- Root/Text2SQL/Analysis 失败：Run/slot 失败，Publisher 零部分提交；若正式 slot 已 claim，整个 attempt HOLD。
 - Oracle reject：保留内部诊断引用但不公开 Derived/Chart/Report。
 - Publisher transaction 失败：恢复同 fence/idempotency，不能逐 Artifact 补写。
 - UI gate 或 reclamation 失败：业务结果不可被 Campaign 记为 PASS；首个业务失败和回收事故分开保存。
+- attempt HOLD 后 gate runner 退出；故障定位和修复只通过门禁外诊断进行。原 attempt 永不 resume，修复完成后创建新 attempt。
 
 ### State Lifecycle and Recovery
 
@@ -837,6 +850,7 @@ flowchart TB
 - E1 activation 只有一次 current CAS；不支持降回 E0。
 - 每个 Run 的 config/catalog/context/schema/model/operator/image refs 固定不变。
 - Context Journal 恢复 deterministic obligation；已提交 operator/result/publication 不重跑。
+- 排障证据与 gate attempt 分开记录；修复不能改写既有 gate result。
 - Projection/Neo4j/index 可清空重建，不进入最终判定。
 
 ### Security and Privacy
@@ -846,25 +860,59 @@ flowchart TB
 - LLM manifest 的 `base_url` 必须是无 userinfo/query/fragment 的 HTTPS 地址；credential-shaped key 一律拒绝。
 - PostgreSQL roles、RLS、security-definer search path、Secret Resolver 和 egress authority 在 fresh smoke 中重新证明。
 
+## Layered Fault Isolation and Formal Gates
+
+正式门禁验证的是综合链路，不负责定位问题。启动或重新启动门禁前，先按以下六层排除已知故障；这些聚焦测试、探针和
+人工核对不计入 G1–G5 成绩。
+
+| 链路层 | 先排除的问题 |
+| --- | --- |
+| L1 Authority / Environment | E1 baseline、db24、Schema、Semantic Release、Model/Profile、Operator/Image refs 是否一致且 READY |
+| L2 Root / Delegation | Effective Config、Agent Cards、Root decision、Subagent task/handoff 是否绑定同一 Run |
+| L3 Semantic / Text2SQL | 语义口径、Join、粒度、时间、physical binding、SQL policy 和真实只读执行是否闭合 |
+| L4 QueryEvidence / Arrow | Artifact revision/hash、列语义、类型、null、row/byte bound 和 materialization 是否闭合 |
+| L5 Analysis / Oracle / Publisher | Sandbox、治理算子、Binding/Journal、独立 Oracle 和原子发布是否闭合 |
+| L6 Trace / UI / Reclamation | durable event、exact Artifact detail、图表/表格、真实页面和 Sandbox/egress residual=0 是否闭合 |
+
+正式门禁固定为：
+
+| 门禁 | 运行数 | 内容 | 通过条件 |
+| --- | --: | --- | --- |
+| G1 单链路探针 | 1 | 一个指标、一个时间维度、一个趋势判断、一张图 | 六层全部闭合，轨迹页面可读，Sandbox=0 |
+| G2 五题最小版 | 5 | 每题只验证核心指标、核心维度和一张图 | 5/5 通过，验证表、Join、口径和图表 |
+| G3 五题完整版 | 5 | 依次执行原始五题，每次只运行一题 | 5/5 Oracle 通过，治理算子与归因完整 |
+| G4 冷启动资格 | 5 | 新会话、新 Run、新 Sandbox，五题各一次 | 5/5 无修复、无重试、无残留 |
+| G5 最终验收 | 30 | 5 题 × COLD/WARM × 3 | 30/30；任意一条失败立即 HOLD |
+
+G1–G4 属于 `E1-Q1`，合计 16 次；只有 16/16 才能创建 G5 `E1-C1`。G5 的 30 次不复用前四级 Run，也不把资格证据计入
+最终成绩。
+
+### 门禁失败后的处理
+
+1. 当前 attempt 立即 HOLD，后续 slot 不 claim，保留首个失败层、Run、Artifact 和回收状态。
+2. 退出 gate runner，按 L1–L6 找到最早未闭合层；排障只运行聚焦测试或单层探针，不继续消耗门禁 slot。
+3. 修复后先完成受影响层以及所有下游层的验证，再创建新的 immutable gate attempt。
+4. Qualification attempt 重新从 G1 开始；G5 Campaign attempt 重新从第一个 slot 开始，禁止拼接多个 attempt 的 PASS。
+5. 若修复改变代码、合同、Web build、冻结资产或 baseline component，则进入下一 Authority Epoch；只有已证明 baseline bytes
+   不变的外部瞬态故障，才允许在同一 Epoch 下重新执行门禁。
+
 ## Acceptance Sequence
 
-1. **Plan approval**：用户批准 retention matrix、只激活 db24、`E1-Q1/E1-C1` 编号与实施边界。
-2. **Asset freeze gate**：retained manifest 生成且 semantic diff 已解决；当前数据库未改动。
-3. **Fresh DB/staging gate**：fresh migrations、零历史运行状态、db24 import、Semantic/LLM/Profile/Runtime staging、scope/role/RLS
+1. **Plan approval**：retention matrix、只激活 db24、`E1-Q1/E1-C1` 编号和 G1–G5 分层门禁已确认。
+2. **Asset freeze**：retained manifest 生成且 semantic diff 已解决；当前数据库未改动。
+3. **Fresh DB/staging**：fresh migrations、零历史运行状态、db24 import、Semantic/LLM/Profile/Runtime staging、scope/role/RLS
    通过；E1 仍未激活。
-4. **Static/integration/retirement gate**：Root、Text2SQL、Analysis、Publisher、Trace/UI、Qualification/Campaign focused tests 与
+4. **Static/integration/retirement**：Root、Text2SQL、Analysis、Publisher、Trace/UI、Qualification/Campaign focused tests 与
    package build/typecheck 通过；旧 runtime/RPC/parser 已退役，形成冻结 implementation commit 与 Web build。
-5. **Final clean bootstrap and E1 activation gate**：在新 clean volume 重放 retained bootstrap 和最终 Agent Product Profiles；
-   运行时 baseline 绑定全部最终 staging receipts、commit、contract 和 Web build，并原子激活。
-6. **G1**：单题完整链 1/1。
-7. **G2**：五域最小版 5/5。
-8. **G3**：原五题完整版 5/5。
-9. **G4**：全新 Conversation/Run/Sandbox 5/5。
-10. **E1-C1**：30/30 串行通过，真实 UI 全覆盖，Sandbox/egress residual=0；local/dev 结果不宣称生产隔离 GO。
-11. **Completion gate**：E1 identity、30/30 结果、环境级 Sandbox 声明和完整证据清单写入最终验收报告；不再修改 E1 代码。
+5. **Final clean bootstrap and activation**：在新 clean volume 重放 retained bootstrap 和最终 Agent Product Profiles；运行时
+   baseline 绑定全部最终 staging receipts、commit、contract 和 Web build，并原子激活 E1。
+6. **Pre-gate isolation**：按 L1–L6 排除已知问题；诊断结果只决定能否开始门禁，不计分。
+7. **E1-Q1**：依次执行 G1 1/1、G2 5/5、G3 5/5、G4 5/5，共 16/16。
+8. **E1-C1 / G5**：30/30 串行通过，真实 UI 全覆盖，Sandbox/egress residual=0；local/dev 结果不宣称生产隔离 GO。
+9. **Completion**：E1 identity、16/16、30/30、环境级 Sandbox 声明和完整证据清单写入最终验收报告；不再修改 E1 代码。
 
-任一 gate 失败即停止在当前阶段。不得为了继续而提高 retry、添加 fallback、修改 frozen hash、放宽 Oracle 或绕过 UI/
-reclamation。
+任一正式门禁失败都按“门禁失败后的处理”退出并排障。不得为了继续而提高 retry、添加 fallback、修改 frozen hash、放宽
+Oracle 或绕过 UI/reclamation。
 
 ## Risks and Mitigations
 
@@ -881,6 +929,7 @@ reclamation。
 | E1 编号仍沿用 v15 | 误导为历史连续升级 | 全部新 identity 使用 Epoch scoped `E1-Q1/E1-C1` |
 | E1 激活后再清理代码 | baseline 绑定的 commit 立刻过期 | 所有 legacy retirement 在 U8 完成；U7 激活后代码变化必须进入 E2 |
 | browser gate 只看页面存在 | 断链或陈旧数据被误判 | exact Run/Artifact/revision/hash/detail/DOM/build/screenshot 全绑定 |
+| 把综合门禁当作排障工具 | 反复在首个 slot HOLD，成绩被调试行为污染 | 先按 L1–L6 排障；门禁失败后退出 runner，修复并验证后用新 attempt 从阶段起点重跑 |
 
 ## Resolved During Planning
 
@@ -891,14 +940,16 @@ reclamation。
 5. **当前 dirty worktree 不 reset。** 它保留作为参考；批准后另开隔离 worktree。
 6. **不先做 migration squash。** fresh install 复用当前链，E1 成功后再决定是否另立数据库 baseline 优化安装时间。
 7. **E1 激活后 immutable。** 任何代码、合同、build 或 frozen asset 修复都进入 E2，不在 E1 内替换 baseline。
+8. **门禁分为 G1–G5。** G1–G4 共 16 次资格，G5 是独立 30 次最终验收；链路排障不计入门禁成绩。
 
-## Review Questions
+## Approved Decisions
 
-本计划只有以下三项需要用户在批准时明确确认；它们不阻止阅读和评审：
+用户已于 2026-08-26 确认：
 
-1. 是否同意 E1 运行数据库只导入/激活 `falcon_db_24`，其余 27 个 Falcon bundle 仅保留在 Git？
-2. 是否同意资格/最终验收重命名为 `E1-Q1` / `E1-C1`，彻底放弃 v15 连续编号？
-3. 是否同意批准后在新的隔离 worktree 实施，当前暂停 worktree 永久保留到 E1-C1 通过后再决定删除？
+1. E1 运行数据库只导入/激活 `falcon_db_24`，其余 27 个 Falcon bundle 仅保留在 Git。
+2. 资格/最终验收使用 `E1-Q1` / `E1-C1`，彻底放弃 v15 连续编号。
+3. 在新的隔离 worktree 实施，当前暂停 worktree 保留到 E1-C1 通过后再决定删除。
+4. 门禁采用 G1–G5 分层；出现问题时先退出门禁完成链路排障，再重新执行正式门禁任务。
 
 ## Success Criteria
 
@@ -909,7 +960,8 @@ reclamation。
 - Operator registry、Sandbox image/lock/SDK/implementation attestation 全闭合；
 - 生产代码没有 Direct QA、正则 Router、fixed `query_kind`、模板 SQL、Falcon case runtime 或第二 evaluator executor；
 - 五题均走 Root -> Text2SQL -> QueryEvidence -> Governed Analysis -> Oracle -> Publisher -> UI -> reclamation；
-- `E1-Q1=16/16`、`E1-C1=30/30`，每次成功有数据、表格/报告、图表、exact trace/UI receipt，flake=0；
+- G1–G4 依次达到 1/1、5/5、5/5、5/5；G5 达到 30/30，每次成功有数据、表格/报告、图表、exact trace/UI receipt，flake=0；
+- 门禁失败时先按 L1–L6 排除链路问题，再用新 attempt 从阶段起点重跑；诊断 PASS 不计入正式成绩；
 - local/dev E1-C1 与 production isolation readiness 分开报告，不把 `production_isolation_proven=false` 包装为生产 GO；
 - 最终 Sandbox/egress residual=0，PostgreSQL 是唯一 Campaign/Artifact/current/outbox Authority；
 - 所有实现按小任务验证和 scoped commit，绝不 stage 当前 worktree 的生成文件、本地数据或无关改动。
@@ -954,5 +1006,5 @@ reclamation。
 
 ## Planning Boundary
 
-本计划当前状态为 `proposed`。在用户明确批准前三个 Review Questions 之前，不进入代码实现、数据库 reset、manifest 生成、
-secret rebind、资格运行或 Campaign 创建。
+本计划已于 2026-08-26 获得方向批准并按 G1–G5 分层门禁完成修订，状态为 `active`。本次只修改计划文档；在用户明确要求
+开始实施之前，不创建新 worktree、不执行数据库 reset、manifest 生成、secret rebind、资格运行或 Campaign。
