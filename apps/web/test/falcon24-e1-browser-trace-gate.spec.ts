@@ -1,10 +1,21 @@
 import type { ArtifactReference } from "@data-agent/contracts/artifacts";
 import type { ResolutionTrace } from "@data-agent/contracts/runs";
-import { describe, expect, it } from "vitest";
+import { describe, expect, it, vi } from "vitest";
 import {
   exactRequiredFalcon24ArtifactReferences,
   falcon24QaStartUrl,
+  preflightFalcon24BrowserSubmission,
 } from "../src/cli/falcon24-browser-trace-gate";
+
+const execFileAsyncMock = vi.hoisted(() => vi.fn());
+
+vi.mock("node:child_process", async (importOriginal) => {
+  const actual = await importOriginal<typeof import("node:child_process")>();
+  const execFile = Object.assign(vi.fn(), {
+    [Symbol.for("nodejs.util.promisify.custom")]: execFileAsyncMock,
+  });
+  return { ...actual, execFile };
+});
 
 const runId = "00000000-0000-4000-8000-000000000101";
 const workspaceId = "00000000-0000-4000-8000-000000000102";
@@ -68,5 +79,55 @@ describe("Falcon24 E1 browser gate", () => {
         traceWith([...references, { ...duplicate, revision: 2 }]),
       ),
     ).toThrow("FALCON24_BROWSER_REQUIRED_ARTIFACT_CARDINALITY_INVALID");
+  });
+
+  it("accepts the complete runtime identity while comparing only the governed web fields", async () => {
+    const buildId = `sha256:${"a".repeat(64)}`;
+    const generationId = `sha256:${"b".repeat(64)}`;
+    execFileAsyncMock.mockImplementation(async (_file: string, args: readonly string[]) => ({
+      stdout: JSON.stringify({
+        success: true,
+        data: args.includes("eval")
+          ? {
+              result: {
+                location: `https://data-agent.example/w/${workspaceId}/qa?conversation=${conversationId}&tab=conversation`,
+                ready: true,
+                question_input_visible: true,
+                submit_visible: true,
+                expected_run_absent: true,
+                error_banners: [],
+                web_build: { build_id: buildId, generation_id: generationId },
+              },
+            }
+          : {},
+        error: null,
+      }),
+      stderr: "",
+    }));
+
+    const runtimeIdentity = {
+      schema_version: "runtime-build-identity@1.0.0",
+      consumer_role: "web",
+      build_id: buildId,
+      generation_id: generationId,
+      built_at: "2026-08-27T00:00:00.000Z",
+      git_commit: "0".repeat(40),
+      git_dirty: false,
+    };
+
+    await expect(
+      preflightFalcon24BrowserSubmission({
+        session: "falcon24-e1-q1-regression",
+        web_base_url: "https://data-agent.example",
+        workspace_id: workspaceId,
+        conversation_id: conversationId,
+        expected_run_id: runId,
+        expected_web_build: runtimeIdentity,
+        viewport: { width: 1440, height: 900 },
+      }),
+    ).resolves.toMatchObject({
+      ready: true,
+      web_build: { build_id: buildId, generation_id: generationId },
+    });
   });
 });

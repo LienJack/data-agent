@@ -198,7 +198,10 @@ export async function preflightFalcon24BrowserSubmission(input: {
     .regex(/^[A-Za-z0-9._-]{3,128}$/u)
     .parse(input.session);
   const expectedRunId = z.uuid().parse(input.expected_run_id);
-  const expectedWebBuild = webBuildSchema.parse(input.expected_web_build);
+  const expectedWebBuild = webBuildSchema.parse({
+    build_id: input.expected_web_build.build_id,
+    generation_id: input.expected_web_build.generation_id,
+  });
   const startUrl = falcon24QaStartUrl(input);
   await agentBrowser(session, [
     "set",
