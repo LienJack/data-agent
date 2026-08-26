@@ -18,6 +18,7 @@ const QA_REQUIRED_VISIBLE_ARTIFACT_TYPES = Object.freeze([
 ] as const);
 const GATE_CLAIM_KEY = "falcon24-e1-browser-submit-claim";
 const GATE_CONSUMED_KEY = "falcon24-e1-browser-submit-consumed";
+const COMPOSER_READY_SELECTOR = '[data-testid="qa-submit-question"][data-composer-ready="true"]';
 
 const agentBrowserOutputSchema = z.strictObject({
   success: z.literal(true),
@@ -214,10 +215,7 @@ export async function preflightFalcon24BrowserSubmission(input: {
   await agentBrowser(session, ["console", "--clear"]);
   await agentBrowser(session, ["open", startUrl.toString()]);
   await agentBrowser(session, ["wait", '[data-testid="qa-question-input"]']);
-  await agentBrowser(session, [
-    "wait",
-    '[data-testid="qa-submit-question"][data-composer-ready="true"]',
-  ]);
+  await agentBrowser(session, ["wait", COMPOSER_READY_SELECTOR]);
   const expectedRunSelector = `[data-testid="qa-result-trace-entry"][data-run-id="${selectorValue(expectedRunId)}"]`;
   const observation = await browserEval(
     session,
@@ -267,6 +265,7 @@ export async function submitFalcon24QuestionFromBrowser(input: {
   await agentBrowser(session, ["console", "--clear"]);
   await agentBrowser(session, ["open", startUrl.toString()]);
   await agentBrowser(session, ["wait", '[data-testid="qa-question-input"]']);
+  await agentBrowser(session, ["wait", COMPOSER_READY_SELECTOR]);
   const resultTraceSelector = `[data-testid="qa-result-trace-entry"][data-run-id="${selectorValue(expectedRunId)}"]`;
   if (
     await browserEval(

@@ -5,6 +5,7 @@ import {
   exactRequiredFalcon24ArtifactReferences,
   falcon24QaStartUrl,
   preflightFalcon24BrowserSubmission,
+  submitFalcon24QuestionFromBrowser,
 } from "../src/cli/falcon24-browser-trace-gate";
 
 const execFileAsyncMock = vi.hoisted(() => vi.fn());
@@ -144,5 +145,68 @@ describe("Falcon24 E1 browser gate", () => {
       ready: true,
       web_build: { build_id: buildId, generation_id: generationId },
     });
+  });
+
+  it("waits for the hydrated composer again after a slot is claimed", async () => {
+    const attemptId = "00000000-0000-4000-8000-000000000105";
+    const question = "最近12个完整月的订单收入有什么趋势？";
+    execFileAsyncMock.mockReset();
+    execFileAsyncMock.mockImplementation(async (_file: string, args: readonly string[]) => {
+      const encoded = args.at(-1);
+      const source =
+        args.includes("eval") && encoded ? Buffer.from(encoded, "base64").toString() : "";
+      const result = source.includes("Boolean(document.querySelector")
+        ? false
+        : source.includes("sessionStorage.removeItem")
+          ? true
+          : source.includes("sessionStorage.getItem")
+            ? {
+                schema_version: "falcon24-e1-browser-submit-consumed@1.0.0",
+                run_id: runId,
+                attempt_id: attemptId,
+                conversation_id: conversationId,
+              }
+            : undefined;
+      return {
+        stdout: JSON.stringify({
+          success: true,
+          data: result === undefined ? {} : { result },
+          error: null,
+        }),
+        stderr: "",
+      };
+    });
+
+    await expect(
+      submitFalcon24QuestionFromBrowser({
+        session: "falcon24-e1-q1-submit-regression",
+        web_base_url: "https://data-agent.example",
+        workspace_id: workspaceId,
+        conversation_id: conversationId,
+        expected_run_id: runId,
+        question,
+        viewport: { width: 1440, height: 900 },
+        claim: {
+          schema_version: "falcon24-e1-browser-submit-claim@1.0.0",
+          question,
+          conversation_id: conversationId,
+          idempotency_key: "00000000-0000-4000-8000-000000000107",
+          acceptance_fence: {
+            authority_kind: "QUALIFICATION",
+            qualification_id: "E1-Q1",
+            attempt_id: attemptId,
+            run_id: runId,
+            claim_fence_token: "00000000-0000-4000-8000-000000000106",
+          },
+        },
+      }),
+    ).resolves.toEqual({ run_id: runId, attempt_id: attemptId });
+    expect(
+      execFileAsyncMock.mock.calls.some(([, args]) =>
+        (args as readonly string[]).includes(
+          '[data-testid="qa-submit-question"][data-composer-ready="true"]',
+        ),
+      ),
+    ).toBe(true);
   });
 });
