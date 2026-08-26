@@ -1,10 +1,14 @@
+import { createHash } from "node:crypto";
 import {
   type ArtifactReference,
   buildProductTeamArtifactDocument,
   type ProductTeamArtifactDocument,
 } from "@data-agent/contracts/artifacts";
 import { buildAnalysisContext } from "@data-agent/contracts/context";
+import { STATISTICAL_OPERATOR_REGISTRY_DIGEST } from "@data-agent/contracts/statistical-operators";
 import { describe, expect, it } from "vitest";
+import { productTeamGovernedQueryInternals } from "../../src/analysis/product-team-query-port.js";
+import { createSingleSeriesAnalysisOracle } from "../../src/analysis/single-series-analysis-oracle.js";
 import { compileSingleSeriesAnalysisPlan } from "../../src/analysis/single-series-analysis-planning.js";
 
 const id = (suffix: number) => `62000000-0000-4000-8000-${String(suffix).padStart(12, "0")}`;
@@ -210,5 +214,217 @@ describe("generic single-series analysis planning", () => {
     await expect(compileSingleSeriesAnalysisPlan(await planInput(evidence))).rejects.toThrowError(
       "SINGLE_SERIES_QUERY_SHAPE_INVALID",
     );
+  });
+});
+
+function outputReference(suffix: number, contentHash: `sha256:${string}`): ArtifactReference {
+  return { ...reference("SandboxResult", suffix), content_hash: contentHash };
+}
+
+function boundOutput(
+  artifact_name: string,
+  artifact_kind: "RESULT" | "TABLE" | "CHART",
+  suffix: number,
+  document: unknown,
+) {
+  const content = new TextEncoder().encode(JSON.stringify(document));
+  const content_sha256 = `sha256:${createHash("sha256").update(content).digest("hex")}` as const;
+  return {
+    artifact_name,
+    artifact_kind,
+    media_type: "application/json" as const,
+    content,
+    content_sha256,
+    bytes: content.byteLength,
+    reference: outputReference(suffix, content_sha256),
+  };
+}
+
+async function oracleFixture() {
+  const evidence = await queryEvidence();
+  const plan = await compileSingleSeriesAnalysisPlan(await planInput(evidence));
+  if (evidence.projection.kind !== "TABLE") throw new TypeError("TEST_TABLE_REQUIRED");
+  const rows = Array.from({ length: 12 }, (_, index) => ({
+    period: month(index),
+    value: 100 + index * 10,
+  }));
+  const theil_sen = {
+    series: [{ label: "metric_value", slope: 10, sample_size: 12, pair_count: 66 }],
+  };
+  const mann_kendall = {
+    series: [
+      {
+        label: "metric_value",
+        s: 66,
+        variance_s: 212.66666666666666,
+        z: 4.457,
+        p_value: 0.0000083,
+        tau: 1,
+        trend: "INCREASING",
+        rejected: true,
+        sample_size: 12,
+        tie_group_count: 0,
+        alpha: 0.05,
+        variant: "original",
+      },
+    ],
+  };
+  const data = { series: rows, theil_sen, mann_kendall, summary_zh: "订单收入呈上升趋势。" };
+  const result = {
+    schema_version: "analysis-published-result@1.0.0",
+    contract_id: plan.result_contract.contract_id,
+    contract_hash: plan.result_contract.contract_hash,
+    semantic_context_hash: plan.result_contract.semantic_context_hash,
+    metrics: plan.result_contract.metric_bindings,
+    dimensions: plan.result_contract.dimension_bindings,
+    grain: plan.result_contract.grain,
+    lineage: plan.result_contract.lineage,
+    data,
+  };
+  const table = {
+    schema_version: "analysis-published-table@1.0.0",
+    table_id: "single_series_monthly",
+    title_zh: plan.result_contract.tables[0]?.title_zh,
+    columns: plan.result_contract.tables[0]?.columns,
+    rows,
+    total_rows: 12,
+  };
+  const chart = {
+    schema_version: "analysis-published-chart@1.0.0",
+    chart_id: "single_series_monthly_line",
+    title_zh: plan.result_contract.charts[0]?.title_zh,
+    intent: "TREND",
+    template_id: "line.multi-series@1",
+    bindings: {
+      x_field: "period",
+      y_fields: ["value"],
+      series_field: null,
+      lower_bound_field: null,
+      upper_bound_field: null,
+    },
+    dataset: {
+      table_id: "single_series_monthly",
+      columns: plan.result_contract.tables[0]?.columns,
+      rows,
+      total_rows: 12,
+    },
+  };
+  const queryRef = evidence.artifact_ref;
+  if (queryRef.artifact_type !== "QueryEvidence") throw new TypeError("TEST_QUERY_REQUIRED");
+  const governed = {
+    name: "query_evidence",
+    format: "ARROW" as const,
+    query_evidence_ref: queryRef,
+    query_evidence_document: evidence,
+    input_ref: reference("SensitiveExecutionArtifact", 50),
+    materialization_receipt_ref: reference("AnalysisInputMaterializationReceipt", 51),
+    materialization_receipt_document: {},
+    content: productTeamGovernedQueryInternals.materializeProductTeamArrow(evidence.projection),
+  };
+  const operatorReceipts = [
+    {
+      schema_version: "statistical-operator-call-receipt@1.0.0",
+      call_id: "single_series_theil_sen",
+      operator_id: "robust-trend.theil-sen-slope@1",
+      operator_registry_digest: STATISTICAL_OPERATOR_REGISTRY_DIGEST,
+      implementation_digest: hash("1"),
+      resolved_parameters: {},
+      resolved_parameters_hash: hash("2"),
+      input_hash: hash("3"),
+      output_hash: hash("4"),
+      result_binding_hash: hash("5"),
+      sample_size: 12,
+      group_count: 1,
+      family_size: null,
+      rank: null,
+      applicability: "PASS",
+      limitation_codes: ["SLOPE_UNIT_DEPENDS_ON_DECLARED_X_SCALE"],
+    },
+    {
+      schema_version: "statistical-operator-call-receipt@1.0.0",
+      call_id: "single_series_mann_kendall",
+      operator_id: "trend.mann-kendall-original@1",
+      operator_registry_digest: STATISTICAL_OPERATOR_REGISTRY_DIGEST,
+      implementation_digest: hash("6"),
+      resolved_parameters: { alpha: 0.05, continuity_correction: true, variant: "original" },
+      resolved_parameters_hash: hash("7"),
+      input_hash: hash("8"),
+      output_hash: hash("9"),
+      result_binding_hash: hash("0"),
+      sample_size: 12,
+      group_count: 1,
+      family_size: null,
+      rank: null,
+      applicability: "ASSUMPTION_BOUND",
+      limitation_codes: ["SEASONALITY_NOT_CORRECTED", "SERIAL_CORRELATION_NOT_CORRECTED"],
+    },
+  ];
+  return {
+    data,
+    input: {
+      node: {
+        node_id: "single-series-trend",
+        result_contract: plan.result_contract,
+      } as never,
+      governed_inputs: [governed],
+      sandbox_outputs: [
+        boundOutput("result", "RESULT", 60, result),
+        boundOutput("table:single_series_monthly", "TABLE", 61, table),
+        boundOutput("chart:single_series_monthly_line", "CHART", 62, chart),
+      ],
+      sandbox_receipt: {
+        result_contract_hash: plan.result_contract.contract_hash,
+        operator_registry_digest: STATISTICAL_OPERATOR_REGISTRY_DIGEST,
+        operator_obligations: plan.required_operator_obligations,
+        operator_receipts: operatorReceipts,
+        operator_receipt_closure_hash: hash("f"),
+      } as never,
+    },
+  };
+}
+
+describe("generic single-series analysis Oracle", () => {
+  it("accepts only the exact 12-month QueryEvidence, governed operators and chart closure", async () => {
+    const fixture = await oracleFixture();
+    const verdict = await createSingleSeriesAnalysisOracle().evaluate(fixture.input);
+
+    expect(verdict).toMatchObject({
+      result: {
+        result_kind: "TREND_CHANGE",
+        first_value: 100,
+        last_value: 210,
+      },
+      sample_size: 12,
+      coverage_ratio: 1,
+      material_change: true,
+      oracle_receipt: {
+        schema_version: "single-series-trend-oracle@1.0.0",
+        verdict: "PASS",
+        trend_evidence: { slope: 10, tau: 1, rejected: true, trend: "INCREASING" },
+      },
+    });
+  });
+
+  it("fails closed when the model-published series differs from QueryEvidence", async () => {
+    const fixture = await oracleFixture();
+    const changed = {
+      ...fixture.data,
+      series: fixture.data.series.map((row, index) =>
+        index === 11 ? { ...row, value: row.value + 1 } : row,
+      ),
+    };
+    const resultDocument = JSON.parse(
+      new TextDecoder().decode(fixture.input.sandbox_outputs[0]?.content),
+    );
+    const changedOutput = boundOutput("result", "RESULT", 63, {
+      ...resultDocument,
+      data: changed,
+    });
+    await expect(
+      createSingleSeriesAnalysisOracle().evaluate({
+        ...fixture.input,
+        sandbox_outputs: [changedOutput, ...fixture.input.sandbox_outputs.slice(1)],
+      }),
+    ).rejects.toThrowError("SINGLE_SERIES_ORACLE_SERIES_MISMATCH");
   });
 });

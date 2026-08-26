@@ -115,7 +115,7 @@ function trendOperatorObligations(): readonly StatisticalOperatorObligation[] {
   ]);
 }
 
-async function extractQueryShape(input: {
+export async function extractSingleSeriesQueryShape(input: {
   readonly query_evidence_ref: QueryEvidenceReference;
   readonly query_evidence_document: ProductTeamArtifactDocument;
 }) {
@@ -209,7 +209,7 @@ export async function compileSingleSeriesAnalysisPlan(input: {
       (dataType === "date" || dataType === "timestamp"),
   );
   if (!timeDimension) throw new TypeError("SINGLE_SERIES_TIME_DIMENSION_AUTHORITY_INVALID");
-  const shape = await extractQueryShape(input);
+  const shape = await extractSingleSeriesQueryShape(input);
   const window = {
     start: `${shape.ordered_months[0]}T00:00:00.000Z`,
     end: `${addUtcMonths(shape.ordered_months[11] ?? "", 1)}T00:00:00.000Z`,
@@ -360,6 +360,6 @@ export async function compileSingleSeriesAnalysisPlan(input: {
 
 export const singleSeriesAnalysisPlanningInternals = Object.freeze({
   addUtcMonths,
-  extractQueryShape,
+  extractSingleSeriesQueryShape,
   trendOperatorObligations,
 });

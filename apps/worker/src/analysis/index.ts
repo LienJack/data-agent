@@ -18,6 +18,7 @@ export * from "./python-source-artifact.js";
 export * from "./research-artifact-port.js";
 export * from "./result-publisher.js";
 export * from "./root-cause-executor.js";
+export * from "./single-series-analysis-oracle.js";
 export * from "./single-series-analysis-planning.js";
 export * from "./skill-catalog.js";
 export * from "./tabular-import.js";
