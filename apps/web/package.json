@@ -12,6 +12,7 @@
     "lint": "biome check .",
     "test:unit": "vitest run",
     "ecommerce:agent:acceptance": "NODE_OPTIONS=--conditions=react-server tsx src/cli/ecommerce-agent-acceptance.ts",
+    "bootstrap:qa-readiness": "NODE_OPTIONS=--conditions=react-server tsx src/cli/bootstrap-qa-readiness.ts",
     "falcon24:analysis:control": "NODE_OPTIONS=--conditions=react-server tsx src/cli/falcon24-agent-acceptance.ts"
   },
   "dependencies": {
