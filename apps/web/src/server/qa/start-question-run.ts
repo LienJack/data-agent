@@ -54,11 +54,19 @@ export interface StartQuestionRunInput {
   readonly scope: AppScope;
   readonly workspace_id: string;
   readonly expected_subagent_profile_refs?: readonly AgentProductProfileReferenceV2[];
-  readonly acceptance_fence?: {
-    readonly campaign_id: string;
-    readonly run_id: string;
-    readonly claim_fence_token: string;
-  };
+  readonly acceptance_fence?:
+    | {
+        readonly authority_kind: "FINAL_CAMPAIGN";
+        readonly campaign_id: string;
+        readonly run_id: string;
+        readonly claim_fence_token: string;
+      }
+    | {
+        readonly authority_kind: "QUALIFICATION";
+        readonly qualification_id: string;
+        readonly run_id: string;
+        readonly claim_fence_token: string;
+      };
 }
 
 const inherited = { mode: "INHERIT_DEFAULT" } as const;

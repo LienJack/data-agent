@@ -782,6 +782,7 @@ describe("PostgreSQL effective config resolver", () => {
       request,
       command,
       acceptance_fence: {
+        authority_kind: "FINAL_CAMPAIGN",
         campaign_id: "falcon24-root-v14-final",
         run_id: ids.run,
         claim_fence_token: ids.attempt,
@@ -825,6 +826,7 @@ describe("PostgreSQL effective config resolver", () => {
       request,
       command,
       acceptance_fence: {
+        authority_kind: "FINAL_CAMPAIGN",
         campaign_id: "falcon24-root-v14-final",
         run_id: ids.run,
         claim_fence_token: ids.attempt,
@@ -837,6 +839,75 @@ describe("PostgreSQL effective config resolver", () => {
     });
     expect(scripted.calls.some(({ text }) => text === "ROLLBACK")).toBe(true);
     expect(scripted.calls.some(({ text }) => text === "COMMIT")).toBe(false);
+  });
+
+  it("accepts a Qualification Run through the same Effective Config and QUESTION authority", async () => {
+    const authority = access();
+    const request = await questionRequest();
+    const effectiveConfig = await acceptedEffectiveReceipt(request);
+    const resolution = await buildRunConfigResolutionReceiptCandidate({
+      ...resolutionBase(request),
+      operation: "QUESTION_RUN",
+      run_id: ids.run,
+      conversation_ref: request.conversation_ref,
+      admission: "READY",
+      unavailable_reasons: [],
+      effective_config_ref: {
+        config_id: effectiveConfig.config_id,
+        config_revision: effectiveConfig.config_revision,
+        config_hash: effectiveConfig.config_hash,
+      },
+      required_action: null,
+      bootstrap_job_config: null,
+    });
+    const claimFenceHash = await sha256ContentHash({ claim_fence_token: ids.attempt });
+    const scripted = scriptedPool((text) => {
+      if (text.includes("accept_falcon24_qualification_run_with_config")) {
+        return {
+          rows: [
+            {
+              value: {
+                acceptance: questionAcceptanceValue(resolution, effectiveConfig),
+                submit_fence: {
+                  qualification_id: "falcon24-root-qualification-v1-final",
+                  run_id: ids.run,
+                  claim_fence_hash: claimFenceHash,
+                  claim_fence_consumed_at: "2026-08-26T04:00:00.000Z",
+                },
+              },
+            },
+          ],
+          rowCount: 1,
+        };
+      }
+      return undefined;
+    });
+
+    const result = await createPostgresEffectiveConfigResolver({
+      pool: scripted.pool,
+      authorizer: authority.authorizer,
+    }).resolveAndAccept(authority.capability, {
+      request,
+      command,
+      acceptance_fence: {
+        authority_kind: "QUALIFICATION",
+        qualification_id: "falcon24-root-qualification-v1-final",
+        run_id: ids.run,
+        claim_fence_token: ids.attempt,
+      },
+    });
+
+    expect(result).toEqual({ ok: true, value: resolution });
+    const call = scripted.calls.find(({ text }) =>
+      text.includes("accept_falcon24_qualification_run_with_config"),
+    );
+    expect(call?.values[2]).toMatchObject({
+      schema_version: "falcon24-qualification-question-run-acceptance@1.0.0",
+      qualification_id: "falcon24-root-qualification-v1-final",
+      run_id: ids.run,
+      claim_fence_token: ids.attempt,
+      command_hash: expect.stringMatching(/^sha256:[0-9a-f]{64}$/),
+    });
   });
 
   it("rejects internally valid but different Resolution and Effective optional evaluations", async () => {

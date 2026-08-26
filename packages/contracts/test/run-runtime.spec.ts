@@ -246,6 +246,15 @@ describe("持久 Run Runtime Contract", () => {
         execution_policy: { ...strictPolicy, max_run_attempts: 2 },
       }).success,
     ).toBe(false);
+    expect(
+      buildFalcon24RunExecutionPolicy({
+        acceptance_authority_kind: "QUALIFICATION",
+        campaign_id: "falcon24-root-qualification-v1-final",
+        case_id: "falcon24-business-review-18m",
+        run_variant: "WARM",
+        repetition: 1,
+      }).acceptance_authority_kind,
+    ).toBe("QUALIFICATION");
   });
 
   it("从 Durable Event 唯一重建 Projection，Live 与 Replay Hash 一致", async () => {

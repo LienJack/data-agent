@@ -5,8 +5,8 @@ import { dirname, resolve } from "node:path";
 import { pathToFileURL } from "node:url";
 import { promisify } from "node:util";
 import type { BuiltinTeamProfileSetSnapshot } from "@data-agent/agent-runtime";
-import { sha256ContentHash } from "@data-agent/contracts/common";
 import { artifactReferenceIdentity } from "@data-agent/contracts/artifacts";
+import { sha256ContentHash } from "@data-agent/contracts/common";
 import {
   buildFalcon24AcceptanceRunManifest,
   buildFalcon24ResolutionTraceGateReceipt,
@@ -115,7 +115,7 @@ function runIdentity(input: {
   };
 }
 
-function stableErrorCode(error: unknown): string {
+export function stableErrorCode(error: unknown): string {
   const candidates = [
     typeof error === "object" && error !== null && "code" in error
       ? (error as { readonly code?: unknown }).code
@@ -131,7 +131,7 @@ function stableErrorCode(error: unknown): string {
   return "FALCON24_ANALYSIS_CONTROL_FAILED";
 }
 
-function failureAt(
+export function failureAt(
   failureLayer: Falcon24AcceptanceFailureLayer,
   error: unknown,
 ): {
@@ -835,6 +835,7 @@ async function main(): Promise<void> {
     }
     const submitted = await startQuestionRun({
       acceptance_fence: {
+        authority_kind: "FINAL_CAMPAIGN",
         campaign_id: campaignId,
         run_id: identities.run_id,
         claim_fence_token: claimFenceToken,

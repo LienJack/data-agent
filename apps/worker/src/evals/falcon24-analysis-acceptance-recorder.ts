@@ -30,6 +30,7 @@ function single<T>(values: readonly T[], code: string): T {
 
 export function createFalcon24AnalysisAcceptanceRecorder(input: {
   readonly stage_result: (input: {
+    readonly authority_kind: "CAMPAIGN" | "QUALIFICATION";
     readonly campaign_id: string;
     readonly result: Falcon24AgentAnalysisRunResult;
   }) => Promise<void>;
@@ -42,6 +43,7 @@ export function createFalcon24AnalysisAcceptanceRecorder(input: {
     if (metadata.mode === "DEFAULT") return;
     const runId = recordInput.execution.analysis_program_ref.run_id;
     if (
+      metadata.acceptance_authority_kind === null ||
       metadata.campaign_id === null ||
       metadata.case_id !== recordInput.test_case.case_id ||
       metadata.run_variant === null ||
@@ -83,7 +85,11 @@ export function createFalcon24AnalysisAcceptanceRecorder(input: {
       chart_dataset_hash: oracleReceipt.chart_dataset_hash,
       completed_at: recordInput.completed_at,
     });
-    await input.stage_result({ campaign_id: metadata.campaign_id, result });
+    await input.stage_result({
+      authority_kind: metadata.acceptance_authority_kind,
+      campaign_id: metadata.campaign_id,
+      result,
+    });
   };
   return Object.freeze({
     record(recordInput: Parameters<Falcon24AnalysisAcceptanceRecorder["record"]>[0]) {

@@ -76,6 +76,7 @@ export function isFalcon24StrictAnalysisLease(lease: RunWorkLease): boolean {
   return (
     policy.policy_id === FALCON24_STRICT_ACCEPTANCE_POLICY_ID &&
     policy.mode === "FALCON24_STRICT" &&
+    policy.acceptance_authority_kind !== null &&
     policy.campaign_id !== null &&
     policy.case_id !== null &&
     policy.run_variant !== null &&

@@ -51,6 +51,7 @@ import {
 import {
   createPostgresEffectiveConfigResolver,
   createPostgresFalcon24AcceptanceCampaignAuthority,
+  createPostgresFalcon24QualificationAuthority,
   createPostgresRunEventStore,
   createPostgresRunQueue,
 } from "@data-agent/platform/runs";
@@ -550,13 +551,26 @@ export async function runWorkerProcess(
           pool: sqlPool,
           authorizer: capabilityAuthority.authorizer,
         });
+        const falcon24QualificationAuthority = createPostgresFalcon24QualificationAuthority({
+          pool: sqlPool,
+          authorizer: capabilityAuthority.authorizer,
+        });
         const falcon24AcceptanceRecorder = createFalcon24AnalysisAcceptanceRecorder({
-          async stage_result({ campaign_id: campaignId, result }) {
-            const staged = await falcon24CampaignAuthority.stage(capability, {
-              campaign_id: campaignId,
+          async stage_result({ authority_kind: authorityKind, campaign_id: campaignId, result }) {
+            const command = {
               run_id: result.run_id,
               result_document: result,
-            });
+            } as const;
+            const staged =
+              authorityKind === "QUALIFICATION"
+                ? await falcon24QualificationAuthority.stageResult(capability, {
+                    qualification_id: campaignId,
+                    ...command,
+                  })
+                : await falcon24CampaignAuthority.stage(capability, {
+                    campaign_id: campaignId,
+                    ...command,
+                  });
             if (!staged.ok) throw new TypeError(staged.error.code);
           },
         });
@@ -640,59 +654,89 @@ export async function runWorkerProcess(
           capability,
         );
         const reconcileAcceptanceFailures = async () => {
-          const pending = await falcon24CampaignAuthority.loadPendingFailedRun(capability);
-          if (!pending.ok || !pending.value) {
-            return pending.ok ? { ok: true as const, value: undefined } : pending;
+          const reconcilePending = async (
+            pending: { readonly run_id: string },
+            hold: (failure: {
+              readonly failure_layer: ReturnType<typeof classifyFalcon24RunFailureCode>;
+              readonly failure_code: string;
+            }) => Promise<PortResult<unknown>>,
+          ): Promise<PortResult<void>> => {
+            const projection = await eventStore.readProjection({
+              scope: capability.scope,
+              run_id: pending.run_id,
+            });
+            if (!projection.ok) return projection;
+            if (!projection.value) {
+              return {
+                ok: false as const,
+                error: {
+                  code: "RUN_FAILURE_TERMINAL_EVENT_INVALID",
+                  message: "FAILED Run 缺少权威 Projection。",
+                  retryable: false,
+                },
+              };
+            }
+            const terminalEventId = projection.value.projection.terminal_event_id;
+            const events = await eventStore.listEvents({
+              scope: capability.scope,
+              run_id: pending.run_id,
+              after_sequence: projection.value.projection.version - 1,
+              limit: 1,
+            });
+            if (!events.ok) return events;
+            const terminal = events.value[0];
+            if (
+              projection.value.projection.status !== "FAILED" ||
+              !terminalEventId ||
+              events.value.length !== 1 ||
+              !terminal ||
+              terminal.event_id !== terminalEventId ||
+              terminal.sequence !== projection.value.projection.version ||
+              terminal.event_type !== "run.failed"
+            ) {
+              return {
+                ok: false as const,
+                error: {
+                  code: "RUN_FAILURE_TERMINAL_EVENT_INVALID",
+                  message: "FAILED Run 终态事件无法通过权威事件流验证。",
+                  retryable: false,
+                },
+              };
+            }
+            const held = await hold({
+              failure_layer: classifyFalcon24RunFailureCode(terminal.payload.error_code),
+              failure_code: terminal.payload.error_code,
+            });
+            return held.ok ? { ok: true as const, value: undefined } : held;
+          };
+          const pendingCampaign = await falcon24CampaignAuthority.loadPendingFailedRun(capability);
+          if (!pendingCampaign.ok) return pendingCampaign;
+          if (pendingCampaign.value) {
+            const pending = pendingCampaign.value;
+            const reconciled = await reconcilePending(pending, (failure) =>
+              falcon24CampaignAuthority.hold(capability, {
+                campaign_id: pending.campaign_id,
+                run_id: pending.run_id,
+                ...failure,
+              }),
+            );
+            if (!reconciled.ok) return reconciled;
           }
-          const projection = await eventStore.readProjection({
-            scope: capability.scope,
-            run_id: pending.value.run_id,
-          });
-          if (!projection.ok) return projection;
-          if (!projection.value) {
-            return {
-              ok: false as const,
-              error: {
-                code: "RUN_FAILURE_TERMINAL_EVENT_INVALID",
-                message: "FAILED Run 缺少权威 Projection。",
-                retryable: false,
-              },
-            };
+          const pendingQualification =
+            await falcon24QualificationAuthority.loadPendingFailedRun(capability);
+          if (!pendingQualification.ok) return pendingQualification;
+          if (pendingQualification.value) {
+            const pending = pendingQualification.value;
+            const reconciled = await reconcilePending(pending, (failure) =>
+              falcon24QualificationAuthority.hold(capability, {
+                qualification_id: pending.qualification_id,
+                run_id: pending.run_id,
+                ...failure,
+              }),
+            );
+            if (!reconciled.ok) return reconciled;
           }
-          const terminalEventId = projection.value.projection.terminal_event_id;
-          const events = await eventStore.listEvents({
-            scope: capability.scope,
-            run_id: pending.value.run_id,
-            after_sequence: projection.value.projection.version - 1,
-            limit: 1,
-          });
-          if (!events.ok) return events;
-          const terminal = events.value[0];
-          if (
-            projection.value.projection.status !== "FAILED" ||
-            !terminalEventId ||
-            events.value.length !== 1 ||
-            !terminal ||
-            terminal.event_id !== terminalEventId ||
-            terminal.sequence !== projection.value.projection.version ||
-            terminal.event_type !== "run.failed"
-          ) {
-            return {
-              ok: false as const,
-              error: {
-                code: "RUN_FAILURE_TERMINAL_EVENT_INVALID",
-                message: "FAILED Run 终态事件无法通过权威事件流验证。",
-                retryable: false,
-              },
-            };
-          }
-          const held = await falcon24CampaignAuthority.hold(capability, {
-            campaign_id: pending.value.campaign_id,
-            run_id: pending.value.run_id,
-            failure_layer: classifyFalcon24RunFailureCode(terminal.payload.error_code),
-            failure_code: terminal.payload.error_code,
-          });
-          return held.ok ? { ok: true as const, value: undefined } : held;
+          return { ok: true as const, value: undefined };
         };
         return {
           ok: true,
@@ -757,12 +801,30 @@ export async function runWorkerProcess(
                   },
                 };
               }
-              const held = await falcon24CampaignAuthority.hold(capability, {
-                campaign_id: executionPolicy.campaign_id,
+              const failure = {
                 run_id: lease.run_id,
                 failure_layer: classifyFalcon24RunFailureCode(errorCode),
                 failure_code: errorCode,
-              });
+              } as const;
+              const held =
+                executionPolicy.acceptance_authority_kind === "QUALIFICATION"
+                  ? await falcon24QualificationAuthority.hold(capability, {
+                      qualification_id: executionPolicy.campaign_id,
+                      ...failure,
+                    })
+                  : executionPolicy.acceptance_authority_kind === "CAMPAIGN"
+                    ? await falcon24CampaignAuthority.hold(capability, {
+                        campaign_id: executionPolicy.campaign_id,
+                        ...failure,
+                      })
+                    : {
+                        ok: false as const,
+                        error: {
+                          code: "RUN_EXECUTION_POLICY_INVALID",
+                          message: "Falcon24 HOLD policy 缺少 acceptance authority kind。",
+                          retryable: false,
+                        },
+                      };
               return held.ok ? { ok: true as const, value: undefined } : held;
             },
           }),

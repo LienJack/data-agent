@@ -1194,6 +1194,7 @@ export type EvalLane = z.infer<typeof evalLaneSchema>;
 export * from "./falcon-semantic-release-set.js";
 export * from "./falcon24-acceptance-campaign.js";
 export * from "./falcon24-agent-analysis.js";
+export * from "./falcon24-qualification.js";
 export * from "./test-center.js";
 export * from "./truth-types.js";
 export * from "./workspace-journey-evidence.js";

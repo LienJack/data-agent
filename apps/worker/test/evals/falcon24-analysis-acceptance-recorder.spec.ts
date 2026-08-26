@@ -123,7 +123,8 @@ describe("Falcon24 analysis acceptance recorder", () => {
     } as unknown as AnalysisExecutionResult;
     let stagedResult: Falcon24AgentAnalysisRunResult | null = null;
     const recorder = createFalcon24AnalysisAcceptanceRecorder({
-      async stage_result({ campaign_id: campaignId, result }) {
+      async stage_result({ authority_kind: authorityKind, campaign_id: campaignId, result }) {
+        expect(authorityKind).toBe("CAMPAIGN");
         expect(campaignId).toBe("falcon24-root-v13-final");
         if (stagedResult && canonicalizeJson(stagedResult) !== canonicalizeJson(result)) {
           throw new TypeError("FALCON24_ANALYSIS_RUN_RESULT_REPLAY_MISMATCH");
@@ -176,6 +177,24 @@ describe("Falcon24 analysis acceptance recorder", () => {
         } as unknown as AnalysisExecutionResult,
       }),
     ).rejects.toThrow("FALCON24_ANALYSIS_RUN_RESULT_REPLAY_MISMATCH");
+
+    let qualificationAuthority: string | null = null;
+    const qualificationRecorder = createFalcon24AnalysisAcceptanceRecorder({
+      async stage_result({ authority_kind: authorityKind, campaign_id: campaignId }) {
+        qualificationAuthority = `${authorityKind}:${campaignId}`;
+      },
+    });
+    await qualificationRecorder.record({
+      ...input,
+      execution_policy: buildFalcon24RunExecutionPolicy({
+        acceptance_authority_kind: "QUALIFICATION",
+        campaign_id: "falcon24-root-qualification-v1-final",
+        case_id: testCase.case_id,
+        run_variant: "WARM",
+        repetition: 1,
+      }),
+    });
+    expect(qualificationAuthority).toBe("QUALIFICATION:falcon24-root-qualification-v1-final");
   });
 
   it("does not stage ordinary runs and has no manifest compatibility path", async () => {

@@ -29,6 +29,7 @@ export const RUN_RETRY_MIN_DELAY_MS = 1_000;
 export const RUN_RETRY_MAX_ATTEMPTS = 5;
 export const DEFAULT_RUN_EXECUTION_POLICY = Object.freeze({
   schema_version: "run-execution-policy@1.0.0" as const,
+  acceptance_authority_kind: null,
   campaign_id: null,
   case_id: null,
   run_variant: null,
@@ -810,6 +811,7 @@ export const sideEffectReceiptSchema = z
 export const runExecutionPolicySchema = z
   .strictObject({
     schema_version: z.literal("run-execution-policy@1.0.0"),
+    acceptance_authority_kind: z.enum(["CAMPAIGN", "QUALIFICATION"]).nullable(),
     campaign_id: falcon24AcceptanceCampaignIdSchema.nullable(),
     case_id: falcon24AnalysisCaseIdSchema.nullable(),
     run_variant: z.enum(["COLD", "WARM"]).nullable(),
@@ -829,6 +831,7 @@ export const runExecutionPolicySchema = z
     const strictFalcon = policy.policy_id === "falcon24-strict-zero-retry@1.0.0";
     if (
       strictFalcon !== (policy.campaign_id !== null) ||
+      strictFalcon !== (policy.acceptance_authority_kind !== null) ||
       strictFalcon !== (policy.case_id !== null) ||
       strictFalcon !== (policy.run_variant !== null) ||
       strictFalcon !== (policy.repetition !== null) ||
@@ -851,6 +854,7 @@ export const runExecutionPolicySchema = z
   });
 
 export function buildFalcon24RunExecutionPolicy(input: {
+  readonly acceptance_authority_kind?: "CAMPAIGN" | "QUALIFICATION";
   readonly campaign_id: string;
   readonly case_id: z.infer<typeof falcon24AnalysisCaseIdSchema>;
   readonly run_variant: "COLD" | "WARM";
@@ -860,6 +864,7 @@ export function buildFalcon24RunExecutionPolicy(input: {
     runExecutionPolicySchema.parse({
       schema_version: "run-execution-policy@1.0.0",
       ...input,
+      acceptance_authority_kind: input.acceptance_authority_kind ?? "CAMPAIGN",
       policy_id: "falcon24-strict-zero-retry@1.0.0",
       mode: "FALCON24_STRICT",
       max_run_attempts: 1,

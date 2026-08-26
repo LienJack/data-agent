@@ -89,21 +89,39 @@ const questionAcceptanceResultSchema = z.strictObject({
   resolution: z.unknown(),
   effective_config: z.unknown().nullable(),
 });
-const falcon24AcceptanceSubmitFenceSchema = z.strictObject({
-  campaign_id: z
-    .string()
-    .min(8)
-    .max(80)
-    .regex(/^falcon24-[a-z0-9._-]*v[1-9][0-9]*[a-z0-9._-]*$/),
-  run_id: canonicalImmutableIdSchema,
-  claim_fence_token: canonicalImmutableIdSchema,
-});
-const falcon24AcceptanceSubmitFenceReceiptSchema = z.strictObject({
-  campaign_id: falcon24AcceptanceSubmitFenceSchema.shape.campaign_id,
-  run_id: canonicalImmutableIdSchema,
-  claim_fence_hash: z.string().regex(/^sha256:[a-f0-9]{64}$/),
-  claim_fence_consumed_at: z.iso.datetime({ offset: true }),
-});
+const falcon24AuthorityIdSchema = z
+  .string()
+  .min(8)
+  .max(80)
+  .regex(/^falcon24-[a-z0-9._-]*v[1-9][0-9]*[a-z0-9._-]*$/);
+const falcon24AcceptanceSubmitFenceSchema = z.discriminatedUnion("authority_kind", [
+  z.strictObject({
+    authority_kind: z.literal("FINAL_CAMPAIGN"),
+    campaign_id: falcon24AuthorityIdSchema,
+    run_id: canonicalImmutableIdSchema,
+    claim_fence_token: canonicalImmutableIdSchema,
+  }),
+  z.strictObject({
+    authority_kind: z.literal("QUALIFICATION"),
+    qualification_id: falcon24AuthorityIdSchema,
+    run_id: canonicalImmutableIdSchema,
+    claim_fence_token: canonicalImmutableIdSchema,
+  }),
+]);
+const falcon24AcceptanceSubmitFenceReceiptSchema = z.union([
+  z.strictObject({
+    campaign_id: falcon24AuthorityIdSchema,
+    run_id: canonicalImmutableIdSchema,
+    claim_fence_hash: z.string().regex(/^sha256:[a-f0-9]{64}$/),
+    claim_fence_consumed_at: z.iso.datetime({ offset: true }),
+  }),
+  z.strictObject({
+    qualification_id: falcon24AuthorityIdSchema,
+    run_id: canonicalImmutableIdSchema,
+    claim_fence_hash: z.string().regex(/^sha256:[a-f0-9]{64}$/),
+    claim_fence_consumed_at: z.iso.datetime({ offset: true }),
+  }),
+]);
 const falcon24QuestionAcceptanceResultSchema = z.strictObject({
   acceptance: z.unknown(),
   submit_fence: falcon24AcceptanceSubmitFenceReceiptSchema,
@@ -913,9 +931,13 @@ export function createPostgresEffectiveConfigResolver(
       }
       const fenceCommand = acceptanceFence?.success
         ? await (async () => {
+            const { authority_kind: authorityKind, ...identity } = acceptanceFence.data;
             const unsigned = {
-              schema_version: "falcon24-question-run-acceptance@1.0.0" as const,
-              ...acceptanceFence.data,
+              schema_version:
+                authorityKind === "FINAL_CAMPAIGN"
+                  ? ("falcon24-question-run-acceptance@1.0.0" as const)
+                  : ("falcon24-qualification-question-run-acceptance@1.0.0" as const),
+              ...identity,
             };
             return { ...unsigned, command_hash: await sha256ContentHash(unsigned) } as const;
           })()
@@ -956,11 +978,15 @@ export function createPostgresEffectiveConfigResolver(
           }
           const result =
             request.operation === "QUESTION_RUN" && command?.success
-              ? fenceCommand
+              ? fenceCommand && acceptanceFence?.success
                 ? await client.query<JsonValueRow>(
-                    `select app_data_agent.accept_falcon24_question_run_with_effective_config(
-                       $1::jsonb, $2::jsonb, $3::jsonb
-                     ) as value`,
+                    acceptanceFence.data.authority_kind === "FINAL_CAMPAIGN"
+                      ? `select app_data_agent.accept_falcon24_question_run_with_effective_config(
+                           $1::jsonb, $2::jsonb, $3::jsonb
+                         ) as value`
+                      : `select app_data_agent.accept_falcon24_qualification_run_with_config(
+                           $1::jsonb, $2::jsonb, $3::jsonb
+                         ) as value`,
                     [command.data, request, fenceCommand],
                   )
                 : await client.query<JsonValueRow>(
@@ -1047,7 +1073,7 @@ export function createPostgresEffectiveConfigResolver(
                 );
               }
             }
-            if (fenceCommand) {
+            if (fenceCommand && acceptanceFence?.success) {
               if (resolution.operation !== "QUESTION_RUN" || resolution.admission !== "READY") {
                 throw new PersistenceBoundaryError(
                   "FALCON24_SUBMIT_FENCE_MISMATCH",
@@ -1056,9 +1082,17 @@ export function createPostgresEffectiveConfigResolver(
                 );
               }
               const consumed = fencedAcceptance?.submit_fence;
+              const identityMatches =
+                acceptanceFence.data.authority_kind === "FINAL_CAMPAIGN"
+                  ? consumed !== undefined &&
+                    "campaign_id" in consumed &&
+                    consumed.campaign_id === acceptanceFence.data.campaign_id
+                  : consumed !== undefined &&
+                    "qualification_id" in consumed &&
+                    consumed.qualification_id === acceptanceFence.data.qualification_id;
               if (
                 !consumed ||
-                consumed.campaign_id !== fenceCommand.campaign_id ||
+                !identityMatches ||
                 consumed.run_id !== fenceCommand.run_id ||
                 consumed.claim_fence_hash !== expectedFenceHash
               ) {
