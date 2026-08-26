@@ -1,8 +1,11 @@
-import { type ArtifactReference, artifactReferenceSchema } from "@data-agent/contracts/artifacts";
+import {
+  type AnalysisProgramPayload,
+  type ArtifactReference,
+  artifactReferenceSchema,
+} from "@data-agent/contracts/artifacts";
 import { FALCON24_STRICT_ACCEPTANCE_POLICY_ID } from "@data-agent/contracts/evals";
 import type { ResearchArtifactAuthorityPort } from "@data-agent/contracts/ports";
 import type { RunWorkLease } from "@data-agent/contracts/runs";
-import { falcon24AnalysisOutputJsonSchema } from "@data-agent/evals";
 import type { SqlPool } from "@data-agent/platform/persistence";
 import {
   type AnalysisLifecyclePersistenceAuthority,
@@ -35,7 +38,6 @@ import type { ResearchAuthorityCapabilityResolver } from "../runs/research-autho
 import type { Falcon24AnalysisAcceptanceRecorder } from "./falcon24-analysis-acceptance-recorder.js";
 import { resolveFalcon24AnalysisCase } from "./falcon24-analysis-case-resolver.js";
 import { createFalcon24AnalysisDataOracle } from "./falcon24-analysis-data-oracle.js";
-import { falcon24AnalysisProgramInternals } from "./falcon24-analysis-program.js";
 import {
   FALCON24_ANALYSIS_QUERY_SPECS,
   type Falcon24AnalysisQueryColumn,
@@ -227,24 +229,28 @@ export function createFalcon24AnalysisRuntime(input: {
         materializer,
       });
       const contexts = {
-        async load(command: { readonly node: { readonly node_id: string } }) {
+        async load(command: { readonly node: AnalysisProgramPayload["nodes"][number] }) {
           if (command.node.node_id !== runtime.test_case.case_id) {
             throw new TypeError("FALCON24_ANALYSIS_GENERATION_CONTEXT_INVALID");
           }
           return {
             semantic_context_package: runtime.semantic_context.package,
             analysis_contract: {
-              schema_version: "governed-analysis-contract@2.0.0" as const,
-              case_id: runtime.test_case.case_id,
-              statistical_method_contract:
-                falcon24AnalysisProgramInternals.method_contracts[runtime.test_case.case_id],
-              required_method_evidence_keys: runtime.test_case.required_methods,
+              schema_version: "governed-analysis-contract@3.0.0" as const,
+              objective: runtime.question,
+              result_contract_hash: command.node.result_contract.contract_hash,
+              required_operator_ids: [
+                ...new Set(
+                  command.node.operator_obligations.map(
+                    ({ operator_id: operatorId }) => operatorId,
+                  ),
+                ),
+              ],
               semantic_contract: await buildFalcon24SemanticConsumptionProjection({
                 test_case: runtime.test_case,
                 semantic_release_hash:
                   runtime.semantic_context.package.semantic_release.resource_hash,
               }),
-              output_json_schema: falcon24AnalysisOutputJsonSchema(runtime.test_case.case_id),
             },
             input_schemas: [
               {

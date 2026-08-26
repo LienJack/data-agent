@@ -35,20 +35,18 @@ const inputBindingProjectionSchema = z.strictObject({
   materialization_receipt_hash: z.string().regex(/^sha256:[a-f0-9]{64}$/u),
 });
 const governedAnalysisContractSchema = z.strictObject({
-  schema_version: z.literal("governed-analysis-contract@2.0.0"),
-  case_id: z.string().trim().min(1).max(128),
-  statistical_method_contract: z.array(z.string().trim().min(1).max(4_096)).max(64),
-  required_method_evidence_keys: z
-    .array(z.string().trim().min(1).max(128))
-    .min(1)
+  schema_version: z.literal("governed-analysis-contract@3.0.0"),
+  objective: z.string().trim().min(1).max(32_000),
+  result_contract_hash: z.string().regex(/^sha256:[a-f0-9]{64}$/u),
+  required_operator_ids: z
+    .array(z.string().trim().min(1).max(256))
     .max(32)
-    .superRefine((keys, context) => {
-      if (new Set(keys).size !== keys.length) {
-        context.addIssue({ code: "custom", message: "Method evidence keys must be unique." });
+    .superRefine((operatorIds, context) => {
+      if (new Set(operatorIds).size !== operatorIds.length) {
+        context.addIssue({ code: "custom", message: "Required operator ids must be unique." });
       }
     }),
   semantic_contract: z.json(),
-  output_json_schema: z.json(),
 });
 
 export type AnalysisAgentInputSchemaProjection = z.infer<typeof inputSchemaProjectionSchema>;
@@ -144,11 +142,17 @@ export async function buildAnalysisAgentInitialMessages(input: {
   const governedAnalysisContract = governedAnalysisContractSchema.parse(
     input.context.analysis_contract,
   );
+  const requiredOperatorIds = [
+    ...new Set(input.node.operator_obligations.map(({ operator_id: operatorId }) => operatorId)),
+  ].sort();
   if (
     semantic.package_hash !== input.analysis_program.semantic_context_package_hash ||
     input.analysis_program.operator_registry_digest !== STATISTICAL_OPERATOR_REGISTRY_DIGEST ||
     input.node.execution_mode !== "MODEL_GENERATED" ||
-    input.node.generated_source_policy === "NO_GENERATED_SOURCE"
+    input.node.generated_source_policy === "NO_GENERATED_SOURCE" ||
+    governedAnalysisContract.result_contract_hash !== input.node.result_contract.contract_hash ||
+    JSON.stringify([...governedAnalysisContract.required_operator_ids].sort()) !==
+      JSON.stringify(requiredOperatorIds)
   ) {
     throw new TypeError("ANALYSIS_AGENT_CONTEXT_BINDING_INVALID");
   }
@@ -189,7 +193,7 @@ export async function buildAnalysisAgentInitialMessages(input: {
       "Every Python assertion must include a data-free uppercase identifier as its message, for example assert condition, 'MONTH_COUNT_INVALID'. Never include values, rows, paths, or other data in an assertion message.",
       "If a Cell reports KeyError, correct the code using only the exact names in inputs[].fields from this context. Do not probe the interpreter or reread the governed input file.",
       "For rates, deltas, ratios, shares, and percentage changes, handle zero or missing denominators explicitly and preserve an undefined result as null/NaN rather than raising or inventing a numeric value.",
-      "Set result.method_evidence to an object containing exactly governed_analysis_contract.required_method_evidence_keys. Preserve each governed operator collection at its declared result_binding path; for every other method key, record the concrete window, grain, selection, tie-break, or quality rule actually applied. Do not omit non-operator methods and do not add undeclared method keys.",
+      "The Host-owned result contract is the only output authority. Populate exactly its required result fields, tables, charts, collection constraints, and declared operator result_binding paths. Do not add acceptance-case fields, method claims, formulas, lineage, units, or output schemas that are absent from that contract.",
       "The value named by publish_analysis_result.result_symbol must be an exact built-in Python dict, normally result = {...}. Never use a pandas Series, DataFrame, numpy record, defaultdict, dataclass, or other mapping-like object as the result document; convert every nested value to recursively JSON-native values before publishing.",
       "Do not write result JSON, tables, PNG, SVG, or chart files. The only completion action is publish_analysis_result. Supply result/table symbol names plus chart id and field selections only; the server injects chart intent, template, and data-symbol binding from the result contract.",
       "Preserve governed numeric values without rounding. Build every required table symbol with exactly the declared columns, then publish once. Explain only after the server verifies and stages the entire result closure.",
@@ -260,4 +264,7 @@ export async function buildAnalysisAgentInitialMessages(input: {
   ];
 }
 
-export const analysisAgentPromptInternals = Object.freeze({ operatorCards });
+export const analysisAgentPromptInternals = Object.freeze({
+  governedAnalysisContractSchema,
+  operatorCards,
+});

@@ -382,6 +382,7 @@ export function createFalcon24GovernedAgentAnalysisPort(input: {
     readonly lease: Parameters<GovernedAgentAnalysisPort["analyze"]>[0]["lease"];
     readonly analysis_context: AnalysisContext;
     readonly task_id: string;
+    readonly question: string;
     readonly max_context_bytes: number;
     readonly effective_config: Parameters<
       GovernedAgentAnalysisPort["analyze"]
@@ -449,6 +450,7 @@ export function createFalcon24GovernedAgentAnalysisPort(input: {
       lease: command.lease,
       analysis_context: context,
       task_id: command.task_id,
+      question: command.question,
       max_context_bytes: command.max_context_bytes,
       effective_config: command.effective_config,
       semantic_context: command.semantic_context,
