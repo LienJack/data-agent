@@ -21,6 +21,11 @@ deepened: 2026-08-22
 任何 Subagent 时，可直接生成回答；但涉及 Workspace 事实、语义图、数据库数据、正式报告或治理动作时，
 直接回答必须携带相应受治理证据，否则 Host 拒绝把它作为已验收答案。
 
+业务执行采用动态 Agent Tool Loop：Root 每轮只根据当前 Conversation、已返回的 Tool Result 和 verifier feedback
+决定当前下一步。Subagent 结果验收后作为普通 Tool Result 返回 Root；Root 下一轮再决定是否调用另一个能力或给出最终回答。
+Host 不预测完整调用链，也不选择后续业务能力；它只验证当前 Tool Call。多个调用只有在本轮开始时已各自具备全部已验收输入且
+互不依赖时才可并行。
+
 最终要修复的可见行为是：面对“我让你回复的是表之间的依赖关系，不是多少张表”，模型应看到 Semantic
 与 Text2SQL 的能力描述，自主选择 Semantic Management Agent，并由它读取冻结 Published Semantic Release
 的 relationship graph 形成证据；不得再因“多少”命中 Text2SQL，也不得回落到固定 table-count SQL。
@@ -45,7 +50,7 @@ deepened: 2026-08-22
 |---|---|---|---|
 | 直接回答 | 不调用 Subagent，直接输出 | 不声称新的受治理事实，或答案中的事实已有冻结证据 | “什么是同比？” |
 | 单 Subagent | 调用一次 `delegate_to_subagent` | Profile 可用、权限/预算收窄、所需 Artifact 被接受 | “读取语义图说明表依赖” |
-| 多 Subagent | 先后或并行调用多个 Subagent | Artifact 输入输出兼容、DAG 无环、每个结果独立验收 | “查询销售数据并生成报告” |
+| 多 Subagent | 逐轮根据真实 Tool Result 继续调用；本轮独立调用可并行 | 当前调用输入均已验收、每个结果独立验收 | “查询销售数据并生成报告” |
 | 无可用能力 | 直接回答通用部分，或明确能力缺失/请求澄清 | 不伪造 Workspace/数据库/语义证据 | “做尚未安装的归因分析” |
 
 ---
@@ -154,7 +159,7 @@ deepened: 2026-08-22
 | Run 冻结点 | Run 创建冻结 eligible profile catalog；Worker 冻结 accepted selection | 选择前不预判 Specialist，选择后仍可精确重放 |
 | 直接回答 | 主 Agent 无 tool call 的正常完成 | “不委派”是自主选择，不是 Router 异常 |
 | 直接回答门禁 | 结构化 answer sections + 消息/Artifact 引用 + 服务端渲染 | 不用关键词猜是否可直答，也不允许模型自由拼接受治理事实 |
-| 多 Agent 依赖 | Artifact 类型驱动、Host 构建 DAG | 去掉固定 Profile ID 依赖，但保留 Report 必须消费 accepted Evidence |
+| 多 Agent 调用 | Root 逐轮决定，Host 只校验当前调用的已验收 Artifact 输入 | 去掉固定 Profile ID 与预编排后继，同时保留 Report 必须消费 accepted Evidence |
 | Profile 权限 | Profile ceiling ∩ Workspace/RBAC ∩ per-call request | 主 Agent 只能提出更窄请求，不能扩权 |
 | 选择解释 | 公开 `selection_summary` 枚举/短句，禁止 CoT | 可审计且不泄露私有推理 |
 | A2A | 明确排除 | 这是内部 Harness 重构，不是外部互操作项目 |
@@ -181,17 +186,18 @@ flowchart TB
   Registry[Approved Product Profiles] --> Catalog[Frozen capability catalog]
   Run --> Catalog
   Catalog --> Root[Root Agent turn]
-  Root -->|no tool call| Direct[Direct answer candidate]
+  Root -->|final answer| Direct[Direct answer candidate]
   Root -->|delegate tool call| Gate[Host delegation gate]
   Gate --> Specialist[Isolated Specialist]
   Specialist --> Artifact[Typed artifact]
-  Artifact --> Verify[Deterministic verifier]
-  Direct --> Verify
-  Verify --> Final[Accepted public answer]
-  Verify -->|recoverable reject| Root
+  Artifact --> ToolVerify[Tool result verifier]
+  ToolVerify -->|accepted Tool Result| Root
+  Direct --> FinalVerify[Final answer verifier]
+  FinalVerify --> Final[Accepted public answer]
+  FinalVerify -->|structured feedback| Root
 ```
 
-### 单轮决策协议
+### 逐轮决策协议
 
 1. Web/API 只做服务端鉴权、Effective Config 解析，并冻结当前 Run 可见的
    `SubagentCapabilityCatalogSnapshot`；不调用关键词 classifier，不预选 Specialist。
@@ -205,8 +211,8 @@ flowchart TB
    幂等键，提交 `SubagentDelegationReceipt` 后才启动子任务。
 5. Specialist 只接收自己需要的 Context Projection 与 Task Envelope，产出类型化 Artifact；Verifier 接受后，
    结果以稳定引用回到 Root Agent。
-6. Root Agent 基于已接受 Artifact 生成最终答案。Host 验证所有受治理事实都有 Artifact 引用，随后公开答案和
-   脱敏活动事件。
+6. 已验收结果作为 Tool Result 返回 Root。下一轮 Root 可以继续调用当前需要的能力，或生成最终答案；只有最终答案候选才进入
+   事实引用验证并公开为答案和脱敏活动事件。
 
 ### 核心合同边界
 
@@ -537,9 +543,9 @@ flowchart TB
 
 4. Context Projection 只包含问题、必要对话纠正、冻结 Release/Schema refs 和显式 input Artifact；不复制完整
    Root Transcript 或其他 Profile 私有上下文。
-5. Host 按 tool loop 增量构建执行图：同一 Provider batch 只并行准入彼此独立、输入已存在的只读调用；有依赖
-   的 Report 等调用必须等上游 Artifact accepted 后，由 Root 下一 Turn 携带其引用再发起。Host 不猜测未来
-   Artifact，也不接受“先声明一个尚不存在的引用”。仍保持 max depth=1。
+5. Host 只准入当前 Tool Call：同一 Provider batch 仅允许彼此独立、输入已存在且已验收的调用并行；需要 QueryEvidence 的
+   Report 必须等该 Artifact 作为 Tool Result 返回后，由 Root 下一 Turn 携带普通 `input_artifact_refs` 再发起。Host 不猜测未来
+   Artifact、不选择后续 Profile，也不接受“先声明一个尚不存在的引用”。仍保持 max depth=1。
 6. 子任务 completed 后只写结果候选；Verifier accepted 后才向 Root 返回可引用 Artifact。取消、超时、失败、
    Lease 丢失与重试沿用 Run Fence/Checkpoint。
 
@@ -547,7 +553,7 @@ flowchart TB
 
 - Root 请求 Profile 不允许的 Tool/Context/预算时只收窄或拒绝，绝不扩权。
 - Semantic 与 Text2SQL 并行请求各自得到隔离上下文和 Tool Registry。
-- Report 在 QueryEvidence accepted 前不启动；上游失败后下游取消并给 Root 结构化结果。
+- Report 在 QueryEvidence accepted 前不能被准入；当前工具失败时只把结构化失败结果返回 Root，由 Root 决定下一步。
 - 同一 batch 中携带尚未存在 QueryEvidence 的 Report 调用被拒绝；下一 Root Turn 引用已接受 Evidence 后可准入。
 - depth 1 Specialist 尝试再次委派时被拒绝。
 - Worker 崩溃后从已提交 Delegation Receipt 恢复，不重新请求模型选择或创建重复 Task。
@@ -776,10 +782,10 @@ flowchart TB
 | Root 选择 Catalog 外 Profile | Host 拒绝候选 | 给 Root 一次结构化可用目录反馈 |
 | Root 直接回答但缺证据 | Verifier 返回 `EVIDENCE_REQUIRED` | 一次恢复 turn，可改为委派 |
 | Product Profile Revision 失效 | 已冻结 Run 继续用原批准 Revision；新 Run 不再可见 | 禁用 Head，不篡改历史 Revision |
-| Specialist 超时/失败 | Task failed，依赖下游不启动 | 在原 Delegation Receipt/预算内重试 |
+| Specialist 超时/失败 | Task failed，稳定 Tool Result 返回 Root；没有隐式后继 | 在原 Delegation Receipt/预算内重试或由 Root 选择其他当前步骤 |
 | Worker 重启 | 从 Lease、Root Decision、Delegation Receipt 与 Artifact 状态恢复 | 不重复模型选择，不重复提交 Artifact |
 | Artifact completed 但未 accepted | 不回传 Root 作为事实 | Verifier 修复/重试，或明确失败 |
-| 多 Tool Calls 部分成功 | 保留已 accepted Artifact，其余按 DAG 处理 | Root 基于可用结果回答或声明部分失败 |
+| 多 Tool Calls 部分成功 | 独立验收每个结果并把成功/失败 Tool Result 一并返回 Root | Root 基于真实结果决定下一步、回答或声明部分失败 |
 | Profile 描述诱导越权 | 描述只作元数据，Host 权限交集拒绝 | 下线/修订 Product Profile Revision |
 | v2 灰度异常 | 停止创建 v2 Run | 旧 v2 Run按冻结状态收尾，新 Run 切 v1 |
 
@@ -818,7 +824,7 @@ flowchart TB
 
 ### Contract and Property Tests
 
-- Catalog canonical ordering/hash、Revision immutability、Profile ceiling 交集、DAG 无环、Artifact 类型兼容。
+- Catalog canonical ordering/hash、Revision immutability、Profile ceiling 交集、当前 Tool Call 的 Artifact 类型与 exact ref 兼容。
 - 对随机非法 tool calls 验证 Host 永不扩权、永不执行 Catalog 外 Profile。
 - Provider Tool Schema Snapshot 测试，保证 Profile Inventory 变化不改变 canonical schema。
 
