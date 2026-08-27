@@ -36,12 +36,12 @@
 
 ## E2-4 — Trace, Web and Browser Gate
 
-- [ ] Trace loader和节点标题从Run binding解析Epoch，支持只读E1 v1与current E2 v2，不按latest/current profile回填历史。
-- [ ] 泛化QA route、API client、QA store、qualification/campaign/finalization CLI和browser claim DTO。
-- [ ] UI receipt v2严格绑定E2 Run/baseline/activation/build/viewport；QA与Trace receipt同源检查保持fail closed。
-- [ ] 更新真实browser preflight、composer-ready/claimed-ready等待和Trace交互验证。
-- [ ] 验证：Platform/Web focused tests、Web typecheck/build、browser gate mock tests、1440/390 fixtures和public-data scan。
-- [ ] Commit：`feat: support E2 traces and browser gates`。
+- [x] Trace loader和节点标题从Run binding解析Epoch，支持只读E1 v1与current E2 v2，不按latest/current profile回填历史。
+- [x] 泛化QA route、API client、QA store、qualification/campaign/finalization CLI和browser claim DTO。
+- [x] UI receipt v2严格绑定E2 Run/baseline/activation/build/viewport；QA与Trace receipt同源检查保持fail closed。
+- [x] 更新真实browser preflight、composer-ready/claimed-ready等待和Trace交互验证。
+- [x] 验证：Platform/Web focused tests、Web typecheck/build、browser gate mock tests、1440/390 fixtures和public-data scan。
+- [x] Commit：`feat: support E2 traces and browser gates`。
 
 ## E2-5 — Full Static and Migration Qualification
 
