@@ -333,6 +333,13 @@ STAGED --smoke PASS CAS--> SMOKE_PASSED --combined activation--> PROMOTED
 5. 调用 combined activation RPC。
 6. 提交后用生产 Semantic read port 与 Falcon authority port 重载并核对 pointer/runtime/defaults/current。
 
+提交后的 authority closure 通过后继 migration 10791 提供的
+`load_falcon24_semantic_authority_closure(jsonb)` 读取。命令只包含 `semantic_domain`，服务端从当前 capability/RLS scope
+解析 tenant、deployment 和 principal；单个 `REPEATABLE READ` 快照必须同时返回 current Falcon authority、semantic pointer、
+semantic runtime 和 workspace defaults。四者任一缺失、跨 scope、Release ref 不一致或 schema 无效都 fail closed，不能用多次普通
+查询拼成“看似一致”的 readback。正式 generation 2 envelope 则由既有 successor authority 按 exact
+`semantic_domain + release_id` 加载；Finalizer 同时核对 closure、PROMOTED stage 与 combined receipt。
+
 ### 6.2 Diagnostic authority
 
 新增 append-only diagnostic attempt/receipt authority；每个 E4 baseline/gen2 Release 同时最多一个 active attempt。E4-Q1 begin 必须
@@ -349,7 +356,8 @@ STAGED --smoke PASS CAS--> SMOKE_PASSED --combined activation--> PROMOTED
   defaults；若 E4-Q1 已开始则拒绝，防止诊断后补。
 - `complete_falcon24_diagnostic` 的 PASS 必须从同一 exact Run 读取已持久化 `QA_E2E` + `TRACE_UI` browser receipts，核对五个 exact
   Artifact、完整页面路径和 `falcon24-sandbox-reclamation-receipt@3` 的 residual=0。命令中的
-  `observed_execution_path` 是执行完成后的验收观察，不是 Root 预声明的 DAG；Root 仍逐轮只决定当前下一次 Tool Call。
+  `observed_execution_path` 仅记录执行完成后实际发生的 Tool/Artifact 顺序；Root 仍逐轮只决定当前下一次 Tool Call，Host 不据此
+  选择或调度后续业务能力。
 - `falcon24-qualification-manifest@3` 增加 exact diagnostic receipt ref。E4-Q1 只接受 v3；原 v2 仍只用于非 E4 历史/后继入口。
   PostgreSQL wrapper 在同一事务中验证 PASSED receipt 后调用既有唯一 qualification authority，旧 pre-diagnostic mutator 不向
   backend 授权。
@@ -468,6 +476,7 @@ await verifyAllNewThroughProductionPorts(e4, stage);
 ### Platform
 
 - `packages/platform/src/runs/postgres-authority-epoch.ts`
+- `packages/platform/src/runs/postgres-falcon24-semantic-closure.ts`
 - `packages/platform/src/semantic/falcon24-retained-authority-proof.ts`
 - Semantic PostgreSQL adapter/exports/tests；复用现有 publication kernel，不创建第二 adapter authority。
 
@@ -487,6 +496,7 @@ await verifyAllNewThroughProductionPorts(e4, stage);
 ### Database/spec/runbook
 
 - 10783：successor stage storage、immutability、stage/smoke CAS、combined activation RPC、renderer/registry/support。
+- 10791：refs-only Falcon24 semantic authority closure readback RPC；不写数据、不扩 backend 表级 SELECT。
 - Diagnostic authority 若评审选择独立边界，则使用后续 forward migration，不回写 10783。
 - 更新 Falcon gate、Agent runtime、E4 runbook 与本 Trellis 任务文档。
 

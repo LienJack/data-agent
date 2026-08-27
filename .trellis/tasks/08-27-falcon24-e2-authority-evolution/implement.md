@@ -251,8 +251,8 @@ Status: completed on 2026-08-28.
 
 **Work**
 
-- [ ] 新 proof v2 绑定 gen1 predecessor、gen2 candidate、四类 projection、source/compiler、validation/smoke、expected versions。
-- [ ] 删除 successor=predecessor proof requirement；保留旧 builder only for history verification。
+- [x] 新 proof v2 绑定 gen1 predecessor、gen2 candidate、四类 projection、source/compiler、validation/smoke、expected versions。
+- [x] 删除 successor=predecessor proof requirement；保留旧 builder only for history verification。
 - [ ] 拆分 `prepareWorkspaceAuthority`，禁止从 gen1 current 自动推导 E4 semantic ref。
 - [ ] Finalizer固定 stage -> smoke -> proof -> stage E4 receipts/baseline/session -> combined RPC -> production-port readback。
 - [ ] Readback mismatch 只报告 severe incident并冻结，不执行补写/rollback。
@@ -296,8 +296,20 @@ Status: completed on 2026-08-28.
   补写/rollback 接口；receipt baseline/attempt 换绑、mixed readback 或 readback I/O 失败均以稳定 severe code 冻结后续执行。
 - 新协调器测试 7/7 PASS，覆盖严格顺序、Worker capability 传递、smoke/rejected stage 的 activation-before-smoke 禁止、refs-only
   combined command、receipt 换绑、stale preflight 与 post-commit severe readback。Contracts dependency/semantic architecture 19/19 PASS，
-  scoped Biome 与 `git diff --check` PASS。Web typecheck 不再报告本包文件错误；剩余错误来自被冻结的 bootstrap/repair 审计现场和
-  既存 `direct-semantic-editor.tsx` exhaustiveness 缺口，后者转入独立 scoped 修复，前者仍等待明确处置授权。
+  scoped Biome 与 `git diff --check` PASS。
+- `76af77c8` 补齐 Direct Semantic Editor 的 `GROUP_COUNT(group_by, having)` 创建/编辑模型并提升 Formula AST v2；8 个 Web
+  聚焦测试和 1 个 contract test PASS。Web typecheck 此后只剩冻结 bootstrap/repair 审计现场错误。
+- `74645c51` 强制 Finalizer 对 Worker smoke receipt 的 exact build identity 做二次核对，防止 stage PASS 被错误 build 冒用。
+- Contracts 增加 refs-only `falcon24-semantic-authority-closure-load@1.0.0` 与严格
+  `falcon24-semantic-authority-closure@1.0.0`；10791 新增只读 closure RPC，Platform reader 在单个 `REPEATABLE READ` snapshot
+  内读取 current authority、semantic pointer/runtime 与 workspace defaults，并拒绝 mixed Release refs。backend 只有 RPC
+  EXECUTE，无 pointer/runtime/defaults 表级 SELECT。
+- 在通用 W7 scratch DB 上前向应用 10791 后，真实 RPC 返回 E4、pointer/runtime/default versions 均为 2、三处 generation 均为 2、
+  exact Release ref 相同；权限观察为 backend execute=true、public execute=false、三张权威表 backend SELECT=false。10791 checksum
+  为 `sha256:59bc6176a5df701b053c0efd08c0b97927218e4307963723789102113af54dcb`；专用 E3 database/container 未连接、未修改。
+- Web 增加 capability-bound production readback adapter，把 closure reader 与 existing promoted-successor reader 绑定到同一 domain；
+  增加 bounded Worker smoke process adapter，只经环境传 stage/domain/idempotency/build identity refs，严格解析 stdout receipt，拒绝
+  stderr、stage/build mismatch，且不把 child diagnostics 泄漏给调用方。readback 3/3、smoke process 3/3、Finalizer 8/8 聚焦测试 PASS。
 - 因冻结 CLI 尚未接入该协调器，W5 的 Finalizer 工作项仍不勾选，W7 production import graph 也仍不得标绿。
 
 **Commit**
@@ -333,7 +345,8 @@ Status: completed on 2026-08-28.
   `begin_falcon24_qualification_pre_diagnostic`。专用 E3 容器/数据库未连接、未修改。
 - Contracts full：99 files / 949 tests；Platform full：109 files / 679 tests。10790 render verify、workspace migration inventory、
   Contracts/Platform typecheck/build 与 focused Biome 均通过。
-- `observed_execution_path` 仅是完成后的验收证据，不是 Host 调度计划；动态 Tool Loop 的逐轮决策边界保持不变。
+- `observed_execution_path` 仅是完成后的验收证据；动态 Tool Loop 仍由 Root 逐轮决定当前下一次 Tool Call，Host 不据此选择
+  后续业务能力。
 
 **Stop conditions**
 
@@ -367,9 +380,10 @@ Status: completed on 2026-08-28.
   执行/覆盖的 rejected generation-1 repair 审计现场；W7 不以运行这些 dirty 文件伪造全量通过。
 - `infra/supabase/test-support/static-check.sh` 全绿；10783 checksum
   `sha256:bbbec227c257178bc6c92654ab4a7ec0a4cc2520cb303d16c909914b97703930`，10790 checksum
-  `sha256:1fa18ed845d99c4964b11bd92169119b42a7eb040e5cf5918761675d1c5f1294`。
+  `sha256:1fa18ed845d99c4964b11bd92169119b42a7eb040e5cf5918761675d1c5f1294`，10791 checksum
+  `sha256:59bc6176a5df701b053c0efd08c0b97927218e4307963723789102113af54dcb`。
 - 通用 PostgreSQL 17 容器内的 W7 scratch DB `data_agent_falcon24_w7_a26b976e` 从已验证 exact E3/10783 fixture
-  前进应用 10784-10790。并发 observer 只看到 `1:E3:1:SMOKE_PASSED` 或 `2:E4:2:PROMOTED:1`；两个并发调用和 replay
+  前进应用 10784-10791。并发 observer 只看到 `1:E3:1:SMOKE_PASSED` 或 `2:E4:2:PROMOTED:1`；两个并发调用和 replay
   返回同一 activation receipt hash `sha256:9bd409a44e0fa89bbcd7e43d63518b481320b413b7e6b2e808490f0069230966`。
 - activation 前后 generation 1 source release digest 均为
   `sha256:4756735c7f6f0095efe00273cf1b0f4ae52def1f4f9bcca399a12d4bf53bd1fd`；E1-E3 baseline digest 均为
