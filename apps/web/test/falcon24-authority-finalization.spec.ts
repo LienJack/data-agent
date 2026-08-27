@@ -1,15 +1,36 @@
 import { fileURLToPath } from "node:url";
+import {
+  type BuiltinTeamMaterializationInput,
+  buildBuiltinTeamMaterialization,
+  DATA_AGENT_SPECIALIST_PROFILE_IDS,
+} from "@data-agent/agent-runtime";
 import { describe, expect, it, vi } from "vitest";
 
 vi.mock("server-only", () => ({}));
 
 import {
   buildFalcon24AcceptanceContractHashes,
+  buildFalcon24AgentProfileAuthorityProof,
   runFalcon24AuthorityFinalization,
 } from "../src/cli/finalize-falcon24-authority.js";
 
 const repositoryRoot = fileURLToPath(new URL("../../../", import.meta.url));
 const oracleHash = `sha256:${"a".repeat(64)}` as const;
+
+function resourceReferences(prefix: string) {
+  return Object.fromEntries(
+    DATA_AGENT_SPECIALIST_PROFILE_IDS.map((profileId, index) => [
+      profileId,
+      {
+        resource_id: `00000000-0000-4000-8000-${String(index + 1).padStart(12, prefix)}`,
+        resource_revision: 1,
+        resource_hash: `sha256:${String(index + 1)
+          .repeat(64)
+          .slice(0, 64)}`,
+      },
+    ]),
+  ) as BuiltinTeamMaterializationInput["model_profile_refs"];
+}
 
 describe("Falcon24 versioned authority finalization", () => {
   it("refuses activation without the destructive confirmation", async () => {
@@ -45,5 +66,50 @@ describe("Falcon24 versioned authority finalization", () => {
     expect(Object.values(left)).toHaveLength(6);
     expect(new Set(Object.values(left)).size).toBe(6);
     expect(Object.values(left).every((hash) => /^sha256:[a-f0-9]{64}$/u.test(hash))).toBe(true);
+  });
+
+  it("binds the Worker build identity into the Agent Profile staging evidence", async () => {
+    const materializationInput: BuiltinTeamMaterializationInput = {
+      scope: {
+        app_id: "00000000-0000-4000-8000-000000000001",
+        tenant_id: "00000000-0000-4000-8000-000000000002",
+        environment: "test",
+      },
+      model_profile_refs: resourceReferences("0"),
+      context_policy_refs: resourceReferences("1"),
+      execution_safety_policy_refs: resourceReferences("2"),
+    };
+    const built = await buildBuiltinTeamMaterialization(materializationInput);
+    const workerBuild = {
+      schema_version: "runtime-build-identity@1.0.0" as const,
+      consumer_role: "worker" as const,
+      generation_id: `sha256:${"a".repeat(64)}` as const,
+      build_id: `sha256:${"b".repeat(64)}` as const,
+      built_at: "2026-08-27T00:00:00.000Z",
+      git_commit: "1".repeat(40),
+      git_dirty: false,
+    };
+    const left = await buildFalcon24AgentProfileAuthorityProof({
+      authority_epoch: "E2",
+      built,
+      materialization_input: materializationInput,
+      worker_build: workerBuild,
+    });
+    const right = await buildFalcon24AgentProfileAuthorityProof({
+      authority_epoch: "E2",
+      built,
+      materialization_input: materializationInput,
+      worker_build: {
+        ...workerBuild,
+        build_id: `sha256:${"c".repeat(64)}`,
+      },
+    });
+
+    expect(right.subject_hash).toBe(left.subject_hash);
+    expect(right.evidence_hash).not.toBe(left.evidence_hash);
+    expect(left.evidence.worker_build).toEqual({
+      build_id: workerBuild.build_id,
+      generation_id: workerBuild.generation_id,
+    });
   });
 });

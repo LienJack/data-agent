@@ -26,6 +26,10 @@ import {
   verifySemanticBootstrapValidationReceipt,
 } from "@data-agent/contracts/semantic";
 import { z } from "zod";
+import {
+  buildFalcon24ModelAuthorityProof,
+  buildFalcon24SemanticReleaseAuthorityProof,
+} from "./falcon24-retained-authority-proof.js";
 import type { PostgresGreenfieldBootstrapReleaseAuthority } from "./greenfield-bootstrap-release-authority.js";
 
 const hashSchema = z.string().regex(/^sha256:[0-9a-f]{64}$/u);
@@ -224,18 +228,18 @@ async function semanticBootstrap(
   ) {
     throw new TypeError("FALCON24_E1_SEMANTIC_REPLAY_MISMATCH");
   }
+  const proof = await buildFalcon24SemanticReleaseAuthorityProof({
+    retained_semantics: retained.semantics,
+    definition_keys: semantic.definition_keys,
+    loaded_release: loaded,
+  });
   return {
     release_set_id: release.release_set_id,
-    release_set_hash: release.release_set_hash,
+    release_set_hash: proof.subject_hash,
     release_id: release.release_id,
     generation: release.generation,
     publication_disposition: published.disposition,
-    evidence_hash: await sha256ContentHash({
-      source_bundle_hash: semantic.source_bundle_hash,
-      definition_keys: semantic.definition_keys,
-      validation_receipt_hash: semantic.validation_receipt.receipt_hash,
-      first_release_receipt_hash: published.first_release_receipt.receipt_hash,
-    }),
+    evidence_hash: proof.evidence_hash,
   } as const;
 }
 
@@ -488,30 +492,15 @@ async function modelBootstrap(
   if (credentialRef && certification?.state !== "PASS") {
     throw new TypeError("FALCON24_E1_MODEL_CERTIFICATION_REQUIRED");
   }
-  const safeProjection = {
-    provider_connection_id: provider.provider_connection_id,
-    provider_config_version: provider.config_version,
-    model_profile_id: model.model_profile_id,
-    model_config_version: model.config_version,
-    provider: model.provider,
-    model_id: model.model_id,
-    capabilities: model.capabilities,
-    credential_bound: credentialRef !== null,
-    certification_state: certification?.state ?? "NOT_CERTIFIED",
-  } as const;
-  return {
-    ...safeProjection,
-    readiness: certification?.state === "PASS" ? ("READY" as const) : ("HOLD" as const),
-    subject_hash: await sha256ContentHash(llm),
-    evidence_hash: await sha256ContentHash(safeProjection),
-    projection_hash: await sha256ContentHash({
-      model_profile_id: model.model_profile_id,
-      model_config_version: model.config_version,
-      provider: model.provider,
-      model_id: model.model_id,
-      capabilities: model.capabilities,
-    }),
-  };
+  return buildFalcon24ModelAuthorityProof({
+    retained_llm: retained.llm,
+    llm_manifest: llm,
+    provider,
+    model,
+    credential_ref: credentialRef,
+    ...(certification ? { certification } : {}),
+    require_ready: false,
+  });
 }
 
 async function recordReceipt(

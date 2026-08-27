@@ -5,6 +5,7 @@ import {
   timestampSchema,
   versionIdentifierSchema,
 } from "../common/index.js";
+import { falcon24SuccessorAuthorityEpochSchema } from "../runs/falcon24-authority-identity.js";
 import { publicBenchmarkCaseSchema } from "./test-center.js";
 
 export const FALCON_SOURCE_COMMIT = "8ff29caaa7fad5c7b8f8864f2fc19f9f698d39a5" as const;
@@ -18,6 +19,8 @@ export const FALCON24_E1_DB_ID = 24 as const;
 export const FALCON24_E1_SCHEMA_NAME = "falcon_db_24" as const;
 export const FALCON24_E1_DATABASE_IMPORT_RECEIPT_VERSION =
   "falcon24-e1-database-import@1.0.0" as const;
+export const FALCON24_DATABASE_VERIFICATION_RECEIPT_V2_VERSION =
+  "falcon24-database-verification@2.0.0" as const;
 export const FALCON24_E1_EXPECTED_CATALOG_INVENTORY_HASH =
   "sha256:85dc4e7f64a0b0944ac653b95d446c253b44995e0e2574b3d393f3fb3d2cde87" as const;
 
@@ -202,6 +205,38 @@ const falcon24E1DatabaseImportReceiptMaterialSchema = z
 export const falcon24E1DatabaseImportReceiptSchema =
   falcon24E1DatabaseImportReceiptMaterialSchema.extend({ receipt_hash: contentHashSchema });
 
+const falcon24DatabaseVerificationReceiptV2MaterialSchema = z
+  .strictObject({
+    ...falcon24E1DatabaseImportReceiptMaterialSchema.shape,
+    receipt_version: z.literal(FALCON24_DATABASE_VERIFICATION_RECEIPT_V2_VERSION),
+    authority_epoch: falcon24SuccessorAuthorityEpochSchema,
+  })
+  .superRefine((receipt, context) => {
+    const sorted = [...receipt.failure_codes].sort();
+    if (
+      new Set(receipt.failure_codes).size !== receipt.failure_codes.length ||
+      receipt.failure_codes.some((code, index) => code !== sorted[index])
+    ) {
+      context.addIssue({
+        code: "custom",
+        message: "Falcon24 database verification failure_codes 必须唯一且规范排序。",
+        path: ["failure_codes"],
+      });
+    }
+    if ((receipt.status === "READY") !== (receipt.failure_codes.length === 0)) {
+      context.addIssue({
+        code: "custom",
+        message: "Falcon24 database verification status 必须与 failure_codes 闭合。",
+        path: ["status"],
+      });
+    }
+  });
+
+export const falcon24DatabaseVerificationReceiptV2Schema =
+  falcon24DatabaseVerificationReceiptV2MaterialSchema.extend({
+    receipt_hash: contentHashSchema,
+  });
+
 function canonicalizeFalcon24E1Tables(
   tables: readonly z.infer<typeof falcon24E1CatalogTableSchema>[],
 ): z.infer<typeof falcon24E1CatalogTableSchema>[] {
@@ -292,12 +327,71 @@ export async function buildFalcon24E1DatabaseImportReceipt(input: {
   });
 }
 
+export async function buildFalcon24DatabaseVerificationReceiptV2(input: {
+  readonly authority_epoch: z.infer<typeof falcon24SuccessorAuthorityEpochSchema>;
+  readonly source: FalconBundleFile;
+  readonly observed_bundle_sha256: `sha256:${string}`;
+  readonly expected_inventory_hash: `sha256:${string}`;
+  readonly catalog_inventory: unknown;
+}) {
+  const source = falconBundleFileSchema.parse(input.source);
+  if (source.db_id !== FALCON24_E1_DB_ID || source.schema_name !== FALCON24_E1_SCHEMA_NAME) {
+    throw new TypeError("FALCON24_DATABASE_VERIFICATION_SOURCE_SCOPE_INVALID");
+  }
+  const catalogInventory = await verifyFalcon24E1CatalogInventory(input.catalog_inventory);
+  const failureCodes = [
+    ...(input.observed_bundle_sha256 === source.bundle_sha256 ? [] : ["BUNDLE_HASH_MISMATCH"]),
+    ...(catalogInventory.column_count === source.column_count ? [] : ["COLUMN_COUNT_MISMATCH"]),
+    ...(catalogInventory.content_digest === source.content_digest
+      ? []
+      : ["CONTENT_DIGEST_MISMATCH"]),
+    ...(catalogInventory.inventory_hash === input.expected_inventory_hash
+      ? []
+      : ["INVENTORY_HASH_INVALID"]),
+    ...(catalogInventory.null_count === source.null_count ? [] : ["NULL_COUNT_MISMATCH"]),
+    ...(catalogInventory.row_count === source.row_count ? [] : ["ROW_COUNT_MISMATCH"]),
+    ...(catalogInventory.table_count === source.table_count ? [] : ["TABLE_COUNT_MISMATCH"]),
+  ].sort() as z.infer<typeof falcon24E1ImportFailureCodeSchema>[];
+  const material = falcon24DatabaseVerificationReceiptV2MaterialSchema.parse({
+    receipt_version: FALCON24_DATABASE_VERIFICATION_RECEIPT_V2_VERSION,
+    authority_epoch: input.authority_epoch,
+    dataset_version: FALCON_DATASET_VERSION,
+    source_commit: FALCON_SOURCE_COMMIT,
+    db_id: FALCON24_E1_DB_ID,
+    schema_name: FALCON24_E1_SCHEMA_NAME,
+    target_database: "data_agent",
+    reader_role: "falcon_demo_reader",
+    source_sqlite_sha256: source.source_sqlite_sha256,
+    expected_bundle_sha256: source.bundle_sha256,
+    observed_bundle_sha256: input.observed_bundle_sha256,
+    expected_content_digest: source.content_digest,
+    expected_inventory_hash: input.expected_inventory_hash,
+    catalog_inventory: catalogInventory,
+    status: failureCodes.length === 0 ? "READY" : "HOLD",
+    failure_codes: failureCodes,
+  });
+  return falcon24DatabaseVerificationReceiptV2Schema.parse({
+    ...material,
+    receipt_hash: await sha256ContentHash(material),
+  });
+}
+
 export async function verifyFalcon24E1DatabaseImportReceipt(input: unknown) {
   const receipt = falcon24E1DatabaseImportReceiptSchema.parse(input);
   await verifyFalcon24E1CatalogInventory(receipt.catalog_inventory);
   const { receipt_hash: observedHash, ...material } = receipt;
   if ((await sha256ContentHash(material)) !== observedHash) {
     throw new TypeError("FALCON24_E1_DATABASE_IMPORT_RECEIPT_HASH_INVALID");
+  }
+  return receipt;
+}
+
+export async function verifyFalcon24DatabaseVerificationReceiptV2(input: unknown) {
+  const receipt = falcon24DatabaseVerificationReceiptV2Schema.parse(input);
+  await verifyFalcon24E1CatalogInventory(receipt.catalog_inventory);
+  const { receipt_hash: observedHash, ...material } = receipt;
+  if ((await sha256ContentHash(material)) !== observedHash) {
+    throw new TypeError("FALCON24_DATABASE_VERIFICATION_RECEIPT_HASH_INVALID");
   }
   return receipt;
 }
@@ -331,5 +425,8 @@ export type FalconDatabaseImportReceipt = z.infer<typeof falconDatabaseImportRec
 export type FalconImportReceipt = z.infer<typeof falconImportReceiptSchema>;
 export type Falcon24E1CatalogInventory = z.infer<typeof falcon24E1CatalogInventorySchema>;
 export type Falcon24E1DatabaseImportReceipt = z.infer<typeof falcon24E1DatabaseImportReceiptSchema>;
+export type Falcon24DatabaseVerificationReceiptV2 = z.infer<
+  typeof falcon24DatabaseVerificationReceiptV2Schema
+>;
 export type FalconSubmissionEntry = z.infer<typeof falconSubmissionEntrySchema>;
 export type FalconSubmissionReceipt = z.infer<typeof falconSubmissionReceiptSchema>;

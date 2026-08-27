@@ -1,7 +1,7 @@
 import { execFile } from "node:child_process";
 import { createHash } from "node:crypto";
 import { readFileSync } from "node:fs";
-import { resolve } from "node:path";
+import { dirname, isAbsolute, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
 import { promisify } from "node:util";
 import {
@@ -11,14 +11,21 @@ import {
 import { sha256ContentHash } from "@data-agent/contracts/common";
 import {
   buildFalcon24AuthorityBaselineV2,
+  buildFalcon24DatabaseVerificationReceiptV2,
+  buildFalcon24E1DatabaseImportReceipt,
   buildFalcon24RetainedAssetsManifestV2,
+  FALCON24_E1_EXPECTED_CATALOG_INVENTORY_HASH,
+  falconSourceManifestSchema,
+  verifyFalcon24AuthorityBaselineDocument,
   verifyFalcon24RetainedAssetsManifest,
 } from "@data-agent/contracts/evals";
 import {
+  buildFalcon24StagingReceiptV2,
   FALCON24_TARGET_AUTHORITY_EPOCH,
   type Falcon24StagingReceiptV2,
   falcon24AuthorityEpochOrdinal,
   falcon24SuccessorAuthorityEpochSchema,
+  verifyFalcon24E1StagingReceipt,
   verifyFalcon24StagingReceiptV2,
 } from "@data-agent/contracts/runs";
 import { loadRuntimeBuildIdentity } from "@data-agent/contracts/server";
@@ -31,17 +38,30 @@ import {
   adaptPgCatalogPool,
   createPostgresCatalogScanner,
   createPostgresSchemaSnapshotStore,
+  verifyFalcon24CatalogInventory,
 } from "@data-agent/platform/catalog";
 import { createPostgresSkillRegistry } from "@data-agent/platform/extensions";
+import { createPostgresModelControlRepository } from "@data-agent/platform/models";
 import { adaptPgPool } from "@data-agent/platform/persistence";
 import {
   createPostgresEffectiveConfigResolver,
   createPostgresFalcon24AuthorityEpoch,
 } from "@data-agent/platform/runs";
 import { loadRuntimeEnvironment } from "@data-agent/platform/runtime-config";
+import {
+  buildFalcon24ModelAuthorityProof,
+  buildFalcon24SemanticReleaseAuthorityProof,
+  createPostgresGreenfieldBootstrapReleaseAuthority,
+} from "@data-agent/platform/semantic-postgres";
 import { createPostgresCapabilityAuthority } from "@data-agent/platform/tenancy";
 import pg from "pg";
 import { z } from "zod";
+import {
+  parseTurboBuildDryRun,
+  projectRuntimeBuildIdentities,
+  readWorkspaceBuildAttestation,
+  verifyWorkspaceBuildAttestation,
+} from "../../../../scripts/lib/workspace-build-integrity.js";
 import { verifyOpenSandboxAnalysisAttestation } from "../../../../scripts/verify-opensandbox-analysis-attestation.js";
 import {
   BUILTIN_TEAM_ROLE_MODEL_IDS,
@@ -69,6 +89,9 @@ const configurationSchema = z.strictObject({
   datasource_id: z.uuid(),
   environment: z.string().regex(/^[A-Za-z0-9][A-Za-z0-9._-]{0,63}$/u),
   reader_password: z.string().min(1).max(1_024),
+  web_build_identity_file: z.string().min(1).max(4_096).refine(isAbsolute),
+  worker_build_identity_file: z.string().min(1).max(4_096).refine(isAbsolute),
+  build_attestation_file: z.string().min(1).max(4_096).refine(isAbsolute),
 });
 
 const ACCEPTANCE_CONTRACT_SOURCES = Object.freeze({
@@ -166,6 +189,126 @@ async function contractHash(root: string, paths: readonly string[]) {
   });
 }
 
+const BASELINE_RECEIPT_COMPONENTS = Object.freeze({
+  AGENT_PROFILES: "agent_profiles",
+  DATASET: "dataset",
+  LLM_CONFIGURATION: "llm_configuration",
+  OPERATOR_REGISTRY: "operator_registry",
+  SANDBOX_RUNTIME: "sandbox_runtime",
+  SEMANTIC_RELEASE: "semantic_release",
+} as const satisfies Readonly<Record<Falcon24StagingReceiptV2["component"], string>>);
+
+type HistoricalStagingReceipt = Awaited<ReturnType<typeof verifyFalcon24E1StagingReceipt>>;
+
+async function loadPredecessorStagingReceipts(input: {
+  readonly pool: pg.Pool;
+  readonly scope: {
+    readonly app_id: string;
+    readonly tenant_id: string;
+    readonly environment: string;
+  };
+  readonly authority_epoch: string;
+  readonly baseline_id: string;
+  readonly baseline_hash: string;
+}) {
+  if (input.authority_epoch !== "E1") {
+    throw new TypeError("FALCON24_AUTHORITY_PREDECESSOR_E1_REQUIRED");
+  }
+  const baselineResult = await input.pool.query<{ readonly baseline_document: unknown }>(
+    `select baseline_document
+       from app_data_agent.falcon24_authority_baselines
+      where app_id=$1::uuid and tenant_id=$2::uuid and environment=$3::text
+        and authority_epoch=$4::text and baseline_id=$5::uuid and baseline_hash=$6::text
+        and status='ACTIVE'`,
+    [
+      input.scope.app_id,
+      input.scope.tenant_id,
+      input.scope.environment,
+      input.authority_epoch,
+      input.baseline_id,
+      input.baseline_hash,
+    ],
+  );
+  const baselineRow = baselineResult.rows[0];
+  if (baselineResult.rowCount !== 1 || !baselineRow) {
+    throw new TypeError("FALCON24_AUTHORITY_PREDECESSOR_BASELINE_REQUIRED");
+  }
+  const baseline = await verifyFalcon24AuthorityBaselineDocument(baselineRow.baseline_document);
+  if (
+    baseline.authority_epoch !== input.authority_epoch ||
+    baseline.baseline_id !== input.baseline_id ||
+    baseline.baseline_hash !== input.baseline_hash
+  ) {
+    throw new TypeError("FALCON24_AUTHORITY_PREDECESSOR_BASELINE_MISMATCH");
+  }
+  const expectedHashes = Object.entries(BASELINE_RECEIPT_COMPONENTS).map(
+    ([component, field]) => [component, baseline.staging_receipts[field]] as const,
+  );
+  const receiptResult = await input.pool.query<{ readonly receipt_document: unknown }>(
+    `select receipt_document
+       from app_data_agent.falcon24_authority_staging_receipts
+      where app_id=$1::uuid and tenant_id=$2::uuid and environment=$3::text
+        and authority_epoch=$4::text and receipt_hash=any($5::text[])
+      order by component`,
+    [
+      input.scope.app_id,
+      input.scope.tenant_id,
+      input.scope.environment,
+      input.authority_epoch,
+      expectedHashes.map(([, hash]) => hash),
+    ],
+  );
+  if (receiptResult.rows.length !== expectedHashes.length) {
+    throw new TypeError("FALCON24_AUTHORITY_PREDECESSOR_RECEIPTS_INCOMPLETE");
+  }
+  const receipts = new Map<Falcon24StagingReceiptV2["component"], HistoricalStagingReceipt>();
+  for (const row of receiptResult.rows) {
+    const receipt = await verifyFalcon24E1StagingReceipt(row.receipt_document);
+    const field = BASELINE_RECEIPT_COMPONENTS[receipt.component];
+    if (
+      receipt.receipt_hash !== baseline.staging_receipts[field] ||
+      receipts.has(receipt.component)
+    ) {
+      throw new TypeError("FALCON24_AUTHORITY_PREDECESSOR_RECEIPT_MISMATCH");
+    }
+    receipts.set(receipt.component, receipt);
+  }
+  return receipts;
+}
+
+function requirePredecessorReceipt(
+  receipts: ReadonlyMap<Falcon24StagingReceiptV2["component"], HistoricalStagingReceipt>,
+  component: Falcon24StagingReceiptV2["component"],
+) {
+  const receipt = receipts.get(component);
+  if (!receipt) throw new TypeError("FALCON24_AUTHORITY_PREDECESSOR_RECEIPTS_INCOMPLETE");
+  return receipt;
+}
+
+async function recordStagingReceipt(input: {
+  readonly authority_epoch: z.infer<typeof falcon24SuccessorAuthorityEpochSchema>;
+  readonly staging_id: string;
+  readonly component: Falcon24StagingReceiptV2["component"];
+  readonly subject_hash: string;
+  readonly evidence_hash: string;
+  readonly production_isolation_proven: boolean;
+  readonly capability: unknown;
+  readonly epoch: ReturnType<typeof createPostgresFalcon24AuthorityEpoch>;
+}) {
+  const receipt = await buildFalcon24StagingReceiptV2({
+    schema_version: "falcon24-staging-receipt@2.0.0",
+    authority_epoch: input.authority_epoch,
+    staging_id: input.staging_id,
+    component: input.component,
+    subject_hash: input.subject_hash,
+    evidence_hash: input.evidence_hash,
+    production_isolation_proven: input.production_isolation_proven,
+  });
+  return verifyFalcon24StagingReceiptV2(
+    requireValue(await input.epoch.recordReceipt(input.capability, receipt)),
+  );
+}
+
 export async function buildFalcon24AcceptanceContractHashes(input: {
   readonly repository_root: string;
   readonly oracle_contract_hash: string;
@@ -198,6 +341,477 @@ async function frozenCommit(root: string): Promise<string> {
     .string()
     .regex(/^[0-9a-f]{40}$/u)
     .parse(commit.trim());
+}
+
+async function verifyReleaseBuildClosure(input: {
+  readonly repository_root: string;
+  readonly source_commit: string;
+  readonly attestation_file: string;
+  readonly web_build: ReturnType<typeof loadRuntimeBuildIdentity>;
+  readonly worker_build: ReturnType<typeof loadRuntimeBuildIdentity>;
+}) {
+  const { stdout } = await execFileAsync(
+    "pnpm",
+    [
+      "turbo",
+      "run",
+      "build",
+      "--dry=json",
+      "--filter=@data-agent/web...",
+      "--filter=@data-agent/worker...",
+    ],
+    { cwd: input.repository_root, maxBuffer: 20 * 1_024 * 1_024 },
+  );
+  const currentBuild = parseTurboBuildDryRun(JSON.parse(stdout));
+  const attestation = verifyWorkspaceBuildAttestation({
+    repoRoot: input.repository_root,
+    attestation: readWorkspaceBuildAttestation(input.attestation_file),
+    currentBuild,
+  });
+  const projected = new Map(
+    projectRuntimeBuildIdentities(attestation).map((identity) => [
+      identity.consumer_role,
+      identity,
+    ]),
+  );
+  const projectedWeb = projected.get("web");
+  const projectedWorker = projected.get("worker");
+  const identityMatches = (
+    projectedIdentity: NonNullable<typeof projectedWeb>,
+    loadedIdentity: ReturnType<typeof loadRuntimeBuildIdentity>,
+  ) =>
+    projectedIdentity.schema_version === loadedIdentity.schema_version &&
+    projectedIdentity.consumer_role === loadedIdentity.consumer_role &&
+    projectedIdentity.generation_id === loadedIdentity.generation_id &&
+    projectedIdentity.build_id === loadedIdentity.build_id &&
+    projectedIdentity.built_at === loadedIdentity.built_at &&
+    projectedIdentity.git_commit === loadedIdentity.git_commit &&
+    projectedIdentity.git_dirty === loadedIdentity.git_dirty;
+  if (
+    attestation.git_dirty ||
+    attestation.git_commit !== input.source_commit ||
+    !projectedWeb ||
+    !projectedWorker ||
+    !identityMatches(projectedWeb, input.web_build) ||
+    !identityMatches(projectedWorker, input.worker_build)
+  ) {
+    throw new TypeError("FALCON24_AUTHORITY_RELEASE_BUILD_IDENTITY_MISMATCH");
+  }
+  return Object.freeze({
+    generation_id: attestation.generation_id,
+    web_build_id: projectedWeb.build_id,
+    worker_build_id: projectedWorker.build_id,
+  });
+}
+
+async function stageDatasetReceipt(input: {
+  readonly authority_epoch: z.infer<typeof falcon24SuccessorAuthorityEpochSchema>;
+  readonly staging_id: string;
+  readonly retained: Awaited<ReturnType<typeof verifyFalcon24RetainedAssetsManifest>>;
+  readonly predecessor_receipts: ReadonlyMap<
+    Falcon24StagingReceiptV2["component"],
+    HistoricalStagingReceipt
+  >;
+  readonly pool: pg.Pool;
+  readonly capability: unknown;
+  readonly epoch: ReturnType<typeof createPostgresFalcon24AuthorityEpoch>;
+}) {
+  const sourceManifestPath = resolve(REPOSITORY_ROOT, input.retained.upstream.manifest_path);
+  const bundlePath = resolve(REPOSITORY_ROOT, input.retained.active_dataset.bundle_path);
+  if (rawHash(sourceManifestPath) !== input.retained.upstream.manifest_hash) {
+    throw new TypeError("FALCON24_DATASET_SOURCE_MANIFEST_HASH_MISMATCH");
+  }
+  const sourceManifest = falconSourceManifestSchema.parse(json(sourceManifestPath));
+  const source = sourceManifest.files.find(({ db_id: databaseId }) => databaseId === 24);
+  if (
+    !source ||
+    sourceManifest.source_commit !== input.retained.upstream.source_commit ||
+    sourceManifest.source_digest !== input.retained.upstream.source_digest ||
+    source.bundle_sha256 !== input.retained.active_dataset.bundle_sha256 ||
+    source.content_digest !== input.retained.active_dataset.content_digest ||
+    source.source_sqlite_sha256 !== input.retained.active_dataset.seed_hash ||
+    source.table_count !== input.retained.active_dataset.table_count ||
+    source.column_count !== input.retained.active_dataset.column_count ||
+    source.row_count !== input.retained.active_dataset.row_count
+  ) {
+    throw new TypeError("FALCON24_DATASET_RETAINED_SOURCE_MISMATCH");
+  }
+  const observedBundleHash = rawHash(bundlePath);
+  const inventory = await verifyFalcon24CatalogInventory(adaptPgCatalogPool(input.pool));
+  const historicalImport = await buildFalcon24E1DatabaseImportReceipt({
+    source,
+    observed_bundle_sha256: observedBundleHash,
+    expected_inventory_hash: FALCON24_E1_EXPECTED_CATALOG_INVENTORY_HASH,
+    catalog_inventory: inventory,
+  });
+  const predecessor = requirePredecessorReceipt(input.predecessor_receipts, "DATASET");
+  if (
+    historicalImport.status !== "READY" ||
+    historicalImport.receipt_hash !== predecessor.subject_hash ||
+    inventory.inventory_hash !== predecessor.evidence_hash
+  ) {
+    throw new TypeError("FALCON24_DATASET_PREDECESSOR_PROOF_MISMATCH");
+  }
+  const verification = await buildFalcon24DatabaseVerificationReceiptV2({
+    authority_epoch: input.authority_epoch,
+    source,
+    observed_bundle_sha256: observedBundleHash,
+    expected_inventory_hash: FALCON24_E1_EXPECTED_CATALOG_INVENTORY_HASH,
+    catalog_inventory: inventory,
+  });
+  if (verification.status !== "READY") {
+    throw new TypeError("FALCON24_DATASET_VERIFICATION_HOLD");
+  }
+  const receipt = await recordStagingReceipt({
+    authority_epoch: input.authority_epoch,
+    staging_id: input.staging_id,
+    component: "DATASET",
+    subject_hash: verification.receipt_hash,
+    evidence_hash: inventory.inventory_hash,
+    production_isolation_proven: false,
+    capability: input.capability,
+    epoch: input.epoch,
+  });
+  return Object.freeze({
+    receipt,
+    verification_receipt_hash: verification.receipt_hash,
+    inventory_hash: inventory.inventory_hash,
+    table_count: inventory.table_count,
+    column_count: inventory.column_count,
+    row_count: inventory.row_count,
+    null_count: inventory.null_count,
+    content_digest: inventory.content_digest,
+  });
+}
+
+async function stageSemanticReleaseReceipt(input: {
+  readonly authority_epoch: z.infer<typeof falcon24SuccessorAuthorityEpochSchema>;
+  readonly staging_id: string;
+  readonly retained: Awaited<ReturnType<typeof verifyFalcon24RetainedAssetsManifest>>;
+  readonly predecessor_receipts: ReadonlyMap<
+    Falcon24StagingReceiptV2["component"],
+    HistoricalStagingReceipt
+  >;
+  readonly pool: pg.Pool;
+  readonly sql_pool: ReturnType<typeof adaptPgPool>;
+  readonly authorizer: ReturnType<typeof createPostgresCapabilityAuthority>["authorizer"];
+  readonly capability: Parameters<typeof resolveBuiltinTeamMaterializationInput>[0]["capability"];
+  readonly epoch: ReturnType<typeof createPostgresFalcon24AuthorityEpoch>;
+}) {
+  for (const source of input.retained.semantics.source_files) {
+    if (rawHash(resolve(REPOSITORY_ROOT, source.path)) !== source.hash) {
+      throw new TypeError("FALCON24_SEMANTIC_RETAINED_SOURCE_DRIFT");
+    }
+  }
+  if (
+    (await sha256ContentHash(input.retained.semantics.source_files)) !==
+    input.retained.semantics.source_bundle_hash
+  ) {
+    throw new TypeError("FALCON24_SEMANTIC_SOURCE_BUNDLE_MISMATCH");
+  }
+  const releaseResult = await input.pool.query<{
+    readonly release_set_id: string;
+    readonly release_set_hash: `sha256:${string}`;
+    readonly definition_keys: string[];
+  }>(
+    `select release.release_set_id::text,release.release_set_hash,
+            array(select assertion->>'canonical_key'
+                    from pg_catalog.jsonb_array_elements(source.source_payload->'assertions')
+                      assertion
+                   order by assertion->>'canonical_key') as definition_keys
+       from semantic.semantic_active_pointer pointer
+       join semantic.initial_semantic_release_sets release
+         on release.app_id=pointer.app_id and release.tenant_id=pointer.tenant_id
+        and release.environment=pointer.environment
+        and release.semantic_domain=pointer.semantic_domain
+        and release.release_id=pointer.current_release_id
+       join semantic.semantic_candidate_revision revision
+         on revision.app_id=release.app_id and revision.tenant_id=release.tenant_id
+        and revision.environment=release.environment
+        and revision.semantic_domain=release.semantic_domain
+        and revision.candidate_id=release.candidate_id
+        and revision.revision_id=release.candidate_revision_id
+       join semantic.semantic_source_revision source
+         on source.app_id=revision.app_id and source.tenant_id=revision.tenant_id
+        and source.environment=revision.environment
+        and source.semantic_domain=revision.semantic_domain
+        and source.revision_id=revision.source_revision_id
+      where pointer.app_id=$1::uuid and pointer.tenant_id=$2::uuid
+        and pointer.environment=$3::text and pointer.semantic_domain='falcon24'
+        and pointer.current_release_generation=1
+        and pointer.current_release_digest=release.release_set_hash`,
+    [
+      input.capability.scope.app_id,
+      input.capability.scope.tenant_id,
+      input.capability.scope.environment,
+    ],
+  );
+  const release = releaseResult.rows[0];
+  if (releaseResult.rowCount !== 1 || !release) {
+    throw new TypeError("FALCON24_SEMANTIC_RELEASE_REQUIRED");
+  }
+  const authority = createPostgresGreenfieldBootstrapReleaseAuthority({
+    verifier_pool: input.sql_pool,
+    publisher_pool: input.sql_pool,
+    authorizer: input.authorizer,
+  });
+  const loaded = requireValue(
+    await authority.loadInitial(input.capability, {
+      schema_version: "load-initial-semantic-release-command@1.0.0",
+      scope: {
+        app_id: input.capability.scope.app_id,
+        tenant_id: input.capability.scope.tenant_id,
+        workspace_id: input.capability.scope.tenant_id,
+        environment: input.capability.scope.environment,
+      },
+      semantic_domain: "falcon24",
+      release_set_ref: {
+        release_set_id: release.release_set_id,
+        release_set_hash: release.release_set_hash,
+      },
+    }),
+  );
+  const proof = await buildFalcon24SemanticReleaseAuthorityProof({
+    retained_semantics: input.retained.semantics,
+    definition_keys: release.definition_keys,
+    loaded_release: loaded,
+  });
+  const predecessor = requirePredecessorReceipt(input.predecessor_receipts, "SEMANTIC_RELEASE");
+  if (
+    proof.subject_hash !== predecessor.subject_hash ||
+    proof.evidence_hash !== predecessor.evidence_hash
+  ) {
+    throw new TypeError("FALCON24_SEMANTIC_PREDECESSOR_PROOF_MISMATCH");
+  }
+  const receipt = await recordStagingReceipt({
+    authority_epoch: input.authority_epoch,
+    staging_id: input.staging_id,
+    component: "SEMANTIC_RELEASE",
+    subject_hash: proof.subject_hash,
+    evidence_hash: proof.evidence_hash,
+    production_isolation_proven: false,
+    capability: input.capability,
+    epoch: input.epoch,
+  });
+  return Object.freeze({ receipt, ...proof });
+}
+
+async function stageModelReceipt(input: {
+  readonly authority_epoch: z.infer<typeof falcon24SuccessorAuthorityEpochSchema>;
+  readonly staging_id: string;
+  readonly retained: Awaited<ReturnType<typeof verifyFalcon24RetainedAssetsManifest>>;
+  readonly predecessor_receipts: ReadonlyMap<
+    Falcon24StagingReceiptV2["component"],
+    HistoricalStagingReceipt
+  >;
+  readonly sql_pool: ReturnType<typeof adaptPgPool>;
+  readonly deployment_id: string;
+  readonly principal_id: string;
+  readonly capability: unknown;
+  readonly epoch: ReturnType<typeof createPostgresFalcon24AuthorityEpoch>;
+}) {
+  const llmManifestPath = resolve(REPOSITORY_ROOT, input.retained.llm.manifest_path);
+  if (rawHash(llmManifestPath) !== input.retained.llm.manifest_hash) {
+    throw new TypeError("FALCON24_LLM_MANIFEST_HASH_MISMATCH");
+  }
+  for (const source of input.retained.llm.source_files) {
+    if (rawHash(resolve(REPOSITORY_ROOT, source.path)) !== source.hash) {
+      throw new TypeError("FALCON24_LLM_RETAINED_SOURCE_DRIFT");
+    }
+  }
+  if (
+    (await sha256ContentHash(input.retained.llm.source_files)) !==
+    input.retained.llm.source_bundle_hash
+  ) {
+    throw new TypeError("FALCON24_LLM_SOURCE_BUNDLE_MISMATCH");
+  }
+  const repository = createPostgresModelControlRepository(input.sql_pool);
+  const adminContext = {
+    deployment_id: input.deployment_id,
+    principal_id: input.principal_id,
+  };
+  const [providers, models, certifications] = await Promise.all([
+    repository.listProviderConnections(adminContext).then(requireValue),
+    repository.listModels(adminContext).then(requireValue),
+    repository.listModelAuthentications(adminContext).then(requireValue),
+  ]);
+  const retainedProfile = input.retained.llm.profiles[0];
+  if (!retainedProfile) throw new TypeError("FALCON24_LLM_PROFILE_REQUIRED");
+  const matchingModels = models.filter(
+    (candidate) =>
+      candidate.provider === retainedProfile.runtime_provider &&
+      candidate.model_id === retainedProfile.model_id &&
+      candidate.display_name === retainedProfile.display_name &&
+      candidate.base_url === retainedProfile.base_url &&
+      candidate.is_system_default,
+  );
+  const model = matchingModels[0];
+  if (matchingModels.length !== 1 || !model?.provider_connection_id) {
+    throw new TypeError("FALCON24_MODEL_AUTHORITY_REQUIRED");
+  }
+  const provider = providers.find(
+    ({ provider_connection_id: providerId }) => providerId === model.provider_connection_id,
+  );
+  if (!provider) throw new TypeError("FALCON24_MODEL_PROVIDER_REQUIRED");
+  const certification = certifications.find(
+    (candidate) =>
+      candidate.model_profile_id === model.model_profile_id &&
+      candidate.model_config_version === model.config_version &&
+      candidate.state === "PASS",
+  );
+  const proof = await buildFalcon24ModelAuthorityProof({
+    retained_llm: input.retained.llm,
+    llm_manifest: json(llmManifestPath),
+    provider,
+    model,
+    credential_ref: model.credential_ref,
+    ...(certification ? { certification } : {}),
+    require_ready: true,
+  });
+  const predecessor = requirePredecessorReceipt(input.predecessor_receipts, "LLM_CONFIGURATION");
+  if (
+    proof.subject_hash !== predecessor.subject_hash ||
+    proof.evidence_hash !== predecessor.evidence_hash
+  ) {
+    throw new TypeError("FALCON24_MODEL_PREDECESSOR_PROOF_MISMATCH");
+  }
+  const receipt = await recordStagingReceipt({
+    authority_epoch: input.authority_epoch,
+    staging_id: input.staging_id,
+    component: "LLM_CONFIGURATION",
+    subject_hash: proof.subject_hash,
+    evidence_hash: proof.evidence_hash,
+    production_isolation_proven: false,
+    capability: input.capability,
+    epoch: input.epoch,
+  });
+  return Object.freeze({ receipt, ...proof });
+}
+
+async function stageRuntimeReceipts(input: {
+  readonly authority_epoch: z.infer<typeof falcon24SuccessorAuthorityEpochSchema>;
+  readonly staging_id: string;
+  readonly retained: Awaited<ReturnType<typeof verifyFalcon24RetainedAssetsManifest>>;
+  readonly runtime_attestation: Awaited<ReturnType<typeof verifyOpenSandboxAnalysisAttestation>>;
+  readonly predecessor_receipts: ReadonlyMap<
+    Falcon24StagingReceiptV2["component"],
+    HistoricalStagingReceipt
+  >;
+  readonly capability: unknown;
+  readonly epoch: ReturnType<typeof createPostgresFalcon24AuthorityEpoch>;
+}) {
+  const runtime = input.runtime_attestation;
+  if (
+    runtime.attestation_hash !== input.retained.analysis_runtime.attestation_hash ||
+    runtime.operator_manifest_hash !== input.retained.analysis_runtime.operator_manifest_hash ||
+    runtime.operator_registry_digest !== input.retained.analysis_runtime.operator_registry_digest ||
+    runtime.source_bundle_hash !== input.retained.analysis_runtime.source_bundle_hash ||
+    runtime.production_gate !== input.retained.analysis_runtime.production_gate ||
+    runtime.production_isolation_proven !==
+      input.retained.analysis_runtime.production_isolation_proven
+  ) {
+    throw new TypeError("FALCON24_RUNTIME_ATTESTATION_MISMATCH");
+  }
+  const predecessorOperator = requirePredecessorReceipt(
+    input.predecessor_receipts,
+    "OPERATOR_REGISTRY",
+  );
+  const predecessorSandbox = requirePredecessorReceipt(
+    input.predecessor_receipts,
+    "SANDBOX_RUNTIME",
+  );
+  if (
+    predecessorOperator.subject_hash !== runtime.operator_registry_digest ||
+    predecessorOperator.evidence_hash !== runtime.operator_manifest_hash ||
+    predecessorSandbox.subject_hash !== runtime.attestation_hash ||
+    predecessorSandbox.evidence_hash !== runtime.attestation_evidence_hash
+  ) {
+    throw new TypeError("FALCON24_RUNTIME_PREDECESSOR_PROOF_MISMATCH");
+  }
+  const operator = await recordStagingReceipt({
+    authority_epoch: input.authority_epoch,
+    staging_id: input.staging_id,
+    component: "OPERATOR_REGISTRY",
+    subject_hash: runtime.operator_registry_digest,
+    evidence_hash: runtime.operator_manifest_hash,
+    production_isolation_proven: false,
+    capability: input.capability,
+    epoch: input.epoch,
+  });
+  const sandbox = await recordStagingReceipt({
+    authority_epoch: input.authority_epoch,
+    staging_id: input.staging_id,
+    component: "SANDBOX_RUNTIME",
+    subject_hash: runtime.attestation_hash,
+    evidence_hash: runtime.attestation_evidence_hash,
+    production_isolation_proven: runtime.production_isolation_proven,
+    capability: input.capability,
+    epoch: input.epoch,
+  });
+  return Object.freeze({ operator, sandbox, attestation: runtime });
+}
+
+export async function buildFalcon24AgentProfileAuthorityProof(input: {
+  readonly authority_epoch: z.infer<typeof falcon24SuccessorAuthorityEpochSchema>;
+  readonly built: Awaited<ReturnType<typeof buildBuiltinTeamMaterialization>>;
+  readonly materialization_input: Awaited<
+    ReturnType<typeof resolveBuiltinTeamMaterializationInput>
+  >;
+  readonly worker_build: ReturnType<typeof loadRuntimeBuildIdentity>;
+}) {
+  const subjectHash = await sha256ContentHash({
+    profile_revisions: input.built.profile_revisions.map((profile) => profile.revision_hash),
+    skill_revisions: input.built.skill_revisions.map((skill) => skill.revision_hash),
+  });
+  const evidence = Object.freeze({
+    schema_version: "falcon24-agent-profile-authority-proof@2.0.0" as const,
+    authority_epoch: input.authority_epoch,
+    materialization_manifest_hash: input.built.manifest_hash,
+    model_profile_refs: input.materialization_input.model_profile_refs,
+    context_policy_refs: input.materialization_input.context_policy_refs,
+    execution_safety_policy_refs: input.materialization_input.execution_safety_policy_refs,
+    profile_revisions: input.built.profile_revisions.map((profile) => ({
+      profile_id: profile.profile_id,
+      revision: profile.revision,
+      revision_hash: profile.revision_hash,
+    })),
+    skill_revisions: input.built.skill_revisions.map((skill) => ({
+      skill_id: skill.skill_id,
+      revision: skill.revision,
+      revision_hash: skill.revision_hash,
+    })),
+    worker_build: {
+      build_id: input.worker_build.build_id,
+      generation_id: input.worker_build.generation_id,
+    },
+  });
+  const evidenceHash = await sha256ContentHash(evidence);
+  return Object.freeze({ subject_hash: subjectHash, evidence_hash: evidenceHash, evidence });
+}
+
+async function stageAgentProfileReceipt(input: {
+  readonly authority_epoch: z.infer<typeof falcon24SuccessorAuthorityEpochSchema>;
+  readonly staging_id: string;
+  readonly built: Awaited<ReturnType<typeof buildBuiltinTeamMaterialization>>;
+  readonly materialization_input: Awaited<
+    ReturnType<typeof resolveBuiltinTeamMaterializationInput>
+  >;
+  readonly worker_build: ReturnType<typeof loadRuntimeBuildIdentity>;
+  readonly capability: unknown;
+  readonly epoch: ReturnType<typeof createPostgresFalcon24AuthorityEpoch>;
+}) {
+  const proof = await buildFalcon24AgentProfileAuthorityProof(input);
+  const receipt = await recordStagingReceipt({
+    authority_epoch: input.authority_epoch,
+    staging_id: input.staging_id,
+    component: "AGENT_PROFILES",
+    subject_hash: proof.subject_hash,
+    evidence_hash: proof.evidence_hash,
+    production_isolation_proven: false,
+    capability: input.capability,
+    epoch: input.epoch,
+  });
+  return Object.freeze({ receipt, ...proof });
 }
 
 async function ensureSchemaSnapshot(input: {
@@ -503,6 +1117,9 @@ export async function runFalcon24AuthorityFinalization(
       reason_code: "FALCON24_AUTHORITY_ACTIVATION_CONFIRMATION_REQUIRED" as const,
     };
   }
+  const webBuildIdentityFile =
+    environment.FALCON24_WEB_BUILD_IDENTITY_FILE ??
+    environment.DATA_AGENT_RUNTIME_BUILD_IDENTITY_FILE;
   const configuration = configurationSchema.parse({
     database_url: environment.DATABASE_URL,
     authority_epoch: authorityEpoch,
@@ -513,6 +1130,15 @@ export async function runFalcon24AuthorityFinalization(
     datasource_id: environment.FALCON24_DATASOURCE_ID ?? DEFAULT_DATASOURCE_ID,
     environment: environment.FALCON24_ENVIRONMENT ?? "local",
     reader_password: environment.FALCON_READER_PASSWORD,
+    web_build_identity_file: webBuildIdentityFile,
+    worker_build_identity_file:
+      environment.FALCON24_WORKER_BUILD_IDENTITY_FILE ??
+      (webBuildIdentityFile ? resolve(dirname(webBuildIdentityFile), "worker.json") : undefined),
+    build_attestation_file:
+      environment.FALCON24_BUILD_ATTESTATION_FILE ??
+      (webBuildIdentityFile
+        ? resolve(dirname(webBuildIdentityFile), "attestation.json")
+        : undefined),
   });
   const retainedE1 = await verifyFalcon24RetainedAssetsManifest(
     json(resolve(REPOSITORY_ROOT, "infra/falcon/e1/retained-assets-manifest.json")),
@@ -528,14 +1154,27 @@ export async function runFalcon24AuthorityFinalization(
     throw new TypeError("FALCON24_AUTHORITY_PRODUCTION_ISOLATION_REQUIRED");
   }
   const sourceCommit = await frozenCommit(REPOSITORY_ROOT);
-  const buildIdentity = loadRuntimeBuildIdentity({ expectedRole: "web", environment });
-  if (
-    buildIdentity.git_dirty ||
-    buildIdentity.git_commit !== sourceCommit ||
-    buildIdentity.consumer_role !== "web"
-  ) {
-    throw new TypeError("FALCON24_AUTHORITY_WEB_BUILD_IDENTITY_MISMATCH");
-  }
+  const webBuildIdentity = loadRuntimeBuildIdentity({
+    expectedRole: "web",
+    environment: {
+      ...environment,
+      DATA_AGENT_RUNTIME_BUILD_IDENTITY_FILE: configuration.web_build_identity_file,
+    },
+  });
+  const workerBuildIdentity = loadRuntimeBuildIdentity({
+    expectedRole: "worker",
+    environment: {
+      ...environment,
+      DATA_AGENT_RUNTIME_BUILD_IDENTITY_FILE: configuration.worker_build_identity_file,
+    },
+  });
+  const releaseBuildClosure = await verifyReleaseBuildClosure({
+    repository_root: REPOSITORY_ROOT,
+    source_commit: sourceCommit,
+    attestation_file: configuration.build_attestation_file,
+    web_build: webBuildIdentity,
+    worker_build: workerBuildIdentity,
+  });
   const pool = new pg.Pool({
     connectionString: configuration.database_url,
     application_name: `data-agent-falcon24-${configuration.authority_epoch.toLowerCase()}-finalization`,
@@ -581,6 +1220,13 @@ export async function runFalcon24AuthorityFinalization(
     ) {
       throw new TypeError("FALCON24_AUTHORITY_EPOCH_NOT_SUCCESSOR");
     }
+    const predecessorReceipts = await loadPredecessorStagingReceipts({
+      pool,
+      scope: capability.scope,
+      authority_epoch: currentAuthority.authority_epoch,
+      baseline_id: currentAuthority.baseline_id,
+      baseline_hash: currentAuthority.baseline_hash,
+    });
     requireValue(
       await epoch.beginStaging(capability, {
         schema_version: "falcon24-staging-session@2.0.0",
@@ -589,6 +1235,15 @@ export async function runFalcon24AuthorityFinalization(
         retained_assets_hash: retained.manifest_hash,
       }),
     );
+    const datasetProof = await stageDatasetReceipt({
+      authority_epoch: configuration.authority_epoch,
+      staging_id: configuration.staging_id,
+      retained: retainedE1,
+      predecessor_receipts: predecessorReceipts,
+      pool,
+      capability,
+      epoch,
+    });
     const workspace = await prepareWorkspaceAuthority({
       authority_epoch: configuration.authority_epoch,
       pool,
@@ -600,6 +1255,37 @@ export async function runFalcon24AuthorityFinalization(
       datasource_id: configuration.datasource_id,
       reader_password: configuration.reader_password,
     });
+    const semanticProof = await stageSemanticReleaseReceipt({
+      authority_epoch: configuration.authority_epoch,
+      staging_id: configuration.staging_id,
+      retained: retainedE1,
+      predecessor_receipts: predecessorReceipts,
+      pool,
+      sql_pool: sqlPool,
+      authorizer: authority.authorizer,
+      capability,
+      epoch,
+    });
+    const modelProof = await stageModelReceipt({
+      authority_epoch: configuration.authority_epoch,
+      staging_id: configuration.staging_id,
+      retained: retainedE1,
+      predecessor_receipts: predecessorReceipts,
+      sql_pool: sqlPool,
+      deployment_id: configuration.deployment_id,
+      principal_id: configuration.principal_id,
+      capability,
+      epoch,
+    });
+    const runtimeProof = await stageRuntimeReceipts({
+      authority_epoch: configuration.authority_epoch,
+      staging_id: configuration.staging_id,
+      retained: retainedE1,
+      runtime_attestation: runtimeAttestation,
+      predecessor_receipts: predecessorReceipts,
+      capability,
+      epoch,
+    });
     const materializationInput = await resolveBuiltinTeamMaterializationInput({
       pool: sqlPool,
       capability,
@@ -608,9 +1294,14 @@ export async function runFalcon24AuthorityFinalization(
       execution_safety_policy_ref: workspace.safety_policy,
     });
     const built = await buildBuiltinTeamMaterialization(materializationInput);
-    const expectedProfileBundleHash = await sha256ContentHash({
-      profile_revisions: built.profile_revisions.map((profile) => profile.revision_hash),
-      skill_revisions: built.skill_revisions.map((skill) => skill.revision_hash),
+    const agentProfileProof = await stageAgentProfileReceipt({
+      authority_epoch: configuration.authority_epoch,
+      staging_id: configuration.staging_id,
+      built,
+      materialization_input: materializationInput,
+      worker_build: workerBuildIdentity,
+      capability,
+      epoch,
     });
     const receiptsResult = await pool.query<{ component: string; receipt_document: unknown }>(
       `select component,receipt_document
@@ -642,7 +1333,10 @@ export async function runFalcon24AuthorityFinalization(
       }),
     );
     const receipts = new Map(receiptEntries);
-    if (receipts.get("AGENT_PROFILES")?.subject_hash !== expectedProfileBundleHash) {
+    if (
+      receipts.get("AGENT_PROFILES")?.subject_hash !== agentProfileProof.subject_hash ||
+      receipts.get("AGENT_PROFILES")?.evidence_hash !== agentProfileProof.evidence_hash
+    ) {
       throw new TypeError("FALCON24_AUTHORITY_AGENT_PROFILE_RECEIPT_MISMATCH");
     }
     const skills = createPostgresSkillRegistry({ pool: sqlPool, authorizer: authority.authorizer });
@@ -684,7 +1378,7 @@ export async function runFalcon24AuthorityFinalization(
       oracle_contract_hash: retained.analysis_runtime.oracle_contract_hash,
     });
     const baselineId = stableUuid(
-      `falcon24:${configuration.authority_epoch}:baseline:${sourceCommit}:${buildIdentity.build_id}:${configuration.staging_id}`,
+      `falcon24:${configuration.authority_epoch}:baseline:${sourceCommit}:${webBuildIdentity.build_id}:${workerBuildIdentity.build_id}:${configuration.staging_id}`,
     );
     const baseline = await buildFalcon24AuthorityBaselineV2({
       schema_version: "falcon24-authority-baseline@2.0.0",
@@ -692,7 +1386,7 @@ export async function runFalcon24AuthorityFinalization(
       authority_epoch: configuration.authority_epoch,
       source_commit: sourceCommit,
       retained_assets_hash: retained.manifest_hash,
-      web_build_hash: buildIdentity.build_id,
+      web_build_hash: webBuildIdentity.build_id,
       staging_receipts: {
         dataset: receiptHash("DATASET"),
         semantic_release: receiptHash("SEMANTIC_RELEASE"),
@@ -731,10 +1425,26 @@ export async function runFalcon24AuthorityFinalization(
       authority: binding,
       source_commit: sourceCommit,
       web_build: {
-        build_id: buildIdentity.build_id,
-        generation_id: buildIdentity.generation_id,
+        build_id: webBuildIdentity.build_id,
+        generation_id: webBuildIdentity.generation_id,
       },
+      worker_build: {
+        build_id: workerBuildIdentity.build_id,
+        generation_id: workerBuildIdentity.generation_id,
+      },
+      release_build_closure: releaseBuildClosure,
       staging_id: configuration.staging_id,
+      staging_proofs: {
+        dataset: datasetProof,
+        semantic_release: semanticProof,
+        llm_configuration: modelProof,
+        agent_profiles: {
+          receipt: agentProfileProof.receipt,
+          subject_hash: agentProfileProof.subject_hash,
+          evidence_hash: agentProfileProof.evidence_hash,
+        },
+        runtime: runtimeProof,
+      },
       schema_snapshot: workspace.snapshot,
       workspace_defaults: {
         defaults_id: workspace.defaults.defaults_id,

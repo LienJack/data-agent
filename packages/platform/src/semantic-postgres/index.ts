@@ -1,5 +1,9 @@
 export * from "../semantic/falcon24-e1-bootstrap.js";
 export {
+  buildFalcon24ModelAuthorityProof,
+  buildFalcon24SemanticReleaseAuthorityProof,
+} from "../semantic/falcon24-retained-authority-proof.js";
+export {
   createPostgresGreenfieldBootstrapReleaseAuthority,
   type PostgresGreenfieldBootstrapReleaseAuthority,
   type PostgresGreenfieldBootstrapReleaseAuthorityOptions,

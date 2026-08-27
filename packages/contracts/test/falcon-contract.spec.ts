@@ -1,10 +1,12 @@
 import {
   benchmarkRunBudgetSchema,
   benchmarkTestSuiteIdSchema,
+  buildFalcon24DatabaseVerificationReceiptV2,
   buildFalcon24E1CatalogInventory,
   buildFalcon24E1DatabaseImportReceipt,
   FALCON_CASE_COUNT,
   FALCON_DATABASE_COUNT,
+  falcon24DatabaseVerificationReceiptV2Schema,
   falcon24E1DatabaseImportReceiptSchema,
   falconSchemaNameSchema,
   falconSourceManifestSchema,
@@ -127,6 +129,17 @@ describe("Falcon contracts", () => {
       ready.catalog_inventory.tables[0]?.columns.map(({ column_name }) => column_name),
     ).toEqual(["id", "note"]);
     expect(falcon24E1DatabaseImportReceiptSchema.parse(ready)).toEqual(ready);
+    const successor = await buildFalcon24DatabaseVerificationReceiptV2({
+      authority_epoch: "E2",
+      source,
+      observed_bundle_sha256: source.bundle_sha256,
+      expected_inventory_hash: inventory.inventory_hash as `sha256:${string}`,
+      catalog_inventory: inventory,
+    });
+    expect(successor.status).toBe("READY");
+    expect(successor.authority_epoch).toBe("E2");
+    expect(successor.receipt_hash).not.toBe(ready.receipt_hash);
+    expect(falcon24DatabaseVerificationReceiptV2Schema.parse(successor)).toEqual(successor);
 
     const { inventory_hash: _inventoryHash, ...inventoryMaterial } = inventory;
     const driftedInventory = await buildFalcon24E1CatalogInventory({
