@@ -18,6 +18,15 @@ export const BUILTIN_TEAM_ROLE_MODEL_IDS = Object.freeze({
   "semantic-management-agent": "00000000-0000-4000-8000-000000005a03",
 } as const satisfies Readonly<Record<DataAgentSpecialistProfileId, string>>);
 
+const BUILTIN_TEAM_NOT_READY_ERRORS = new Set([
+  "BUILTIN_TEAM_MODEL_PROFILE_REQUIRED",
+  "BUILTIN_TEAM_PROFILE_SET_STALE",
+]);
+
+export function isBuiltinTeamAuthorityNotReady(error: unknown): boolean {
+  return error instanceof TypeError && BUILTIN_TEAM_NOT_READY_ERRORS.has(error.message);
+}
+
 function operationId(capability: AppCapability, kind: string, key: string): string {
   return deriveIdempotentOperationId({
     operation_kind: kind,

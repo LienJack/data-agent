@@ -27,6 +27,7 @@ import {
   runQaReadinessBootstrap,
 } from "../../../../scripts/qa-readiness-bootstrap";
 import {
+  isBuiltinTeamAuthorityNotReady,
   BUILTIN_TEAM_ROLE_MODEL_IDS as ROLE_MODEL_IDS,
   resolveBuiltinTeamMaterializationInput,
   verifyCurrentBuiltinTeamAuthority,
@@ -311,7 +312,7 @@ async function createDependencies(input: {
       });
       return true;
     } catch (error) {
-      if (error instanceof TypeError && error.message === "BUILTIN_TEAM_PROFILE_SET_STALE") {
+      if (isBuiltinTeamAuthorityNotReady(error)) {
         return false;
       }
       throw error;
