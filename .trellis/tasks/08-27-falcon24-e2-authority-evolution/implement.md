@@ -150,13 +150,32 @@ Status: completed on 2026-08-28.
 
 **Work**
 
-- [ ] 演进唯一 `SemanticPublicationAuthorityPort`：stage/load/promote；保留 shared compiler/hash/write kernel。
-- [ ] `stageReviewedSuccessor` 仅接收 refs/CAS/idempotency，服务器锁定并读取 ChangeSet/review/snapshot/compiler bundle。
-- [ ] 服务器调用 `compileSemanticPublicationProjection` 和 shared validator，重算 projection/release/stage/validation hashes。
-- [ ] Validation PASS 时 stage header、exact four projections、validation receipt 同事务写入并以 STAGED 可见；candidate 编译后
+- [x] 演进唯一 `SemanticPublicationAuthorityPort`：stage/load/promote；保留 shared compiler/hash/write kernel。
+- [x] `stageReviewedSuccessor` 仅接收 refs/CAS/idempotency，服务器锁定并读取 ChangeSet/review/snapshot/compiler bundle。
+- [x] 服务器调用 `compileSemanticPublicationProjection` 和 shared validator，重算 projection/release/stage/validation hashes。
+- [x] Validation PASS 时 stage header、exact four projections、validation receipt 同事务写入并以 STAGED 可见；candidate 编译后
   validation FAIL 时同事务写完整 stage/projections、validation/rejection receipts并终结为 REJECTED；前置 ref/CAS 无效则不写 stage。
   Client payload/digest 无可达参数面。
 - [ ] Fresh bootstrap admission 复用同一 Port；gen2 current 前 Web/Worker readiness fail closed。
+
+**W3 evidence（2026-08-28）**
+
+- `semantic-change-set-publication@2` 的 compiler bundle hash 只绑定 compiler/source/snapshot/runtime-closure 合同，不再随业务
+  ChangeSet 内容漂移；release/projection identity 绑定 exact ChangeSet 与 physical snapshot hash。
+- PostgreSQL adapter 固定按 semantic fence → active pointer → candidate revision → source revision → review → publish attempt →
+  domain → immutable catalog snapshot 顺序读取；同一 `pg` client 不并发发锁请求。Catalog snapshot bytes、ChangeSet/review 三份副本、
+  compiler bundle 与 CAS 全部在调用 10783 stage RPC 前重验。
+- `packages/semantic/test/semantic-successor-publication-projection.spec.ts` 证明最小 Falcon order revenue/month generation 2 envelope
+  由服务器编译后通过 shared validator；snapshot byte tamper fail closed。
+- `apps/web/test/postgres-semantic-successor-publication.spec.ts` 证明错误 scope 在 connect 前拒绝，record RPC 收到的四类 payload
+  来自 server compiler 而非 command；严格 command schema 拒绝额外 `projections` 字段。
+- Falcon24 全量 characterization 已把既有 Source 的时间域统一为 half-open `Asia/Shanghai` 合同，并显式生成缺失的 runtime time
+  dimensions / 多列物理 formula dependencies。当前剩余 `cohort_retention` / `repeat_purchase_rate` AST slots 尚无受审 dependency
+  definitions，shared validator 稳定返回 `SEMANTIC_RUNTIME_FORMULA_DEPENDENCY_INVALID`，因此只会写 `REJECTED` stage，绝不会伪装
+  为可执行 generation 2。该 Source 合同缺口必须在 W5 prepare/review 前结构化解决，禁止 validator fallback。
+- 聚焦验证：Semantic/Worker typecheck PASS；5 个测试文件 27 tests PASS；10 个 owned files Biome 与 `git diff --check` PASS。
+- Fresh bootstrap wiring 仍与冻结审计文件 `apps/web/src/cli/bootstrap-falcon24-e1.ts` 重叠，本包不覆盖该文件；在用户明确处置
+  rejected implementation 前保持 admission fail closed，并在 W5 composition 一并接入唯一 Port。
 
 **Validation**
 

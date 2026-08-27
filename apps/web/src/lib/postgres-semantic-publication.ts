@@ -1,12 +1,31 @@
 import {
+  buildSemanticSuccessorStage,
+  type SemanticChangeSet,
+  type SemanticReviewDecision,
+  type SemanticSuccessorStageEnvelope,
+  type StageReviewedSemanticSuccessorCommand,
+  semanticSuccessorStageEnvelopeSchema,
+  verifySemanticChangeSet,
+  verifySemanticReviewDecision,
+} from "@data-agent/contracts/artifacts";
+import { physicalSchemaSnapshotSchema } from "@data-agent/contracts/catalog";
+import {
   type ContentHash,
+  canonicalizeJson,
   contentHashSchema,
   sha256ContentHash,
 } from "@data-agent/contracts/common";
-import type { SemanticChangeSet, SemanticReviewDecision } from "@data-agent/contracts/semantic";
+import {
+  type CombinedFalcon24SemanticActivationCommand,
+  type CombinedFalcon24SemanticActivationReceipt,
+  verifyCombinedFalcon24SemanticActivationCommand,
+  verifyCombinedFalcon24SemanticActivationReceipt,
+} from "@data-agent/contracts/runs";
 import {
   compileSemanticPublicationProjection,
   type SemanticPublicationAuthorityPort,
+  validateSemanticRuntimeClosure,
+  verifySemanticReleaseEnvelope,
 } from "@data-agent/semantic/production";
 import type { Pool, PoolClient } from "pg";
 
@@ -30,6 +49,50 @@ interface PointerRow {
   readonly current_release_digest: string | null;
   readonly pointer_generation: string;
 }
+
+interface SourceRevisionRow {
+  readonly revision_id: string;
+  readonly source_digest: string;
+  readonly source_payload: unknown;
+}
+
+interface CandidateRevisionRow {
+  readonly candidate_status: string;
+  readonly current_revision_id: string;
+  readonly source_revision_id: string;
+  readonly revision_digest: string;
+  readonly revision_payload: unknown;
+}
+
+interface ReviewedPacketRow {
+  readonly candidate_id: string;
+  readonly decision_window_status: string;
+  readonly review_outcome: string;
+  readonly packet_payload: unknown;
+  readonly decision_id: string;
+  readonly decision_principal: string;
+  readonly decision: string;
+  readonly decision_digest: string;
+}
+
+interface PreparedAttemptRow {
+  readonly attempt_id: string;
+  readonly attempt_state: string;
+  readonly candidate_id: string;
+  readonly packet_id: string;
+  readonly compiler_bundle_digest: string;
+  readonly target_generation: string;
+}
+
+interface DomainRow {
+  readonly datasource_id: string;
+}
+
+interface PhysicalSnapshotRow {
+  readonly snapshot: unknown;
+}
+
+const ZERO_HASH = `sha256:${"0".repeat(64)}` as const;
 
 function parseContentHash(value: string): ContentHash {
   contentHashSchema.parse(value);
@@ -92,6 +155,456 @@ async function assertDatabaseCanonicalHashes(
     if (result.rows[0]?.digest !== expected) {
       throw new Error(`SEMANTIC_PUBLICATION_DATABASE_HASH_MISMATCH:${label}`);
     }
+  }
+}
+
+async function databaseCanonicalHash(client: PoolClient, document: unknown): Promise<ContentHash> {
+  const result = await client.query<{ readonly digest: string }>(
+    "select app_data_agent.u2_canonical_sha256($1::jsonb) as digest",
+    [document],
+  );
+  const digest = result.rows[0]?.digest;
+  if (result.rowCount !== 1 || !digest) {
+    throw new Error("SEMANTIC_PUBLICATION_DATABASE_HASH_UNAVAILABLE");
+  }
+  return parseContentHash(digest);
+}
+
+function commandScopeMatches(
+  scope: PostgresSemanticPublicationScope,
+  commandScope: Readonly<{
+    app_id: string;
+    tenant_id: string;
+    environment: string;
+    semantic_domain: string;
+  }>,
+): boolean {
+  return (
+    commandScope.app_id === scope.appId &&
+    commandScope.tenant_id === scope.workspaceId &&
+    commandScope.environment === scope.environment &&
+    commandScope.semantic_domain === scope.semanticDomain
+  );
+}
+
+function packetMember(packet: unknown, key: "change_set" | "review"): unknown {
+  if (typeof packet !== "object" || packet === null || Array.isArray(packet)) {
+    throw new Error("SEMANTIC_SUCCESSOR_SOURCE_CLOSURE_INVALID");
+  }
+  return (packet as Readonly<Record<string, unknown>>)[key];
+}
+
+async function stageReviewedSuccessor(
+  pool: Pick<Pool, "connect">,
+  scope: PostgresSemanticPublicationScope,
+  command: StageReviewedSemanticSuccessorCommand,
+): Promise<SemanticSuccessorStageEnvelope> {
+  if (!commandScopeMatches(scope, command.scope)) {
+    throw new Error("SEMANTIC_SUCCESSOR_SCOPE_FORBIDDEN");
+  }
+  const client = await pool.connect();
+  try {
+    await client.query("begin");
+    await setPublicationAuthority(client, scope);
+    await client.query(
+      "select semantic.lock_semantic_authority_fence($1::uuid,$2::uuid,$3::text,$4::text)",
+      [scope.appId, scope.workspaceId, scope.environment, scope.semanticDomain],
+    );
+    const pointerResult = await client.query<PointerRow>(
+      `select current_release_id::text,current_release_generation::text,current_release_digest,
+              pointer_generation::text
+         from semantic.semantic_active_pointer
+        where app_id=$1::uuid and tenant_id=$2::uuid and environment=$3::text
+          and semantic_domain=$4::text
+        for update`,
+      [scope.appId, scope.workspaceId, scope.environment, scope.semanticDomain],
+    );
+    const pointer = pointerResult.rows[0];
+    if (
+      pointerResult.rowCount !== 1 ||
+      !pointer ||
+      pointer.current_release_id !== command.expected_predecessor.release_id ||
+      Number(pointer.current_release_generation) !== command.expected_predecessor.generation ||
+      pointer.current_release_digest !== command.expected_predecessor.release_digest ||
+      Number(pointer.pointer_generation) !== command.expected_pointer_version
+    ) {
+      throw new Error("SEMANTIC_SUCCESSOR_POINTER_STALE");
+    }
+
+    const candidateResult = await client.query<CandidateRevisionRow>(
+      `select candidate.candidate_status,candidate.current_revision_id::text,
+              revision.source_revision_id::text,revision.revision_digest,
+              revision.revision_payload
+         from semantic.semantic_candidate as candidate
+         join semantic.semantic_candidate_revision as revision
+           on revision.app_id=candidate.app_id and revision.tenant_id=candidate.tenant_id
+          and revision.environment=candidate.environment
+          and revision.semantic_domain=candidate.semantic_domain
+          and revision.candidate_id=candidate.candidate_id
+          and revision.revision_id=candidate.current_revision_id
+        where candidate.app_id=$1::uuid and candidate.tenant_id=$2::uuid
+          and candidate.environment=$3::text and candidate.semantic_domain=$4::text
+          and candidate.candidate_id=$5::uuid
+        for update of candidate
+        for share of revision`,
+      [
+        scope.appId,
+        scope.workspaceId,
+        scope.environment,
+        scope.semanticDomain,
+        command.change_set_ref.change_set_id,
+      ],
+    );
+    const candidate = candidateResult.rows[0];
+    if (candidateResult.rowCount !== 1 || !candidate) {
+      throw new Error("SEMANTIC_SUCCESSOR_SOURCE_CLOSURE_INVALID");
+    }
+    const sourceResult = await client.query<SourceRevisionRow>(
+      `select revision_id::text,source_digest,source_payload
+         from semantic.semantic_source_revision
+        where app_id=$1::uuid and tenant_id=$2::uuid and environment=$3::text
+          and semantic_domain=$4::text and revision_id=$5::uuid
+        for share`,
+      [
+        scope.appId,
+        scope.workspaceId,
+        scope.environment,
+        scope.semanticDomain,
+        candidate.source_revision_id,
+      ],
+    );
+    const reviewResult = await client.query<ReviewedPacketRow>(
+      `select task.candidate_id::text,task.decision_window_status,task.review_outcome,
+              task.packet_payload,decision.decision_id::text,
+              decision.principal as decision_principal,decision.decision,
+              decision.decision_digest
+         from semantic.semantic_review_task as task
+         join semantic.semantic_review_decision as decision
+           on decision.app_id=task.app_id and decision.tenant_id=task.tenant_id
+          and decision.environment=task.environment
+          and decision.semantic_domain=task.semantic_domain
+          and decision.packet_id=task.packet_id
+        where task.app_id=$1::uuid and task.tenant_id=$2::uuid
+          and task.environment=$3::text and task.semantic_domain=$4::text
+          and task.packet_id=$5::uuid and decision.decision_digest=$6::text
+        for update of task
+        for share of decision`,
+      [
+        scope.appId,
+        scope.workspaceId,
+        scope.environment,
+        scope.semanticDomain,
+        command.review_ref.review_id,
+        command.review_ref.review_hash,
+      ],
+    );
+    const attemptResult = await client.query<PreparedAttemptRow>(
+      `select attempt_id::text,attempt_state,candidate_id::text,packet_id::text,
+              compiler_bundle_digest,target_generation::text
+         from semantic.semantic_publish_attempt
+        where app_id=$1::uuid and tenant_id=$2::uuid and environment=$3::text
+          and semantic_domain=$4::text and packet_id=$5::uuid and candidate_id=$6::uuid
+          and attempt_state='PREPARED' and target_generation=$7::bigint
+        for update`,
+      [
+        scope.appId,
+        scope.workspaceId,
+        scope.environment,
+        scope.semanticDomain,
+        command.review_ref.review_id,
+        command.change_set_ref.change_set_id,
+        command.target_generation,
+      ],
+    );
+    const domainResult = await client.query<DomainRow>(
+      `select datasource_id::text
+         from semantic.semantic_domain_registry
+        where app_id=$1::uuid and tenant_id=$2::uuid and environment=$3::text
+          and semantic_domain=$4::text and is_active
+        for share`,
+      [scope.appId, scope.workspaceId, scope.environment, scope.semanticDomain],
+    );
+    const snapshotResult = await client.query<PhysicalSnapshotRow>(
+      `select catalog.get_physical_schema_snapshot(
+         $1::uuid,$2::uuid,$3::text,$4::uuid,$5::uuid) as snapshot`,
+      [
+        scope.appId,
+        scope.workspaceId,
+        scope.environment,
+        scope.principalId,
+        command.source_snapshot_ref.snapshot_id,
+      ],
+    );
+    const source = sourceResult.rows[0];
+    const packet = reviewResult.rows[0];
+    const attempt = attemptResult.rows[0];
+    const domain = domainResult.rows[0];
+    const snapshot = physicalSchemaSnapshotSchema.parse(snapshotResult.rows[0]?.snapshot);
+    if (
+      sourceResult.rowCount !== 1 ||
+      reviewResult.rowCount !== 1 ||
+      attemptResult.rowCount !== 1 ||
+      domainResult.rowCount !== 1 ||
+      snapshotResult.rowCount !== 1 ||
+      !source ||
+      !packet ||
+      !attempt ||
+      !domain ||
+      domain.datasource_id !== scope.datasourceId ||
+      snapshot.snapshot_id !== command.source_snapshot_ref.snapshot_id ||
+      command.source_snapshot_ref.snapshot_revision !== 1 ||
+      snapshot.snapshot_content_hash !== command.source_snapshot_ref.snapshot_hash ||
+      (await sha256ContentHash(snapshot.content)) !== snapshot.snapshot_content_hash ||
+      snapshot.content.datasource_id !== scope.datasourceId ||
+      source.source_digest !== command.change_set_ref.change_set_hash ||
+      candidate.candidate_status !== "PUBLISHING" ||
+      candidate.source_revision_id !== source.revision_id ||
+      candidate.revision_digest !== command.change_set_ref.change_set_hash ||
+      packet.candidate_id !== command.change_set_ref.change_set_id ||
+      packet.decision_window_status !== "CLOSED" ||
+      packet.review_outcome !== "APPROVED" ||
+      packet.decision !== "APPROVE" ||
+      packet.decision_digest !== command.review_ref.review_hash ||
+      attempt.attempt_state !== "PREPARED" ||
+      attempt.candidate_id !== command.change_set_ref.change_set_id ||
+      attempt.packet_id !== command.review_ref.review_id ||
+      attempt.compiler_bundle_digest !== command.compiler_bundle_ref.compiler_bundle_hash ||
+      Number(attempt.target_generation) !== command.target_generation
+    ) {
+      throw new Error("SEMANTIC_SUCCESSOR_SOURCE_CLOSURE_INVALID");
+    }
+
+    const [changeSet, candidateChangeSet, packetChangeSet, review] = await Promise.all([
+      verifySemanticChangeSet(source.source_payload),
+      verifySemanticChangeSet(candidate.revision_payload),
+      verifySemanticChangeSet(packetMember(packet.packet_payload, "change_set")),
+      verifySemanticReviewDecision(packetMember(packet.packet_payload, "review")),
+    ]);
+    if (
+      canonicalizeJson(changeSet) !== canonicalizeJson(candidateChangeSet) ||
+      canonicalizeJson(changeSet) !== canonicalizeJson(packetChangeSet) ||
+      changeSet.lifecycle_state !== "REVIEW_FROZEN" ||
+      changeSet.validation.outcome !== "PASS" ||
+      !changeSet.validation.competency_cases_passed ||
+      changeSet.change_set_id !== command.change_set_ref.change_set_id ||
+      changeSet.change_set_hash !== command.change_set_ref.change_set_hash ||
+      canonicalizeJson(changeSet.scope) !== canonicalizeJson(command.scope) ||
+      canonicalizeJson(changeSet.base_release) !==
+        canonicalizeJson({
+          release_id: command.expected_predecessor.release_id,
+          generation: command.expected_predecessor.generation,
+          release_hash: command.expected_predecessor.release_digest,
+        }) ||
+      review.review_id !== command.review_ref.review_id ||
+      review.review_hash !== command.review_ref.review_hash ||
+      review.change_set_id !== changeSet.change_set_id ||
+      review.change_set_hash !== changeSet.change_set_hash ||
+      review.reviewer_principal_id !== packet.decision_principal ||
+      review.decision !== "APPROVE" ||
+      canonicalizeJson(review.scope) !== canonicalizeJson(changeSet.scope)
+    ) {
+      throw new Error("SEMANTIC_SUCCESSOR_SOURCE_CLOSURE_INVALID");
+    }
+
+    const projection = await compileSemanticPublicationProjection(changeSet, {
+      source_snapshot: snapshot,
+    });
+    if (
+      projection.compiler_bundle_digest !== command.compiler_bundle_ref.compiler_bundle_hash ||
+      projection.graph_projection.compiler_version !== command.compiler_bundle_ref.compiler_version
+    ) {
+      throw new Error("SEMANTIC_SUCCESSOR_COMPILER_BUNDLE_MISMATCH");
+    }
+    const projectionRefs = {
+      executable: {
+        projection_id: projection.executable_projection_id,
+        projection_digest: projection.executable_projection_digest,
+      },
+      relationship: {
+        projection_id: projection.relationship_projection_id,
+        projection_digest: projection.relationship_projection_digest,
+      },
+      runtime_restriction: {
+        projection_id: projection.restriction_projection_id,
+        projection_digest: projection.restriction_projection_digest,
+      },
+      graph: {
+        projection_id: projection.graph_projection_id,
+        projection_digest: projection.graph_projection_digest,
+      },
+    } as const;
+    const candidateRelease = {
+      release_id: projection.release_id,
+      generation: command.target_generation,
+      release_digest: projection.release_digest,
+      datasource_id: scope.datasourceId,
+    } as const;
+    const staged = await buildSemanticSuccessorStage({
+      schema_version: "semantic-successor-stage@1.0.0",
+      stage_id: command.command_id,
+      scope: command.scope,
+      predecessor_release: command.expected_predecessor,
+      expected_pointer_version: command.expected_pointer_version,
+      target_generation: command.target_generation,
+      change_set_ref: command.change_set_ref,
+      review_ref: command.review_ref,
+      source_snapshot_ref: command.source_snapshot_ref,
+      compiler_bundle_ref: command.compiler_bundle_ref,
+      candidate_release: candidateRelease,
+      projection_refs: projectionRefs,
+      status: "STAGED",
+    });
+    const projections = {
+      executable: {
+        projection_kind: "EXECUTABLE" as const,
+        projection_id: projection.executable_projection_id,
+        projection_digest: projection.executable_projection_digest,
+        projection_payload: projection.executable_projection,
+      },
+      relationship: {
+        projection_kind: "RELATIONSHIP" as const,
+        projection_id: projection.relationship_projection_id,
+        projection_digest: projection.relationship_projection_digest,
+        projection_payload: projection.relationship_projection,
+      },
+      runtime_restriction: {
+        projection_kind: "RUNTIME_RESTRICTION" as const,
+        projection_id: projection.restriction_projection_id,
+        projection_digest: projection.restriction_projection_digest,
+        projection_payload: projection.restriction_projection,
+      },
+      graph: {
+        projection_kind: "GRAPH" as const,
+        projection_id: projection.graph_projection_id,
+        projection_digest: projection.graph_projection_digest,
+        projection_payload: projection.graph_projection,
+      },
+    } as const;
+    const verified = await verifySemanticReleaseEnvelope({ stage: staged, projections });
+    const validationReceipt = await validateSemanticRuntimeClosure(verified);
+    const finalStage =
+      validationReceipt.outcome === "PASS"
+        ? staged
+        : await buildSemanticSuccessorStage({ ...staged, status: "REJECTED" });
+    const recordBase = {
+      schema_version: "semantic-successor-stage-record@1.0.0",
+      command_id: command.command_id,
+      idempotency_key: command.idempotency_key,
+      idempotency_digest: ZERO_HASH,
+      binding_impact_hashes: projection.binding_impact_hashes,
+      stage: finalStage,
+      projections,
+      validation_receipt: validationReceipt,
+      authority_ids: {
+        source_revision_id: source.revision_id,
+        candidate_revision_id: candidate.current_revision_id,
+        publish_attempt_id: attempt.attempt_id,
+        review_decision_id: packet.decision_id,
+        outbox_event_id: projection.outbox_event_id,
+      },
+      command_hash: ZERO_HASH,
+    } as const;
+    const {
+      idempotency_digest: _idempotencyDigest,
+      command_hash: _commandHash,
+      ...idempotencyCommand
+    } = recordBase;
+    const idempotencyDigest = await databaseCanonicalHash(client, {
+      hash_domain: "semantic-successor-stage-record-idempotency@1.0.0",
+      command: idempotencyCommand,
+    });
+    const { command_hash: _placeholder, ...commandWithoutHash } = {
+      ...recordBase,
+      idempotency_digest: idempotencyDigest,
+    };
+    const recordCommand = {
+      ...commandWithoutHash,
+      command_hash: await databaseCanonicalHash(client, commandWithoutHash),
+    };
+    const result = await client.query<{ readonly envelope: unknown }>(
+      "select semantic.record_semantic_successor_stage($1::jsonb) as envelope",
+      [recordCommand],
+    );
+    if (result.rowCount !== 1 || result.rows[0]?.envelope === undefined) {
+      throw new Error("SEMANTIC_SUCCESSOR_STAGE_RECORD_INVALID");
+    }
+    const envelope = semanticSuccessorStageEnvelopeSchema.parse(result.rows[0]?.envelope);
+    await verifySemanticReleaseEnvelope(envelope);
+    await client.query("commit");
+    return envelope;
+  } catch (error) {
+    await client.query("rollback").catch(() => undefined);
+    throw error;
+  } finally {
+    client.release();
+  }
+}
+
+async function loadStagedSuccessor(
+  pool: Pick<Pool, "connect">,
+  scope: PostgresSemanticPublicationScope,
+  query: Readonly<{ stage_id: string }>,
+): Promise<SemanticSuccessorStageEnvelope> {
+  const client = await pool.connect();
+  try {
+    await client.query("begin");
+    await setPublicationAuthority(client, scope);
+    const commandMaterial = {
+      schema_version: "semantic-successor-stage-load@1.0.0",
+      stage_id: query.stage_id,
+    } as const;
+    const command = {
+      ...commandMaterial,
+      command_hash: await databaseCanonicalHash(client, commandMaterial),
+    };
+    const result = await client.query<{ readonly envelope: unknown }>(
+      "select semantic.load_semantic_successor_stage($1::jsonb) as envelope",
+      [command],
+    );
+    if (result.rowCount !== 1 || result.rows[0]?.envelope === undefined) {
+      throw new Error("SEMANTIC_SUCCESSOR_STAGE_LOAD_INVALID");
+    }
+    const envelope = semanticSuccessorStageEnvelopeSchema.parse(result.rows[0]?.envelope);
+    await verifySemanticReleaseEnvelope(envelope);
+    await client.query("commit");
+    return envelope;
+  } catch (error) {
+    await client.query("rollback").catch(() => undefined);
+    throw error;
+  } finally {
+    client.release();
+  }
+}
+
+async function promoteStagedSuccessor(
+  pool: Pick<Pool, "connect">,
+  scope: PostgresSemanticPublicationScope,
+  candidate: CombinedFalcon24SemanticActivationCommand,
+): Promise<CombinedFalcon24SemanticActivationReceipt> {
+  const command = await verifyCombinedFalcon24SemanticActivationCommand(candidate);
+  if (!commandScopeMatches(scope, command.scope)) {
+    throw new Error("FALCON24_COMBINED_ACTIVATION_SCOPE_FORBIDDEN");
+  }
+  const client = await pool.connect();
+  try {
+    await client.query("begin");
+    await setPublicationAuthority(client, scope);
+    const result = await client.query<{ readonly receipt: unknown }>(
+      `select app_data_agent.activate_falcon24_authority_with_semantic_successor(
+         $1::jsonb) as receipt`,
+      [command],
+    );
+    if (result.rowCount !== 1 || result.rows[0]?.receipt === undefined) {
+      throw new Error("FALCON24_COMBINED_ACTIVATION_RECEIPT_MISSING");
+    }
+    const receipt = await verifyCombinedFalcon24SemanticActivationReceipt(result.rows[0]?.receipt);
+    await client.query("commit");
+    return receipt;
+  } catch (error) {
+    await client.query("rollback").catch(() => undefined);
+    throw error;
+  } finally {
+    client.release();
   }
 }
 
@@ -711,5 +1224,8 @@ export function createPostgresSemanticPublicationAuthority(
 ): SemanticPublicationAuthorityPort {
   return {
     publishAtomically: (input) => publishAtomically(pool, scope, input),
+    stageReviewedSuccessor: (command) => stageReviewedSuccessor(pool, scope, command),
+    loadStagedSuccessor: (query) => loadStagedSuccessor(pool, scope, query),
+    promoteStagedSuccessor: (command) => promoteStagedSuccessor(pool, scope, command),
   };
 }

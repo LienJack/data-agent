@@ -1,14 +1,30 @@
 import {
   buildSemanticPublicationReceipt,
+  buildStageReviewedSemanticSuccessorCommand,
   type SemanticChangeSet,
   type SemanticPublicationReceipt,
   type SemanticReviewDecision,
+  type SemanticSuccessorStageEnvelope,
+  type StageReviewedSemanticSuccessorCommand,
   verifySemanticChangeSet,
   verifySemanticReviewDecision,
 } from "@data-agent/contracts/artifacts";
 import { canonicalizeJson } from "@data-agent/contracts/common";
+import type {
+  CombinedFalcon24SemanticActivationCommand,
+  CombinedFalcon24SemanticActivationReceipt,
+} from "@data-agent/contracts/runs";
 
 export interface SemanticPublicationAuthorityPort {
+  stageReviewedSuccessor(
+    command: StageReviewedSemanticSuccessorCommand,
+  ): Promise<SemanticSuccessorStageEnvelope>;
+  loadStagedSuccessor(
+    query: Readonly<{ stage_id: string }>,
+  ): Promise<SemanticSuccessorStageEnvelope>;
+  promoteStagedSuccessor(
+    command: CombinedFalcon24SemanticActivationCommand,
+  ): Promise<CombinedFalcon24SemanticActivationReceipt>;
   publishAtomically(
     input: Readonly<{
       change_set: SemanticChangeSet;
@@ -28,6 +44,16 @@ export interface SemanticPublicationAuthorityPort {
       }>;
     }>
   >;
+}
+
+export async function stageReviewedSemanticSuccessor(
+  input: Readonly<{
+    command: unknown;
+    authority: SemanticPublicationAuthorityPort;
+  }>,
+): Promise<SemanticSuccessorStageEnvelope> {
+  const command = await buildStageReviewedSemanticSuccessorCommand(input.command);
+  return input.authority.stageReviewedSuccessor(command);
 }
 
 export async function publishReviewedSemanticChangeSet(

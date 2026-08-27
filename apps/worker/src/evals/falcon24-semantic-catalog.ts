@@ -11,7 +11,7 @@ type FormulaId = keyof typeof FALCON24_SEMANTIC_RELEASE_BLUEPRINT.formulas;
 type DimensionId = keyof typeof FALCON24_DIMENSIONS;
 type MetricId = keyof typeof FALCON24_METRICS;
 
-const COMPLETE_MONTH_TIME_DOMAIN = Object.freeze({
+export const FALCON24_COMPLETE_MONTH_TIME_DOMAIN = Object.freeze({
   time_domain_id: "time.complete_month_frontier",
   description: "Falcon24 observed complete-month frontier; windows are half-open.",
   calendar: "gregorian" as const,
@@ -171,6 +171,58 @@ export function falcon24FormulaExpression(formulaId: string): SemanticFormulaExp
     default:
       throw new TypeError(`FALCON24_FORMULA_UNKNOWN:${formulaId}`);
   }
+}
+
+function formulaSlots(expression: SemanticFormulaExpression, slots: Set<string>): void {
+  switch (expression.kind) {
+    case "LITERAL":
+      return;
+    case "SLOT":
+      slots.add(expression.slot_id);
+      return;
+    case "BINARY":
+      formulaSlots(expression.left, slots);
+      formulaSlots(expression.right, slots);
+      return;
+    case "BOOLEAN":
+      for (const operand of expression.operands) formulaSlots(operand, slots);
+      return;
+    case "NOT":
+      formulaSlots(expression.operand, slots);
+      return;
+    case "CASE":
+      for (const branch of expression.branches) {
+        formulaSlots(branch.when, slots);
+        formulaSlots(branch.result, slots);
+      }
+      if (expression.otherwise) formulaSlots(expression.otherwise, slots);
+      return;
+    case "AGGREGATE":
+      if (expression.input) formulaSlots(expression.input, slots);
+      if (expression.filter) formulaSlots(expression.filter, slots);
+      return;
+    case "DATE_BUCKET":
+      formulaSlots(expression.input, slots);
+  }
+}
+
+function physicalFormulaDependencies(
+  tableId: string,
+  formulaId: FormulaId,
+  primaryColumn: string,
+): string[] {
+  const table = FALCON24_SEMANTIC_RELEASE_BLUEPRINT.tables.find(
+    ({ table_id: candidate }) => candidate === tableId,
+  );
+  if (!table) throw new TypeError(`FALCON24_FORMULA_TABLE_UNKNOWN:${tableId}`);
+  const slots = new Set<string>();
+  formulaSlots(falcon24FormulaExpression(formulaId), slots);
+  slots.add(primaryColumn);
+  const physicalColumns = new Set(table.columns);
+  return [...slots]
+    .filter((slotId) => physicalColumns.has(slotId))
+    .map((slotId) => `${tableId}.${slotId}`)
+    .sort();
 }
 
 type DimensionSpec = {
@@ -521,12 +573,12 @@ function metric(
     formula_id,
     grain: metricGrain,
     unit,
-    time_domain: COMPLETE_MONTH_TIME_DOMAIN,
+    time_domain: FALCON24_COMPLETE_MONTH_TIME_DOMAIN,
     time_column_id: timeColumn,
     additivity: aggregation === "sum" ? "additive" : "non-additive",
     null_policy: "exclude",
     fanout_policy: "preaggregate",
-    dependency_column_ids: [`${table_id}.${column}`],
+    dependency_column_ids: physicalFormulaDependencies(table_id, formula_id, column),
     tags: ["falcon24"],
     analysis: {
       primary: ["order_revenue", "order_count"].includes(formula_id),
@@ -723,6 +775,6 @@ export async function buildFalcon24SemanticConsumptionProjection(input: {
 }
 
 export const falcon24SemanticCatalogInternals = Object.freeze({
-  complete_month_time_domain: COMPLETE_MONTH_TIME_DOMAIN,
+  complete_month_time_domain: FALCON24_COMPLETE_MONTH_TIME_DOMAIN,
   units,
 });

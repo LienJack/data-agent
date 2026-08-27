@@ -15,6 +15,7 @@ import {
   freezeSemanticChangeSetForReview,
 } from "@data-agent/semantic/production";
 import {
+  FALCON24_COMPLETE_MONTH_TIME_DOMAIN,
   FALCON24_DIMENSIONS,
   FALCON24_FORMULA_ALIASES,
   FALCON24_METRICS,
@@ -163,14 +164,76 @@ export async function buildFalcon24SemanticChangeSet(input: {
     });
   }
 
+  const timeDimensionByColumn = new Map(
+    Object.entries(FALCON24_DIMENSIONS)
+      .filter(([, spec]) => spec.data_type === "date")
+      .map(([dimensionId, spec]) => [
+        `${spec.table_id}.${spec.column_id}`,
+        `dimension.${dimensionId}`,
+      ]),
+  );
+  for (const spec of Object.values(FALCON24_METRICS)) {
+    const timeColumnId = spec.time_column_id;
+    if (timeColumnId === null || timeDimensionByColumn.has(timeColumnId)) continue;
+    const separator = timeColumnId.lastIndexOf(".");
+    if (separator < 1 || separator === timeColumnId.length - 1) {
+      throw new TypeError(`FALCON24_TIME_COLUMN_ID_INVALID:${timeColumnId}`);
+    }
+    const tableId = timeColumnId.slice(0, separator);
+    const columnId = timeColumnId.slice(separator + 1);
+    const dimensionId = `dimension.runtime_time_${tableId}_${columnId}`;
+    await add("DIMENSION", dimensionId, {
+      dimension: {
+        dimension_id: dimensionId,
+        name: `${tableId} ${columnId}`,
+        aliases: [`${tableId} ${columnId}`],
+        table_id: tableId,
+        column_id: timeColumnId,
+        grain: {
+          grain_id: `grain.runtime_time_${tableId}_${columnId}`,
+          description: `Executable calendar time for ${timeColumnId}.`,
+          granularity: "month",
+        },
+        data_type: "date",
+        sensitivity: "INTERNAL",
+        hierarchical: false,
+        parent_dimension_id: null,
+        tags: ["falcon24", "runtime-time-closure"],
+        analysis: { groupable: true, pivotable: true, causal_role: null },
+      },
+    });
+    timeDimensionByColumn.set(timeColumnId, dimensionId);
+  }
+
   for (const [metricId, spec] of Object.entries(FALCON24_METRICS)) {
-    const { aliases, formula_id: formulaId, ...metricDefinition } = spec;
+    const {
+      aliases,
+      formula_id: formulaId,
+      analysis,
+      time_column_id: timeColumnId,
+      ...metricDefinition
+    } = spec;
+    const timeDimensionId =
+      timeColumnId === null ? undefined : timeDimensionByColumn.get(timeColumnId);
+    if (timeColumnId !== null && !timeDimensionId) {
+      throw new TypeError(`FALCON24_TIME_DIMENSION_MISSING:${timeColumnId}`);
+    }
     await add("METRIC", `metric.${metricId}`, {
       metric: {
         metric_id: `metric.${metricId}`,
         name: metricId,
         aliases: [metricId.replaceAll("_", " "), ...aliases].sort(),
         ...metricDefinition,
+        time_column_id: timeColumnId,
+        analysis: {
+          ...analysis,
+          allowed_dimension_ids: [
+            ...new Set([
+              ...analysis.allowed_dimension_ids,
+              ...(timeDimensionId ? [timeDimensionId] : []),
+            ]),
+          ].sort(),
+        },
         formula: {
           formula_id: `formula.${formulaId}`,
           expression: FALCON24_SEMANTIC_RELEASE_BLUEPRINT.formulas[formulaId],
@@ -252,14 +315,7 @@ export async function buildFalcon24SemanticChangeSet(input: {
   }
 
   await add("TIME_SEMANTICS", "time.complete_month_frontier", {
-    time_domain: {
-      time_domain_id: "time.complete_month_frontier",
-      calendar: "gregorian",
-      timezone: "Asia/Shanghai",
-      min_time: "2023-05-01",
-      max_time: "2024-10-31",
-      description: "Last complete month is 2024-10; all windows are half-open.",
-    },
+    time_domain: FALCON24_COMPLETE_MONTH_TIME_DOMAIN,
   });
   for (const [constraintId, [expression, severity]] of Object.entries(
     FALCON24_QUALITY_CONSTRAINTS,

@@ -7,6 +7,7 @@ import {
   compileSemanticChangeSet,
   freezeSemanticChangeSetForReview,
   publishReviewedSemanticChangeSet,
+  stageReviewedSemanticSuccessor,
 } from "../src/production/index.js";
 
 const id = (suffix: number) => `30000000-0000-4000-8000-${String(suffix).padStart(12, "0")}`;
@@ -86,11 +87,17 @@ describe("semantic publication lifecycle", () => {
         graph: "READY" as const,
       },
     }));
+    const authority = {
+      publishAtomically,
+      stageReviewedSuccessor: vi.fn(),
+      loadStagedSuccessor: vi.fn(),
+      promoteStagedSuccessor: vi.fn(),
+    };
     const receipt = await publishReviewedSemanticChangeSet({
       publication_id: id(16),
       change_set: changeSet,
       review,
-      authority: { publishAtomically },
+      authority,
       published_at: "2026-08-24T00:01:00.000Z",
     });
     expect(receipt.published_release.generation).toBe(5);
@@ -116,15 +123,61 @@ describe("semantic publication lifecycle", () => {
       reviewed_at: "2026-08-24T00:00:00.000Z",
     });
     const publishAtomically = vi.fn();
+    const authority = {
+      publishAtomically,
+      stageReviewedSuccessor: vi.fn(),
+      loadStagedSuccessor: vi.fn(),
+      promoteStagedSuccessor: vi.fn(),
+    };
     await expect(
       publishReviewedSemanticChangeSet({
         publication_id: id(19),
         change_set: changeSet,
         review,
-        authority: { publishAtomically },
+        authority,
         published_at: "2026-08-24T00:01:00.000Z",
       }),
     ).rejects.toThrow("SEMANTIC_PUBLICATION_REVIEW_CLOSURE_INVALID");
     expect(publishAtomically).not.toHaveBeenCalled();
+  });
+
+  it("accepts only refs and CAS when staging a reviewed successor", async () => {
+    const stageReviewedSuccessor = vi.fn();
+    const authority = {
+      publishAtomically: vi.fn(),
+      stageReviewedSuccessor,
+      loadStagedSuccessor: vi.fn(),
+      promoteStagedSuccessor: vi.fn(),
+    };
+    const command = {
+      schema_version: "stage-reviewed-semantic-successor-command@1.0.0",
+      command_id: id(30),
+      idempotency_key: "falcon24-generation-2",
+      scope,
+      change_set_ref: { change_set_id: id(31), change_set_hash: hash("3") },
+      review_ref: { review_id: id(32), review_hash: hash("4") },
+      source_snapshot_ref: {
+        snapshot_id: id(33),
+        snapshot_revision: 2,
+        snapshot_hash: hash("3"),
+      },
+      compiler_bundle_ref: {
+        compiler_version: "semantic-change-set-publication@1",
+        compiler_bundle_hash: hash("5"),
+      },
+      expected_predecessor: { release_id: id(34), generation: 1, release_digest: hash("6") },
+      expected_pointer_version: 1,
+      target_generation: 2,
+    };
+    await stageReviewedSemanticSuccessor({ command, authority });
+    expect(stageReviewedSuccessor).toHaveBeenCalledWith(command);
+
+    await expect(
+      stageReviewedSemanticSuccessor({
+        command: { ...command, projections: { executable: { payload: "forged" } } },
+        authority,
+      }),
+    ).rejects.toThrow();
+    expect(stageReviewedSuccessor).toHaveBeenCalledOnce();
   });
 });

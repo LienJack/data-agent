@@ -348,11 +348,23 @@ export async function validateSemanticRuntimeClosure(
     ),
     reasonCodes,
   );
-  const physicalColumns = new Set(
-    activeBindings
-      .filter((binding) => binding.column_name !== null)
-      .map((binding) => `${binding.table_name}\u0000${binding.column_name ?? ""}`),
-  );
+  const physicalLocationMatches = (
+    binding: (typeof activeBindings)[number],
+    tableId: string,
+    columnId: string,
+  ) =>
+    binding.table_name === tableId &&
+    binding.column_name !== null &&
+    (binding.column_name === columnId ||
+      `${binding.table_name}.${binding.column_name}` === columnId ||
+      binding.logical_object_id === columnId ||
+      binding.logical_object_id === `column.${columnId}`);
+  const physicalColumnFor = (tableId: string, columnId: string) =>
+    activeBindings.find(
+      (binding) =>
+        binding.logical_object_type === "column" &&
+        physicalLocationMatches(binding, tableId, columnId),
+    );
   const bindingFor = (logicalObjectType: string, logicalObjectId: string) =>
     activeBindings.find(
       (binding) =>
@@ -368,21 +380,50 @@ export async function validateSemanticRuntimeClosure(
   const timeDomainsById = new Map(
     restriction.time_semantics.map((timeDomain) => [timeDomain.time_domain_id, timeDomain]),
   );
+  const tableAdjacency = new Map<string, Set<string>>();
+  for (const relationship of relationshipProjection.relationships) {
+    if (!relationship.analysis.join_allowed) continue;
+    const left = tableAdjacency.get(relationship.left_table_id) ?? new Set<string>();
+    const right = tableAdjacency.get(relationship.right_table_id) ?? new Set<string>();
+    left.add(relationship.right_table_id);
+    right.add(relationship.left_table_id);
+    tableAdjacency.set(relationship.left_table_id, left);
+    tableAdjacency.set(relationship.right_table_id, right);
+  }
+  const tableReachable = (source: string, target: string): boolean => {
+    if (source === target) return true;
+    const visited = new Set([source]);
+    const pending = [source];
+    while (pending.length > 0) {
+      const current = pending.shift();
+      if (current === undefined) break;
+      for (const next of tableAdjacency.get(current) ?? []) {
+        if (next === target) return true;
+        if (!visited.has(next)) {
+          visited.add(next);
+          pending.push(next);
+        }
+      }
+    }
+    return false;
+  };
 
   for (const metric of executable.metrics) {
     const binding = bindingFor("metric", metric.metric_id);
     if (
       !binding ||
-      binding.table_name !== metric.table_id ||
-      binding.column_name !== metric.column_id ||
+      !physicalLocationMatches(binding, metric.table_id, metric.column_id) ||
       !metric.dependency_column_ids.every((columnId) =>
-        physicalColumns.has(`${metric.table_id}\u0000${columnId}`),
+        physicalColumnFor(metric.table_id, columnId),
       )
     ) {
       reasonCodes.add("SEMANTIC_RUNTIME_METRIC_BINDING_INVALID");
     }
     if (
-      metric.analysis.allowed_dimension_ids.some((dimensionId) => !dimensionsById.has(dimensionId))
+      metric.analysis.allowed_dimension_ids.some((dimensionId) => {
+        const dimension = dimensionsById.get(dimensionId);
+        return !dimension || !tableReachable(metric.table_id, dimension.table_id);
+      })
     ) {
       reasonCodes.add("SEMANTIC_RUNTIME_METRIC_DIMENSION_CLOSURE_INVALID");
     }
@@ -402,17 +443,33 @@ export async function validateSemanticRuntimeClosure(
       const edgeSlots = slotEdges.map((edge) =>
         edge.attributes.kind === "SLOT_BINDING" ? edge.attributes.slot_id : "",
       );
+      const dependencyTargets = metric.dependency_column_ids.map((columnId) =>
+        physicalColumnFor(metric.table_id, columnId),
+      );
       if (
         !formula ||
-        !sameStringSet([...slots], metric.dependency_column_ids) ||
-        !sameStringSet(edgeSlots, metric.dependency_column_ids) ||
+        !sameStringSet(edgeSlots, [...slots]) ||
+        dependencyTargets.some((target) => target === undefined) ||
+        dependencyTargets.some(
+          (binding) =>
+            binding !== undefined &&
+            !slotEdges.some((edge) => edge.target_node_id === binding.logical_object_id),
+        ) ||
         slotEdges.some((edge) => {
           const target = graphNodesById.get(edge.target_node_id);
-          return (
-            target?.node_type !== "PHYSICAL_COLUMN" ||
-            target.table_name !== metric.table_id ||
-            !metric.dependency_column_ids.includes(target.column_name)
-          );
+          if (target?.node_type === "PHYSICAL_COLUMN") {
+            return !metric.dependency_column_ids.some(
+              (columnId) =>
+                target.table_name === metric.table_id &&
+                (target.column_name === columnId ||
+                  `${target.table_name}.${target.column_name}` === columnId),
+            );
+          }
+          if (target?.node_type === "METRIC" || target?.node_type === "FORMULA") {
+            const slotId = edge.attributes.kind === "SLOT_BINDING" ? edge.attributes.slot_id : "";
+            return ![slotId, `metric.${slotId}`, `formula.${slotId}`].includes(target.node_id);
+          }
+          return true;
         })
       ) {
         reasonCodes.add("SEMANTIC_RUNTIME_FORMULA_DEPENDENCY_INVALID");
@@ -422,8 +479,9 @@ export async function validateSemanticRuntimeClosure(
       const timeDomain = timeDomainsById.get(metric.time_domain.time_domain_id);
       const timeDimension = executable.dimensions.find(
         (dimension) =>
-          dimension.table_id === metric.table_id &&
-          dimension.column_id === metric.time_column_id &&
+          metric.time_column_id !== null &&
+          (dimension.column_id === metric.time_column_id ||
+            `${dimension.table_id}.${dimension.column_id}` === metric.time_column_id) &&
           (dimension.data_type === "date" || dimension.data_type === "timestamp"),
       );
       if (
@@ -431,6 +489,7 @@ export async function validateSemanticRuntimeClosure(
         !timeDomain ||
         canonicalizeJson(timeDomain) !== canonicalizeJson(metric.time_domain) ||
         !timeDimension ||
+        !tableReachable(metric.table_id, timeDimension.table_id) ||
         !metric.analysis.allowed_dimension_ids.includes(timeDimension.dimension_id)
       ) {
         reasonCodes.add("SEMANTIC_RUNTIME_TIME_CLOSURE_INVALID");
@@ -442,11 +501,7 @@ export async function validateSemanticRuntimeClosure(
 
   for (const dimension of executable.dimensions) {
     const binding = bindingFor("dimension", dimension.dimension_id);
-    if (
-      !binding ||
-      binding.table_name !== dimension.table_id ||
-      binding.column_name !== dimension.column_id
-    ) {
+    if (!binding || !physicalLocationMatches(binding, dimension.table_id, dimension.column_id)) {
       reasonCodes.add("SEMANTIC_RUNTIME_DIMENSION_BINDING_INVALID");
     }
     if (dimension.parent_dimension_id !== null) {
@@ -468,10 +523,10 @@ export async function validateSemanticRuntimeClosure(
 
   for (const relationship of relationshipProjection.relationships) {
     const leftClosed = relationship.left_column_ids.every((columnId) =>
-      physicalColumns.has(`${relationship.left_table_id}\u0000${columnId}`),
+      physicalColumnFor(relationship.left_table_id, columnId),
     );
     const rightClosed = relationship.right_column_ids.every((columnId) =>
-      physicalColumns.has(`${relationship.right_table_id}\u0000${columnId}`),
+      physicalColumnFor(relationship.right_table_id, columnId),
     );
     const joinEdge = graph.edges.find(
       (edge) =>
@@ -486,6 +541,16 @@ export async function validateSemanticRuntimeClosure(
       joinEdge.attributes.left_row_preservation !== relationship.left_row_preservation ||
       joinEdge.attributes.right_row_preservation !== relationship.right_row_preservation ||
       joinEdge.attributes.proof_kind !== relationship.proof_kind
+    ) {
+      reasonCodes.add("SEMANTIC_RUNTIME_RELATIONSHIP_CLOSURE_INVALID");
+    }
+    const leftNode = graphNodesById.get(joinEdge.source_node_id);
+    const rightNode = graphNodesById.get(joinEdge.target_node_id);
+    if (
+      leftNode?.node_type !== "PHYSICAL_TABLE" ||
+      rightNode?.node_type !== "PHYSICAL_TABLE" ||
+      leftNode.table_name !== relationship.left_table_id ||
+      rightNode.table_name !== relationship.right_table_id
     ) {
       reasonCodes.add("SEMANTIC_RUNTIME_RELATIONSHIP_CLOSURE_INVALID");
     }

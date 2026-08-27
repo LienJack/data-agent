@@ -1,8 +1,15 @@
+import { buildSemanticSuccessorStage } from "@data-agent/contracts/artifacts";
+import { sha256ContentHash } from "@data-agent/contracts/common";
 import {
   buildFalcon24AgentAnalysisAcceptanceSuite,
   FALCON24_SEMANTIC_RELEASE_BLUEPRINT,
 } from "@data-agent/evals";
-import { compileSemanticPublicationProjection } from "@data-agent/semantic/production";
+import {
+  compileSemanticPublicationProjection,
+  semanticPublicationCompilerBundleDigest,
+  validateSemanticRuntimeClosure,
+  verifySemanticReleaseEnvelope,
+} from "@data-agent/semantic/production";
 import { describe, expect, it } from "vitest";
 import {
   buildFalcon24SemanticConsumptionProjection,
@@ -12,6 +19,72 @@ import { buildFalcon24SemanticChangeSet } from "../../src/evals/falcon24-semanti
 
 const id = (suffix: number) => `60000000-0000-4000-8000-${String(suffix).padStart(12, "0")}`;
 const hash = (character: string) => `sha256:${character.repeat(64)}` as const;
+
+function falcon24PhysicalType(column: string): string {
+  if (/(?:^|_)(?:date|time)(?:_|$)/u.test(column)) return "timestamp without time zone";
+  if (
+    /(?:amount|total|price|quantity|stock|spend|revenue|rating|minutes|impressions|clicks|conversions)/u.test(
+      column,
+    )
+  ) {
+    return "numeric";
+  }
+  return "text";
+}
+
+async function falcon24Snapshot(datasourceId: string) {
+  const content = {
+    schema_version: "physical-schema-content@1.0.0" as const,
+    datasource_id: datasourceId,
+    datasource_fingerprint: hash("c"),
+    engine: "postgresql" as const,
+    engine_version: { major: 17, minor: 0 },
+    database_identity: { database_name: "falcon_db_24", database_oid: 24 },
+    included_schemas: ["falcon_db_24"],
+    relations: FALCON24_SEMANTIC_RELEASE_BLUEPRINT.tables.map((table) => ({
+      identity: { schema_name: "falcon_db_24", relation_name: table.table_id },
+      relation_kind: "TABLE" as const,
+      comment: null,
+      columns: table.columns.map((column, index) => {
+        const formattedType = falcon24PhysicalType(column);
+        return {
+          column_name: column,
+          ordinal_position: index + 1,
+          formatted_type: formattedType,
+          type_identity: {
+            type_schema: "pg_catalog",
+            type_name:
+              formattedType === "numeric"
+                ? "numeric"
+                : formattedType === "text"
+                  ? "text"
+                  : "timestamp",
+            type_kind: "BASE" as const,
+            array_dimensions: 0,
+          },
+          nullable: false,
+          default_expression: null,
+          identity_generation: null,
+          generated_expression: null,
+          comment: null,
+        };
+      }),
+      primary_key: null,
+      foreign_keys: [],
+      unique_constraints: [],
+      check_constraints: [],
+      indexes: [],
+    })),
+  };
+  return {
+    schema_version: "physical-schema-snapshot@1.0.0" as const,
+    snapshot_id: id(90),
+    scan_run_id: id(91),
+    snapshot_content_hash: await sha256ContentHash(content),
+    captured_at: "2026-08-28T00:00:00.000Z",
+    content,
+  };
+}
 
 describe("Falcon24 governed semantic change set", () => {
   it("deterministically freezes all physical bindings and five competency cases for human review", async () => {
@@ -126,6 +199,103 @@ describe("Falcon24 governed semantic change set", () => {
         base_release: { release_id: id(3), generation: 1, release_hash: hash("a") },
       }),
     ).rejects.toThrow("FALCON24_SEMANTIC_DOMAIN_INVALID");
+  });
+
+  it("fails closed while Falcon24 cohort formula slots still lack reviewed dependency definitions", async () => {
+    const built = await buildFalcon24SemanticChangeSet({
+      scope: {
+        app_id: id(1),
+        tenant_id: id(2),
+        environment: "test",
+        semantic_domain: "falcon24",
+      },
+      base_release: { release_id: id(3), generation: 1, release_hash: hash("a") },
+    });
+    const snapshot = await falcon24Snapshot(built.datasource_id);
+    const projection = await compileSemanticPublicationProjection(built.change_set, {
+      source_snapshot: snapshot,
+    });
+    const projectionRefs = {
+      executable: {
+        projection_id: projection.executable_projection_id,
+        projection_digest: projection.executable_projection_digest,
+      },
+      relationship: {
+        projection_id: projection.relationship_projection_id,
+        projection_digest: projection.relationship_projection_digest,
+      },
+      runtime_restriction: {
+        projection_id: projection.restriction_projection_id,
+        projection_digest: projection.restriction_projection_digest,
+      },
+      graph: {
+        projection_id: projection.graph_projection_id,
+        projection_digest: projection.graph_projection_digest,
+      },
+    };
+    const stage = await buildSemanticSuccessorStage({
+      schema_version: "semantic-successor-stage@1.0.0",
+      stage_id: id(92),
+      scope: built.change_set.scope,
+      predecessor_release: {
+        release_id: built.change_set.base_release.release_id,
+        generation: built.change_set.base_release.generation,
+        release_digest: built.change_set.base_release.release_hash,
+      },
+      expected_pointer_version: 3,
+      target_generation: 2,
+      change_set_ref: {
+        change_set_id: built.change_set.change_set_id,
+        change_set_hash: built.change_set.change_set_hash,
+      },
+      review_ref: { review_id: id(93), review_hash: hash("d") },
+      source_snapshot_ref: {
+        snapshot_id: snapshot.snapshot_id,
+        snapshot_revision: 1,
+        snapshot_hash: snapshot.snapshot_content_hash,
+      },
+      compiler_bundle_ref: {
+        compiler_version: "semantic-change-set-publication@2",
+        compiler_bundle_hash: await semanticPublicationCompilerBundleDigest(),
+      },
+      candidate_release: {
+        release_id: projection.release_id,
+        generation: 2,
+        release_digest: projection.release_digest,
+        datasource_id: built.datasource_id,
+      },
+      projection_refs: projectionRefs,
+      status: "STAGED",
+    });
+    const verified = await verifySemanticReleaseEnvelope({
+      stage,
+      projections: {
+        executable: {
+          projection_kind: "EXECUTABLE",
+          ...projectionRefs.executable,
+          projection_payload: projection.executable_projection,
+        },
+        relationship: {
+          projection_kind: "RELATIONSHIP",
+          ...projectionRefs.relationship,
+          projection_payload: projection.relationship_projection,
+        },
+        runtime_restriction: {
+          projection_kind: "RUNTIME_RESTRICTION",
+          ...projectionRefs.runtime_restriction,
+          projection_payload: projection.restriction_projection,
+        },
+        graph: {
+          projection_kind: "GRAPH",
+          ...projectionRefs.graph,
+          projection_payload: projection.graph_projection,
+        },
+      },
+    });
+    expect(await validateSemanticRuntimeClosure(verified)).toMatchObject({
+      outcome: "FAIL",
+      reason_codes: ["SEMANTIC_RUNTIME_FORMULA_DEPENDENCY_INVALID"],
+    });
   });
 
   it("fails closed for an unpublished formula instead of manufacturing a fallback AST", () => {
