@@ -1,0 +1,9 @@
+{"file":".trellis/spec/backend/falcon-agent-release-gate.md","reason":"Defines E1 history, E2 transition, gate immutability, browser receipts, and zero-retry recovery boundaries."}
+{"file":".trellis/spec/backend/database-guidelines.md","reason":"Defines PostgreSQL authority, scoped transactions, migrations, RLS, exact binding, and rollback requirements."}
+{"file":".trellis/spec/backend/agent-team-runtime.md","reason":"Defines Root and Subagent authority, artifact dependency closure, budgets, and public event boundaries."}
+{"file":".trellis/spec/backend/artifact-authority.md","reason":"Defines exact Artifact reference, committer, resolver, and immutable publication boundaries."}
+{"file":".trellis/spec/backend/resolution-trace.md","reason":"Defines exact Run and Artifact trace loading, public detail projection, and no latest fallback."}
+{"file":".trellis/spec/backend/provider-invocation-authority.md","reason":"Defines credential-safe provider invocation, outcome, receipt, and retry semantics."}
+{"file":".trellis/spec/backend/python-sandbox-execution.md","reason":"Defines governed analysis sandbox, binding, publisher, reclamation, and production isolation evidence."}
+{"file":".trellis/spec/frontend/agent-public-events.md","reason":"Defines safe browser event, trace, inspector, artifact preview, and replay behavior."}
+{"file":"docs/plans/2026-08-26-001-refactor-falcon24-e1-authority-reset-plan.md","reason":"Source plan requiring next Epoch after post-activation frozen-closure changes and full G1-G5 evidence."}

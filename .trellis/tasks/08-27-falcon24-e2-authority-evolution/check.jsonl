@@ -1,0 +1,8 @@
+{"file":".trellis/spec/backend/falcon-agent-release-gate.md","reason":"Audit gate identity, attempt archival, winning qualification, browser proof, and recovery rules."}
+{"file":".trellis/spec/backend/database-guidelines.md","reason":"Audit migration safety, single PostgreSQL truth, RLS, transactional activation, and explicit scope predicates."}
+{"file":".trellis/spec/backend/artifact-authority.md","reason":"Audit immutable E1 history and exact E2 Artifact publication and resolution."}
+{"file":".trellis/spec/backend/resolution-trace.md","reason":"Audit historical E1 and current E2 trace correctness without latest or raw fallback."}
+{"file":".trellis/spec/backend/provider-invocation-authority.md","reason":"Audit credential secrecy, provider outcomes, and strict retry behavior."}
+{"file":".trellis/spec/backend/python-sandbox-execution.md","reason":"Audit Operator, Oracle, Publisher, sandbox receipt, and residual closure."}
+{"file":".trellis/spec/frontend/agent-public-events.md","reason":"Audit browser and public trace surfaces for safe exact-reference behavior."}
+{"file":"docs/plans/2026-08-26-001-refactor-falcon24-e1-authority-reset-plan.md","reason":"Audit every original U1-U9 and E2 recovery requirement before completion."}

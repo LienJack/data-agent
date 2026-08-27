@@ -18,7 +18,9 @@
   "commit": null,
   "pr_url": null,
   "subtasks": [],
-  "children": [],
+  "children": [
+    "08-27-falcon24-e2-authority-evolution"
+  ],
   "parent": null,
   "relatedFiles": [],
   "notes": "",
