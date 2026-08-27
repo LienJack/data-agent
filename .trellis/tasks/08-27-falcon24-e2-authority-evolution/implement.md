@@ -17,13 +17,13 @@
 
 ## E2-2 — Forward-only PostgreSQL Authority Migration
 
-- [ ] 新增 10781 migration：inventory/preflight、E1表原位generic rename、epoch回填、CHECK/FK/index/RLS/grant演进。
-- [ ] 新增 generic staging/baseline/activation/current RPC并撤销 E1 mutating RPC；current推进要求 epoch ordinal +1。
-- [ ] 泛化 Run/Effective Config/Artifact/UI receipt binding和 exact baseline FK；保留全部 E1 bytes/identity/hash。
-- [ ] 泛化 qualification/campaign current/history与 gate RPC，begin E2-Q1时原子归档 E1 HOLD。
-- [ ] 更新 migration renderer/inventory/test-support；证明无第二 truth、无历史 DELETE/UPDATE。
-- [ ] 验证：PostgreSQL 17 fresh migration smoke、E1 HOLD fixture upgrade、rollback、concurrency、RLS/grants、pre/post digest。
-- [ ] Commit：`feat: evolve Falcon24 authority storage to E2`。
+- [x] 新增 10781 migration：inventory/preflight、E1表原位generic rename、epoch回填、CHECK/FK/index/RLS/grant演进。
+- [x] 新增 generic staging/baseline/activation/current RPC并撤销 E1 mutating RPC；current推进要求 epoch ordinal +1。
+- [x] 泛化 Run/Effective Config/Artifact/UI receipt binding和 exact baseline FK；保留全部 E1 bytes/identity/hash。
+- [x] 泛化 qualification/campaign current/history与 gate RPC，begin E2-Q1时原子归档 E1 HOLD。
+- [x] 更新 migration renderer/inventory/test-support；证明无第二 truth、无历史 DELETE/UPDATE。
+- [x] 验证：PostgreSQL 17 fresh migration smoke、E1 HOLD fixture upgrade、rollback、concurrency、RLS/grants、pre/post digest。
+- [x] Commit：`feat: evolve Falcon24 authority storage to E2`。
 
 ## E2-3 — Platform Authority and Runtime Propagation
 
