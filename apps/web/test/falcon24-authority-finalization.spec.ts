@@ -15,6 +15,7 @@ vi.mock("server-only", () => ({}));
 import {
   buildFalcon24AcceptanceContractHashes,
   buildFalcon24AgentProfileAuthorityProof,
+  resolveFalcon24PredecessorDatasetSubjectHash,
   runFalcon24AuthorityFinalization,
   verifyFalcon24PredecessorStagingReceipt,
 } from "../src/cli/finalize-falcon24-authority.js";
@@ -154,5 +155,19 @@ describe("Falcon24 versioned authority finalization", () => {
         receipt_document: e2,
       }),
     ).rejects.toThrow("FALCON24_AUTHORITY_PREDECESSOR_RECEIPT_EPOCH_MISMATCH");
+    expect(
+      resolveFalcon24PredecessorDatasetSubjectHash({
+        predecessor_receipt: e1,
+        e1_import_receipt_hash: material.subject_hash,
+        versioned_verification_receipt_hash: material.evidence_hash,
+      }),
+    ).toBe(material.subject_hash);
+    expect(
+      resolveFalcon24PredecessorDatasetSubjectHash({
+        predecessor_receipt: e2,
+        e1_import_receipt_hash: material.subject_hash,
+        versioned_verification_receipt_hash: material.evidence_hash,
+      }),
+    ).toBe(material.evidence_hash);
   });
 });

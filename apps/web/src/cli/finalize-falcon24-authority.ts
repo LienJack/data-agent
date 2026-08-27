@@ -217,6 +217,16 @@ export async function verifyFalcon24PredecessorStagingReceipt(input: {
   return receipt;
 }
 
+export function resolveFalcon24PredecessorDatasetSubjectHash(input: {
+  readonly predecessor_receipt: HistoricalStagingReceipt;
+  readonly e1_import_receipt_hash: HistoricalStagingReceipt["subject_hash"];
+  readonly versioned_verification_receipt_hash: HistoricalStagingReceipt["subject_hash"];
+}): HistoricalStagingReceipt["subject_hash"] {
+  return input.predecessor_receipt.schema_version === "falcon24-e1-staging-receipt@1.0.0"
+    ? input.e1_import_receipt_hash
+    : input.versioned_verification_receipt_hash;
+}
+
 async function loadPredecessorStagingReceipts(input: {
   readonly pool: pg.Pool;
   readonly scope: {
@@ -462,9 +472,26 @@ async function stageDatasetReceipt(input: {
     catalog_inventory: inventory,
   });
   const predecessor = requirePredecessorReceipt(input.predecessor_receipts, "DATASET");
+  const predecessorVerification =
+    predecessor.schema_version === "falcon24-staging-receipt@2.0.0"
+      ? await buildFalcon24DatabaseVerificationReceiptV2({
+          authority_epoch: predecessor.authority_epoch,
+          source,
+          observed_bundle_sha256: observedBundleHash,
+          expected_inventory_hash: FALCON24_E1_EXPECTED_CATALOG_INVENTORY_HASH,
+          catalog_inventory: inventory,
+        })
+      : undefined;
+  const expectedPredecessorSubjectHash = resolveFalcon24PredecessorDatasetSubjectHash({
+    predecessor_receipt: predecessor,
+    e1_import_receipt_hash: historicalImport.receipt_hash,
+    versioned_verification_receipt_hash:
+      predecessorVerification?.receipt_hash ?? historicalImport.receipt_hash,
+  });
   if (
     historicalImport.status !== "READY" ||
-    historicalImport.receipt_hash !== predecessor.subject_hash ||
+    predecessorVerification?.status === "HOLD" ||
+    expectedPredecessorSubjectHash !== predecessor.subject_hash ||
     inventory.inventory_hash !== predecessor.evidence_hash
   ) {
     throw new TypeError("FALCON24_DATASET_PREDECESSOR_PROOF_MISMATCH");
