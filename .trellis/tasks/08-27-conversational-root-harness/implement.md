@@ -37,7 +37,7 @@ Commit: `feat(agent-runtime): freeze conversation context for root`
 
 ## C2 — Dynamic Agent Tool Loop
 
-Status: completed and pending scoped commit.
+Status: completed in `fcbfa34f`.
 
 把一次性 Root executor 演进为最多四轮：每轮 Root 只决定当前调用或最终回答；当前调用经 admission 后执行，Tool Result 返回下一轮，再 checkpoint。删除同轮上游选择器、完整链预声明和 Host 业务分层调度；跨轮只传已验收 `input_artifact_refs`，同轮只允许互不依赖调用并行。Root Provider turn 接回既有 audited invocation/ProviderResponseArtifact 权威，同 logical turn 重放读取持久化响应，未知投递结果 fail closed。移除 `DIRECT_ANSWER_REVIEW` 专用阶段；恢复按 logical identities replay。覆盖 direct、single、跨轮 serial、同轮 independent parallel、tool failure、verifier feedback、budget exhaustion、duplicate mismatch 和 crash windows。
 
@@ -89,6 +89,17 @@ Commit: `feat(text2sql): consume semantic query context`
 ## C5 — Analysis and final projection
 
 Specialist terminal 返回 Root observation；Root 可选择 Analysis/Report/Chart。Final verifier 绑定 current-Run accepted refs；Conversation 回写 answer/table/chart refs。覆盖不需要图、Analysis failure、unsupported facts、same-source Chart 和 terminal idempotency。
+
+Status: completed on 2026-08-27.
+
+Evidence:
+
+- Root 的 Semantic → Text2SQL → Analysis → final 路径保持四个普通 turn；每个 turn 只产生当前一个 Tool Call，后继仅通过前一轮已验收 `input_artifact_refs` 消费真实 Tool Result，不预声明完整链，也不由 Host 调度业务后继。
+- Analysis terminal output 已通过既有 Product Team acceptance 形成 Root observation；现有 governed runtime 保持 `QueryEvidence -> typed Arrow -> operator -> DerivedAnalysisEvidence -> AnalysisReport/Chart` 同源闭包。
+- Conversation final projection 不再把 `tool_completed` 误当验收：仅在同 Run COMPLETED terminal 下，关联 exact `profile_id/task_id` 的后续 COMPLETED Agent status，回写规范排序的 `QueryEvidence/ArtifactWorkspaceDocument/AnalysisReport` refs；FAILED Agent、非完成 Run、私有/cross-Run refs 被排除。
+- 新回答写入和 replay 恢复共用同一投影器；恢复时覆盖旧 metadata 的自报 Artifact refs，answer 仍由 Run ID 与 durable answer events 绑定。
+- Focused tests: Web final-message projection/event assembler 17/17；Worker Root loop/verifier/Production Team/governed Analysis 23/23。覆盖 no-chart、Analysis rejection、unsupported/unaccepted/cross-Run facts、same-source Chart 和 terminal checkpoint idempotency。
+- Worker typecheck passed after C5 changes。Web typecheck 仅仍被冻结 W2 现场 `bootstrap-falcon24-e1.ts`、`repair-falcon24-semantic-projections.ts` 的既有 hash template errors 阻塞；C5 owned Web files 没有 type error。Scoped Biome 与 `git diff --check` passed。
 
 Commit: `feat(agent-runtime): continue root through analysis results`
 

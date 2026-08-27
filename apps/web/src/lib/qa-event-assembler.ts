@@ -2,7 +2,7 @@
  * Modified from DeepSeek Harness keyed conversation/snapshot assemblers.
  * Fixed upstream commit and MIT notice: components/qa/DEEPSEEK_HARNESS_MIT_NOTICE.md
  */
-import type { ArtifactReference } from "@data-agent/contracts/artifacts";
+import { type ArtifactReference, artifactReferenceIdentity } from "@data-agent/contracts/artifacts";
 import type { PublicRunEvent, QaInspectorTarget } from "@data-agent/contracts/runs";
 import type { Message } from "./qa-types";
 
@@ -278,6 +278,78 @@ export function publicAgentLabel(profileId: string): "Semantic" | "Text2SQL" | "
 
 function artifactIdentity(reference: ArtifactReference): string {
   return `${reference.artifact_id}:${reference.revision}:${reference.content_hash}`;
+}
+
+const conversationArtifactTypes = new Set([
+  "QueryEvidence",
+  "ArtifactWorkspaceDocument",
+  "AnalysisReport",
+]);
+
+function acceptedAgentTaskIdentity(profileId: string, taskId: string): string {
+  return `${profileId}:${taskId}`;
+}
+
+/**
+ * Projects only public Artifact refs whose owning Subagent task was accepted
+ * before the same Run completed. Tool completion alone is not acceptance.
+ */
+export function acceptedRunArtifactReferences(
+  events: readonly PublicRunEvent[],
+  runId: string,
+): ArtifactReference[] {
+  const runEvents = events
+    .filter((event) => event.run_id === runId)
+    .sort((left, right) => left.sequence - right.sequence);
+  const terminal = runEvents.findLast(
+    (event): event is Extract<PublicRunEvent, { type: "terminal" }> => event.type === "terminal",
+  );
+  if (terminal?.payload.status !== "COMPLETED") return [];
+
+  const acceptedTasks = new Map<string, number>();
+  for (const event of runEvents) {
+    if (
+      event.type !== "agent" ||
+      event.payload.status !== "COMPLETED" ||
+      event.payload.task_id === null ||
+      event.sequence >= terminal.sequence
+    ) {
+      continue;
+    }
+    acceptedTasks.set(
+      acceptedAgentTaskIdentity(event.payload.profile_id, event.payload.task_id),
+      event.sequence,
+    );
+  }
+
+  const references = new Map<string, ArtifactReference>();
+  for (const event of runEvents) {
+    if (
+      event.type !== "tool" ||
+      event.payload.status !== "COMPLETED" ||
+      event.sequence >= terminal.sequence ||
+      !("profile_id" in event.payload) ||
+      !("task_id" in event.payload) ||
+      event.payload.profile_id === null ||
+      event.payload.task_id === null ||
+      !("artifact_refs" in event.payload)
+    ) {
+      continue;
+    }
+    const acceptedAt = acceptedTasks.get(
+      acceptedAgentTaskIdentity(event.payload.profile_id, event.payload.task_id),
+    );
+    if (acceptedAt === undefined || acceptedAt <= event.sequence) continue;
+    for (const reference of event.payload.artifact_refs) {
+      if (reference.run_id !== runId || !conversationArtifactTypes.has(reference.artifact_type)) {
+        continue;
+      }
+      references.set(artifactReferenceIdentity(reference), reference);
+    }
+  }
+  return [...references.entries()]
+    .sort(([left], [right]) => left.localeCompare(right))
+    .map(([, reference]) => reference);
 }
 
 export function artifactReferencesBefore(

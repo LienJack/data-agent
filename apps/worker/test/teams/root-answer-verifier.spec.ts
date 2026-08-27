@@ -3,7 +3,7 @@ import {
   buildSemanticQueryContext,
   type RootAgentDecisionCandidate,
 } from "@data-agent/contracts";
-import { describe, expect, it } from "vitest";
+import { describe, expect, it, vi } from "vitest";
 import { createRootAnswerVerifier } from "../../src/teams/root-answer-verifier.js";
 
 const id = (suffix: number) => `97000000-0000-4000-8000-${String(suffix).padStart(12, "0")}`;
@@ -217,6 +217,40 @@ describe("Root answer verifier", () => {
       status: "ACCEPTED",
       rendered_text: "[JOIN] orders -> customers",
     });
+  });
+
+  it("rejects an accepted-looking Artifact from another Run before repository access", async () => {
+    const document = await report();
+    const resolveCommitted = vi.fn(async () => ({ ok: true as const, value: document }));
+    const verifier = createRootAnswerVerifier({ artifacts: { resolveCommitted } });
+    const staleRef = { ...document.artifact_ref, run_id: id(99) };
+    const candidate: RootAgentDecisionCandidate = {
+      schema_version: "root-agent-turn-candidate@1.0.0",
+      kind: "FINAL_ANSWER",
+      scope,
+      run_id: id(3),
+      catalog_snapshot_hash: hash("1"),
+      sections: [
+        {
+          kind: "ARTIFACT_FACTS",
+          artifact_ref: staleRef,
+          fact_selectors: ["projection.sections"],
+        },
+      ],
+      public_summary: "拒绝跨 Run 证据。",
+    };
+
+    await expect(
+      verifier.verify({
+        decision: candidate,
+        visible_message_refs: [],
+        accepted_artifact_refs: [staleRef],
+      }),
+    ).resolves.toMatchObject({
+      status: "EVIDENCE_REQUIRED",
+      reason_code: "ROOT_ANSWER_ARTIFACT_NOT_ACCEPTED",
+    });
+    expect(resolveCommitted).not.toHaveBeenCalled();
   });
 
   it("renders semantic-only answers from exact Host-projected facts", async () => {

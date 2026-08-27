@@ -26,7 +26,13 @@ import {
 } from "./api-client";
 import { fetchDataSources } from "./datasource-api";
 import type { DataSourceConnection } from "./datasource-types";
-import { answerText, mergePublicRunEvents, resumableRunFromReplay } from "./qa-event-assembler";
+import {
+  acceptedRunArtifactReferences,
+  answerText,
+  isRunTerminal,
+  mergePublicRunEvents,
+  resumableRunFromReplay,
+} from "./qa-event-assembler";
 import { replaceQAInspectorTargetInBrowser } from "./qa-inspector-target";
 import { createQaRunStream, type QaRunStreamSession } from "./qa-run-stream";
 import type {
@@ -352,6 +358,22 @@ function replaceMessage(messages: Message[], id: string, patch: Partial<Message>
   return messages.map((message) => (message.id === id ? { ...message, ...patch } : message));
 }
 
+function messageMetadataForRun(
+  events: readonly PublicRunEvent[],
+  runId: string,
+  current: Record<string, unknown> | undefined,
+  eventSequence?: number,
+): Record<string, unknown> {
+  const artifactRefs = acceptedRunArtifactReferences(events, runId);
+  const metadata = { ...current };
+  delete metadata.accepted_artifact_refs;
+  return {
+    ...metadata,
+    ...(eventSequence === undefined ? {} : { event_sequence: eventSequence }),
+    ...(artifactRefs.length === 0 ? {} : { accepted_artifact_refs: artifactRefs }),
+  };
+}
+
 function terminalAnswer(projection: RunProjection | null): string {
   const summaries = projection?.reports?.map((report) => report.summary).filter(Boolean) ?? [];
   if (summaries.length > 0) return summaries.join("\n\n");
@@ -416,7 +438,11 @@ async function attachReplayRunStream(
           events,
           messages: state.messages.map((message) =>
             message.role === "agent" && message.runId === runId
-              ? { ...message, content: content || message.content }
+              ? {
+                  ...message,
+                  content: content || message.content,
+                  metadata: messageMetadataForRun(events, runId, message.metadata),
+                }
               : message,
           ),
         };
@@ -785,7 +811,14 @@ export const useQAStore = create<QAStore>((set, get) => ({
       if (!response.ok) throw new Error("加载消息失败");
       const json = (await response.json()) as { data: WorkspaceConversationMessage[] };
       if (get().activeConversationId === conversationId) {
-        const messages = json.data.map(messageFromContract);
+        const messages = json.data.map(messageFromContract).map((message) =>
+          message.role === "agent" && message.runId
+            ? {
+                ...message,
+                metadata: messageMetadataForRun(trajectory.events, message.runId, message.metadata),
+              }
+            : message,
+        );
         for (const runId of new Set(trajectory.events.map((event) => event.run_id))) {
           if (messages.some((message) => message.role === "agent" && message.runId === runId))
             continue;
@@ -801,6 +834,7 @@ export const useQAStore = create<QAStore>((set, get) => ({
             content,
             type: "text",
             runId,
+            metadata: messageMetadataForRun(trajectory.events, runId, undefined),
             createdAt: terminal?.occurred_at ?? new Date().toISOString(),
           });
         }
@@ -816,6 +850,7 @@ export const useQAStore = create<QAStore>((set, get) => ({
             content: answerText(trajectory.events, resumable.runId),
             type: "text",
             runId: resumable.runId,
+            metadata: messageMetadataForRun(trajectory.events, resumable.runId, undefined),
             createdAt:
               trajectory.events.find((event) => event.run_id === resumable.runId)?.occurred_at ??
               new Date().toISOString(),
@@ -1089,14 +1124,31 @@ export const useQAStore = create<QAStore>((set, get) => ({
         if (streamResult.error instanceof Error) throw streamResult.error;
         throw new Error("事件流连接超时，Run 仍在执行，可稍后从轨迹恢复");
       }
-      const streamedAnswer = answerText(get().events, run.runId);
+      if (!isRunTerminal(get().events, run.runId)) {
+        const trajectory = await fetchConversationTrajectory(conversationId);
+        set((current) => ({
+          events: mergePublicRunEvents(current.events, trajectory.events),
+        }));
+      }
+      const finalEvents = get().events;
+      const streamedAnswer = answerText(finalEvents, run.runId);
       const finalContent = streamedAnswer || terminalAnswer(finalProjection);
       const finalType: Message["type"] = finalProjection.reports?.length ? "report" : "text";
+      const finalEventSequence = Math.max(
+        streamResult.cursor,
+        ...finalEvents.filter((event) => event.run_id === run.runId).map((event) => event.sequence),
+      );
+      const finalMetadata = messageMetadataForRun(
+        finalEvents,
+        run.runId,
+        undefined,
+        finalEventSequence,
+      );
       set((current) => ({
         messages: replaceMessage(current.messages, agentMessageId, {
           content: finalContent,
           type: finalType,
-          metadata: { event_sequence: streamResult.cursor },
+          metadata: finalMetadata,
         }),
         sending: false,
         connection: "closed",
@@ -1116,7 +1168,7 @@ export const useQAStore = create<QAStore>((set, get) => ({
             content: finalContent,
             type: finalType,
             run_id: run.runId,
-            metadata: { event_sequence: streamResult.cursor },
+            metadata: finalMetadata,
           }),
         },
       );

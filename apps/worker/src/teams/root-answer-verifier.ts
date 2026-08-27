@@ -40,6 +40,18 @@ function evidenceRequired(reasonCode: string): RootAnswerVerification {
   };
 }
 
+function belongsToDecisionRun(
+  decision: Pick<RootAgentDecisionCandidate, "scope" | "run_id">,
+  reference: ArtifactReference,
+): boolean {
+  return (
+    reference.app_id === decision.scope.app_id &&
+    reference.tenant_id === decision.scope.tenant_id &&
+    reference.environment === decision.scope.environment &&
+    reference.run_id === decision.run_id
+  );
+}
+
 function renderArtifactFacts(
   document: ProductTeamArtifactDocument,
   selectors: readonly string[],
@@ -117,7 +129,9 @@ export function createRootAnswerVerifier(dependencies: RootAnswerVerifierDepende
       }
       const visibleMessages = new Set(input.visible_message_refs);
       const acceptedArtifacts = new Set(
-        input.accepted_artifact_refs.map(artifactReferenceIdentity),
+        input.accepted_artifact_refs
+          .filter((reference) => belongsToDecisionRun(input.decision, reference))
+          .map(artifactReferenceIdentity),
       );
       const rendered: string[] = [];
       const evidence = new Map<string, ArtifactReference>();
@@ -131,6 +145,9 @@ export function createRootAnswerVerifier(dependencies: RootAnswerVerifierDepende
           }
           rendered.push(section.text);
           continue;
+        }
+        if (!belongsToDecisionRun(input.decision, section.artifact_ref)) {
+          return evidenceRequired("ROOT_ANSWER_ARTIFACT_NOT_ACCEPTED");
         }
         const identity = artifactReferenceIdentity(section.artifact_ref);
         if (!acceptedArtifacts.has(identity)) {

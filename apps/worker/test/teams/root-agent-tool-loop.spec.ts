@@ -1,4 +1,5 @@
 import {
+  buildSemanticQueryContext,
   buildSubagentCapabilityCatalogSnapshot,
   DEFAULT_RUN_EXECUTION_POLICY,
   type MastraSnapshotBinding,
@@ -376,6 +377,223 @@ describe("bounded Root tool loop", () => {
     >;
     expect(calls[1]?.[1].tool_observations).toHaveLength(1);
     expect(calls[2]?.[1].tool_observations).toHaveLength(2);
+  });
+
+  it("decides Text2SQL and Analysis one turn at a time from accepted Tool Results", async () => {
+    const input = await fixture();
+    const baseCall = toolDecision(input).tool_calls[0];
+    if (!baseCall) throw new Error("tool call fixture required");
+    const semanticRef = {
+      artifact_id: id(40),
+      artifact_type: "SemanticQueryContext" as const,
+      ...input.lease.scope,
+      run_id: input.lease.run_id,
+      revision: 1,
+      content_hash: hash("4"),
+    };
+    const datasourceId = id(50);
+    const semanticContext = await buildSemanticQueryContext({
+      schema_version: "semantic-query-context@1.0.0",
+      scope: input.lease.scope,
+      run_id: input.lease.run_id,
+      semantic_domain: "commerce",
+      semantic_release: {
+        resource_id: id(51),
+        resource_revision: 2,
+        resource_hash: hash("8"),
+        datasource_id: datasourceId,
+        semantic_generation: 2,
+        publication_status: "PUBLISHED",
+      },
+      schema_snapshot: {
+        resource_id: id(52),
+        resource_revision: 4,
+        resource_hash: hash("9"),
+        datasource_id: datasourceId,
+        semantic_release_id: id(51),
+        semantic_generation: 2,
+      },
+      datasource: {
+        resource_id: datasourceId,
+        resource_revision: 1,
+        resource_hash: hash("a"),
+      },
+      semantic_context_ref: {
+        package_id: id(53),
+        package_hash: hash("b"),
+        receipt_id: id(54),
+        receipt_hash: hash("c"),
+        retrieval_receipt_hash: hash("d"),
+        inference_receipt_hash: hash("e"),
+      },
+      requested_object_ids: [],
+      metrics: [],
+      dimensions: [],
+      formulas: [],
+      relationships: [],
+      physical_bindings: [],
+      time_semantics: [],
+      quality_constraints: [],
+      unresolved_ambiguities: [],
+    });
+    const semanticContextProjection = JSON.parse(JSON.stringify(semanticContext));
+    const queryRef = {
+      ...semanticRef,
+      artifact_id: id(41),
+      artifact_type: "QueryEvidence" as const,
+      content_hash: hash("5"),
+    };
+    const chartRef = {
+      ...semanticRef,
+      artifact_id: id(42),
+      artifact_type: "ArtifactWorkspaceDocument" as const,
+      content_hash: hash("6"),
+    };
+    const reportRef = {
+      ...semanticRef,
+      artifact_id: id(43),
+      artifact_type: "AnalysisReport" as const,
+      content_hash: hash("7"),
+    };
+    const decision = (
+      profileId: typeof baseCall.profile_id,
+      toolCallId: string,
+      requestedArtifactTypes: typeof baseCall.requested_artifact_types,
+      inputArtifactRefs: typeof baseCall.input_artifact_refs,
+    ): RootAgentDecisionCandidate => ({
+      schema_version: "root-agent-turn-candidate@1.0.0",
+      kind: "TOOL_CALLS",
+      scope: input.lease.scope,
+      run_id: input.lease.run_id,
+      catalog_snapshot_hash: input.catalog.snapshot_hash,
+      tool_calls: [
+        {
+          ...baseCall,
+          profile_id: profileId,
+          tool_call_id: toolCallId,
+          requested_artifact_types: requestedArtifactTypes,
+          input_artifact_refs: inputArtifactRefs,
+        },
+      ],
+      public_summary: `Execute ${toolCallId}.`,
+    });
+    const completed = (
+      toolCallId: string,
+      profileId: RootToolObservation["profile_id"],
+      outputRef: NonNullable<RootToolObservation["output_ref"]>,
+      sourceRefs: readonly (typeof queryRef | typeof chartRef)[] = [],
+    ): RootToolObservation => ({
+      schema_version: "root-tool-observation@1.0.0",
+      tool_call_id: toolCallId,
+      profile_id: profileId,
+      status: "COMPLETED",
+      output_ref: outputRef,
+      safe_projection: {
+        schema_version: "root-tool-safe-projection@1.0.0",
+        artifact_ref: outputRef,
+        projection_kind:
+          outputRef.artifact_type === "SemanticQueryContext"
+            ? "SEMANTIC_CONTEXT"
+            : outputRef.artifact_type === "QueryEvidence"
+              ? "TABLE"
+              : "REPORT",
+        title: null,
+        summary: `${toolCallId} accepted.`,
+        column_keys: [],
+        total_rows: outputRef.artifact_type === "QueryEvidence" ? 12 : null,
+        source_artifact_refs: [...sourceRefs],
+        semantic_query_context:
+          outputRef.artifact_type === "SemanticQueryContext" ? semanticContextProjection : null,
+      },
+      error_code: null,
+    });
+    const semanticDecision = decision(
+      "semantic-management-agent",
+      "semantic-1",
+      ["SemanticQueryContext"],
+      [],
+    );
+    const text2sqlDecision = decision(
+      "governed-text2sql-agent",
+      "text2sql-2",
+      ["QueryEvidence"],
+      [semanticRef],
+    );
+    const analysisDecision = decision(
+      "report-writing-agent",
+      "analysis-3",
+      ["AnalysisReport"],
+      [queryRef],
+    );
+    const semanticObservation = completed("semantic-1", "semantic-management-agent", semanticRef);
+    const queryObservation = completed("text2sql-2", "governed-text2sql-agent", queryRef);
+    const analysisObservation = completed("analysis-3", "report-writing-agent", reportRef, [
+      queryRef,
+      chartRef,
+    ]);
+    const decide = vi
+      .fn()
+      .mockResolvedValueOnce({ ok: true, value: semanticDecision })
+      .mockResolvedValueOnce({ ok: true, value: text2sqlDecision })
+      .mockResolvedValueOnce({ ok: true, value: analysisDecision })
+      .mockResolvedValueOnce({ ok: true, value: finalDecision(input) });
+    const execute = vi
+      .fn()
+      .mockResolvedValueOnce({
+        status: "CONTINUE",
+        reason_code: "ROOT_TOOL_OBSERVATIONS_READY",
+        observations: [semanticObservation],
+        verifier_feedback: null,
+      })
+      .mockResolvedValueOnce({
+        status: "CONTINUE",
+        reason_code: "ROOT_TOOL_OBSERVATIONS_READY",
+        observations: [queryObservation],
+        verifier_feedback: null,
+      })
+      .mockResolvedValueOnce({
+        status: "CONTINUE",
+        reason_code: "ROOT_TOOL_OBSERVATIONS_READY",
+        observations: [analysisObservation],
+        verifier_feedback: null,
+      })
+      .mockResolvedValueOnce({ status: "ACCEPTED", reason_code: "ROOT_ANSWER_VERIFIED" });
+    const runner = createDataAgentTeamRunner({
+      ...input.dependencies,
+      root: { decide },
+      root_runtime: { execute },
+    });
+
+    await expect(
+      runner.execute({
+        lease: input.lease,
+        restored_snapshot: null,
+        context: input.createContext(),
+        signal: new AbortController().signal,
+        deadline_at: input.lease.expires_at,
+      }),
+    ).resolves.toEqual({ kind: "COMPLETED" });
+
+    const decisions = execute.mock.calls.map((call) => call[0]?.decision);
+    expect(decisions.slice(0, 3)).toEqual([
+      expect.objectContaining({
+        tool_calls: [expect.objectContaining({ input_artifact_refs: [] })],
+      }),
+      expect.objectContaining({
+        tool_calls: [expect.objectContaining({ input_artifact_refs: [semanticRef] })],
+      }),
+      expect.objectContaining({
+        tool_calls: [expect.objectContaining({ input_artifact_refs: [queryRef] })],
+      }),
+    ]);
+    const turns = decide.mock.calls as unknown as Array<
+      [unknown, { tool_observations: RootToolObservation[] }]
+    >;
+    expect(turns[3]?.[1].tool_observations).toEqual([
+      semanticObservation,
+      queryObservation,
+      analysisObservation,
+    ]);
   });
 
   it("returns a strict failed tool observation instead of unsafe error payload", async () => {

@@ -2,6 +2,7 @@ import { type PublicRunEvent, publicRunEventSchema } from "@data-agent/contracts
 import { describe, expect, it } from "vitest";
 import { parseEventBlock } from "../src/lib/api-client";
 import {
+  acceptedRunArtifactReferences,
   answerText,
   artifactReferencesBefore,
   assembleConversationActivity,
@@ -316,6 +317,129 @@ describe("Q&A public event assembly", () => {
         task_id: "22000000-0000-4000-8000-000000000099",
       }).state,
     ).toBe("stale");
+  });
+
+  it("projects only current-Run artifacts whose owning Agent task was accepted", () => {
+    const queryTaskId = "22000000-0000-4000-8000-000000000011";
+    const analysisTaskId = "22000000-0000-4000-8000-000000000012";
+    const artifact = (
+      suffix: string,
+      artifactType:
+        | "QueryEvidence"
+        | "ArtifactWorkspaceDocument"
+        | "AnalysisReport"
+        | "SqlArtifact",
+      character: string,
+    ) => ({
+      artifact_id: `24000000-0000-4000-8000-${suffix}`,
+      artifact_type: artifactType,
+      app_id: "24000000-0000-4000-8000-000000000002",
+      tenant_id: "24000000-0000-4000-8000-000000000003",
+      environment: "test" as const,
+      run_id: runId,
+      revision: 1,
+      content_hash: `sha256:${character.repeat(64)}` as const,
+    });
+    const query = artifact("000000000011", "QueryEvidence", "a");
+    const chart = artifact("000000000012", "ArtifactWorkspaceDocument", "b");
+    const rejectedReport = artifact("000000000013", "AnalysisReport", "c");
+    const privateSql = artifact("000000000014", "SqlArtifact", "d");
+    const events = [
+      teamEvent(1, "tool", {
+        call_id: "query-1",
+        tool_name: "text2sql.execute",
+        profile_id: "governed-text2sql-agent",
+        task_id: queryTaskId,
+        title: "执行查询",
+        summary: "查询与图表已提交",
+        status: "COMPLETED",
+        input: null,
+        output: "12 rows",
+        duration_ms: 41,
+        error_code: null,
+        artifact_refs: [chart, query, privateSql],
+      }),
+      teamEvent(2, "tool", {
+        call_id: "chart-replay-1",
+        tool_name: "chart.publish",
+        profile_id: "governed-text2sql-agent",
+        task_id: queryTaskId,
+        title: "发布图表",
+        summary: "同源图表已提交",
+        status: "COMPLETED",
+        input: null,
+        output: "chart",
+        duration_ms: 8,
+        error_code: null,
+        artifact_refs: [chart],
+      }),
+      teamEvent(3, "agent", {
+        profile_id: "governed-text2sql-agent",
+        task_id: queryTaskId,
+        status: "COMPLETED",
+        phase: "query.accepted",
+        title: "Text2SQL",
+        summary: "查询证据已验收",
+        duration_ms: 55,
+        error_code: null,
+      }),
+      teamEvent(4, "tool", {
+        call_id: "analysis-1",
+        tool_name: "analysis.execute",
+        profile_id: "report-writing-agent",
+        task_id: analysisTaskId,
+        title: "执行分析",
+        summary: "报告候选已生成",
+        status: "COMPLETED",
+        input: null,
+        output: "report",
+        duration_ms: 80,
+        error_code: null,
+        artifact_refs: [rejectedReport],
+      }),
+      teamEvent(5, "agent", {
+        profile_id: "report-writing-agent",
+        task_id: analysisTaskId,
+        status: "FAILED",
+        phase: "report.rejected",
+        title: "Report",
+        summary: "报告验收失败",
+        duration_ms: 90,
+        error_code: "REPORT_ACCEPTANCE_FAILED",
+      }),
+      teamEvent(6, "terminal", {
+        status: "COMPLETED",
+        summary: "Root 已基于查询证据完成回答",
+        error_code: null,
+      }),
+    ];
+
+    expect(acceptedRunArtifactReferences(events, runId)).toEqual([query, chart]);
+    const queryOnly = events
+      .filter((event) => event.type !== "tool" || event.payload.call_id !== "chart-replay-1")
+      .map((event) =>
+        event.type === "tool" && event.payload.call_id === "query-1"
+          ? publicRunEventSchema.parse({
+              ...event,
+              payload: { ...event.payload, artifact_refs: [query, privateSql] },
+            })
+          : event,
+      );
+    expect(acceptedRunArtifactReferences(queryOnly, runId)).toEqual([query]);
+    expect(acceptedRunArtifactReferences(events.slice(0, -1), runId)).toEqual([]);
+    expect(
+      acceptedRunArtifactReferences(
+        [
+          ...events.slice(0, -1),
+          teamEvent(6, "terminal", {
+            status: "FAILED",
+            summary: "Root 最终回答失败",
+            error_code: "ROOT_ANSWER_REJECTED",
+          }),
+        ],
+        runId,
+      ),
+    ).toEqual([]);
   });
 
   it("merges tool start and completion without losing the safe input", () => {

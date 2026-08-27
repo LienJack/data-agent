@@ -98,6 +98,7 @@ identity、replay/cursor/terminal 和 Inspector addressing；未来 surface 可�
   续接，不得把 RUNNING 改为失败/完成。
 - 只有完整 `ArtifactReference` 可渲染 file preview action；裸路径和 Tool output 中的 path-like 文本只作摘要。
 - Tool COMPLETED 可以公开多个已提交 `artifact_refs`。Assembler 只能在该 sequence 后按 exact identity 插入 Artifact block；QueryEvidence 与派生 Chart 是 sequence peers，不能从 Tool START、正文或未来事件推断。
+- Tool COMPLETED 只证明工具已提交候选结果，不等于 Product Team 已验收。Conversation 最终消息只能在同一 Run `terminal=COMPLETED` 后，把该 Tool 的 exact `profile_id/task_id` 与后续 `Agent status=COMPLETED` 关联，再将公开 `QueryEvidence/ArtifactWorkspaceDocument/AnalysisReport` refs 规范排序、去重后写入 `metadata.accepted_artifact_refs`；FAILED/BLOCKED task、非完成 Run、私有 Artifact 和 cross-Run ref 一律不得回写。断线恢复必须从 durable events 重建并覆盖该字段，不能信任旧消息 metadata 自报的 refs。
 - Inline 与 Inspector 必须复用同一 `ArtifactPreviewPanel` 和 strict preview union。V2 Chart 只通过动态 `vchart-simple` leaf 构造本地 LINE/BAR/PIE spec；图表始终有同源 native table，Core 实例必须在 effect cleanup 中 `release()`。
 - desktop 空间不足时先收起 Inspector，移动端 Inspector 不得遮挡 Composer；关闭后焦点返回触发项。
 - UI 实现以 DeepSeek Harness 固定 commit `47f943859bef60e4160492346772ded9b24f765a` 为主要源码基线，
