@@ -18,6 +18,7 @@ import {
   MODEL_REQUEST_PERFORMANCE_SCHEMA_VERSION,
   modelRequestPerformanceSchema,
   type PortResult,
+  type ProviderTaskArtifactV2Document,
   sha256ContentHash,
   text2sqlQueryCandidateSchema,
 } from "@data-agent/contracts";
@@ -31,6 +32,8 @@ import type {
   RunBoundProviderDispatcher,
   RunModelProviderResult,
 } from "../runs/run-execution-context.js";
+import { buildRootConversationMessages } from "../teams/conversation-context-builder.js";
+import type { ProviderTaskArtifactAuthority } from "./postgres-provider-task-artifact.js";
 import { createTrustedUtf8InputTokenUpperBoundCounter } from "./trusted-input-token-upper-bound.js";
 
 const SPECIALIST_ANSWER_RESPONSE_SCHEMA_VERSION = "specialist-answer@1.0.0";
@@ -131,6 +134,7 @@ function projectToolCallCandidate(
  */
 export function createDirectRunBoundProviderDispatcher(input: {
   readonly runs: DirectRunReader;
+  readonly task_artifacts: ProviderTaskArtifactAuthority;
   readonly capability: unknown;
   readonly environment: NodeJS.ProcessEnv;
 }): RunBoundProviderDispatcher {
@@ -308,18 +312,34 @@ export function createDirectRunBoundProviderDispatcher(input: {
       ) {
         return failure("ROOT_AGENT_LEASE_INVALID", "Root turn 需要冻结的 V3 Catalog lease。");
       }
+      const committedRootTask =
+        rootTurn && rootLease
+          ? await input.task_artifacts.commit({
+              worker_lease: lease,
+              conversation_binding: config.conversation_binding,
+            })
+          : null;
+      if (committedRootTask && !committedRootTask.ok) return committedRootTask;
+      const rootTaskDocument: ProviderTaskArtifactV2Document | null =
+        committedRootTask?.ok === true &&
+        committedRootTask.value.document.schema_version === "provider-task-artifact@2.0.0"
+          ? committedRootTask.value.document
+          : null;
+      if (
+        rootTurn &&
+        rootLease &&
+        (rootTaskDocument === null ||
+          JSON.stringify(rootTaskDocument.visible_messages.map(({ message_id }) => message_id)) !==
+            JSON.stringify(rootLease.visible_message_refs))
+      ) {
+        return failure(
+          "ROOT_CONVERSATION_CONTEXT_BINDING_INVALID",
+          "Root turn 的 ProviderTask 与冻结 visible message refs 不一致。",
+        );
+      }
       const taskHash = await sha256ContentHash(
         rootTurn && rootLease
-          ? {
-              question: loaded.value.question,
-              catalog_snapshot_hash: rootLease.catalog_snapshot.snapshot_hash,
-              visible_message_refs: rootLease.visible_message_refs,
-              phase: rootRequest?.phase ?? "INITIAL",
-              prior_output_text:
-                rootRequest?.phase === "DIRECT_ANSWER_REVIEW"
-                  ? rootRequest.prior_output_text
-                  : null,
-            }
+          ? rootTaskDocument
           : providerSmoke
             ? { purpose: "provider-smoke", model_profile_hash: config.model.resource_hash }
             : specialistTurn
@@ -347,32 +367,31 @@ export function createDirectRunBoundProviderDispatcher(input: {
                   : { question: loaded.value.question },
       );
       const messages =
-        rootTurn && rootLease
-          ? [
-              {
-                role: "system" as const,
-                content: await buildRootAgentSystemMessage(rootLease.catalog_snapshot),
-              },
-              { role: "user" as const, content: loaded.value.question },
+        rootTurn && rootLease && rootTaskDocument
+          ? buildRootConversationMessages({
+              system_message: await buildRootAgentSystemMessage(rootLease.catalog_snapshot),
+              task: rootTaskDocument,
               ...(rootRequest?.phase === "DIRECT_ANSWER_REVIEW"
-                ? [
-                    {
-                      role: "assistant" as const,
-                      content: rootRequest.prior_output_text,
-                    },
-                    {
-                      role: "user" as const,
-                      content: [
-                        "Self-review the routing decision above against the frozen Root Agent rules.",
-                        "If answering the original question depends on workspace data, semantic definitions, relationships, calculations, rows, aggregates, comparisons, ranking, trends, charts, or missing governed evidence, replace the direct answer with the required native Subagent tool call now.",
-                        "The absence of accepted evidence is a reason to delegate, not a reason to refuse.",
-                        "Only retain a strict direct FINAL_ANSWER when the original question is genuinely answerable from general knowledge or explicitly visible user text without workspace evidence.",
-                        "When retaining the direct answer, repeat the previous assistant JSON object exactly. Do not replace it with a review conclusion, routing explanation, critique, or other meta commentary.",
-                      ].join("\n"),
-                    },
-                  ]
-                : []),
-            ]
+                ? {
+                    current_run_messages: [
+                      {
+                        role: "assistant" as const,
+                        content: rootRequest.prior_output_text,
+                      },
+                      {
+                        role: "user" as const,
+                        content: [
+                          "Self-review the routing decision above against the frozen Root Agent rules.",
+                          "If answering the original question depends on workspace data, semantic definitions, relationships, calculations, rows, aggregates, comparisons, ranking, trends, charts, or missing governed evidence, replace the direct answer with the required native Subagent tool call now.",
+                          "The absence of accepted evidence is a reason to delegate, not a reason to refuse.",
+                          "Only retain a strict direct FINAL_ANSWER when the original question is genuinely answerable from general knowledge or explicitly visible user text without workspace evidence.",
+                          "When retaining the direct answer, repeat the previous assistant JSON object exactly. Do not replace it with a review conclusion, routing explanation, critique, or other meta commentary.",
+                        ].join("\n"),
+                      },
+                    ],
+                  }
+                : {}),
+            })
           : providerSmoke
             ? [
                 {
@@ -473,12 +492,16 @@ export function createDirectRunBoundProviderDispatcher(input: {
           profile_version: config.model.profile_version,
           model_id: config.model.model_id,
           task_ref: {
-            artifact_id: logicalCallId,
-            artifact_type: "ProviderTaskArtifact",
-            ...lease.scope,
-            run_id: lease.run_id,
-            revision: 1,
-            content_hash: taskHash,
+            ...(committedRootTask?.ok === true && rootTaskDocument
+              ? committedRootTask.value.reference
+              : {
+                  artifact_id: logicalCallId,
+                  artifact_type: "ProviderTaskArtifact" as const,
+                  ...lease.scope,
+                  run_id: lease.run_id,
+                  revision: 1,
+                  content_hash: taskHash,
+                }),
           },
           context_refs: [],
           messages,

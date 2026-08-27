@@ -2515,6 +2515,24 @@
       "postcondition": {
         "checksum_occurrences": 2
       }
+    },
+    {
+      "id": "10784",
+      "migration_name": "20260725010784_app_data_agent_conversational_root_context.sql",
+      "source_directory": "infra/supabase/apps/data-agent/migration-sources/10784",
+      "segments": [
+        "00-preamble.sql.inc",
+        "10-visible-message-lease.sql.inc",
+        "20-provider-task-v2.sql.inc",
+        "80-security.sql.inc",
+        "90-postconditions.sql.inc",
+        "99-ledger.sql.inc"
+      ],
+      "placeholder": "__CONVERSATIONAL_ROOT_CONTEXT_MIGRATION_CHECKSUM__",
+      "checksum_header": "conversational_root_context_migration_checksum",
+      "postcondition": {
+        "checksum_occurrences": 2
+      }
     }
   ],
   "exceptions": [

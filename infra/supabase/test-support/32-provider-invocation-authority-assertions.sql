@@ -1502,16 +1502,22 @@ begin
     'schema_version','provider-task-artifact-commit@1.0.0','scope',scope_document,
     'run_id','00000000-0000-4000-8000-000000005403',
     'conversation_binding',pg_catalog.jsonb_build_object(
-      'conversation_id','00000000-0000-4000-8000-000000005432','resource_version',3));
+      'conversation_id','00000000-0000-4000-8000-000000005432','resource_version',3),
+    'context_summary_ref',null);
   result := app_data_agent.commit_provider_task_artifact(lease,command);
   replay := app_data_agent.commit_provider_task_artifact(lease,command);
   if result ->> 'disposition' <> 'CREATED'
     or replay ->> 'disposition' <> 'REPLAYED'
     or result #>> '{reference,artifact_id}' <> '00000000-0000-4000-8000-000000005407'
     or result #>> '{reference,artifact_type}' <> 'ProviderTaskArtifact'
-    or result #>> '{document,message_id}' <> '00000000-0000-4000-8000-000000005407'
-    or result #>> '{document,accepted_event_id}' <> '00000000-0000-4000-8000-000000005407'
-    or result #>> '{document,question}' <> 'U3 protected question'
+    or result #>> '{document,schema_version}' <> 'provider-task-artifact@2.0.0'
+    or result #>> '{document,current_message,message_id}' <> '00000000-0000-4000-8000-000000005407'
+    or result #>> '{document,current_message,content}' <> 'U3 protected question'
+    or result #>> '{document,visible_messages,0,message_id}' <> '00000000-0000-4000-8000-000000005407'
+    or result #>> '{document,visible_messages,0,role}' <> 'user'
+    or result #>> '{document,visible_messages,0,run_id}' <> '00000000-0000-4000-8000-000000005403'
+    or pg_catalog.jsonb_array_length(result #> '{document,visible_messages}') <> 1
+    or result #>> '{document,context_selection_hash}' !~ '^sha256:[0-9a-f]{64}$'
     or result ->> 'committed_at' <> replay ->> 'committed_at'
   then raise exception 'PROVIDER_TASK_ARTIFACT_COMMIT_REPLAY_FAILED'; end if;
   loaded := app_data_agent.load_provider_task_artifact(pg_catalog.jsonb_build_object(

@@ -1,14 +1,52 @@
 import { describe, expect, it } from "vitest";
-import { buildProviderTaskArtifactDocument } from "../src/providers/provider-invocation.js";
 import {
-  DEFAULT_RUN_EXECUTION_POLICY,
-  runExecutionPolicySchema,
-} from "../src/runs/runtime.js";
+  buildProviderTaskArtifactDocument,
+  computeProviderTaskContextSelectionHash,
+  computeProviderTaskVisibleMessageHash,
+  verifyProviderTaskArtifactDocument,
+} from "../src/providers/provider-invocation.js";
+import { DEFAULT_RUN_EXECUTION_POLICY, runExecutionPolicySchema } from "../src/runs/runtime.js";
 
 const id = (suffix: number) => `87000000-0000-4000-8000-${String(suffix).padStart(12, "0")}`;
 
 describe("Conversational Root Harness gaps", () => {
-  it.fails("represents the frozen conversation snapshot in ProviderTaskArtifact v2", async () => {
+  it("represents the frozen conversation snapshot in ProviderTaskArtifact v2", async () => {
+    const messageDrafts = [
+      {
+        message_id: id(2),
+        role: "user" as const,
+        type: "text" as const,
+        content: "最近 12 个完整月订单收入趋势如何？",
+        run_id: id(3),
+      },
+      {
+        message_id: id(4),
+        role: "agent" as const,
+        type: "text" as const,
+        content: "订单收入按月趋势已经生成。",
+        run_id: id(3),
+      },
+      {
+        message_id: id(5),
+        role: "user" as const,
+        type: "text" as const,
+        content: "只看华东呢？",
+        run_id: id(6),
+      },
+    ];
+    const visibleMessages = await Promise.all(
+      messageDrafts.map(async (message) => ({
+        ...message,
+        content_hash: await computeProviderTaskVisibleMessageHash(message),
+      })),
+    );
+    const contextSelectionHash = await computeProviderTaskContextSelectionHash({
+      conversation_id: id(1),
+      conversation_resource_version: 7,
+      current_message_id: id(5),
+      visible_messages: visibleMessages,
+      context_summary_ref: null,
+    });
     const document = await buildProviderTaskArtifactDocument({
       schema_version: "provider-task-artifact@2.0.0",
       conversation_id: id(1),
@@ -17,34 +55,9 @@ describe("Conversational Root Harness gaps", () => {
         message_id: id(5),
         content: "只看华东呢？",
       },
-      visible_messages: [
-        {
-          message_id: id(2),
-          role: "user",
-          type: "text",
-          content: "最近 12 个完整月订单收入趋势如何？",
-          run_id: id(3),
-          content_hash: `sha256:${"1".repeat(64)}`,
-        },
-        {
-          message_id: id(4),
-          role: "agent",
-          type: "text",
-          content: "订单收入按月趋势已经生成。",
-          run_id: id(3),
-          content_hash: `sha256:${"2".repeat(64)}`,
-        },
-        {
-          message_id: id(5),
-          role: "user",
-          type: "text",
-          content: "只看华东呢？",
-          run_id: id(6),
-          content_hash: `sha256:${"3".repeat(64)}`,
-        },
-      ],
+      visible_messages: visibleMessages,
       context_summary_ref: null,
-      context_selection_hash: `sha256:${"4".repeat(64)}`,
+      context_selection_hash: contextSelectionHash,
     });
 
     expect(document).toMatchObject({
@@ -53,11 +66,29 @@ describe("Conversational Root Harness gaps", () => {
       conversation_resource_version: 7,
       current_message: { message_id: id(5), content: "只看华东呢？" },
     });
+    if (document.schema_version !== "provider-task-artifact@2.0.0") {
+      throw new Error("expected ProviderTaskArtifact v2");
+    }
     expect(document.visible_messages.map(({ message_id: messageId }) => messageId)).toEqual([
       id(2),
       id(4),
       id(5),
     ]);
+    await expect(
+      verifyProviderTaskArtifactDocument({
+        ...document,
+        visible_messages: document.visible_messages.map((message, index) =>
+          index === 0 ? { ...message, content: "tampered" } : message,
+        ),
+      }),
+    ).rejects.toThrow("PROVIDER_TASK_VISIBLE_MESSAGE_HASH_MISMATCH");
+    const { content_hash: _contentHash, ...documentDraft } = document;
+    await expect(
+      buildProviderTaskArtifactDocument({
+        ...documentDraft,
+        visible_messages: [...document.visible_messages, document.visible_messages.at(-1)],
+      }),
+    ).rejects.toThrow();
   });
 
   it.fails("treats four Root turns as normal execution rather than provider retry", () => {

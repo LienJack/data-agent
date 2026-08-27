@@ -751,10 +751,10 @@ export function createPostgresProviderInvocationStore(
           const parsed = await verifyRpcResult(() =>
             verifyCommitProviderTaskArtifactResult(command.data, exactValue(result.rows)),
           );
-          if (parsed.document.command_id !== lease.data.command_id) {
+          if (parsed.document.schema_version !== "provider-task-artifact@2.0.0") {
             throw new PersistenceBoundaryError(
               "PROVIDER_TASK_ARTIFACT_COMMAND_MISMATCH",
-              "Provider Task Artifact 未绑定 exact accepted command identity。",
+              "Provider Task Artifact commit 必须返回冻结 Conversation v2 文档。",
               false,
             );
           }

@@ -1,5 +1,7 @@
 import {
   buildProviderTaskArtifactDocument,
+  computeProviderTaskContextSelectionHash,
+  computeProviderTaskVisibleMessageHash,
   DEFAULT_RUN_EXECUTION_POLICY,
 } from "@data-agent/contracts";
 import type { AppCapability, PostgresProviderInvocationStore } from "@data-agent/platform";
@@ -44,18 +46,37 @@ const workerLease = {
 
 describe("Postgres ProviderTaskArtifact authority adapter", () => {
   it("submits only lease-bound identities and accepts the DB-resolved protected question", async () => {
-    const document = await buildProviderTaskArtifactDocument({
-      schema_version: "provider-task-artifact@1.0.0",
+    const visibleMessage = {
       message_id: ids.event,
-      accepted_event_id: ids.event,
+      role: "user" as const,
+      type: "text" as const,
+      content: "What is governed revenue?",
+      run_id: ids.run,
+    };
+    const visibleMessages = [
+      {
+        ...visibleMessage,
+        content_hash: await computeProviderTaskVisibleMessageHash(visibleMessage),
+      },
+    ];
+    const document = await buildProviderTaskArtifactDocument({
+      schema_version: "provider-task-artifact@2.0.0",
       conversation_id: ids.conversation,
       conversation_resource_version: 3,
-      command_id: ids.command,
-      run_id: ids.run,
-      message_role: "user",
-      message_type: "text",
-      question: "What is governed revenue?",
+      current_message: { message_id: ids.event, content: visibleMessage.content },
+      visible_messages: visibleMessages,
+      context_summary_ref: null,
+      context_selection_hash: await computeProviderTaskContextSelectionHash({
+        conversation_id: ids.conversation,
+        conversation_resource_version: 3,
+        current_message_id: ids.event,
+        visible_messages: visibleMessages,
+        context_summary_ref: null,
+      }),
     });
+    if (document.schema_version !== "provider-task-artifact@2.0.0") {
+      throw new Error("expected ProviderTaskArtifact v2 fixture");
+    }
     const reference = {
       artifact_id: ids.event,
       artifact_type: "ProviderTaskArtifact",
@@ -98,7 +119,10 @@ describe("Postgres ProviderTaskArtifact authority adapter", () => {
       },
       run_id: ids.run,
       conversation_binding: { conversation_id: ids.conversation, resource_version: 3 },
+      context_summary_ref: null,
     });
-    expect(JSON.stringify(commitTaskArtifact.mock.calls[0]?.[2])).not.toContain(document.question);
+    expect(JSON.stringify(commitTaskArtifact.mock.calls[0]?.[2])).not.toContain(
+      document.current_message.content,
+    );
   });
 });

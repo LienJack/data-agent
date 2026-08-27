@@ -45,6 +45,7 @@ import {
 } from "@data-agent/platform/persistence";
 import {
   createPostgresProviderInvocationSmokeJob,
+  createPostgresProviderInvocationStore,
   providerInvocationSmokeClaimSchema,
 } from "@data-agent/platform/providers";
 import {
@@ -89,6 +90,7 @@ import { runJobWorkerLoop } from "./jobs/job-worker-daemon.js";
 import { createJobWorkerRunner } from "./jobs/job-worker-runner.js";
 import { createKnowledgeIndexJobHandler } from "./knowledge/knowledge-index-job.js";
 import { createDirectRunBoundProviderDispatcher } from "./providers/direct-run-bound-provider-dispatcher.js";
+import { createPostgresProviderTaskArtifactAuthority } from "./providers/postgres-provider-task-artifact.js";
 import { createProviderSmokeExecutor } from "./providers/provider-smoke-executor.js";
 import { loadRunWorkerEnvironment } from "./run-worker-environment.js";
 import {
@@ -487,8 +489,16 @@ export async function runWorkerProcess(
         if (!principalCapability.ok) return principalCapability;
         const capability = principalCapability.value;
         const runRepository = createPostgresRepository(sqlPool, capabilityAuthority.authorizer);
+        const providerInvocationStore = createPostgresProviderInvocationStore({
+          pool: sqlPool,
+          authorizer: capabilityAuthority.authorizer,
+        });
         const providerDispatch = createDirectRunBoundProviderDispatcher({
           runs: runRepository,
+          task_artifacts: createPostgresProviderTaskArtifactAuthority({
+            store: providerInvocationStore,
+            capability,
+          }),
           capability,
           environment,
         });

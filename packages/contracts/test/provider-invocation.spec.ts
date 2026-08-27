@@ -2130,6 +2130,7 @@ describe("U3 provider invocation contracts", () => {
         conversation_id: ids.context,
         resource_version: 3,
       },
+      context_summary_ref: null,
     } as const;
     expect(commitProviderTaskArtifactCommandSchema.safeParse(command).success).toBe(true);
     expect(
@@ -2175,6 +2176,9 @@ describe("U3 provider invocation contracts", () => {
         document,
       }).success,
     ).toBe(true);
+    if (document.schema_version !== "provider-task-artifact@1.0.0") {
+      throw new Error("expected legacy ProviderTaskArtifact fixture");
+    }
     expect(JSON.stringify({ command, reference })).not.toContain(document.question);
   });
 });

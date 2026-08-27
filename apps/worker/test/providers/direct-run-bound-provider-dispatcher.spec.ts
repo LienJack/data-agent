@@ -9,6 +9,7 @@ describe("direct run-bound provider retry policy", () => {
     const getRun = vi.fn();
     const dispatcher = createDirectRunBoundProviderDispatcher({
       runs: { getRun },
+      task_artifacts: {} as never,
       capability: {},
       environment: {},
     });

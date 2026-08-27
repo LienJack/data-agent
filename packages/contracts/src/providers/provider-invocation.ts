@@ -800,7 +800,7 @@ const providerTaskConversationBindingSchema = z.strictObject({
   resource_version: positiveRevisionSchema,
 });
 
-const providerTaskArtifactDocumentDraftSchema = z
+const providerTaskArtifactV1DocumentDraftSchema = z
   .strictObject({
     schema_version: z.literal("provider-task-artifact@1.0.0"),
     message_id: immutableIdSchema,
@@ -822,17 +822,146 @@ const providerTaskArtifactDocumentDraftSchema = z
     }
   });
 
-export const providerTaskArtifactDocumentSchema =
-  providerTaskArtifactDocumentDraftSchema.safeExtend({ content_hash: contentHashSchema });
+const providerTaskVisibleMessageDraftSchema = z.strictObject({
+  message_id: immutableIdSchema,
+  role: z.enum(["user", "agent"]),
+  type: z.enum(["text", "table", "report", "hypothesis", "error"]),
+  content: z.string().trim().min(1).max(200_000),
+  run_id: immutableIdSchema.nullable(),
+});
+
+export const providerTaskVisibleMessageSchema = providerTaskVisibleMessageDraftSchema.safeExtend({
+  content_hash: contentHashSchema,
+});
+
+export const providerTaskCurrentMessageSchema = z.strictObject({
+  message_id: immutableIdSchema,
+  content: z.string().trim().min(1).max(4_000),
+});
+
+const providerTaskArtifactV2DocumentDraftSchema = z
+  .strictObject({
+    schema_version: z.literal("provider-task-artifact@2.0.0"),
+    conversation_id: immutableIdSchema,
+    conversation_resource_version: positiveRevisionSchema,
+    current_message: providerTaskCurrentMessageSchema,
+    visible_messages: z.array(providerTaskVisibleMessageSchema).min(1).max(64),
+    context_summary_ref: artifactReferenceSchema.nullable(),
+    context_selection_hash: contentHashSchema,
+  })
+  .superRefine((document, ctx) => {
+    const messageIds = new Set<string>();
+    document.visible_messages.forEach((message, index) => {
+      if (messageIds.has(message.message_id)) {
+        ctx.addIssue({
+          code: "custom",
+          message: "Provider Task visible message identity 不能重复。",
+          path: ["visible_messages", index, "message_id"],
+        });
+      }
+      messageIds.add(message.message_id);
+    });
+    const current = document.visible_messages.at(-1);
+    if (
+      current?.message_id !== document.current_message.message_id ||
+      current.role !== "user" ||
+      current.type !== "text" ||
+      current.content !== document.current_message.content ||
+      current.run_id === null
+    ) {
+      ctx.addIssue({
+        code: "custom",
+        message: "Provider Task current message 必须是可见历史最后一条 current-Run user text。",
+        path: ["current_message"],
+      });
+    }
+  });
+
+const providerTaskArtifactV1DocumentSchema = providerTaskArtifactV1DocumentDraftSchema.safeExtend({
+  content_hash: contentHashSchema,
+});
+
+export const providerTaskArtifactV2DocumentSchema =
+  providerTaskArtifactV2DocumentDraftSchema.safeExtend({ content_hash: contentHashSchema });
+export type ProviderTaskArtifactV2Document = z.infer<typeof providerTaskArtifactV2DocumentSchema>;
+
+export const providerTaskArtifactDocumentSchema = z.discriminatedUnion("schema_version", [
+  providerTaskArtifactV1DocumentSchema,
+  providerTaskArtifactV2DocumentSchema,
+]);
 
 export const providerTaskArtifactReferenceSchema = artifactReferenceFor("ProviderTaskArtifact");
 
+export async function computeProviderTaskVisibleMessageHash(input: unknown) {
+  return sha256ContentHash(providerTaskVisibleMessageDraftSchema.parse(input));
+}
+
+export async function computeProviderTaskContextSelectionHash(input: {
+  readonly conversation_id: string;
+  readonly conversation_resource_version: number;
+  readonly current_message_id: string;
+  readonly visible_messages: readonly Readonly<{ message_id: string; content_hash: string }>[];
+  readonly context_summary_ref: unknown | null;
+}) {
+  return sha256ContentHash({
+    conversation_id: immutableIdSchema.parse(input.conversation_id),
+    conversation_resource_version: positiveRevisionSchema.parse(
+      input.conversation_resource_version,
+    ),
+    current_message_id: immutableIdSchema.parse(input.current_message_id),
+    visible_messages: input.visible_messages.map((message) => ({
+      message_id: immutableIdSchema.parse(message.message_id),
+      content_hash: contentHashSchema.parse(message.content_hash),
+    })),
+    context_summary_ref:
+      input.context_summary_ref === null
+        ? null
+        : artifactReferenceSchema.parse(input.context_summary_ref),
+  });
+}
+
+async function verifyProviderTaskArtifactV2Draft(
+  document: z.infer<typeof providerTaskArtifactV2DocumentDraftSchema>,
+) {
+  for (const message of document.visible_messages) {
+    const { content_hash: _contentHash, ...draft } = message;
+    if ((await computeProviderTaskVisibleMessageHash(draft)) !== message.content_hash) {
+      throw new TypeError("PROVIDER_TASK_VISIBLE_MESSAGE_HASH_MISMATCH");
+    }
+  }
+  const selectionHash = await computeProviderTaskContextSelectionHash({
+    conversation_id: document.conversation_id,
+    conversation_resource_version: document.conversation_resource_version,
+    current_message_id: document.current_message.message_id,
+    visible_messages: document.visible_messages,
+    context_summary_ref: document.context_summary_ref,
+  });
+  if (selectionHash !== document.context_selection_hash) {
+    throw new TypeError("PROVIDER_TASK_CONTEXT_SELECTION_HASH_MISMATCH");
+  }
+  return document;
+}
+
 export async function computeProviderTaskArtifactHash(input: unknown) {
-  return sha256ContentHash(providerTaskArtifactDocumentDraftSchema.parse(input));
+  const document = z
+    .discriminatedUnion("schema_version", [
+      providerTaskArtifactV1DocumentDraftSchema,
+      providerTaskArtifactV2DocumentDraftSchema,
+    ])
+    .parse(input);
+  if (document.schema_version === "provider-task-artifact@2.0.0") {
+    await verifyProviderTaskArtifactV2Draft(document);
+  }
+  return sha256ContentHash(document);
 }
 
 export async function buildProviderTaskArtifactDocument(input: unknown) {
-  const document = providerTaskArtifactDocumentDraftSchema.parse(input);
+  const document = z
+    .discriminatedUnion("schema_version", [
+      providerTaskArtifactV1DocumentDraftSchema,
+      providerTaskArtifactV2DocumentDraftSchema,
+    ])
+    .parse(input);
   return providerTaskArtifactDocumentSchema.parse({
     ...document,
     content_hash: await computeProviderTaskArtifactHash(document),
@@ -853,6 +982,7 @@ export const commitProviderTaskArtifactCommandSchema = z.strictObject({
   scope: providerInvocationScopeSchema,
   run_id: immutableIdSchema,
   conversation_binding: providerTaskConversationBindingSchema,
+  context_summary_ref: artifactReferenceSchema.nullable(),
 });
 
 export const commitProviderTaskArtifactResultSchema = z
@@ -864,9 +994,17 @@ export const commitProviderTaskArtifactResultSchema = z
     committed_at: canonicalU2TimestampSchema,
   })
   .superRefine((result, ctx) => {
+    const documentArtifactId =
+      result.document.schema_version === "provider-task-artifact@1.0.0"
+        ? result.document.message_id
+        : result.document.current_message.message_id;
+    const documentRunId =
+      result.document.schema_version === "provider-task-artifact@1.0.0"
+        ? result.document.run_id
+        : result.document.visible_messages.at(-1)?.run_id;
     if (
-      result.reference.artifact_id !== result.document.message_id ||
-      result.reference.run_id !== result.document.run_id ||
+      result.reference.artifact_id !== documentArtifactId ||
+      result.reference.run_id !== documentRunId ||
       result.reference.revision !== 1 ||
       result.reference.content_hash !== result.document.content_hash
     ) {
@@ -884,14 +1022,23 @@ export async function verifyCommitProviderTaskArtifactResult(
   const command = commitProviderTaskArtifactCommandSchema.parse(commandInput);
   const result = commitProviderTaskArtifactResultSchema.parse(resultInput);
   await verifyProviderTaskArtifactDocument(result.document);
+  const conversationMatches =
+    result.document.schema_version === "provider-task-artifact@1.0.0"
+      ? result.document.conversation_id === command.conversation_binding.conversation_id &&
+        result.document.conversation_resource_version ===
+          command.conversation_binding.resource_version &&
+        result.document.run_id === command.run_id
+      : result.document.conversation_id === command.conversation_binding.conversation_id &&
+        result.document.conversation_resource_version ===
+          command.conversation_binding.resource_version &&
+        result.document.current_message.message_id === result.reference.artifact_id &&
+        result.document.visible_messages.at(-1)?.run_id === command.run_id;
   if (
     result.reference.app_id !== command.scope.app_id ||
     result.reference.tenant_id !== command.scope.tenant_id ||
     result.reference.environment !== command.scope.environment ||
     result.reference.run_id !== command.run_id ||
-    result.document.run_id !== command.run_id ||
-    result.document.conversation_id !== command.conversation_binding.conversation_id ||
-    result.document.conversation_resource_version !== command.conversation_binding.resource_version
+    !conversationMatches
   ) {
     throw new TypeError("PROVIDER_TASK_ARTIFACT_COMMAND_RESULT_MISMATCH");
   }
@@ -923,9 +1070,17 @@ export const loadProviderTaskArtifactResultSchema = z
     document: providerTaskArtifactDocumentSchema,
   })
   .superRefine((result, ctx) => {
+    const documentArtifactId =
+      result.document.schema_version === "provider-task-artifact@1.0.0"
+        ? result.document.message_id
+        : result.document.current_message.message_id;
+    const documentRunId =
+      result.document.schema_version === "provider-task-artifact@1.0.0"
+        ? result.document.run_id
+        : result.document.visible_messages.at(-1)?.run_id;
     if (
-      result.reference.artifact_id !== result.document.message_id ||
-      result.reference.run_id !== result.document.run_id ||
+      result.reference.artifact_id !== documentArtifactId ||
+      result.reference.run_id !== documentRunId ||
       result.reference.revision !== 1 ||
       result.reference.content_hash !== result.document.content_hash
     ) {

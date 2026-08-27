@@ -51,12 +51,16 @@ export function createPostgresProviderTaskArtifactAuthority(input: {
         },
         run_id: workerLease.run_id,
         conversation_binding: conversationBinding,
+        context_summary_ref: null,
       });
       if (result.ok !== true) return { ok: false, error: result.error };
       const parsed = commitProviderTaskArtifactResultSchema.safeParse(result.value);
-      return parsed.success
+      return parsed.success &&
+        parsed.data.document.schema_version === "provider-task-artifact@2.0.0"
         ? { ok: true, value: parsed.data }
-        : invalid<CommittedProviderTaskArtifact>("Provider Task commit result 未通过严格合同。");
+        : invalid<CommittedProviderTaskArtifact>(
+            "Provider Task commit result 未返回冻结 Conversation v2 合同。",
+          );
     },
 
     async load({

@@ -2,6 +2,8 @@ import {
   buildProviderDispatchEnvelopeCandidate,
   buildProviderResponseArtifactDocument,
   buildProviderTaskArtifactDocument,
+  computeProviderTaskContextSelectionHash,
+  computeProviderTaskVisibleMessageHash,
 } from "@data-agent/contracts/providers";
 import { DEFAULT_RUN_EXECUTION_POLICY } from "@data-agent/contracts/runs";
 import { describe, expect, it } from "vitest";
@@ -285,17 +287,33 @@ describe("PostgresProviderInvocationStore conversation selection", () => {
       revision: 1,
       content_hash: response.content_hash,
     } as const;
-    const taskDocument = await buildProviderTaskArtifactDocument({
-      schema_version: "provider-task-artifact@1.0.0",
+    const taskMessage = {
       message_id: ids.event,
-      accepted_event_id: ids.event,
+      role: "user" as const,
+      type: "text" as const,
+      content: "What is governed revenue?",
+      run_id: ids.run,
+    };
+    const taskMessages = [
+      {
+        ...taskMessage,
+        content_hash: await computeProviderTaskVisibleMessageHash(taskMessage),
+      },
+    ];
+    const taskDocument = await buildProviderTaskArtifactDocument({
+      schema_version: "provider-task-artifact@2.0.0",
       conversation_id: ids.conversation,
       conversation_resource_version: 9,
-      command_id: ids.command,
-      run_id: ids.run,
-      message_role: "user",
-      message_type: "text",
-      question: "What is governed revenue?",
+      current_message: { message_id: ids.event, content: taskMessage.content },
+      visible_messages: taskMessages,
+      context_summary_ref: null,
+      context_selection_hash: await computeProviderTaskContextSelectionHash({
+        conversation_id: ids.conversation,
+        conversation_resource_version: 9,
+        current_message_id: ids.event,
+        visible_messages: taskMessages,
+        context_summary_ref: null,
+      }),
     });
     const taskRef = {
       artifact_id: ids.event,
@@ -399,6 +417,7 @@ describe("PostgresProviderInvocationStore conversation selection", () => {
       scope: providerScope,
       run_id: ids.run,
       conversation_binding: { conversation_id: ids.conversation, resource_version: 9 },
+      context_summary_ref: null,
     });
     await store.loadTaskArtifact(capability, {
       schema_version: "provider-task-artifact-load@1.0.0",
@@ -455,6 +474,7 @@ describe("PostgresProviderInvocationStore conversation selection", () => {
       scope: providerScope,
       run_id: ids.run,
       conversation_binding: { conversation_id: ids.conversation, resource_version: 9 },
+      context_summary_ref: null,
       question: "caller supplied",
     });
 
