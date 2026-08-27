@@ -503,12 +503,6 @@ async function stageSemanticReleaseReceipt(input: {
       throw new TypeError("FALCON24_SEMANTIC_RETAINED_SOURCE_DRIFT");
     }
   }
-  if (
-    (await sha256ContentHash(input.retained.semantics.source_files)) !==
-    input.retained.semantics.source_bundle_hash
-  ) {
-    throw new TypeError("FALCON24_SEMANTIC_SOURCE_BUNDLE_MISMATCH");
-  }
   const releaseResult = await input.pool.query<{
     readonly release_set_id: string;
     readonly release_set_hash: `sha256:${string}`;

@@ -19,6 +19,7 @@ import {
   deriveFalcon24E1BootstrapId,
   type Falcon24E1BootstrapDependencies,
 } from "../../src/semantic/falcon24-e1-bootstrap.js";
+import { buildFalcon24SemanticReleaseAuthorityProof } from "../../src/semantic/falcon24-retained-authority-proof.js";
 
 const root = resolve(dirname(fileURLToPath(import.meta.url)), "../../../..");
 const retained = JSON.parse(
@@ -545,6 +546,20 @@ describe("Falcon24 E1 fresh bootstrap", () => {
   });
 
   it("fails closed on semantic key or runtime attestation drift", async () => {
+    const semanticExportDrift = await semanticFixture();
+    await expect(
+      buildFalcon24SemanticReleaseAuthorityProof({
+        retained_semantics: {
+          ...(retained.semantics as Parameters<
+            typeof buildFalcon24SemanticReleaseAuthorityProof
+          >[0]["retained_semantics"]),
+          database_export_hash: H("f"),
+        },
+        definition_keys: definitionKeys(),
+        loaded_release: semanticExportDrift.loaded,
+      }),
+    ).rejects.toThrow("FALCON24_SEMANTIC_RETAINED_EXPORT_INVALID");
+
     const semanticDrift = await harness();
     await expect(
       bootstrapFalcon24E1(

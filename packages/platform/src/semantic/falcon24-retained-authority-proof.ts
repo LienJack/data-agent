@@ -33,6 +33,14 @@ export async function buildFalcon24SemanticReleaseAuthorityProof(input: {
   readonly definition_keys: readonly string[];
   readonly loaded_release: unknown;
 }) {
+  if (
+    input.retained_semantics.source_bundle_hash !== input.retained_semantics.database_export_hash ||
+    input.retained_semantics.semantic_diff.status !== "MATCH" ||
+    (await sha256ContentHash(input.retained_semantics.semantic_diff.differences)) !==
+      input.retained_semantics.semantic_diff.diff_hash
+  ) {
+    throw new TypeError("FALCON24_SEMANTIC_RETAINED_EXPORT_INVALID");
+  }
   const definitionKeys = [...input.definition_keys];
   const sorted = [...definitionKeys].sort();
   if (
