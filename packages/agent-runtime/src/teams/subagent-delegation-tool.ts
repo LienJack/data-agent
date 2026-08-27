@@ -5,7 +5,7 @@ import { rootAgentDelegationToolArgumentsSchema } from "./root-agent-harness.js"
 export const SUBAGENT_DELEGATION_TOOL_DESCRIPTOR = Object.freeze({
   tool_name: DELEGATE_TO_SUBAGENT_TOOL_NAME,
   description:
-    "Delegate one governed objective to an eligible Subagent from the frozen capability catalog. Use a unique delegation_key for each call and bind batch dependencies through producer_delegation_key. Use only when direct answering cannot satisfy the evidence contract.",
+    "Delegate the current next governed objective to an eligible Subagent from the frozen capability catalog. Supply only already accepted Artifacts through input_artifact_refs. Multiple calls in one turn must be independent.",
   input_schema: rootAgentDelegationToolArgumentsSchema,
   network_access: { mode: "DENY" },
 } satisfies ServerOwnedToolDescriptor);

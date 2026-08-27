@@ -2524,6 +2524,7 @@
         "00-preamble.sql.inc",
         "10-visible-message-lease.sql.inc",
         "20-provider-task-v2.sql.inc",
+        "30-root-turn-policy.sql.inc",
         "80-security.sql.inc",
         "90-postconditions.sql.inc",
         "99-ledger.sql.inc"

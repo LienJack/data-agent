@@ -235,7 +235,6 @@ describe("Model-driven Subagent Harness contracts", () => {
           objective: "Read the frozen relationship graph and explain table dependencies.",
           requested_artifact_types: ["AnalysisReport"],
           input_artifact_refs: [],
-          upstream_accepted_output: null,
           requested_budget: {
             timeout_ms: 30_000,
             max_steps: 8,
@@ -263,7 +262,7 @@ describe("Model-driven Subagent Harness contracts", () => {
     ).rejects.toThrow("ROOT_AGENT_SELECTED_PROFILE_NOT_IN_FROZEN_CATALOG");
   });
 
-  it("binds an in-batch consumer to one earlier accepted producer output", async () => {
+  it("rejects the retired same-turn dependency selector", async () => {
     const catalog = await catalogFor(["governed-text2sql-agent", "semantic-management-agent"]);
     const candidate = {
       schema_version: "root-agent-turn-candidate@1.0.0",
@@ -279,7 +278,6 @@ describe("Model-driven Subagent Harness contracts", () => {
           objective: "Produce governed query evidence.",
           requested_artifact_types: ["QueryEvidence"],
           input_artifact_refs: [],
-          upstream_accepted_output: null,
           requested_budget: {
             timeout_ms: 30_000,
             max_steps: 8,
@@ -313,29 +311,7 @@ describe("Model-driven Subagent Harness contracts", () => {
       public_summary: "Produce and consume governed evidence.",
     };
 
-    await expect(
-      validateRootAgentDecisionAgainstCatalog({ candidate, catalog }),
-    ).resolves.toMatchObject({
-      kind: "TOOL_CALLS",
-      tool_calls: [
-        { upstream_accepted_output: null },
-        {
-          upstream_accepted_output: {
-            producer_tool_call_id: "query",
-            artifact_type: "QueryEvidence",
-          },
-        },
-      ],
-    });
-    await expect(
-      validateRootAgentDecisionAgainstCatalog({
-        candidate: {
-          ...candidate,
-          tool_calls: [candidate.tool_calls[1], candidate.tool_calls[0]],
-        },
-        catalog,
-      }),
-    ).rejects.toThrow();
+    await expect(validateRootAgentDecisionAgainstCatalog({ candidate, catalog })).rejects.toThrow();
   });
 
   it("rejects the retired delegation tool contract", async () => {
@@ -355,7 +331,6 @@ describe("Model-driven Subagent Harness contracts", () => {
             objective: "Attempt the retired contract.",
             requested_artifact_types: ["AnalysisReport"],
             input_artifact_refs: [],
-            upstream_accepted_output: null,
             requested_budget: {
               timeout_ms: 30_000,
               max_steps: 8,

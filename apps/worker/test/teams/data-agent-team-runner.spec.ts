@@ -71,15 +71,27 @@ async function harness() {
     event_store: {
       findSideEffect: vi.fn(async () => ({ ok: true as const, value: null })),
       commitSideEffect: vi.fn(),
-      commitSnapshot: vi.fn(),
+      commitSnapshot: vi.fn(async ({ binding }) => ({
+        ok: true as const,
+        value: {
+          created: true,
+          binding: { ...binding, snapshot_hash: `sha256:${"f".repeat(64)}` },
+        },
+      })),
     },
     now: () => new Date("2026-08-23T00:00:00.000Z"),
     create_id: () => id(30),
     side_effect_timeout_ms: 1_000,
     provider_dispatch: null,
     heartbeat: vi.fn(async () => ({ ok: true as const, value: { expires_at: lease.expires_at } })),
-    guard_running_lease: vi.fn(),
-    append_checkpoint_event: vi.fn(),
+    guard_running_lease: vi.fn(async () => ({
+      ok: true as const,
+      value: {
+        projection: { version: 10 },
+        projection_hash: `sha256:${"e".repeat(64)}`,
+      },
+    })) as never,
+    append_checkpoint_event: vi.fn(async () => ({ ok: true as const, value: null })),
     append_side_effect_event: vi.fn(),
     append_display_event: vi.fn(),
   });

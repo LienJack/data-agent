@@ -10,6 +10,8 @@ import {
   mastraSnapshotBindingBodySchema,
   modelRequestPerformanceSchema,
   type PortResult,
+  type RootToolObservation,
+  type RootVerifierFeedback,
   type RunEventStorePort,
   type RunProjectionRecord,
   type RunWorkLease,
@@ -38,14 +40,12 @@ export interface RunProviderDispatchCapability {
     readonly analysis_agent?: RunAnalysisAgentTurnRequest;
     readonly turn?:
       | Readonly<{ kind: "PROVIDER_SMOKE" }>
-      | Readonly<
-          | { kind: "ROOT"; phase: "INITIAL" }
-          | {
-              kind: "ROOT";
-              phase: "DIRECT_ANSWER_REVIEW";
-              prior_output_text: string;
-            }
-        >
+      | Readonly<{
+          kind: "ROOT";
+          turn_index: number;
+          tool_observations: readonly RootToolObservation[];
+          verifier_feedback: RootVerifierFeedback | null;
+        }>
       | Readonly<{
           kind: "SPECIALIST";
           stage: "SEMANTIC" | "TEXT2SQL" | "ANALYSIS_PROGRAM" | "REPORT";

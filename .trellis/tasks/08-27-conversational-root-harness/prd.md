@@ -18,9 +18,10 @@
 
 ### R2 Root 是唯一自然语言决策者
 
-- Root 自主选择直接回答、Semantic、Text2SQL、Semantic → Text2SQL、Text2SQL → Analysis/Chart、澄清或结束。
+- Root 每轮只自主选择当前下一步：直接回答、调用一个能力、调用多个互不依赖的能力、澄清或结束。后续能力只能在前一轮 Tool Result 返回后再决定。
 - 禁止关键词/正则 Router、固定业务 workflow、`query_kind`、业务 case resolver 或 Host 自行选择 Profile。
-- Host 只验证冻结 Agent Card、权限、预算、Artifact 类型、exact Release/Schema/Datasource binding、SQL/Sandbox 安全和 Artifact commit。
+- 禁止 Root 预声明完整调用链、同轮消费者依赖生产者，或 Host 根据业务依赖调度后续能力。
+- Host 只验证当前 Tool Call 的冻结 Agent Card、权限、预算、已验收输入 Artifact、exact Release/Schema/Datasource binding、SQL/Sandbox 安全、幂等恢复和 Artifact commit。
 
 ### R3 ProviderTaskArtifact v2 与 Provider messages
 
@@ -31,6 +32,8 @@
 ### R4 有界 Root Tool Loop
 
 - 每个 Run 最多四个正常 Root turns；该预算与 provider retry、SQL repair 分离。
+- 每个 turn 只决定当前下一步；Subagent 结果作为 Tool Result 返回 Root 后，Root 下一轮基于真实结果继续判断。
+- 跨 turn 输入只使用普通 `input_artifact_refs`；同一 turn 的多个调用必须相互独立，可并行执行但不能互相消费输出。
 - 每次 Subagent terminal 都生成严格、安全的 `RootToolObservation` 并反馈给下一 Root turn。
 - Final answer verifier 拒绝时以结构化反馈进入下一 turn；删除专用 `DIRECT_ANSWER_REVIEW` 状态。
 - 每轮 checkpoint；恢复时不得重复已持久化的 Provider、SQL、Sandbox 或 Artifact side effect。
@@ -72,7 +75,7 @@
 - [ ] Root 在 current Run 内完成 direct、单 Tool、多轮串行 Tool、同轮独立 calls、verifier feedback 和四轮耗尽路径。
 - [ ] crash/replay 不重复 Provider、SQL、Sandbox 或已提交 Artifact。
 - [ ] SemanticQueryContext 真实提交并可用于 Semantic-only 回答。
-- [ ] `Root → Text2SQL` 与 `Root → Semantic → Text2SQL` 两条路径都真实通过；exact binding 负例在 I/O 前拒绝。
+- [ ] Root 可直接调用 Text2SQL，也可在 Semantic Tool Result 返回后的下一轮将其已验收 Artifact 作为 `input_artifact_refs` 交给 Text2SQL；exact binding 负例在 I/O 前拒绝。
 - [ ] Root 可继续调用 Analysis/Python/Chart，最终 answer/table/chart 全部有同 Run evidence。
 - [ ] 80+ 消息触发安全摘要，近期追问仍正确，摘要不能授权数据事实。
 - [ ] 同一窗口真实执行固定五轮追问：趋势+折线图、华东筛选、11 月下降解释、改表格、关系语义问题。
@@ -84,4 +87,4 @@
 ## Out of Scope
 
 - generation 2/E4 发布实现与 Falcon 正式 16/16、30/30 门禁（修复完成后恢复父任务）。
-- 跨 Conversation 用户记忆、跨 Run Artifact 直接复用、新向量记忆、新 Router/planner/case template、UI 整体重构。
+- 跨 Conversation 用户记忆、跨 Run Artifact 直接复用、新向量记忆、新 Router/planner/case template、预编排业务调用链、UI 整体重构。

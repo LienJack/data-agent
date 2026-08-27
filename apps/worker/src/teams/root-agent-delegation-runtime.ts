@@ -10,6 +10,7 @@ import {
   type PortResult,
   type ProductTeamArtifactDocument,
   type RootAgentDecisionCandidate,
+  type RootToolObservation,
   type SemanticContextCommitResult,
   verifySemanticContextCommitResult,
 } from "@data-agent/contracts";
@@ -110,6 +111,8 @@ export function createRootAgentDelegationRuntime(
   return Object.freeze({
     async execute(input: {
       readonly decision: RootAgentDecisionCandidate;
+      readonly turn_index: number;
+      readonly accepted_artifact_refs: readonly ArtifactReference[];
       readonly execution: RootExecution;
       readonly profiles: readonly AgentProductProfileRegistryItemV2[];
       readonly authority: Parameters<DataAgentProductTeamRuntimePort["execute"]>[0]["authority"];
@@ -127,10 +130,19 @@ export function createRootAgentDelegationRuntime(
           const verification = await answerVerifier.verify({
             decision: input.decision,
             visible_message_refs: payload.visible_message_refs,
-            accepted_artifact_refs: [],
+            accepted_artifact_refs: input.accepted_artifact_refs,
           });
           if (verification.status !== "ACCEPTED") {
-            throw new RootAgentDelegationRuntimeError(verification.reason_code);
+            return {
+              status: "CONTINUE",
+              reason_code: "ROOT_ANSWER_EVIDENCE_REQUIRED",
+              observations: [] as readonly RootToolObservation[],
+              verifier_feedback: {
+                schema_version: "root-verifier-feedback@1.0.0",
+                status: "REJECTED",
+                reason_code: verification.reason_code,
+              },
+            };
           }
           await emit(input.execution, {
             kind: "answer_delta",
@@ -149,6 +161,7 @@ export function createRootAgentDelegationRuntime(
           profile_ceiling: (profile) => profileCeiling(profile, ceiling),
           artifact_is_accepted: async (reference) =>
             value(await dependencies.artifacts.verifyCommitted(reference)),
+          delegation_identity_namespace: `delegation:${input.execution.lease.run_id}:${input.turn_index}`,
         });
         if (admitted.length === 0) {
           throw new RootAgentDelegationRuntimeError("ROOT_AGENT_EMPTY_DELEGATION");
@@ -160,6 +173,7 @@ export function createRootAgentDelegationRuntime(
         const context = await resolveContext(input.execution);
         const result = await dependencies.runtime.execute({
           lease: input.execution.lease,
+          root_turn_index: input.turn_index,
           authority: input.authority,
           profiles,
           admitted_delegations: admitted,
@@ -179,7 +193,28 @@ export function createRootAgentDelegationRuntime(
           signal: input.execution.signal,
           deadline_at: input.execution.deadline_at,
         });
-        return result;
+        return {
+          status: "CONTINUE",
+          reason_code:
+            result.status === "COMPLETED"
+              ? "ROOT_TOOL_OBSERVATIONS_READY"
+              : "ROOT_TOOL_FAILURE_OBSERVATIONS_READY",
+          observations:
+            result.status === "COMPLETED"
+              ? result.observations
+              : input.decision.tool_calls.map(
+                  (call): RootToolObservation => ({
+                    schema_version: "root-tool-observation@1.0.0",
+                    tool_call_id: call.tool_call_id,
+                    profile_id: call.profile_id,
+                    status: "FAILED",
+                    output_ref: null,
+                    safe_projection: null,
+                    error_code: result.reason_code,
+                  }),
+                ),
+          verifier_feedback: null,
+        };
       } catch (error) {
         const reasonCode =
           error instanceof RootAgentDelegationRuntimeError ||

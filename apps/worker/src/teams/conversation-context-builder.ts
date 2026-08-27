@@ -1,4 +1,5 @@
-import type { ModelProviderRequest, ProviderTaskArtifactV2Document } from "@data-agent/contracts";
+import type { ModelProviderRequest } from "@data-agent/contracts/ports";
+import type { ProviderTaskArtifactV2Document } from "@data-agent/contracts/providers";
 
 type ModelMessage = ModelProviderRequest["messages"][number];
 

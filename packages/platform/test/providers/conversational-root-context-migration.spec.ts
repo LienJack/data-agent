@@ -65,6 +65,13 @@ describe("10784 conversational Root context authority", () => {
     expect(historicalLoad).toContain("provider-task-artifact@1.0.0");
   });
 
+  it("separates four normal Root turns from strict provider retry", () => {
+    expect(migration).toContain("'max_provider_attempts_per_call',1,'max_root_turns',4");
+    expect(migration).toContain("'max_root_turns',2");
+    expect(migration).toContain("ROOT_DEFAULT_POLICY_PATCH_DRIFT");
+    expect(migration).toContain("execution_policy->>'max_root_turns' is distinct from '4'");
+  });
+
   it("keeps the validator private and exposes only narrow commit/load RPCs", () => {
     expect(migration).toContain("owner to data_agent_provider_invocation_rpc_owner");
     expect(migration).toContain(

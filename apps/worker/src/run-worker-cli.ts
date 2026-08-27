@@ -91,6 +91,7 @@ import { createJobWorkerRunner } from "./jobs/job-worker-runner.js";
 import { createKnowledgeIndexJobHandler } from "./knowledge/knowledge-index-job.js";
 import { createDirectRunBoundProviderDispatcher } from "./providers/direct-run-bound-provider-dispatcher.js";
 import { createPostgresProviderTaskArtifactAuthority } from "./providers/postgres-provider-task-artifact.js";
+import { createProductionRunBoundProviderDispatcher } from "./providers/production-run-bound-provider-dispatcher.js";
 import { createProviderSmokeExecutor } from "./providers/provider-smoke-executor.js";
 import { loadRunWorkerEnvironment } from "./run-worker-environment.js";
 import {
@@ -493,7 +494,7 @@ export async function runWorkerProcess(
           pool: sqlPool,
           authorizer: capabilityAuthority.authorizer,
         });
-        const providerDispatch = createDirectRunBoundProviderDispatcher({
+        const directProviderDispatch = createDirectRunBoundProviderDispatcher({
           runs: runRepository,
           task_artifacts: createPostgresProviderTaskArtifactAuthority({
             store: providerInvocationStore,
@@ -501,6 +502,19 @@ export async function runWorkerProcess(
           }),
           capability,
           environment,
+        });
+        const auditedRootProviderDispatch = createProductionRunBoundProviderDispatcher({
+          pool: sqlPool,
+          authorizer: capabilityAuthority.authorizer,
+          capability,
+          environment,
+        });
+        const providerDispatch = Object.freeze({
+          invoke(input: Parameters<typeof directProviderDispatch.invoke>[0]) {
+            return input.turn?.kind === "ROOT"
+              ? auditedRootProviderDispatch.invoke(input)
+              : directProviderDispatch.invoke(input);
+          },
         });
         const semanticContext = createRunBoundSemanticContextResolver({
           capability,

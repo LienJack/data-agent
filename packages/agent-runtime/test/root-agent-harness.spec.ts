@@ -39,7 +39,7 @@ async function catalog(profileIds: readonly string[]) {
 }
 
 describe("Root Agent Harness", () => {
-  it("reports the exact frozen-catalog closure rejection for a stale analysis Profile", async () => {
+  it("rejects the retired same-turn dependency arguments", async () => {
     const frozenCatalog = await buildSubagentCapabilityCatalogSnapshot({
       schema_version: "subagent-capability-catalog-snapshot@1.0.0",
       catalog_id: id(4),
@@ -106,26 +106,12 @@ describe("Root Agent Harness", () => {
           tool_call_id: "query",
           tool_name: "delegate_to_subagent@2",
           arguments: {
-            delegation_key: "query-evidence",
             profile_id: "governed-text2sql-agent",
             objective: "Prepare accepted evidence.",
             requested_artifact_types: ["QueryEvidence"],
             input_artifact_refs: [],
-            upstream_accepted_output: null,
-            requested_budget: budget,
-          },
-        },
-        {
-          tool_call_id: "analysis",
-          tool_name: "delegate_to_subagent@2",
-          arguments: {
-            delegation_key: "analysis",
-            profile_id: "governed-analysis-agent",
-            objective: "Analyze the accepted evidence.",
-            requested_artifact_types: ["AnalysisReport"],
-            input_artifact_refs: [],
             upstream_accepted_output: {
-              producer_delegation_key: "query-evidence",
+              producer_tool_call_id: "not-authoritative",
               artifact_type: "QueryEvidence",
             },
             requested_budget: budget,
@@ -135,7 +121,7 @@ describe("Root Agent Harness", () => {
     });
 
     await expect(promise).rejects.toMatchObject({
-      code: "ROOT_AGENT_SELECTED_UNSUPPORTED_UPSTREAM_ARTIFACT",
+      code: "ROOT_AGENT_TOOL_CALL_INVALID",
     });
   });
 
@@ -166,12 +152,10 @@ describe("Root Agent Harness", () => {
             tool_call_id: "call-semantic-dependency",
             tool_name: "delegate_to_subagent@2",
             arguments: {
-              delegation_key: "semantic-dependency",
               profile_id: "semantic-management-agent",
               objective: "Read the frozen graph and explain table dependencies.",
               requested_artifact_types: ["AnalysisReport"],
               input_artifact_refs: [],
-              upstream_accepted_output: null,
               requested_budget: {
                 timeout_ms: 30_000,
                 max_steps: 8,
@@ -225,12 +209,10 @@ describe("Root Agent Harness", () => {
             tool_call_id: "call-1",
             tool_name: "delegate_to_subagent@2",
             arguments: {
-              delegation_key: "semantic-definition",
               profile_id: "semantic-management-agent",
               objective: "Explain the frozen semantic definition.",
               requested_artifact_types: ["AnalysisReport"],
               input_artifact_refs: [],
-              upstream_accepted_output: null,
               requested_budget: {
                 timeout_ms: 30_000,
                 max_steps: 8,
@@ -259,11 +241,11 @@ describe("Root Agent Harness", () => {
     expect(message).toContain("no accepted result Artifact is visible");
     expect(message).toContain("Never invent an Artifact reference");
     expect(message).toContain("native tool call");
-    expect(message).toContain("complete producer-to-consumer native call chain");
-    expect(message).toContain("upstream_accepted_output");
-    expect(message).toContain("producer_delegation_key");
-    expect(message).toContain("transport tool_call_id values are Host-owned");
-    expect(message).toContain("Never rely on call adjacency");
+    expect(message).toContain("Decide only the next useful action");
+    expect(message).toContain("only through input_artifact_refs");
+    expect(message).toContain("Multiple calls in one response");
+    expect(message).not.toContain("upstream_accepted_output");
+    expect(message).not.toContain("producer_delegation_key");
     expect(message).toContain('{"kind":"FINAL_ANSWER","sections"');
     expect(message).toContain('Never output a "final_answer" wrapper');
     expect(message).not.toMatch(/prompt_ref|prompt_hash|secret_ref/);

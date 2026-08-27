@@ -1128,7 +1128,7 @@ declare
       "schema_version":"run-execution-policy@1.0.0",
       "campaign_id":null,"case_id":null,"run_variant":null,"repetition":null,
       "policy_id":"default-run-retry@1.0.0","mode":"DEFAULT",
-      "max_run_attempts":5,"max_provider_attempts_per_call":2,"max_root_turns":2,
+      "max_run_attempts":5,"max_provider_attempts_per_call":2,"max_root_turns":4,
       "max_text2sql_candidate_attempts":2,"analysis_repair_budget_per_category":1,
       "max_file_transfer_attempts":5,"allow_stage_recovery":true,"hold_on_failure":false
     },
@@ -1487,7 +1487,7 @@ declare
       "schema_version":"run-execution-policy@1.0.0",
       "campaign_id":null,"case_id":null,"run_variant":null,"repetition":null,
       "policy_id":"default-run-retry@1.0.0","mode":"DEFAULT",
-      "max_run_attempts":5,"max_provider_attempts_per_call":2,"max_root_turns":2,
+      "max_run_attempts":5,"max_provider_attempts_per_call":2,"max_root_turns":4,
       "max_text2sql_candidate_attempts":2,"analysis_repair_budget_per_category":1,
       "max_file_transfer_attempts":5,"allow_stage_recovery":true,"hold_on_failure":false
     },
@@ -2211,7 +2211,7 @@ begin
       'schema_version','run-execution-policy@1.0.0',
       'campaign_id',null,'case_id',null,'run_variant',null,'repetition',null,
       'policy_id','default-run-retry@1.0.0','mode','DEFAULT',
-      'max_run_attempts',5,'max_provider_attempts_per_call',2,'max_root_turns',2,
+      'max_run_attempts',5,'max_provider_attempts_per_call',2,'max_root_turns',4,
       'max_text2sql_candidate_attempts',2,'analysis_repair_budget_per_category',1,
       'max_file_transfer_attempts',5,'allow_stage_recovery',true,'hold_on_failure',false),
     'payload',pg_catalog.jsonb_build_object(

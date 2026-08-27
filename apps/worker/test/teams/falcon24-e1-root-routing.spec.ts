@@ -6,6 +6,7 @@ import {
 } from "@data-agent/agent-runtime";
 import {
   type AgentProductProfileRegistryItemV2,
+  type ArtifactReference,
   buildSubagentCapabilityCatalogSnapshot,
   projectSubagentCapabilityCatalogItem,
 } from "@data-agent/contracts";
@@ -93,14 +94,10 @@ function budget(maxToolCalls: number) {
 
 function nativeCall(input: {
   readonly tool_call_id: string;
-  readonly delegation_key: string;
   readonly profile_id: (typeof profileIds)[number];
   readonly objective: string;
   readonly requested_artifact_types: readonly ("AnalysisReport" | "QueryEvidence")[];
-  readonly upstream?: Readonly<{
-    producer_delegation_key: string;
-    artifact_type: "QueryEvidence";
-  }>;
+  readonly input_artifact_refs?: readonly ArtifactReference[];
 }) {
   const toolCounts = {
     "governed-analysis-agent": 1,
@@ -112,12 +109,10 @@ function nativeCall(input: {
     tool_call_id: input.tool_call_id,
     tool_name: "delegate_to_subagent@2",
     arguments: {
-      delegation_key: input.delegation_key,
       profile_id: input.profile_id,
       objective: input.objective,
       requested_artifact_types: [...input.requested_artifact_types].sort(),
-      input_artifact_refs: [],
-      upstream_accepted_output: input.upstream ?? null,
+      input_artifact_refs: input.input_artifact_refs ?? [],
       requested_budget: budget(toolCounts[input.profile_id]),
     },
   };
@@ -172,7 +167,6 @@ describe("Falcon24 E1 Root V3 routing boundary", () => {
     const { admitted } = await normalize([
       nativeCall({
         tool_call_id: "semantic-relationship",
-        delegation_key: "semantic-relationship-evidence",
         profile_id: "semantic-management-agent",
         objective: "从冻结 E1 Release 解释订单与客户的关系、Join 和血缘。",
         requested_artifact_types: ["AnalysisReport"],
@@ -189,7 +183,6 @@ describe("Falcon24 E1 Root V3 routing boundary", () => {
     const { admitted } = await normalize([
       nativeCall({
         tool_call_id: "aggregate-query",
-        delegation_key: "aggregate-query-evidence",
         profile_id: "governed-text2sql-agent",
         objective: "查询当前受治理数据库的订单总量。",
         requested_artifact_types: ["QueryEvidence"],
@@ -203,7 +196,7 @@ describe("Falcon24 E1 Root V3 routing boundary", () => {
     });
   });
 
-  it("admits all five analytical objectives as native Text2SQL -> Analysis dependencies", async () => {
+  it("admits all five analytical objectives through sequential Root decisions", async () => {
     const objectives = [
       "复盘最近 18 个完整月经营表现并解释收入变化驱动。",
       "评估最近 12 个月配送体验并做调整后检验。",
@@ -214,64 +207,71 @@ describe("Falcon24 E1 Root V3 routing boundary", () => {
 
     for (const [index, objective] of objectives.entries()) {
       const queryId = `query-${index + 1}`;
-      const { admitted } = await normalize([
+      const queryTurn = await normalize([
         nativeCall({
           tool_call_id: queryId,
-          delegation_key: `${queryId}-evidence`,
           profile_id: "governed-text2sql-agent",
           objective: `为目标准备受治理数据：${objective}`,
           requested_artifact_types: ["QueryEvidence"],
         }),
+      ]);
+      const evidenceRef: ArtifactReference = {
+        artifact_id: id(100 + index),
+        artifact_type: "QueryEvidence",
+        ...scope,
+        run_id: runId,
+        revision: 1,
+        content_hash: hash(String((index + 1) % 10)),
+      };
+      const analysisTurn = await normalize([
         nativeCall({
           tool_call_id: `analysis-${index + 1}`,
-          delegation_key: `analysis-${index + 1}-report`,
           profile_id: "governed-analysis-agent",
           objective,
           requested_artifact_types: ["AnalysisReport"],
-          upstream: {
-            producer_delegation_key: `${queryId}-evidence`,
-            artifact_type: "QueryEvidence",
-          },
+          input_artifact_refs: [evidenceRef],
         }),
       ]);
 
-      expect(admitted.map(({ profile }) => profile.revision.profile_id)).toEqual([
+      expect(queryTurn.admitted.map(({ profile }) => profile.revision.profile_id)).toEqual([
         "governed-text2sql-agent",
+      ]);
+      expect(analysisTurn.admitted.map(({ profile }) => profile.revision.profile_id)).toEqual([
         "governed-analysis-agent",
       ]);
-      expect(admitted[1]?.receipt.upstream_accepted_output).toEqual({
-        producer_tool_call_id: queryId,
-        artifact_type: "QueryEvidence",
-      });
+      expect(analysisTurn.admitted[0]?.receipt.input_artifact_refs).toEqual([evidenceRef]);
     }
   });
 
-  it("binds a formal report to an earlier accepted QueryEvidence producer", async () => {
-    const { admitted } = await normalize([
+  it("passes an earlier accepted QueryEvidence to a later Report turn", async () => {
+    const queryTurn = await normalize([
       nativeCall({
         tool_call_id: "report-query",
-        delegation_key: "formal-report-evidence",
         profile_id: "governed-text2sql-agent",
         objective: "准备正式报告需要的已执行数据证据。",
         requested_artifact_types: ["QueryEvidence"],
       }),
+    ]);
+    const evidenceRef: ArtifactReference = {
+      artifact_id: id(120),
+      artifact_type: "QueryEvidence",
+      ...scope,
+      run_id: runId,
+      revision: 1,
+      content_hash: hash("e"),
+    };
+    const reportTurn = await normalize([
       nativeCall({
         tool_call_id: "formal-report",
-        delegation_key: "formal-report-draft",
         profile_id: "report-writing-agent",
         objective: "从已验收证据撰写正式报告。",
         requested_artifact_types: ["AnalysisReport"],
-        upstream: {
-          producer_delegation_key: "formal-report-evidence",
-          artifact_type: "QueryEvidence",
-        },
+        input_artifact_refs: [evidenceRef],
       }),
     ]);
 
-    expect(admitted[1]?.receipt.upstream_accepted_output).toEqual({
-      producer_tool_call_id: "report-query",
-      artifact_type: "QueryEvidence",
-    });
+    expect(queryTurn.admitted).toHaveLength(1);
+    expect(reportTurn.admitted[0]?.receipt.input_artifact_refs).toEqual([evidenceRef]);
   });
 
   it("keeps Direct QA and Falcon case-bound runtimes outside the production import boundary", async () => {

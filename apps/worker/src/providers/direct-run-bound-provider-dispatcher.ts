@@ -13,12 +13,15 @@ import {
 } from "@data-agent/agent-runtime";
 import {
   analysisAgentFinalResponseSchema,
+  canonicalizeJson,
   createDirectModelProviderInvocation,
   effectiveConfigRunLeasePayloadSchema,
   MODEL_REQUEST_PERFORMANCE_SCHEMA_VERSION,
   modelRequestPerformanceSchema,
   type PortResult,
   type ProviderTaskArtifactV2Document,
+  rootAgentToolResultSchema,
+  rootVerifierFeedbackSchema,
   sha256ContentHash,
   text2sqlQueryCandidateSchema,
 } from "@data-agent/contracts";
@@ -47,6 +50,36 @@ const analysisPythonSourceSchema = z.strictObject({
   schema_version: z.literal(ANALYSIS_PYTHON_RESPONSE_SCHEMA_VERSION),
   python_source: z.string().min(1).max(100_000),
 });
+
+const rootTurnRequestSchema = z.strictObject({
+  kind: z.literal("ROOT"),
+  turn_index: z.number().int().nonnegative().max(3),
+  tool_observations: z.array(rootAgentToolResultSchema).max(32),
+  verifier_feedback: rootVerifierFeedbackSchema.nullable(),
+});
+
+export function buildRootLoopMessages(input: unknown) {
+  const request = rootTurnRequestSchema.parse(input);
+  return [
+    {
+      role: "system" as const,
+      content: `Current normal Root turn index: ${request.turn_index}.`,
+    },
+    ...request.tool_observations.map((observation) => ({
+      role: "tool" as const,
+      tool_call_id: observation.tool_call_id,
+      content: canonicalizeJson(observation),
+    })),
+    ...(request.verifier_feedback
+      ? [
+          {
+            role: "system" as const,
+            content: `Host final-answer verifier feedback: ${canonicalizeJson(request.verifier_feedback)}`,
+          },
+        ]
+      : []),
+  ];
+}
 
 interface DirectRunReader {
   getRun(
@@ -247,12 +280,11 @@ export function createDirectRunBoundProviderDispatcher(input: {
           "分析 Python 只能使用冻结的 DeepSeek V4 Flash Profile。",
         );
       }
+      const parsedRootRequest = rootRequest ? rootTurnRequestSchema.safeParse(rootRequest) : null;
       if (
         rootRequest &&
-        (rootRequest.phase === "DIRECT_ANSWER_REVIEW"
-          ? rootRequest.prior_output_text.trim().length === 0 ||
-            rootRequest.prior_output_text.length > 100_000
-          : rootRequest.phase !== "INITIAL")
+        (!parsedRootRequest?.success ||
+          parsedRootRequest.data.turn_index >= lease.execution_policy.max_root_turns)
       ) {
         return failure("ROOT_AGENT_TURN_INVALID", "Root Agent turn phase is invalid.");
       }
@@ -371,26 +403,7 @@ export function createDirectRunBoundProviderDispatcher(input: {
           ? buildRootConversationMessages({
               system_message: await buildRootAgentSystemMessage(rootLease.catalog_snapshot),
               task: rootTaskDocument,
-              ...(rootRequest?.phase === "DIRECT_ANSWER_REVIEW"
-                ? {
-                    current_run_messages: [
-                      {
-                        role: "assistant" as const,
-                        content: rootRequest.prior_output_text,
-                      },
-                      {
-                        role: "user" as const,
-                        content: [
-                          "Self-review the routing decision above against the frozen Root Agent rules.",
-                          "If answering the original question depends on workspace data, semantic definitions, relationships, calculations, rows, aggregates, comparisons, ranking, trends, charts, or missing governed evidence, replace the direct answer with the required native Subagent tool call now.",
-                          "The absence of accepted evidence is a reason to delegate, not a reason to refuse.",
-                          "Only retain a strict direct FINAL_ANSWER when the original question is genuinely answerable from general knowledge or explicitly visible user text without workspace evidence.",
-                          "When retaining the direct answer, repeat the previous assistant JSON object exactly. Do not replace it with a review conclusion, routing explanation, critique, or other meta commentary.",
-                        ].join("\n"),
-                      },
-                    ],
-                  }
-                : {}),
+              current_run_messages: buildRootLoopMessages(parsedRootRequest?.data),
             })
           : providerSmoke
             ? [
@@ -640,6 +653,7 @@ export function createDirectRunBoundProviderDispatcher(input: {
 
 export const directRunBoundProviderDispatcherInternals = Object.freeze({
   projectToolCallCandidate,
+  buildRootLoopMessages,
   retryableReason,
   shouldRetryProviderCall,
   validAnalysisToolAllowlist,

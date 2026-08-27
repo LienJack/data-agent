@@ -142,6 +142,7 @@ export async function admitRootAgentDelegations(input: {
   readonly run_ceiling: SubagentAdmissionBudget;
   readonly profile_ceiling: (profile: AgentProductProfileRegistryItemV2) => SubagentAdmissionBudget;
   readonly artifact_is_accepted: (reference: ArtifactReference) => Promise<boolean>;
+  readonly delegation_identity_namespace?: string;
 }): Promise<readonly AdmittedSubagentDelegation[]> {
   const catalog = await verifySubagentCapabilityCatalogSnapshot(input.catalog);
   const decision = await validateRootAgentDecisionAgainstCatalog({
@@ -174,10 +175,12 @@ export async function admitRootAgentDelegations(input: {
     const identityMaterial = {
       run_id: decision.run_id,
       catalog_snapshot_hash: decision.catalog_snapshot_hash,
+      delegation_identity_namespace:
+        input.delegation_identity_namespace ?? `delegation:${decision.run_id}:legacy`,
       tool_call_id: call.tool_call_id,
     };
     const receipt = await buildSubagentDelegationReceipt({
-      schema_version: "subagent-delegation-receipt@2.0.0",
+      schema_version: "subagent-delegation-receipt@3.0.0",
       delegation_id: deterministicUuid({ ...identityMaterial, kind: "delegation" }),
       scope: decision.scope,
       run_id: decision.run_id,
@@ -191,11 +194,12 @@ export async function admitRootAgentDelegations(input: {
       input_artifact_refs: [...call.input_artifact_refs].sort((left, right) =>
         artifactReferenceIdentity(left).localeCompare(artifactReferenceIdentity(right)),
       ),
-      upstream_accepted_output: call.upstream_accepted_output,
       requested_artifact_types: call.requested_artifact_types,
       effective_budget: effectiveBudget,
       tool_allowlist: [...profile.revision.direct_tool_allowlist].sort(),
-      idempotency_key: `root:${decision.run_id}:${call.tool_call_id}`,
+      idempotency_key: `${
+        input.delegation_identity_namespace ?? `delegation:${decision.run_id}:legacy`
+      }:${call.tool_call_id}`,
     });
     admitted.push(deepFreeze({ call, profile, receipt }));
   }

@@ -15,8 +15,8 @@ import {
 
 const id = (suffix: number) => `81000000-0000-4000-8000-${String(suffix).padStart(12, "0")}`;
 
-describe("Root Agent direct-answer review", () => {
-  it("uses review only as a routing decision and preserves the original direct answer", async () => {
+describe("Root Agent normal turn", () => {
+  it("invokes exactly one logical provider call per normal turn", async () => {
     const scope = { app_id: id(1), tenant_id: id(2), environment: "test" } as const;
     const runId = id(3);
     const principalId = id(4);
@@ -80,28 +80,10 @@ describe("Root Agent direct-answer review", () => {
       ],
       public_summary: "解释同比增长。",
     });
-    const reviewMeta = JSON.stringify({
-      kind: "FINAL_ANSWER",
-      sections: [
-        {
-          kind: "GENERAL_TEXT",
-          text: "审查结论：这个问题可以直接回答。",
-          basis: "GENERAL_KNOWLEDGE",
-          source_message_refs: [],
-        },
-      ],
-      public_summary: "审查通过。",
+    const invoke = vi.fn().mockResolvedValueOnce({
+      ok: true,
+      value: { output_text: direct, tool_calls: [], projection: {} },
     });
-    const invoke = vi
-      .fn()
-      .mockResolvedValueOnce({
-        ok: true,
-        value: { output_text: direct, tool_calls: [], projection: {} },
-      })
-      .mockResolvedValueOnce({
-        ok: true,
-        value: { output_text: reviewMeta, tool_calls: [], projection: {} },
-      });
     const context = createRunExecutionContext({
       lease,
       effective_config: consumed.effective_config,
@@ -119,13 +101,16 @@ describe("Root Agent direct-answer review", () => {
       append_display_event: vi.fn(async () => ({ ok: true as const, value: { sequence: 1 } })),
     });
 
-    const result = await createRootAgentTurnExecutor().decide({
-      lease,
-      restored_snapshot: null,
-      context,
-      signal: new AbortController().signal,
-      deadline_at: lease.expires_at,
-    });
+    const result = await createRootAgentTurnExecutor().decide(
+      {
+        lease,
+        restored_snapshot: null,
+        context,
+        signal: new AbortController().signal,
+        deadline_at: lease.expires_at,
+      },
+      { turn_index: 0, tool_observations: [], verifier_feedback: null },
+    );
 
     expect(result).toEqual({
       ok: true,
@@ -135,10 +120,30 @@ describe("Root Agent direct-answer review", () => {
         public_summary: "解释同比增长。",
       }),
     });
-    expect(invoke).toHaveBeenCalledTimes(2);
-    expect(invoke.mock.calls[1]?.[0]).toMatchObject({
-      turn: { phase: "DIRECT_ANSWER_REVIEW", prior_output_text: direct },
+    expect(invoke).toHaveBeenCalledOnce();
+    expect(invoke.mock.calls[0]?.[0]).toMatchObject({
+      turn: {
+        turn_index: 0,
+        tool_observations: [],
+        verifier_feedback: null,
+      },
     });
+
+    const duplicate = await createRootAgentTurnExecutor().decide(
+      {
+        lease,
+        restored_snapshot: null,
+        context,
+        signal: new AbortController().signal,
+        deadline_at: lease.expires_at,
+      },
+      { turn_index: 0, tool_observations: [], verifier_feedback: null },
+    );
+    expect(duplicate).toEqual({
+      ok: false,
+      error: expect.objectContaining({ code: "PROVIDER_LOGICAL_CALL_DUPLICATE" }),
+    });
+    expect(invoke).toHaveBeenCalledOnce();
 
     const driftContext = createRunExecutionContext({
       lease,
@@ -162,18 +167,21 @@ describe("Root Agent direct-answer review", () => {
       append_side_effect_event: vi.fn(),
       append_display_event: vi.fn(async () => ({ ok: true as const, value: { sequence: 1 } })),
     });
-    const driftResult = await createRootAgentTurnExecutor().decide({
-      lease,
-      restored_snapshot: null,
-      context: driftContext,
-      signal: new AbortController().signal,
-      deadline_at: lease.expires_at,
-    });
+    const driftResult = await createRootAgentTurnExecutor().decide(
+      {
+        lease,
+        restored_snapshot: null,
+        context: driftContext,
+        signal: new AbortController().signal,
+        deadline_at: lease.expires_at,
+      },
+      { turn_index: 0, tool_observations: [], verifier_feedback: null },
+    );
     expect(driftResult).toEqual({
       ok: false,
       error: expect.objectContaining({ code: "ROOT_AGENT_CONTEXT_BINDING_INVALID" }),
     });
-    expect(invoke).toHaveBeenCalledTimes(2);
+    expect(invoke).toHaveBeenCalledOnce();
 
     invoke.mockReset();
     invoke.mockResolvedValueOnce({
@@ -205,15 +213,18 @@ describe("Root Agent direct-answer review", () => {
       append_side_effect_event: vi.fn(),
       append_display_event: vi.fn(async () => ({ ok: true as const, value: { sequence: 1 } })),
     });
-    const strictResult = await createRootAgentTurnExecutor().decide({
-      lease: strictLease,
-      restored_snapshot: null,
-      context: strictContext,
-      signal: new AbortController().signal,
-      deadline_at: strictLease.expires_at,
-    });
+    const strictResult = await createRootAgentTurnExecutor().decide(
+      {
+        lease: strictLease,
+        restored_snapshot: null,
+        context: strictContext,
+        signal: new AbortController().signal,
+        deadline_at: strictLease.expires_at,
+      },
+      { turn_index: 0, tool_observations: [], verifier_feedback: null },
+    );
     expect(strictResult.ok).toBe(true);
     expect(invoke).toHaveBeenCalledOnce();
-    expect(invoke.mock.calls[0]?.[0]).toMatchObject({ turn: { phase: "INITIAL" } });
+    expect(invoke.mock.calls[0]?.[0]).toMatchObject({ turn: { turn_index: 0 } });
   });
 });

@@ -1,5 +1,7 @@
 do $postconditions$
 declare acceptance_definition text;commit_definition text;load_definition text;
+  provider_lease_definition text;falcon_policy_definition text;
+  qualification_completion_definition text;
 begin
   select procedure.prosrc into strict acceptance_definition from pg_catalog.pg_proc procedure
     where procedure.oid=
@@ -8,12 +10,27 @@ begin
     where procedure.oid='app_data_agent.commit_provider_task_artifact(jsonb,jsonb)'::regprocedure;
   select procedure.prosrc into strict load_definition from pg_catalog.pg_proc procedure
     where procedure.oid='app_data_agent.load_provider_task_artifact(jsonb)'::regprocedure;
+  select procedure.prosrc into strict provider_lease_definition from pg_catalog.pg_proc procedure
+    where procedure.oid=
+      'app_data_agent.assert_provider_active_worker_lease(jsonb)'::regprocedure;
+  select procedure.prosrc into strict falcon_policy_definition from pg_catalog.pg_proc procedure
+    where procedure.oid=
+      'app_data_agent.resolve_falcon24_run_execution_policy(uuid)'::regprocedure;
+  select procedure.prosrc into strict qualification_completion_definition
+    from pg_catalog.pg_proc procedure where procedure.oid=
+      'app_data_agent.complete_falcon24_qualification_slot(jsonb)'::regprocedure;
   if pg_catalog.strpos(acceptance_definition,'limit 63')=0
     or pg_catalog.strpos(acceptance_definition,'visible_message_refs')=0
     or pg_catalog.strpos(commit_definition,'provider-task-artifact@2.0.0')=0
     or pg_catalog.strpos(commit_definition,'limit 64')=0
     or pg_catalog.strpos(commit_definition,'context_selection_hash')=0
     or pg_catalog.strpos(load_definition,'provider_task_document_is_valid')=0
+    or pg_catalog.strpos(provider_lease_definition,$$'max_root_turns',4$$)=0
+    or pg_catalog.strpos(provider_lease_definition,$$'max_root_turns',2$$)>0
+    or pg_catalog.strpos(falcon_policy_definition,$$'max_root_turns',4$$)=0
+    or pg_catalog.strpos(falcon_policy_definition,$$'max_root_turns',1$$)>0
+    or pg_catalog.strpos(qualification_completion_definition,
+      $$execution_policy->>'max_root_turns' is distinct from '4'$$)=0
     or not pg_catalog.has_function_privilege('data_agent_backend',
       'app_data_agent.commit_provider_task_artifact(jsonb,jsonb)','EXECUTE')
     or not pg_catalog.has_function_privilege('data_agent_backend',

@@ -1,11 +1,12 @@
--- conversational_root_context_migration_checksum: sha256:cd2a5af8aa6c374c5557ad32be28abd9f423379200337c5f6a2d8532c552a1ea
+-- conversational_root_context_migration_checksum: sha256:8220cd1bc89728aab7091d5f7aa862995f6266f0d5c0d9ae5e5e780d8c3a01d6
 begin;
 
 select platform.acquire_migration_lock(
   'app','00000000-0000-4000-8000-00000000da01'::uuid);
 
 do $preflight$
-declare task_definition text;acceptance_definition text;
+declare task_definition text;acceptance_definition text;provider_lease_definition text;
+  falcon_policy_definition text;qualification_completion_definition text;
 begin
   if pg_catalog.current_setting('server_version_num')::integer not between 170000 and 179999
     or not exists(select 1 from platform.migration_ledger
@@ -18,6 +19,12 @@ begin
       'app_data_agent.load_provider_task_artifact(jsonb)') is null
     or pg_catalog.to_regprocedure(
       'app_data_agent.accept_question_run_with_effective_config(jsonb,jsonb)') is null
+    or pg_catalog.to_regprocedure(
+      'app_data_agent.assert_provider_active_worker_lease(jsonb)') is null
+    or pg_catalog.to_regprocedure(
+      'app_data_agent.resolve_falcon24_run_execution_policy(uuid)') is null
+    or pg_catalog.to_regprocedure(
+      'app_data_agent.complete_falcon24_qualification_slot(jsonb)') is null
   then raise exception using errcode='P0001',
     message='CONVERSATIONAL_ROOT_CONTEXT_BASELINE_DRIFT'; end if;
   select procedure.prosrc into strict task_definition from pg_catalog.pg_proc procedure
@@ -26,9 +33,22 @@ begin
   select procedure.prosrc into strict acceptance_definition from pg_catalog.pg_proc procedure
     where procedure.oid=
       'app_data_agent.accept_question_run_with_effective_config(jsonb,jsonb)'::regprocedure;
+  select procedure.prosrc into strict provider_lease_definition from pg_catalog.pg_proc procedure
+    where procedure.oid=
+      'app_data_agent.assert_provider_active_worker_lease(jsonb)'::regprocedure;
+  select procedure.prosrc into strict falcon_policy_definition from pg_catalog.pg_proc procedure
+    where procedure.oid=
+      'app_data_agent.resolve_falcon24_run_execution_policy(uuid)'::regprocedure;
+  select procedure.prosrc into strict qualification_completion_definition
+    from pg_catalog.pg_proc procedure where procedure.oid=
+      'app_data_agent.complete_falcon24_qualification_slot(jsonb)'::regprocedure;
   if pg_catalog.strpos(task_definition,'provider-task-artifact@1.0.0')=0
     or pg_catalog.strpos(acceptance_definition,
       $$'visible_message_refs',pg_catalog.jsonb_build_array(requested_command->>'event_id')$$)=0
+    or pg_catalog.strpos(provider_lease_definition,$$'max_root_turns',2$$)=0
+    or pg_catalog.strpos(falcon_policy_definition,$$'max_root_turns',1$$)=0
+    or pg_catalog.strpos(qualification_completion_definition,
+      $$execution_policy->>'max_root_turns' is distinct from '1'$$)=0
   then raise exception using errcode='P0001',
     message='CONVERSATIONAL_ROOT_CONTEXT_PREDECESSOR_DRIFT'; end if;
 end
@@ -374,6 +394,92 @@ exception when invalid_text_representation or numeric_value_out_of_range then
   raise exception using errcode='22023',message='PROVIDER_TASK_ARTIFACT_LOAD_INVALID';
 end
 $function$;
+create or replace function app_data_agent.resolve_falcon24_run_execution_policy(
+  requested_run_id uuid)
+returns jsonb language plpgsql stable security definer set search_path='' as $function$
+declare authority record; execution_policy jsonb; candidate_count bigint;
+begin
+  if requested_run_id is null then
+    raise exception using errcode='22023',message='FALCON24_RUN_EXECUTION_POLICY_INPUT_INVALID';
+  end if;
+  select * into strict authority from platform.current_backend_authority(false);
+  with candidates as (
+    select pg_catalog.jsonb_build_object(
+      'schema_version','run-execution-policy@1.0.0',
+      'acceptance_authority_kind','CAMPAIGN',
+      'campaign_id',campaign_run.campaign_id,'case_id',campaign_run.case_id,
+      'run_variant',campaign_run.run_variant,'repetition',campaign_run.repetition,
+      'policy_id',campaign.policy_id,'mode','FALCON24_STRICT','max_run_attempts',1,
+      'max_provider_attempts_per_call',1,'max_root_turns',4,
+      'max_text2sql_candidate_attempts',1,'analysis_repair_budget_per_category',0,
+      'max_file_transfer_attempts',1,'allow_stage_recovery',false,'hold_on_failure',true) policy
+    from app_data_agent.falcon24_acceptance_campaign_runs campaign_run
+    join app_data_agent.falcon24_acceptance_campaigns campaign
+      on campaign.app_id=campaign_run.app_id and campaign.tenant_id=campaign_run.tenant_id
+      and campaign.environment=campaign_run.environment
+      and campaign.principal_id=campaign_run.principal_id
+      and campaign.campaign_id=campaign_run.campaign_id
+    where campaign_run.app_id=authority.app_id and campaign_run.tenant_id=authority.tenant_id
+      and campaign_run.environment=authority.environment
+      and campaign_run.principal_id=authority.principal_id
+      and campaign_run.run_id=requested_run_id
+    union all
+    select pg_catalog.jsonb_build_object(
+      'schema_version','run-execution-policy@1.0.0',
+      'acceptance_authority_kind','QUALIFICATION',
+      'campaign_id',slot.qualification_id,'case_id',slot.case_id,
+      'run_variant',slot.run_variant,'repetition',1,
+      'policy_id','falcon24-strict-zero-retry@1.0.0','mode','FALCON24_STRICT',
+      'max_run_attempts',1,'max_provider_attempts_per_call',1,'max_root_turns',4,
+      'max_text2sql_candidate_attempts',1,'analysis_repair_budget_per_category',0,
+      'max_file_transfer_attempts',1,'allow_stage_recovery',false,'hold_on_failure',true) policy
+    from app_data_agent.falcon24_qualification_slots slot
+    join app_data_agent.falcon24_qualifications qualification
+      on qualification.app_id=slot.app_id and qualification.tenant_id=slot.tenant_id
+      and qualification.environment=slot.environment
+      and qualification.principal_id=slot.principal_id
+      and qualification.qualification_id=slot.qualification_id
+    where slot.app_id=authority.app_id and slot.tenant_id=authority.tenant_id
+      and slot.environment=authority.environment and slot.principal_id=authority.principal_id
+      and slot.run_id=requested_run_id), aggregate_candidates as (
+    select pg_catalog.count(*) count_value,pg_catalog.jsonb_agg(policy) policies from candidates)
+  select count_value,policies->0 into strict candidate_count,execution_policy
+    from aggregate_candidates;
+  if candidate_count>1 then
+    raise exception using errcode='55000',message='FALCON24_RUN_EXECUTION_POLICY_AMBIGUOUS';
+  end if;
+  if candidate_count=0 then return null; end if;
+  return execution_policy;
+end
+$function$;
+
+do $root_policy_patch$
+declare definition text;old_default text;new_default text;old_qualification text;
+  new_qualification text;
+begin
+  old_default:=$$'max_root_turns',2$$;
+  new_default:=$$'max_root_turns',4$$;
+  select pg_catalog.pg_get_functiondef(
+    'app_data_agent.assert_provider_active_worker_lease(jsonb)'::pg_catalog.regprocedure)
+    into strict definition;
+  if (pg_catalog.length(definition)-pg_catalog.length(
+      pg_catalog.replace(definition,old_default,'')))
+      /pg_catalog.length(old_default)<>1
+  then raise exception using errcode='P0001',message='ROOT_DEFAULT_POLICY_PATCH_DRIFT'; end if;
+  execute pg_catalog.replace(definition,old_default,new_default);
+
+  old_qualification:=$$execution_policy->>'max_root_turns' is distinct from '1'$$;
+  new_qualification:=$$execution_policy->>'max_root_turns' is distinct from '4'$$;
+  select pg_catalog.pg_get_functiondef(
+    'app_data_agent.complete_falcon24_qualification_slot(jsonb)'::pg_catalog.regprocedure)
+    into strict definition;
+  if (pg_catalog.length(definition)-pg_catalog.length(
+      pg_catalog.replace(definition,old_qualification,'')))
+      /pg_catalog.length(old_qualification)<>1
+  then raise exception using errcode='P0001',message='ROOT_QUALIFICATION_POLICY_PATCH_DRIFT'; end if;
+  execute pg_catalog.replace(definition,old_qualification,new_qualification);
+end
+$root_policy_patch$;
 alter function app_data_agent.provider_task_document_is_valid(jsonb,uuid,uuid,text)
   owner to data_agent_provider_invocation_rpc_owner;
 alter function app_data_agent.commit_provider_task_artifact(jsonb,jsonb)
@@ -394,6 +500,8 @@ grant execute on function app_data_agent.provider_task_document_is_valid(jsonb,u
   to data_agent_provider_invocation_rpc_owner;
 do $postconditions$
 declare acceptance_definition text;commit_definition text;load_definition text;
+  provider_lease_definition text;falcon_policy_definition text;
+  qualification_completion_definition text;
 begin
   select procedure.prosrc into strict acceptance_definition from pg_catalog.pg_proc procedure
     where procedure.oid=
@@ -402,12 +510,27 @@ begin
     where procedure.oid='app_data_agent.commit_provider_task_artifact(jsonb,jsonb)'::regprocedure;
   select procedure.prosrc into strict load_definition from pg_catalog.pg_proc procedure
     where procedure.oid='app_data_agent.load_provider_task_artifact(jsonb)'::regprocedure;
+  select procedure.prosrc into strict provider_lease_definition from pg_catalog.pg_proc procedure
+    where procedure.oid=
+      'app_data_agent.assert_provider_active_worker_lease(jsonb)'::regprocedure;
+  select procedure.prosrc into strict falcon_policy_definition from pg_catalog.pg_proc procedure
+    where procedure.oid=
+      'app_data_agent.resolve_falcon24_run_execution_policy(uuid)'::regprocedure;
+  select procedure.prosrc into strict qualification_completion_definition
+    from pg_catalog.pg_proc procedure where procedure.oid=
+      'app_data_agent.complete_falcon24_qualification_slot(jsonb)'::regprocedure;
   if pg_catalog.strpos(acceptance_definition,'limit 63')=0
     or pg_catalog.strpos(acceptance_definition,'visible_message_refs')=0
     or pg_catalog.strpos(commit_definition,'provider-task-artifact@2.0.0')=0
     or pg_catalog.strpos(commit_definition,'limit 64')=0
     or pg_catalog.strpos(commit_definition,'context_selection_hash')=0
     or pg_catalog.strpos(load_definition,'provider_task_document_is_valid')=0
+    or pg_catalog.strpos(provider_lease_definition,$$'max_root_turns',4$$)=0
+    or pg_catalog.strpos(provider_lease_definition,$$'max_root_turns',2$$)>0
+    or pg_catalog.strpos(falcon_policy_definition,$$'max_root_turns',4$$)=0
+    or pg_catalog.strpos(falcon_policy_definition,$$'max_root_turns',1$$)>0
+    or pg_catalog.strpos(qualification_completion_definition,
+      $$execution_policy->>'max_root_turns' is distinct from '4'$$)=0
     or not pg_catalog.has_function_privilege('data_agent_backend',
       'app_data_agent.commit_provider_task_artifact(jsonb,jsonb)','EXECUTE')
     or not pg_catalog.has_function_privilege('data_agent_backend',
@@ -424,5 +547,5 @@ $postconditions$;
 select platform.assert_migration_checksum(
   'app','00000000-0000-4000-8000-00000000da01'::uuid,
   '20260725010784_app_data_agent_conversational_root_context',
-  'sha256:cd2a5af8aa6c374c5557ad32be28abd9f423379200337c5f6a2d8532c552a1ea');
+  'sha256:8220cd1bc89728aab7091d5f7aa862995f6266f0d5c0d9ae5e5e780d8c3a01d6');
 commit;

@@ -134,18 +134,12 @@ export const subagentRequestedBudgetSchema = z.strictObject({
   max_context_bytes: z.number().int().positive().max(65_536),
 });
 
-export const upstreamAcceptedArtifactSelectorSchema = z.strictObject({
-  producer_tool_call_id: z.string().min(1).max(256),
-  artifact_type: knownArtifactTypeSchema,
-});
-
 export const delegateToSubagentArgumentsSchema = z
   .strictObject({
     profile_id: agentProfileIdSchema,
     objective: z.string().trim().min(1).max(4_000),
     requested_artifact_types: z.array(knownArtifactTypeSchema).min(1).max(16),
     input_artifact_refs: z.array(artifactReferenceSchema).max(64),
-    upstream_accepted_output: upstreamAcceptedArtifactSelectorSchema.nullable(),
     requested_budget: subagentRequestedBudgetSchema,
   })
   .superRefine((call, ctx) => {
@@ -297,27 +291,6 @@ export const rootAgentDecisionCandidateSchema = z
           });
         }
       });
-      const upstream = call.upstream_accepted_output;
-      if (!upstream) return;
-      const producerIndex = candidate.tool_calls.findIndex(
-        ({ tool_call_id: toolCallId }) => toolCallId === upstream.producer_tool_call_id,
-      );
-      if (producerIndex < 0 || producerIndex >= callIndex) {
-        ctx.addIssue({
-          code: "custom",
-          message: "Upstream accepted output must select an earlier tool call in the same batch.",
-          path: ["tool_calls", callIndex, "upstream_accepted_output"],
-        });
-        return;
-      }
-      const producer = candidate.tool_calls[producerIndex];
-      if (!producer?.requested_artifact_types.includes(upstream.artifact_type)) {
-        ctx.addIssue({
-          code: "custom",
-          message: "Upstream accepted output type must be requested from the selected producer.",
-          path: ["tool_calls", callIndex, "upstream_accepted_output", "artifact_type"],
-        });
-      }
     });
   });
 
@@ -327,9 +300,104 @@ export type SubagentCapabilityCatalogSnapshot = z.infer<
   typeof subagentCapabilityCatalogSnapshotSchema
 >;
 
+const rootToolErrorCodeSchema = z
+  .string()
+  .min(1)
+  .max(128)
+  .regex(/^[A-Z][A-Z0-9_]*$/u);
+
+export const rootToolSafeProjectionSchema = z
+  .strictObject({
+    schema_version: z.literal("root-tool-safe-projection@1.0.0"),
+    artifact_ref: artifactReferenceSchema,
+    projection_kind: z.enum(["REFERENCE", "TABLE", "REPORT", "CHART", "SEMANTIC_CONTEXT"]),
+    title: z.string().trim().min(1).max(512).nullable(),
+    summary: z.string().trim().min(1).max(4_000),
+    column_keys: z.array(z.string().min(1).max(256)).max(128),
+    total_rows: z.number().int().nonnegative().safe().nullable(),
+    source_artifact_refs: z.array(artifactReferenceSchema).max(32),
+  })
+  .superRefine((projection, ctx) => {
+    if (!isCanonicallySorted(projection.column_keys)) {
+      ctx.addIssue({
+        code: "custom",
+        message: "Root tool projection column keys must be unique and canonically sorted.",
+        path: ["column_keys"],
+      });
+    }
+    const sourceIdentities = projection.source_artifact_refs.map(artifactReferenceIdentity);
+    if (!isCanonicallySorted(sourceIdentities)) {
+      ctx.addIssue({
+        code: "custom",
+        message: "Root tool projection source references must be unique and canonically sorted.",
+        path: ["source_artifact_refs"],
+      });
+    }
+    projection.source_artifact_refs.forEach((reference, index) => {
+      if (
+        !isSameScope(projection.artifact_ref, reference) ||
+        projection.artifact_ref.run_id !== reference.run_id
+      ) {
+        ctx.addIssue({
+          code: "custom",
+          message: "Root tool projection sources must belong to the output Run.",
+          path: ["source_artifact_refs", index],
+        });
+      }
+    });
+  });
+
+const completedRootToolObservationSchema = z
+  .strictObject({
+    schema_version: z.literal("root-tool-observation@1.0.0"),
+    tool_call_id: z.string().min(1).max(256),
+    profile_id: agentProfileIdSchema,
+    status: z.literal("COMPLETED"),
+    output_ref: artifactReferenceSchema,
+    safe_projection: rootToolSafeProjectionSchema,
+    error_code: z.null(),
+  })
+  .superRefine((observation, ctx) => {
+    if (
+      artifactReferenceIdentity(observation.output_ref) !==
+      artifactReferenceIdentity(observation.safe_projection.artifact_ref)
+    ) {
+      ctx.addIssue({
+        code: "custom",
+        message: "Root tool observation projection must bind the exact accepted output.",
+        path: ["safe_projection", "artifact_ref"],
+      });
+    }
+  });
+
+const failedRootToolObservationSchema = z.strictObject({
+  schema_version: z.literal("root-tool-observation@1.0.0"),
+  tool_call_id: z.string().min(1).max(256),
+  profile_id: agentProfileIdSchema,
+  status: z.literal("FAILED"),
+  output_ref: z.null(),
+  safe_projection: z.null(),
+  error_code: rootToolErrorCodeSchema,
+});
+
+export const rootAgentToolResultSchema = z.discriminatedUnion("status", [
+  completedRootToolObservationSchema,
+  failedRootToolObservationSchema,
+]);
+
+export const rootVerifierFeedbackSchema = z.strictObject({
+  schema_version: z.literal("root-verifier-feedback@1.0.0"),
+  status: z.literal("REJECTED"),
+  reason_code: rootToolErrorCodeSchema,
+});
+
+export type RootToolSafeProjection = z.infer<typeof rootToolSafeProjectionSchema>;
+export type RootToolObservation = z.infer<typeof rootAgentToolResultSchema>;
+export type RootVerifierFeedback = z.infer<typeof rootVerifierFeedbackSchema>;
+
 const subagentDelegationReceiptDraftSchema = z
   .strictObject({
-    schema_version: z.literal("subagent-delegation-receipt@2.0.0"),
+    schema_version: z.literal("subagent-delegation-receipt@3.0.0"),
     delegation_id: immutableIdSchema,
     scope: appScopeSchema,
     run_id: immutableIdSchema,
@@ -340,7 +408,6 @@ const subagentDelegationReceiptDraftSchema = z
     attempt_id: immutableIdSchema,
     objective_hash: contentHashSchema,
     input_artifact_refs: z.array(artifactReferenceSchema).max(64),
-    upstream_accepted_output: upstreamAcceptedArtifactSelectorSchema.nullable(),
     requested_artifact_types: z.array(knownArtifactTypeSchema).min(1).max(16),
     effective_budget: subagentRequestedBudgetSchema,
     tool_allowlist: z.array(versionIdentifierSchema).min(1).max(64),
@@ -464,14 +531,6 @@ export async function validateRootAgentDecisionAgainstCatalog(input: {
       )
     ) {
       throw new TypeError("ROOT_AGENT_PROVIDED_UNSUPPORTED_INPUT_ARTIFACT");
-    }
-    if (
-      call.upstream_accepted_output &&
-      !item.discovery.accepted_input_artifact_types.includes(
-        call.upstream_accepted_output.artifact_type,
-      )
-    ) {
-      throw new TypeError("ROOT_AGENT_SELECTED_UNSUPPORTED_UPSTREAM_ARTIFACT");
     }
   }
   return deepFreeze(candidate);

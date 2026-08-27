@@ -104,7 +104,6 @@ async function fixture() {
             content_hash: hash("9"),
           },
         ],
-        upstream_accepted_output: null,
         requested_budget: {
           timeout_ms: 120_000,
           max_steps: 20,
@@ -152,7 +151,6 @@ describe("Host Subagent delegation admission", () => {
         max_context_bytes: 32_768,
       },
       tool_allowlist: ["semantic.catalog.read"],
-      upstream_accepted_output: null,
     });
 
     const replay = await admitRootAgentDelegations({
@@ -166,14 +164,9 @@ describe("Host Subagent delegation admission", () => {
     expect(replay[0]?.receipt).toEqual(admitted[0]?.receipt);
   });
 
-  it("admits a symbolic upstream selector without pretending the future Artifact is accepted", async () => {
-    const producer = await profileItem("governed-text2sql-agent", "QueryEvidence");
+  it("admits only an already accepted input Artifact from an earlier Root turn", async () => {
     const consumer = await profileItem("semantic-management-agent", "AnalysisReport");
-    const items = await Promise.all(
-      [producer, consumer]
-        .sort((left, right) => left.revision.profile_id.localeCompare(right.revision.profile_id))
-        .map(projectSubagentCapabilityCatalogItem),
-    );
+    const items = [await projectSubagentCapabilityCatalogItem(consumer)];
     const catalog = await buildSubagentCapabilityCatalogSnapshot({
       schema_version: "subagent-capability-catalog-snapshot@1.0.0",
       catalog_id: id(40),
@@ -191,46 +184,40 @@ describe("Host Subagent delegation admission", () => {
         scope,
         run_id: runId,
         catalog_snapshot_hash: catalog.snapshot_hash,
-        public_summary: "先查询，再分析。",
+        public_summary: "基于上一轮验收证据继续分析。",
         tool_calls: [
-          {
-            tool_name: "delegate_to_subagent@2",
-            tool_call_id: "query",
-            profile_id: "governed-text2sql-agent",
-            objective: "Produce accepted QueryEvidence.",
-            requested_artifact_types: ["QueryEvidence"],
-            input_artifact_refs: [],
-            upstream_accepted_output: null,
-            requested_budget: runCeiling,
-          },
           {
             tool_name: "delegate_to_subagent@2",
             tool_call_id: "analysis",
             profile_id: "semantic-management-agent",
             objective: "Analyze the accepted QueryEvidence.",
             requested_artifact_types: ["AnalysisReport"],
-            input_artifact_refs: [],
-            upstream_accepted_output: {
-              producer_tool_call_id: "query",
-              artifact_type: "QueryEvidence",
-            },
+            input_artifact_refs: [
+              {
+                artifact_id: id(41),
+                artifact_type: "QueryEvidence",
+                ...scope,
+                run_id: runId,
+                revision: 1,
+                content_hash: hash("a"),
+              },
+            ],
             requested_budget: runCeiling,
           },
         ],
       },
       catalog,
-      profiles: [producer, consumer],
+      profiles: [consumer],
       run_ceiling: runCeiling,
       profile_ceiling: () => runCeiling,
       artifact_is_accepted: artifactIsAccepted,
     });
 
-    expect(artifactIsAccepted).not.toHaveBeenCalled();
-    expect(admitted[1]?.receipt.upstream_accepted_output).toEqual({
-      producer_tool_call_id: "query",
-      artifact_type: "QueryEvidence",
-    });
-    expect(admitted[1]?.receipt.schema_version).toBe("subagent-delegation-receipt@2.0.0");
+    expect(artifactIsAccepted).toHaveBeenCalledOnce();
+    expect(admitted[0]?.receipt.input_artifact_refs).toEqual([
+      expect.objectContaining({ artifact_type: "QueryEvidence" }),
+    ]);
+    expect(admitted[0]?.receipt.schema_version).toBe("subagent-delegation-receipt@3.0.0");
   });
 
   it("fails closed for a stale Profile binding or unaccepted input Artifact", async () => {

@@ -63,7 +63,8 @@ end
 $provider_task_v2_validator$;
 
 do $installed_surface$
-declare acceptance_definition text;commit_definition text;
+declare acceptance_definition text;commit_definition text;provider_lease_definition text;
+  falcon_policy_definition text;qualification_completion_definition text;
 begin
   select procedure.prosrc into strict acceptance_definition from pg_catalog.pg_proc procedure
     where procedure.oid=
@@ -71,10 +72,23 @@ begin
   select procedure.prosrc into strict commit_definition from pg_catalog.pg_proc procedure
     where procedure.oid=
       'app_data_agent.commit_provider_task_artifact(jsonb,jsonb)'::regprocedure;
+  select procedure.prosrc into strict provider_lease_definition from pg_catalog.pg_proc procedure
+    where procedure.oid=
+      'app_data_agent.assert_provider_active_worker_lease(jsonb)'::regprocedure;
+  select procedure.prosrc into strict falcon_policy_definition from pg_catalog.pg_proc procedure
+    where procedure.oid=
+      'app_data_agent.resolve_falcon24_run_execution_policy(uuid)'::regprocedure;
+  select procedure.prosrc into strict qualification_completion_definition
+    from pg_catalog.pg_proc procedure where procedure.oid=
+      'app_data_agent.complete_falcon24_qualification_slot(jsonb)'::regprocedure;
   if pg_catalog.strpos(acceptance_definition,'limit 63')=0
     or pg_catalog.strpos(commit_definition,'limit 64')=0
     or pg_catalog.strpos(commit_definition,
       '(candidate.created_at,candidate.message_id)<=')=0
+    or pg_catalog.strpos(provider_lease_definition,$$'max_root_turns',4$$)=0
+    or pg_catalog.strpos(falcon_policy_definition,$$'max_root_turns',4$$)=0
+    or pg_catalog.strpos(qualification_completion_definition,
+      $$execution_policy->>'max_root_turns' is distinct from '4'$$)=0
   then raise exception 'CONVERSATIONAL_ROOT_CONTEXT_INSTALLED_SURFACE_DRIFT'; end if;
 end
 $installed_surface$;

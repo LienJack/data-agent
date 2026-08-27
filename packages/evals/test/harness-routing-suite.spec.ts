@@ -30,7 +30,6 @@ function delegation(profileId: string): RootAgentDecisionCandidate {
         objective: "Use governed evidence to answer the visible user request.",
         requested_artifact_types: ["AnalysisReport"],
         input_artifact_refs: [],
-        upstream_accepted_output: null,
         requested_budget: {
           timeout_ms: 30_000,
           max_steps: 8,

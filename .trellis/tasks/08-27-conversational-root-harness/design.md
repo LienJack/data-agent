@@ -20,6 +20,19 @@ Conversation snapshot
 
 Root 是唯一自然语言决策者；Host 保留 authority/admission/security，不增加第二套 planner 或 workflow。
 
+业务执行模型是动态 Agent Tool Loop。Root 不预先知道完整链路，只从当前 Conversation、上一轮 Tool Result 和 verifier feedback 决定当前下一步：
+
+```ts
+while (turns < maxTurns) {
+  const decision = await root.next(messages, toolResults);
+  if (decision.finalAnswer) return verifyAndPublish(decision.finalAnswer);
+  const results = await executeCurrentToolCalls(decision.toolCalls);
+  messages.push(...results);
+}
+```
+
+Host 不选择后续业务步骤。当前 turn 的多个 Tool Call 只有在它们已具备全部已验收输入且互不依赖时才可并行；并行不改变 Root 的逐轮决策模型。
+
 ## 2. Conversation Context
 
 `provider-task-artifact@2.0.0` 包含：
@@ -67,6 +80,10 @@ delegation:{run_id}:{turn_index}:{tool_call_id}
 
 Checkpoint 复用现有 Root/lease state，持久化 turn index、accepted observations、terminal flag 和 exact correlations。恢复先加载已完成 logical call 与 Artifact；不得重新调用 provider/SQL/Sandbox。若同 logical id payload/hash 不同，失败关闭。
 
+Root Provider turn 必须走既有 audited invocation authority：先提交 AgentDataProjectionReceipt 和 invocation intent，再 dispatch；完成响应写入受保护 ProviderResponseArtifact。相同 `root:{run_id}:{turn_index}` 重放只读取已提交响应，dispatch 已标记但终态未知时进入 reconciliation-required，禁止普通重发。轻量 direct dispatcher 只保留给尚未迁移的非 Root 模型阶段，不能承载动态 Root turn。
+
+每个当前 Tool Call 的入参只含 Profile、objective、requested output、已验收的 `input_artifact_refs` 和预算。不存在同轮上游选择器：某个能力若需要尚未产生的 Artifact，Root 本轮只调用生产该 Artifact 的能力；验收结果返回后，下一轮再通过普通 `input_artifact_refs` 调用消费者。
+
 ```ts
 type RootToolObservation = {
   tool_call_id: string;
@@ -96,7 +113,7 @@ Host admission 根据 Agent Card 的 optional accepted input type 允许 Text2SQ
 
 ## 5. Analysis/final answer
 
-Production team runtime 在一个 Specialist 完成后返回 accepted output 和安全 observation，不提前终结 Root。Root 可继续调用 Analysis/Report；Analysis 使用既有 `SqlArtifact -> QueryEvidence -> typed Arrow -> operator -> DerivedAnalysisEvidence -> AnalysisReport -> Chart` 证据链。Final verifier 只接受 general text 或 current-Run accepted refs 支撑的事实。
+Production team runtime 只执行当前 turn 已准入且互不依赖的调用，并把每个 accepted output 投影为安全 Tool Result，不提前终结 Root。Root 下一轮可基于真实结果继续调用 Analysis/Report；Analysis 使用既有 `SqlArtifact -> QueryEvidence -> typed Arrow -> operator -> DerivedAnalysisEvidence -> AnalysisReport -> Chart` 证据链。Final verifier 只接受 general text 或 current-Run accepted refs 支撑的事实。
 
 ## 6. Long-context summary
 
@@ -138,6 +155,7 @@ W2-owned dirty files, migration 10783 and the retained E3 database are excluded 
 ## 10. Rejected alternatives
 
 - Host keyword/regex classifier or fixed business workflows: violates Root authority.
+- 同轮消费者引用同轮生产者、一次输出完整业务链或 Host 分层调度：把动态决策退化为预编排流程。
 - Always force Semantic before Text2SQL: removes valid direct path and creates fixed workflow.
 - Feed historical assistant prose as evidence: breaks Artifact authority.
 - Relax all Team inputs to allow cross-Run refs: expands scope and weakens exact Run isolation.

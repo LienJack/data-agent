@@ -19,6 +19,11 @@ export {
   createPostgresProviderTaskArtifactAuthority,
   type ProviderTaskArtifactAuthority,
 } from "./postgres-provider-task-artifact.js";
+export { createProductionRunBoundProviderDispatcher } from "./production-run-bound-provider-dispatcher.js";
+export {
+  createRunBoundProviderDispatcher,
+  type ProviderExecutionProfileAuthority,
+} from "./run-bound-provider-dispatcher.js";
 export {
   computeTrustedInputTokenUpperBound,
   computeTrustedInputTokenUpperBoundForRequestMessages,

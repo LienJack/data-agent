@@ -10,6 +10,8 @@
 
 ## C0 — Freeze and characterization
 
+Status: completed in `15a85898`.
+
 Owned files:
 
 - 本任务 `task.json/prd.md/design.md/implement.md` 及父任务 child link。
@@ -27,15 +29,29 @@ Commit: `test(agent-runtime): characterize conversational root gaps`
 
 ## C1 — Frozen Conversation Context
 
+Status: completed in `4035be7e`.
+
 Implement ProviderTaskArtifact v2、repository frozen message read、context builder、provider message assembler 和 strict contract/store tests。验证排序、唯一 current message、later-message exclusion、new-conversation isolation、scope denial 和 prompt-injection role preservation。
 
 Commit: `feat(agent-runtime): freeze conversation context for root`
 
-## C2 — Bounded Root Tool Loop
+## C2 — Dynamic Agent Tool Loop
 
-把一次性 Root executor 演进为最多四轮：decision、admission、execution、observation、checkpoint、final verification。移除 `DIRECT_ANSWER_REVIEW` 专用阶段；恢复按 logical identities replay。覆盖 direct、single、serial、parallel、tool failure、verifier feedback、budget exhaustion、duplicate mismatch 和 crash windows。
+Status: completed and pending scoped commit.
 
-Commit: `feat(agent-runtime): execute bounded root tool loops`
+把一次性 Root executor 演进为最多四轮：每轮 Root 只决定当前调用或最终回答；当前调用经 admission 后执行，Tool Result 返回下一轮，再 checkpoint。删除同轮上游选择器、完整链预声明和 Host 业务分层调度；跨轮只传已验收 `input_artifact_refs`，同轮只允许互不依赖调用并行。Root Provider turn 接回既有 audited invocation/ProviderResponseArtifact 权威，同 logical turn 重放读取持久化响应，未知投递结果 fail closed。移除 `DIRECT_ANSWER_REVIEW` 专用阶段；恢复按 logical identities replay。覆盖 direct、single、跨轮 serial、同轮 independent parallel、tool failure、verifier feedback、budget exhaustion、duplicate mismatch 和 crash windows。
+
+Validation:
+
+- Contracts: 95 files / 933 tests.
+- Agent Runtime: 27 files / 168 tests.
+- Evals: 13 files / 96 tests.
+- Worker focused: 10 files / 53 tests.
+- Platform migration contract: 1 file / 6 tests.
+- Contracts, Agent Runtime, Evals, Worker and Platform typechecks.
+- Migration 10784 render verification, workspace migration inventory and PostgreSQL assertion `BEGIN / DO / DO / ROLLBACK` on the existing shared development container.
+
+Commit: `feat(agent-runtime): execute dynamic root tool loops`
 
 ## C3 — SemanticQueryContext
 

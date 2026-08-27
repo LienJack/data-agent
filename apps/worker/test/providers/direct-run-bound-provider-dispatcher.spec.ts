@@ -90,4 +90,72 @@ describe("direct run-bound provider retry policy", () => {
     expect(validate("FINAL", [])).toBe(true);
     expect(validate("FINAL", ["publish_analysis_result"])).toBe(false);
   });
+
+  it("projects only strict tool observations and verifier feedback into later Root turns", () => {
+    const artifactRef = {
+      artifact_id: "90000000-0000-4000-8000-000000000010",
+      artifact_type: "QueryEvidence",
+      app_id: "90000000-0000-4000-8000-000000000011",
+      tenant_id: "90000000-0000-4000-8000-000000000012",
+      environment: "test",
+      run_id: "90000000-0000-4000-8000-000000000013",
+      revision: 1,
+      content_hash: `sha256:${"a".repeat(64)}`,
+    } as const;
+    const request = {
+      kind: "ROOT",
+      turn_index: 2,
+      tool_observations: [
+        {
+          schema_version: "root-tool-observation@1.0.0",
+          tool_call_id: "query-1",
+          profile_id: "governed-text2sql-agent",
+          status: "COMPLETED",
+          output_ref: artifactRef,
+          safe_projection: {
+            schema_version: "root-tool-safe-projection@1.0.0",
+            artifact_ref: artifactRef,
+            projection_kind: "TABLE",
+            title: "趋势",
+            summary: "12 accepted governed rows are available.",
+            column_keys: ["month", "revenue"],
+            total_rows: 12,
+            source_artifact_refs: [],
+          },
+          error_code: null,
+        },
+      ],
+      verifier_feedback: {
+        schema_version: "root-verifier-feedback@1.0.0",
+        status: "REJECTED",
+        reason_code: "ROOT_ANSWER_ARTIFACT_NOT_ACCEPTED",
+      },
+    } as const;
+    const messages = directRunBoundProviderDispatcherInternals.buildRootLoopMessages(request);
+
+    expect(messages).toEqual([
+      { role: "system", content: "Current normal Root turn index: 2." },
+      expect.objectContaining({ role: "tool", tool_call_id: "query-1" }),
+      expect.objectContaining({
+        role: "system",
+        content: expect.stringContaining("ROOT_ANSWER_ARTIFACT_NOT_ACCEPTED"),
+      }),
+    ]);
+    expect(messages[1]?.content).toContain('"total_rows":12');
+    expect(messages[1]?.content).not.toContain('"rows":');
+    expect(() =>
+      directRunBoundProviderDispatcherInternals.buildRootLoopMessages({
+        ...request,
+        tool_observations: [
+          {
+            ...request.tool_observations[0],
+            safe_projection: {
+              ...request.tool_observations[0].safe_projection,
+              rows: [{ revenue: 10 }],
+            },
+          },
+        ],
+      }),
+    ).toThrow();
+  });
 });

@@ -35,7 +35,7 @@ export const DEFAULT_RUN_EXECUTION_POLICY = Object.freeze({
   mode: "DEFAULT" as const,
   max_run_attempts: RUN_RETRY_MAX_ATTEMPTS,
   max_provider_attempts_per_call: 2 as const,
-  max_root_turns: 2 as const,
+  max_root_turns: 4 as const,
   max_text2sql_candidate_attempts: 2 as const,
   analysis_repair_budget_per_category: 1 as const,
   max_file_transfer_attempts: 5 as const,
@@ -817,7 +817,7 @@ export const runExecutionPolicySchema = z
     mode: z.enum(["DEFAULT", "FALCON24_STRICT"]),
     max_run_attempts: z.number().int().min(1).max(RUN_RETRY_MAX_ATTEMPTS),
     max_provider_attempts_per_call: z.union([z.literal(1), z.literal(2)]),
-    max_root_turns: z.union([z.literal(1), z.literal(2)]),
+    max_root_turns: z.literal(4),
     max_text2sql_candidate_attempts: z.union([z.literal(1), z.literal(2)]),
     analysis_repair_budget_per_category: z.union([z.literal(0), z.literal(1)]),
     max_file_transfer_attempts: z.number().int().min(1).max(5),
@@ -836,7 +836,7 @@ export const runExecutionPolicySchema = z
       policy.mode !== (strictFalcon ? "FALCON24_STRICT" : "DEFAULT") ||
       policy.max_run_attempts !== (strictFalcon ? 1 : RUN_RETRY_MAX_ATTEMPTS) ||
       policy.max_provider_attempts_per_call !== (strictFalcon ? 1 : 2) ||
-      policy.max_root_turns !== (strictFalcon ? 1 : 2) ||
+      policy.max_root_turns !== 4 ||
       policy.max_text2sql_candidate_attempts !== (strictFalcon ? 1 : 2) ||
       policy.analysis_repair_budget_per_category !== (strictFalcon ? 0 : 1) ||
       policy.max_file_transfer_attempts !== (strictFalcon ? 1 : 5) ||
@@ -866,7 +866,7 @@ export function buildFalcon24RunExecutionPolicy(input: {
       mode: "FALCON24_STRICT",
       max_run_attempts: 1,
       max_provider_attempts_per_call: 1,
-      max_root_turns: 1,
+      max_root_turns: 4,
       max_text2sql_candidate_attempts: 1,
       analysis_repair_budget_per_category: 0,
       max_file_transfer_attempts: 1,

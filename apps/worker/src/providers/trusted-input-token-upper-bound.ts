@@ -1,5 +1,5 @@
 import type { TrustedModelInputTokenCounter } from "@data-agent/agent-runtime";
-import { canonicalizeJson } from "@data-agent/contracts";
+import { canonicalizeJson, type ModelProviderRequest } from "@data-agent/contracts";
 
 export const U3_MODEL_SYSTEM_INSTRUCTIONS =
   "仅处理当前已授权请求，并只产生候选输出；不要扩大工具、网络或数据范围。";
@@ -24,10 +24,7 @@ export function computeTrustedInputTokenUpperBound(input: {
 }
 
 export function computeTrustedInputTokenUpperBoundForRequestMessages(input: {
-  readonly messages: readonly {
-    readonly role: "system" | "user" | "assistant";
-    readonly content: string;
-  }[];
+  readonly messages: ModelProviderRequest["messages"];
   readonly tool_names: readonly string[];
   readonly response_schema_version: string;
   readonly canonical_schema_bytes: number;
@@ -35,10 +32,7 @@ export function computeTrustedInputTokenUpperBoundForRequestMessages(input: {
   const systemMessages = input.messages
     .filter(({ role }) => role === "system")
     .map(({ content }) => content);
-  const projectedMessages = input.messages.filter(
-    (message): message is { readonly role: "user" | "assistant"; readonly content: string } =>
-      message.role !== "system",
-  );
+  const projectedMessages = input.messages.filter((message) => message.role !== "system");
   return computeTrustedInputTokenUpperBound({
     instructions:
       systemMessages.length > 0 ? systemMessages.join("\n\n") : U3_MODEL_SYSTEM_INSTRUCTIONS,

@@ -1,4 +1,9 @@
-import { type ArtifactReference, type PortResult, sha256ContentHash } from "@data-agent/contracts";
+import {
+  type ArtifactReference,
+  type ModelProviderRequest,
+  type PortResult,
+  sha256ContentHash,
+} from "@data-agent/contracts";
 import {
   createInternalAgentDataProjectionReceipt,
   type InternalAgentDataProjectionReceipt,
@@ -8,10 +13,7 @@ const credentialMaterial =
   /(?:["']?\b(?:password|passwd|token|secret|api\s*[_-]?\s*key|authorization)["']?\s*[:=]\s*["']?\S+|\bbearer\s+[A-Za-z0-9._~+/-]{8,}={0,2}|\bsk-[A-Za-z0-9_-]{12,}|\bgh[pousr]_[A-Za-z0-9_]{20,}|\bglpat-[A-Za-z0-9_-]{20,}|\bxox[baprs]-[A-Za-z0-9-]{10,}|\b(?:AKIA|ASIA)[A-Z0-9]{16}|-----BEGIN\s+[A-Z ]*PRIVATE\s+KEY-----)/i;
 
 interface InspectedProjection {
-  readonly messages: readonly {
-    readonly role: "system" | "user";
-    readonly content: string;
-  }[];
+  readonly messages: readonly ModelProviderRequest["messages"][number][];
   readonly approved_fields: readonly string[];
 }
 
@@ -26,16 +28,32 @@ export function inspectProviderTaskProjection(input: {
   readonly allowed_audiences: readonly string[];
   readonly trusted_system_instruction?: string;
 }): PortResult<InspectedProjection> {
+  return inspectProviderMessageProjection({
+    messages: [
+      ...(input.trusted_system_instruction
+        ? [{ role: "system" as const, content: input.trusted_system_instruction }]
+        : []),
+      { role: "user" as const, content: input.question },
+    ],
+    allowed_audiences: input.allowed_audiences,
+    approved_fields: input.trusted_system_instruction
+      ? ["question", "subagent_catalog"]
+      : ["question"],
+  });
+}
+
+export function inspectProviderMessageProjection(input: {
+  readonly messages: readonly ModelProviderRequest["messages"][number][];
+  readonly allowed_audiences: readonly string[];
+  readonly approved_fields: readonly string[];
+}): PortResult<InspectedProjection> {
   if (!input.allowed_audiences.includes("PRIVATE")) {
     return failure("PROVIDER_EGRESS_DENIED", "Effective Egress 未允许 PRIVATE data audience。");
   }
-  const normalizedQuestion = input.question.replace(/\\(["'])/g, "$1").replace(/\s+/g, " ");
-  const normalizedSystemInstruction = input.trusted_system_instruction
-    ?.replace(/\\(["'])/g, "$1")
-    .replace(/\s+/g, " ");
   if (
-    credentialMaterial.test(normalizedQuestion) ||
-    (normalizedSystemInstruction && credentialMaterial.test(normalizedSystemInstruction))
+    input.messages.some(({ content }) =>
+      credentialMaterial.test(content.replace(/\\(["'])/g, "$1").replace(/\s+/g, " ")),
+    )
   ) {
     return failure(
       "PROVIDER_DATA_PROJECTION_DLP_REJECTED",
@@ -43,20 +61,8 @@ export function inspectProviderTaskProjection(input: {
     );
   }
   const projection = Object.freeze({
-    messages: Object.freeze([
-      ...(input.trusted_system_instruction
-        ? [
-            Object.freeze({
-              role: "system" as const,
-              content: input.trusted_system_instruction,
-            }),
-          ]
-        : []),
-      Object.freeze({ role: "user" as const, content: input.question }),
-    ]),
-    approved_fields: Object.freeze(
-      input.trusted_system_instruction ? ["question", "subagent_catalog"] : ["question"],
-    ),
+    messages: Object.freeze(input.messages.map((message) => Object.freeze({ ...message }))),
+    approved_fields: Object.freeze([...input.approved_fields]),
   });
   inspectedProjections.add(projection);
   return { ok: true, value: projection };

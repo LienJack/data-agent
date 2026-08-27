@@ -4,7 +4,12 @@ import {
   effectiveConfigRunLeasePayloadSchema,
   type PortResult,
   type RootAgentDecisionCandidate,
+  type RootToolObservation,
+  type RootVerifierFeedback,
+  rootAgentToolResultSchema,
+  rootVerifierFeedbackSchema,
 } from "@data-agent/contracts";
+import { z } from "zod";
 import {
   hasRunExecutionContextProvenance,
   hasRunProviderDispatchCapability,
@@ -22,9 +27,9 @@ function sameScope(
   );
 }
 
-function identity(runId: string, phase: "INITIAL" | "DIRECT_ANSWER_REVIEW"): string {
+function identity(runId: string, turnIndex: number): string {
   const bytes = createHash("sha256")
-    .update(`data-agent/root-agent-turn@1\0${runId}\0${phase}`)
+    .update(`data-agent/root-agent-turn@2\0root:${runId}:${turnIndex}`)
     .digest()
     .subarray(0, 16);
   bytes[6] = ((bytes[6] ?? 0) & 0x0f) | 0x40;
@@ -40,13 +45,27 @@ function failure(code: string, message: string): PortResult<never> {
 export interface RootAgentTurnPort {
   decide(
     input: Parameters<RunWorkflowExecutorPort["execute"]>[0],
+    state: RootAgentTurnState,
   ): Promise<PortResult<RootAgentDecisionCandidate>>;
 }
+
+const rootAgentTurnStateSchema = z.strictObject({
+  turn_index: z.number().int().nonnegative().max(3),
+  tool_observations: z.array(rootAgentToolResultSchema).max(32),
+  verifier_feedback: rootVerifierFeedbackSchema.nullable(),
+});
+
+export type RootAgentTurnState = Readonly<{
+  turn_index: number;
+  tool_observations: readonly RootToolObservation[];
+  verifier_feedback: RootVerifierFeedback | null;
+}>;
 
 export function createRootAgentTurnExecutor(): RootAgentTurnPort {
   return Object.freeze({
     async decide(
       input: Parameters<RunWorkflowExecutorPort["execute"]>[0],
+      stateInput: RootAgentTurnState,
     ): Promise<PortResult<RootAgentDecisionCandidate>> {
       if (!hasRunExecutionContextProvenance(input.context)) {
         return failure("RUN_EXECUTION_CONTEXT_NOT_TRUSTED", "Root Agent context is not trusted.");
@@ -107,47 +126,37 @@ export function createRootAgentTurnExecutor(): RootAgentTurnPort {
         );
       }
       const catalog = payload.data.catalog_snapshot;
+      const state = rootAgentTurnStateSchema.safeParse(stateInput);
+      if (!state.success || state.data.turn_index >= input.lease.execution_policy.max_root_turns) {
+        return failure(
+          "ROOT_AGENT_TURN_STATE_INVALID",
+          "Root Agent turn state exceeds the frozen normal-turn budget.",
+        );
+      }
       const provider = input.context.getProviderDispatchCapability();
       if (!hasRunProviderDispatchCapability(provider)) {
         return failure("ROOT_AGENT_PROVIDER_REQUIRED", "Root Agent Provider capability is absent.");
       }
       try {
-        const invoke = async (
-          phase: "INITIAL" | "DIRECT_ANSWER_REVIEW",
-          priorOutputText?: string,
-        ) => {
-          const invoked = await provider.invoke({
-            logical_call_id: identity(input.lease.run_id, phase),
-            turn:
-              phase === "INITIAL"
-                ? { kind: "ROOT", phase }
-                : {
-                    kind: "ROOT",
-                    phase,
-                    prior_output_text: priorOutputText ?? "",
-                  },
-          });
-          if (!invoked.ok) throw new RootAgentTurnProviderError(invoked.error);
-          return {
-            decision: await normalizeRootAgentProviderTurn({
-              scope: input.lease.scope,
-              run_id: input.lease.run_id,
-              catalog,
-              output_text: invoked.value.output_text,
-              tool_calls: invoked.value.tool_calls,
-            }),
-            output_text: invoked.value.output_text,
-          };
-        };
-        const initial = await invoke("INITIAL");
-        const reviewed =
-          initial.decision.kind === "FINAL_ANSWER" &&
-          input.lease.execution_policy.max_root_turns === 2
-            ? await invoke("DIRECT_ANSWER_REVIEW", initial.output_text)
-            : initial;
+        const invoked = await provider.invoke({
+          logical_call_id: identity(input.lease.run_id, state.data.turn_index),
+          turn: {
+            kind: "ROOT",
+            turn_index: state.data.turn_index,
+            tool_observations: state.data.tool_observations,
+            verifier_feedback: state.data.verifier_feedback,
+          },
+        });
+        if (!invoked.ok) throw new RootAgentTurnProviderError(invoked.error);
         return {
           ok: true,
-          value: reviewed.decision.kind === "FINAL_ANSWER" ? initial.decision : reviewed.decision,
+          value: await normalizeRootAgentProviderTurn({
+            scope: input.lease.scope,
+            run_id: input.lease.run_id,
+            catalog,
+            output_text: invoked.value.output_text,
+            tool_calls: invoked.value.tool_calls,
+          }),
         };
       } catch (error) {
         if (error instanceof RootAgentTurnProviderError) {

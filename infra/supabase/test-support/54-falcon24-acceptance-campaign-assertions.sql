@@ -206,7 +206,7 @@ begin
     or strict_policy->>'policy_id' is distinct from 'falcon24-strict-zero-retry@1.0.0'
     or strict_policy->>'max_run_attempts' is distinct from '1'
     or strict_policy->>'max_provider_attempts_per_call' is distinct from '1'
-    or strict_policy->>'max_root_turns' is distinct from '1'
+    or strict_policy->>'max_root_turns' is distinct from '4'
     or strict_policy->>'max_text2sql_candidate_attempts' is distinct from '1'
     or strict_policy->>'analysis_repair_budget_per_category' is distinct from '0'
     or strict_policy->>'max_file_transfer_attempts' is distinct from '1'

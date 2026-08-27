@@ -1,11 +1,8 @@
 import { createHash } from "node:crypto";
 import {
   type AdmittedSubagentDelegation,
-  type AuthoritativeAcceptedSiblingOutputAttachment,
   advanceContextEpochTransition,
-  authorizePersistedAcceptedSiblingOutputAttachment,
   authorizePersistedTaskCapability,
-  buildAcceptedSiblingOutputAttachment,
   buildOpenObligationLedger,
   buildTaskCapabilityReceipt,
   buildTaskCompletionReceipt,
@@ -17,7 +14,6 @@ import {
   dataAgentSpecialistProfileIdSchema,
   decideTaskAcceptance,
   getAgentProfileRevision,
-  type TaskAcceptanceReceipt,
   type TeamTaskV2,
 } from "@data-agent/agent-runtime";
 import {
@@ -28,6 +24,8 @@ import {
   type Falcon24AuthorityBindingV2,
   type PortResult,
   type ProductTeamArtifactDocument,
+  type RootToolObservation,
+  rootAgentToolResultSchema,
   type SideEffectReceipt,
   sha256ContentHash,
   verifyProductTeamArtifactDocument,
@@ -52,7 +50,6 @@ export interface ProductionTeamRunStore {
   readonly commitContextEpoch: TeamStoreMethod;
   readonly commitCompletion: TeamStoreMethod;
   readonly commitAcceptance: TeamStoreMethod;
-  readonly attachAcceptedSiblingOutput: TeamStoreMethod;
   readonly issueTaskCapability: TeamStoreMethod;
   readonly loadRun: TeamStoreMethod;
 }
@@ -132,7 +129,6 @@ async function command(input: {
     | "COMMIT_CONTEXT_EPOCH"
     | "COMMIT_COMPLETION"
     | "COMMIT_ACCEPTANCE"
-    | "ATTACH_ACCEPTED_SIBLING_OUTPUT"
     | "ISSUE_TASK_CAPABILITY"
     | "LOAD_RUN";
   readonly label: string;
@@ -254,7 +250,6 @@ async function createChild(input: {
   readonly profile: AgentProductProfileRegistryItemV2;
   readonly delegation: AdmittedSubagentDelegation;
   readonly artifact_refs: readonly ArtifactReference[];
-  readonly accepted_sibling_attachments: readonly AuthoritativeAcceptedSiblingOutputAttachment[];
   readonly lease: Parameters<DataAgentProductTeamRuntimePort["execute"]>[0]["lease"];
   readonly store: ProductionTeamRuntimeDependencies["store"];
   readonly capability: unknown;
@@ -278,7 +273,7 @@ async function createChild(input: {
       bounds: delegationBounds(input.delegation),
       idempotency_key: input.delegation.receipt.idempotency_key,
     },
-    input.accepted_sibling_attachments,
+    [],
   );
   await persist(input.store.prepareHandoff, input.capability, {
     operation: "PREPARE_HANDOFF",
@@ -289,78 +284,6 @@ async function createChild(input: {
     lease: input.lease,
   });
   return delegation.child_task;
-}
-
-type AcceptedDelegationOutput = Readonly<{
-  task: TeamTaskV2;
-  tool_call_id: string;
-  output_ref: ArtifactReference;
-  acceptance: TaskAcceptanceReceipt;
-}>;
-
-async function attachAcceptedSiblingOutput(input: {
-  readonly root: TeamTaskV2;
-  readonly producer: AcceptedDelegationOutput;
-  readonly consumer: AdmittedSubagentDelegation;
-  readonly lease: Parameters<DataAgentProductTeamRuntimePort["execute"]>[0]["lease"];
-  readonly store: ProductionTeamRuntimeDependencies["store"];
-  readonly capability: unknown;
-  readonly attached_at: string;
-}): Promise<AuthoritativeAcceptedSiblingOutputAttachment> {
-  const attachment = await buildAcceptedSiblingOutputAttachment({
-    schema_version: "agent-team-accepted-sibling-output-attachment@1.0.0",
-    attachment_id: identity(
-      input.lease.run_id,
-      `accepted-sibling:${input.consumer.receipt.task_id}`,
-    ),
-    scope: input.lease.scope,
-    run_id: input.lease.run_id,
-    root_task_id: input.root.task_id,
-    root_task_hash: input.root.task_hash,
-    producer_task_id: input.producer.task.task_id,
-    producer_task_hash: input.producer.task.task_hash,
-    producer_profile_id: input.producer.task.profile_id,
-    producer_tool_call_id: input.producer.tool_call_id,
-    consumer_task_id: input.consumer.receipt.task_id,
-    consumer_tool_call_id: input.consumer.call.tool_call_id,
-    consumer_profile_id: input.consumer.profile.revision.runtime_profile_ref.profile_id,
-    consumer_profile_revision: input.consumer.profile.revision.runtime_profile_ref.revision,
-    consumer_profile_hash: input.consumer.profile.revision.runtime_profile_ref.profile_hash,
-    artifact_ref: input.producer.output_ref,
-    completion_id: input.producer.acceptance.completion_id,
-    completion_hash: input.producer.acceptance.completion_hash,
-    verifier_decision_id: input.producer.acceptance.verifier_decision_id,
-    verifier_decision_hash: input.producer.acceptance.verifier_decision_hash,
-    acceptance_hash: input.producer.acceptance.acceptance_hash,
-    worker_fence: input.lease.worker_fence,
-    attached_at: input.attached_at,
-  });
-  const persisted = await persist(input.store.attachAcceptedSiblingOutput, input.capability, {
-    operation: "ATTACH_ACCEPTED_SIBLING_OUTPUT",
-    label: `attach-accepted-sibling:${input.consumer.receipt.task_id}`,
-    task_id: input.root.task_id,
-    expected_revision: input.root.task_revision,
-    document: attachment,
-    lease: input.lease,
-  });
-  return authorizePersistedAcceptedSiblingOutputAttachment({
-    attachment_id: attachment.attachment_id,
-    root_task: input.root,
-    producer_task: input.producer.task,
-    consumer_task_id: input.consumer.receipt.task_id,
-    consumer_tool_call_id: input.consumer.call.tool_call_id,
-    consumer_profile_id: input.consumer.profile.revision.runtime_profile_ref.profile_id,
-    consumer_profile_revision: input.consumer.profile.revision.runtime_profile_ref.revision,
-    consumer_profile_hash: input.consumer.profile.revision.runtime_profile_ref.profile_hash,
-    producer_tool_call_id: input.producer.tool_call_id,
-    artifact_ref: input.producer.output_ref,
-    completion_id: input.producer.acceptance.completion_id,
-    completion_hash: input.producer.acceptance.completion_hash,
-    verifier_decision_id: input.producer.acceptance.verifier_decision_id,
-    verifier_decision_hash: input.producer.acceptance.verifier_decision_hash,
-    acceptance_hash: input.producer.acceptance.acceptance_hash,
-    resolver: { resolve_committed: async () => persisted },
-  });
 }
 
 async function commitContextEpoch(input: {
@@ -605,32 +528,39 @@ async function verifyAcceptedReplayBinding(input: {
   }
 }
 
-function renderAcceptedArtifact(document: ProductTeamArtifactDocument): string {
-  if (document.projection.kind === "REPORT") {
-    if (document.profile_id === "semantic-management-agent") {
-      const conclusion = document.projection.sections.find(({ heading }) => heading === "结论");
-      if (!conclusion) {
-        throw new ProductionTeamRuntimeError("TEAM_SEMANTIC_CONCLUSION_MISSING");
-      }
-      return conclusion.body_text;
-    }
-    return document.projection.sections.map(({ body_text: bodyText }) => bodyText).join("\n\n");
+function rootToolObservation(input: {
+  readonly tool_call_id: string;
+  readonly profile_id: DataAgentSpecialistProfileId;
+  readonly document: ProductTeamArtifactDocument;
+}): RootToolObservation {
+  const projection = input.document.projection;
+  if (projection.kind !== "TABLE" && projection.kind !== "REPORT") {
+    throw new ProductionTeamRuntimeError("TEAM_OUTPUT_PROJECTION_INVALID");
   }
-  if (document.projection.kind === "TABLE") {
-    const tableCountColumn = document.projection.columns.find(({ key }) => key === "table_count");
-    const tableCount = tableCountColumn
-      ? document.projection.rows[0]?.[tableCountColumn.key]
-      : undefined;
-    if (typeof tableCount === "number" && Number.isInteger(tableCount)) {
-      return `当前受治理数据库共有 ${tableCount} 张已批准业务表。`;
-    }
-    const hasMonth = document.projection.columns.some(({ key }) => key === "month");
-    if (hasMonth) {
-      return `已生成并验收 ${document.projection.total_rows} 个有序月份的数据趋势。`;
-    }
-    return `已生成并验收 ${document.projection.total_rows} 行受治理数据结果。`;
-  }
-  throw new ProductionTeamRuntimeError("TEAM_FINAL_OUTPUT_NOT_RENDERABLE");
+  return rootAgentToolResultSchema.parse({
+    schema_version: "root-tool-observation@1.0.0",
+    tool_call_id: input.tool_call_id,
+    profile_id: input.profile_id,
+    status: "COMPLETED",
+    output_ref: input.document.artifact_ref,
+    safe_projection: {
+      schema_version: "root-tool-safe-projection@1.0.0",
+      artifact_ref: input.document.artifact_ref,
+      projection_kind: projection.kind,
+      title: projection.kind === "REPORT" ? projection.title : null,
+      summary:
+        projection.kind === "REPORT"
+          ? `${projection.sections.length} accepted governed report sections are available.`
+          : `${projection.total_rows} accepted governed rows are available.`,
+      column_keys:
+        projection.kind === "TABLE" ? projection.columns.map(({ key }) => key).sort() : [],
+      total_rows: projection.kind === "TABLE" ? projection.total_rows : null,
+      source_artifact_refs: [...input.document.source_refs].sort((left, right) =>
+        artifactReferenceIdentity(left).localeCompare(artifactReferenceIdentity(right)),
+      ),
+    },
+    error_code: null,
+  });
 }
 
 function selectedExecutionOrder(
@@ -644,6 +574,16 @@ function selectedExecutionOrder(
   );
 }
 
+function acceptedEvidenceInput(delegation: AdmittedSubagentDelegation): ArtifactReference | null {
+  const candidates = delegation.receipt.input_artifact_refs.filter(
+    ({ artifact_type: artifactType }) => artifactType === "QueryEvidence",
+  );
+  if (candidates.length > 1) {
+    throw new ProductionTeamRuntimeError("TEAM_ACCEPTED_EVIDENCE_INPUT_AMBIGUOUS");
+  }
+  return candidates[0] ?? null;
+}
+
 export function createProductionTeamRuntime(
   dependencies: ProductionTeamRuntimeDependencies,
 ): DataAgentProductTeamRuntimePort {
@@ -651,58 +591,78 @@ export function createProductionTeamRuntime(
   const runtime: DataAgentProductTeamRuntimePort = {
     async execute(input: Parameters<DataAgentProductTeamRuntimePort["execute"]>[0]) {
       const timestamp = stableStartedAt(input.lease);
-      const rootId = identity(input.lease.run_id, "task:root");
+      const rootId = identity(input.lease.run_id, `task:root:${input.root_turn_index}`);
       try {
         const executionOrder = selectedExecutionOrder(input);
-        const replayProfileId = executionOrder.at(-1);
-        if (!replayProfileId) throw new ProductionTeamRuntimeError("AGENT_DISPATCH_PLAN_INVALID");
-        const replayTaskId = input.admitted_delegations.at(-1)?.receipt.task_id;
-        if (!replayTaskId) throw new ProductionTeamRuntimeError("ROOT_AGENT_EMPTY_DELEGATION");
-        const replayProfile = input.profiles.get(replayProfileId);
-        if (!replayProfile) throw new ProductionTeamRuntimeError("AGENT_PROFILE_NOT_ALLOWED");
-        const loadedReplay = portValue(
-          await dependencies.store.loadRun(
-            dependencies.capability,
-            await command({
-              operation: "LOAD_RUN",
-              label: "load-selected-acceptance",
-              task_id: replayTaskId,
-              expected_revision: null,
-              document: null,
-              lease: input.lease,
-            }),
-          ),
+        const observations: RootToolObservation[] = [];
+        const loadedReplays = await Promise.all(
+          input.admitted_delegations.map(async (delegation) => {
+            const loaded = portValue(
+              await dependencies.store.loadRun(
+                dependencies.capability,
+                await command({
+                  operation: "LOAD_RUN",
+                  label: `load-selected-acceptance:${delegation.receipt.task_id}`,
+                  task_id: delegation.receipt.task_id,
+                  expected_revision: null,
+                  document: null,
+                  lease: input.lease,
+                }),
+              ),
+            ) as { readonly document?: unknown };
+            return {
+              delegation,
+              snapshot: loaded.document,
+              output_ref: acceptedOutput(loaded.document),
+            };
+          }),
         );
-        const replay = loadedReplay as { readonly document?: unknown };
-        const replayOutput = acceptedOutput(replay.document);
-        if (replayOutput) {
-          await verifyAcceptedReplayBinding({
-            snapshot: replay.document,
-            execution: input,
-            task_id: replayTaskId,
-            profile: replayProfile,
-          });
-          const document = await verifyProductTeamArtifactDocument(
-            portValue(await dependencies.artifacts.resolveCommitted(replayOutput)),
+        if (loadedReplays.every(({ output_ref: outputRef }) => outputRef !== null)) {
+          const replayObservations = await Promise.all(
+            loadedReplays.map(async ({ delegation, snapshot, output_ref: outputRef }) => {
+              if (!outputRef) {
+                throw new ProductionTeamRuntimeError("TEAM_ACCEPTED_REPLAY_BINDING_INVALID");
+              }
+              const profileId = dataAgentSpecialistProfileIdSchema.parse(
+                delegation.profile.revision.profile_id,
+              );
+              const replayProfile = input.profiles.get(profileId);
+              if (!replayProfile) {
+                throw new ProductionTeamRuntimeError("AGENT_PROFILE_NOT_ALLOWED");
+              }
+              await verifyAcceptedReplayBinding({
+                snapshot,
+                execution: input,
+                task_id: delegation.receipt.task_id,
+                profile: replayProfile,
+              });
+              const document = await verifyProductTeamArtifactDocument(
+                portValue(await dependencies.artifacts.resolveCommitted(outputRef)),
+              );
+              if (
+                artifactReferenceIdentity(document.artifact_ref) !==
+                  artifactReferenceIdentity(outputRef) ||
+                document.task_id !== delegation.receipt.task_id ||
+                document.profile_id !== profileId ||
+                document.artifact_ref.app_id !== input.lease.scope.app_id ||
+                document.artifact_ref.tenant_id !== input.lease.scope.tenant_id ||
+                document.artifact_ref.environment !== input.lease.scope.environment ||
+                document.artifact_ref.run_id !== input.lease.run_id
+              ) {
+                throw new ProductionTeamRuntimeError("TEAM_ACCEPTED_REPLAY_CORRELATION_INVALID");
+              }
+              return rootToolObservation({
+                tool_call_id: delegation.call.tool_call_id,
+                profile_id: profileId,
+                document,
+              });
+            }),
           );
-          if (
-            artifactReferenceIdentity(document.artifact_ref) !==
-              artifactReferenceIdentity(replayOutput) ||
-            document.task_id !== replayTaskId ||
-            document.profile_id !== replayProfileId ||
-            document.artifact_ref.app_id !== input.lease.scope.app_id ||
-            document.artifact_ref.tenant_id !== input.lease.scope.tenant_id ||
-            document.artifact_ref.environment !== input.lease.scope.environment ||
-            document.artifact_ref.run_id !== input.lease.run_id
-          ) {
-            throw new ProductionTeamRuntimeError("TEAM_ACCEPTED_REPLAY_CORRELATION_INVALID");
-          }
-          await emit(input.execution_context, {
-            kind: "answer_delta",
-            key: `team.answer.${replayTaskId}`,
-            delta: renderAcceptedArtifact(document),
-          });
-          return { status: "ACCEPTED", reason_code: "TEAM_ACCEPTED_REPLAY" };
+          return {
+            status: "COMPLETED",
+            reason_code: "TEAM_ACCEPTED_REPLAY",
+            observations: replayObservations,
+          };
         }
 
         const rootProfile = getAgentProfileRevision("data-agent-orchestrator");
@@ -740,7 +700,7 @@ export function createProductionTeamRuntime(
         });
         await persist(dependencies.store.createTask, dependencies.capability, {
           operation: "CREATE_TASK",
-          label: "create-root",
+          label: `create-root:${root.task_id}`,
           task_id: root.task_id,
           expected_revision: null,
           document: root,
@@ -758,8 +718,11 @@ export function createProductionTeamRuntime(
           semantic_context_ref: input.semantic_context_ref,
           profiles: [...input.profiles.values()].map(({ revision }) => revision.revision_hash),
         });
-        const acceptedOutputsByToolCallId = new Map<string, AcceptedDelegationOutput>();
-        for (const [executionIndex, profileId] of executionOrder.entries()) {
+        const executeDelegation = async (executionIndex: number) => {
+          const profileId = executionOrder[executionIndex];
+          if (!profileId) {
+            throw new ProductionTeamRuntimeError("ROOT_AGENT_DELEGATION_MISSING");
+          }
           const admittedDelegation = input.admitted_delegations[executionIndex];
           if (!admittedDelegation) {
             throw new ProductionTeamRuntimeError("ROOT_AGENT_DELEGATION_MISSING");
@@ -768,38 +731,12 @@ export function createProductionTeamRuntime(
           if (!selectedProfile) {
             throw new ProductionTeamRuntimeError("AGENT_PROFILE_NOT_ALLOWED");
           }
-          const upstreamSelector = admittedDelegation.receipt.upstream_accepted_output;
-          let acceptedUpstreamRef: ArtifactReference | null = null;
-          const acceptedSiblingAttachments: AuthoritativeAcceptedSiblingOutputAttachment[] = [];
-          if (upstreamSelector) {
-            const producer = acceptedOutputsByToolCallId.get(
-              upstreamSelector.producer_tool_call_id,
-            );
-            if (!producer) {
-              throw new ProductionTeamRuntimeError("TEAM_UPSTREAM_ACCEPTED_OUTPUT_MISSING");
-            }
-            if (producer.output_ref.artifact_type !== upstreamSelector.artifact_type) {
-              throw new ProductionTeamRuntimeError("TEAM_UPSTREAM_ACCEPTED_OUTPUT_TYPE_MISMATCH");
-            }
-            acceptedUpstreamRef = producer.output_ref;
-            acceptedSiblingAttachments.push(
-              await attachAcceptedSiblingOutput({
-                root,
-                producer,
-                consumer: admittedDelegation,
-                lease: input.lease,
-                store: dependencies.store,
-                capability: dependencies.capability,
-                attached_at: timestamp,
-              }),
-            );
-          }
+          const acceptedInputRef = acceptedEvidenceInput(admittedDelegation);
           const artifactRefs = [
             ...new Map(
-              [
-                ...admittedDelegation.receipt.input_artifact_refs,
-                ...(acceptedUpstreamRef ? [acceptedUpstreamRef] : []),
-              ].map((reference) => [artifactReferenceIdentity(reference), reference] as const),
+              admittedDelegation.receipt.input_artifact_refs.map(
+                (reference) => [artifactReferenceIdentity(reference), reference] as const,
+              ),
             ).values(),
           ].sort((left, right) =>
             artifactReferenceIdentity(left).localeCompare(artifactReferenceIdentity(right)),
@@ -811,7 +748,6 @@ export function createProductionTeamRuntime(
             profile: selectedProfile,
             delegation: admittedDelegation,
             artifact_refs: artifactRefs,
-            accepted_sibling_attachments: acceptedSiblingAttachments,
             lease: input.lease,
             store: dependencies.store,
             capability: dependencies.capability,
@@ -863,7 +799,7 @@ export function createProductionTeamRuntime(
               semantic_context_ref: input.semantic_context_ref,
               semantic_context_package: input.semantic_context_package,
               semantic_context: input.semantic_context,
-              accepted_evidence_ref: acceptedUpstreamRef,
+              accepted_evidence_ref: acceptedInputRef,
               delegation: admittedDelegation,
             }) ?? dependencies.tools;
           if (!tools) throw new ProductionTeamRuntimeError("TEAM_TOOL_COMPOSITION_REQUIRED");
@@ -898,7 +834,7 @@ export function createProductionTeamRuntime(
                 task_id: task.task_id,
                 task_hash: task.task_hash,
                 context_epoch: epoch,
-                input_ref: acceptedUpstreamRef,
+                input_ref: acceptedInputRef,
               },
               execute: async ({ signal }: RunSideEffectExecutionIdentity) => {
                 const result = await registry.execute(task, epoch, signal);
@@ -918,7 +854,7 @@ export function createProductionTeamRuntime(
             capability: dependencies.capability,
             issued_at: timestamp,
           });
-          const acceptance = await commitAcceptedCompletion({
+          await commitAcceptedCompletion({
             task,
             output_ref: outputRef,
             task_capability: taskCapability,
@@ -929,11 +865,19 @@ export function createProductionTeamRuntime(
             timestamp,
             coverage_hash: coverageHash,
           });
-          acceptedOutputsByToolCallId.set(admittedDelegation.call.tool_call_id, {
-            task,
+          const acceptedDocument = await verifyProductTeamArtifactDocument(
+            portValue(await dependencies.artifacts.resolveCommitted(outputRef)),
+          );
+          if (
+            artifactReferenceIdentity(acceptedDocument.artifact_ref) !==
+            artifactReferenceIdentity(outputRef)
+          ) {
+            throw new ProductionTeamRuntimeError("TEAM_OUTPUT_PROJECTION_INVALID");
+          }
+          const observation = rootToolObservation({
             tool_call_id: admittedDelegation.call.tool_call_id,
-            output_ref: outputRef,
-            acceptance,
+            profile_id: profileId,
+            document: acceptedDocument,
           });
           await emit(input.execution_context, {
             kind: "agent_status",
@@ -954,43 +898,16 @@ export function createProductionTeamRuntime(
             duration_ms: Math.max(0, now().getTime() - Date.parse(timestamp)),
             error_code: null,
           });
-          if (profileId === "report-writing-agent") {
-            const report = await verifyProductTeamArtifactDocument(
-              portValue(await dependencies.artifacts.resolveCommitted(outputRef)),
-            );
-            if (
-              artifactReferenceIdentity(report.artifact_ref) !==
-                artifactReferenceIdentity(outputRef) ||
-              report.projection.kind !== "REPORT"
-            ) {
-              throw new ProductionTeamRuntimeError("TEAM_REPORT_PROJECTION_INVALID");
-            }
-            const answer = report.projection.sections
-              .map(({ body_text: bodyText }) => bodyText)
-              .join("\n\n");
-            await emit(input.execution_context, {
-              kind: "answer_delta",
-              key: `team.answer.${task.task_id}`,
-              delta: answer,
-            });
-          } else if (executionOrder.at(-1) === profileId) {
-            const artifact = await verifyProductTeamArtifactDocument(
-              portValue(await dependencies.artifacts.resolveCommitted(outputRef)),
-            );
-            if (
-              artifactReferenceIdentity(artifact.artifact_ref) !==
-              artifactReferenceIdentity(outputRef)
-            ) {
-              throw new ProductionTeamRuntimeError("TEAM_OUTPUT_PROJECTION_INVALID");
-            }
-            await emit(input.execution_context, {
-              kind: "answer_delta",
-              key: `team.answer.${task.task_id}`,
-              delta: renderAcceptedArtifact(artifact),
-            });
-          }
-        }
-        return { status: "ACCEPTED", reason_code: "TEAM_ACCEPTED" };
+          return observation;
+        };
+
+        const completed = await Promise.all(
+          executionOrder.map((_, executionIndex) => executeDelegation(executionIndex)),
+        );
+        completed.forEach((observation, executionIndex) => {
+          observations[executionIndex] = observation;
+        });
+        return { status: "COMPLETED", reason_code: "TEAM_ACCEPTED", observations };
       } catch (error) {
         const code =
           error instanceof ProductionTeamRuntimeError
@@ -1009,6 +926,7 @@ export const productionTeamRuntimeInternals = Object.freeze({
   deterministicUuid,
   identity,
   acceptedOutput,
+  rootToolObservation,
   stableStartedAt,
   canonicalizeJson,
 });
