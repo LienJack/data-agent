@@ -347,26 +347,18 @@ export function createRunExecutionContext({
   if (providerDispatchCapability) {
     trustedProviderDispatchCapabilities.add(providerDispatchCapability);
   }
-  let semanticContextUsed = false;
+  let semanticContextResolution: Promise<PortResult<SemanticContextCommitResult>> | null = null;
   const semanticContextCapability = semanticContext
     ? Object.freeze({
         resolve() {
+          if (semanticContextResolution) return semanticContextResolution;
           if (runSignal.aborted) return Promise.resolve(aborted<SemanticContextCommitResult>());
-          if (semanticContextUsed) {
-            return Promise.resolve(
-              failure(
-                "SEMANTIC_CONTEXT_ALREADY_CONSUMED",
-                "Semantic Context capability can be consumed only once per Run attempt.",
-                false,
-              ),
-            );
-          }
-          semanticContextUsed = true;
-          return semanticContext.resolve({
+          semanticContextResolution = semanticContext.resolve({
             lease,
             effective_config: effectiveConfig,
             context_receipt: contextReceipt,
           });
+          return semanticContextResolution;
         },
       })
     : null;

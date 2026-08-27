@@ -148,6 +148,19 @@ describe("Research Worker governed Provider binding", () => {
     expect(semanticContext.resolve.mock.invocationCallOrder[0]).toBeLessThan(
       dispatch.invoke.mock.invocationCallOrder[0] ?? Number.MAX_SAFE_INTEGER,
     );
+    const semanticContextCapability = context.getSemanticContextCapability?.();
+    expect(semanticContextCapability).not.toBeNull();
+    if (!semanticContextCapability) throw new Error("semantic context capability missing");
+    const repeatedResolutionOne = semanticContextCapability.resolve();
+    const repeatedResolutionTwo = semanticContextCapability.resolve();
+    expect(repeatedResolutionTwo).toBe(repeatedResolutionOne);
+    await expect(repeatedResolutionOne).resolves.toEqual({
+      ok: true,
+      value: expect.objectContaining({
+        receipt: expect.objectContaining({ state: "READY", route: "METRIC" }),
+      }),
+    });
+    expect(semanticContext.resolve).toHaveBeenCalledTimes(1);
     expect(displayEvents).toEqual(
       expect.arrayContaining([
         expect.objectContaining({ kind: "progress", phase: "provider.direct.prepare" }),
