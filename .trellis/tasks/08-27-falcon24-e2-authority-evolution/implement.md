@@ -300,20 +300,31 @@ Status: completed on 2026-08-28.
 **Ownership**
 
 - Diagnostic Contracts/Platform/Web control/tests
-- 若评审决定独立 migration：10784 source/rendered/manifest/support
+- 独立 10790 source/rendered/manifest/support（10784-10789 已由 Root Harness 占用）
 - Qualification begin RPC/adapter 的 diagnostic prerequisite
 
 **Work**
 
-- [ ] 新增 append-only diagnostic attempts/receipts；同 E4 baseline/gen2 Release 一个 active attempt。
-- [ ] 固定业务问题与 exact source/build/baseline/gen2 binding。
-- [ ] 诊断结果 immutable；失败不得 resume Run。
-- [ ] E4-Q1 begin 必须看到 exact PASSED diagnostic receipt，否则 fail closed。
+- [x] 新增 append-only diagnostic attempts/receipts；同 E4 baseline/gen2 Release 一个 active attempt。
+- [x] 固定业务问题与 exact source/build/baseline/gen2 binding。
+- [x] 诊断结果 immutable；失败不得 resume Run。
+- [x] E4-Q1 begin 必须看到 exact PASSED diagnostic receipt，否则 fail closed。
 
 **Validation**
 
 - One-active concurrency、append-only/RLS/grants、wrong baseline/build/release rejection、Q1 prerequisite。
 - Diagnostic失败分类：frozen change -> E5；external unchanged -> new attempt ID。
+
+**Evidence**
+
+- `falcon24-diagnostic-attempt@1` / `falcon24-diagnostic-receipt@1` 冻结 exact E4 + gen2 + source/build；PASS receipt 绑定
+  browser QA/Trace hashes、五个 exact Artifact、实际观察到的动态 Tool Loop 闭包和 sandbox residual=0。
+- 10790 已在现有通用 PostgreSQL 17 容器的任务 scratch DB `data_agent_falcon24_w6_08195096` 实际应用；frontier 为
+  `20260725010790_app_data_agent_falcon24_diagnostic_authority`，backend 可执行新 diagnostic/Q1 wrapper，但不能执行
+  `begin_falcon24_qualification_pre_diagnostic`。专用 E3 容器/数据库未连接、未修改。
+- Contracts full：99 files / 949 tests；Platform full：109 files / 679 tests。10790 render verify、workspace migration inventory、
+  Contracts/Platform typecheck/build 与 focused Biome 均通过。
+- `observed_execution_path` 仅是完成后的验收证据，不是 Host 调度计划；动态 Tool Loop 的逐轮决策边界保持不变。
 
 **Stop conditions**
 
@@ -332,7 +343,7 @@ Status: completed on 2026-08-28.
 **Work / Validation**
 
 - [ ] Contracts、Semantic、Platform、Worker、Web focused/full suites、typecheck/build。
-- [ ] 10783 fresh PG17 + exact E3 fixture upgrade；若有 10784 同样验证。
+- [ ] 10783 fresh PG17 + exact E3 fixture upgrade；10790 同样验证。
 - [ ] 历史 immutability pre/post digest、RLS/grants/capability scope、direct DML denial。
 - [ ] Combined activation failure-injection/concurrency all-old/all-new。
 - [ ] Production import graph：无 repair RPC、第二 publisher、Worker fallback、client projection payload面。

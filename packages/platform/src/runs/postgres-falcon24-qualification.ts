@@ -51,6 +51,9 @@ const qualificationRowSchema = z.strictObject({
   model_config_hash: contentHashSchema,
   web_build_hash: contentHashSchema,
   runtime_attestation_hash: contentHashSchema,
+  diagnostic_attempt_id: canonicalImmutableIdSchema.nullable(),
+  diagnostic_run_id: canonicalImmutableIdSchema.nullable(),
+  diagnostic_receipt_hash: contentHashSchema.nullable(),
   manifest_hash: contentHashSchema,
   slot_count: z.literal(16),
   next_slot_ordinal: z.number().int().min(0).max(16),
@@ -185,6 +188,7 @@ const STABLE_DATABASE_ERRORS = new Set([
   "FALCON24_GATE_ATTEMPT_IMMUTABLE",
   "FALCON24_GATE_ATTEMPT_FENCE_INVALID",
   "FALCON24_GATE_ATTEMPT_MISMATCH",
+  "FALCON24_QUALIFICATION_DIAGNOSTIC_REQUIRED",
   "FALCON24_UI_RECEIPT_PAIR_REQUIRED",
   "FALCON24_QUALIFICATION_NOT_FOUND",
   "FALCON24_QUALIFICATION_SLOT_NOT_FOUND",
@@ -338,11 +342,20 @@ export function createPostgresFalcon24QualificationAuthority(input: {
 
     async begin(capability: unknown, candidate: unknown) {
       const manifest = await verifyFalcon24QualificationManifestDocument(candidate);
-      if (manifest.schema_version !== "falcon24-qualification-manifest@2.0.0") {
+      if (manifest.schema_version === "falcon24-qualification-manifest@1.0.0") {
         throw new TypeError("FALCON24_QUALIFICATION_HISTORICAL_MANIFEST_READ_ONLY");
       }
+      if (
+        (manifest.authority_epoch === "E4") !==
+        (manifest.schema_version === "falcon24-qualification-manifest@3.0.0")
+      ) {
+        throw new TypeError("FALCON24_QUALIFICATION_DIAGNOSTIC_REQUIRED");
+      }
       const command = await commandWithHash({
-        schema_version: "falcon24-qualification-begin@2.0.0" as const,
+        schema_version:
+          manifest.schema_version === "falcon24-qualification-manifest@3.0.0"
+            ? ("falcon24-qualification-begin@3.0.0" as const)
+            : ("falcon24-qualification-begin@2.0.0" as const),
         manifest,
       });
       return invoke({
@@ -370,6 +383,17 @@ export function createPostgresFalcon24QualificationAuthority(input: {
             throw new PersistenceBoundaryError(
               "FALCON24_QUALIFICATION_DATABASE_CONTRACT_INVALID",
               "Falcon24 Qualification begin 未冻结完整 Manifest 身份。",
+            );
+          }
+          if (
+            manifest.schema_version === "falcon24-qualification-manifest@3.0.0" &&
+            (row.diagnostic_attempt_id !== manifest.diagnostic_receipt_ref.attempt_id ||
+              row.diagnostic_run_id !== manifest.diagnostic_receipt_ref.run_id ||
+              row.diagnostic_receipt_hash !== manifest.diagnostic_receipt_ref.receipt_hash)
+          ) {
+            throw new PersistenceBoundaryError(
+              "FALCON24_QUALIFICATION_DATABASE_CONTRACT_INVALID",
+              "Falcon24 E4 Qualification begin 未冻结 PASSED diagnostic receipt。",
             );
           }
           return row;

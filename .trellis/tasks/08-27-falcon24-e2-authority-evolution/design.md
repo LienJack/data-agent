@@ -339,6 +339,21 @@ STAGED --smoke PASS CAS--> SMOKE_PASSED --combined activation--> PROMOTED
 验证同一 E4 baseline、source/build、gen2 Release 的 PASSED diagnostic receipt。诊断固定真实业务问题，走完整模型/SQL/Python/UI
 链，但不创建计分 slot。
 
+实现使用后继 migration 10790（设计评审时预留的 10784 已被 Root Harness 的 10784-10789 占用）：
+
+- `falcon24_diagnostic_attempts` 冻结 attempt/run、exact E4 binding、generation 2 Release、source fingerprint、Web/Worker build
+  identities、固定问题及 manifest hash。唯一 partial index 只允许同一 baseline/gen2 closure 一个 `ACTIVE` attempt。
+- `falcon24_diagnostic_receipts` 为 append-only terminal receipt；attempt 仅允许 `ACTIVE -> PASSED|FAILED`，任何终态都不能 resume
+  原 Run。失败只允许 `FROZEN_CLOSURE_CHANGE_REQUIRED` 或 `EXTERNAL_DEPENDENCY`。
+- `begin_falcon24_diagnostic` 在写入前同时核对 current E4、PROMOTED generation 2 stage、semantic pointer/runtime 和 workspace
+  defaults；若 E4-Q1 已开始则拒绝，防止诊断后补。
+- `complete_falcon24_diagnostic` 的 PASS 必须从同一 exact Run 读取已持久化 `QA_E2E` + `TRACE_UI` browser receipts，核对五个 exact
+  Artifact、完整页面路径和 `falcon24-sandbox-reclamation-receipt@3` 的 residual=0。命令中的
+  `observed_execution_path` 是执行完成后的验收观察，不是 Root 预声明的 DAG；Root 仍逐轮只决定当前下一次 Tool Call。
+- `falcon24-qualification-manifest@3` 增加 exact diagnostic receipt ref。E4-Q1 只接受 v3；原 v2 仍只用于非 E4 历史/后继入口。
+  PostgreSQL wrapper 在同一事务中验证 PASSED receipt 后调用既有唯一 qualification authority，旧 pre-diagnostic mutator 不向
+  backend 授权。
+
 诊断失败若需要 frozen closure 变更则进入 E5；若为已证明的外部依赖且 closure 未变，创建新 diagnostic attempt ID，不 resume Run。
 
 ### 6.3 Formal gates
@@ -487,6 +502,7 @@ Finalizer验证新 bytes；该模式仍是第二 publish authority，并且不�
 
 1. **Quality constraint contract：** W1 只验证当前可结构化字段、严格 schema、唯一 identity、severity/sensitivity；自由文本 expression
    不声明字段级闭包。若未来需要字段引用证明，必须新增结构化合同与兼容 migration，不能回填解释旧文本。
-2. **Diagnostic storage migration：** W6 使用独立 10784，避免 10783 核心原子激活 migration 同时承载 diagnostic/gate policy。
+2. **Diagnostic storage migration：** W6 使用独立 migration；实施时因 10784-10789 已被 Root Harness 合法占用，实际编号前进为
+   10790，避免修改历史 migration，也避免让 10783 核心原子激活 migration 同时承载 diagnostic/gate policy。
 3. **Fresh bootstrap admission：** bootstrap 只编排同一 stage/smoke/promote Port；Web/Worker 在 gen2 current 前 fail closed。不得新增
    专用 repair path，且 bootstrap 不修改 generation 1。

@@ -9,6 +9,7 @@ import {
   qualificationIdForEpoch,
 } from "./falcon24-acceptance-campaign.js";
 import { falcon24AnalysisCaseIdSchema } from "./falcon24-agent-analysis.js";
+import { falcon24DiagnosticReceiptReferenceSchema } from "./falcon24-diagnostic.js";
 
 export const FALCON24_QUALIFICATION_MANIFEST_VERSION =
   "falcon24-qualification-manifest@1.0.0" as const;
@@ -184,9 +185,25 @@ export const falcon24QualificationManifestV2Schema =
     manifest_hash: contentHashSchema,
   });
 
+const falcon24QualificationManifestV3MaterialSchema = z
+  .strictObject({
+    ...falcon24QualificationManifestV2MaterialSchema.shape,
+    schema_version: z.literal("falcon24-qualification-manifest@3.0.0"),
+    authority_epoch: z.literal("E4"),
+    qualification_id: z.literal("E4-Q1"),
+    diagnostic_receipt_ref: falcon24DiagnosticReceiptReferenceSchema,
+  })
+  .superRefine(addQualificationManifestIssues);
+
+export const falcon24QualificationManifestV3Schema =
+  falcon24QualificationManifestV3MaterialSchema.extend({
+    manifest_hash: contentHashSchema,
+  });
+
 export const falcon24QualificationManifestDocumentSchema = z.union([
   falcon24QualificationManifestSchema,
   falcon24QualificationManifestV2Schema,
+  falcon24QualificationManifestV3Schema,
 ]);
 
 async function assertPromptHashes(
@@ -226,6 +243,15 @@ export async function buildFalcon24QualificationManifestV2(input: unknown) {
   });
 }
 
+export async function buildFalcon24QualificationManifestV3(input: unknown) {
+  const material = falcon24QualificationManifestV3MaterialSchema.parse(input);
+  await assertPromptHashes(material.slots);
+  return falcon24QualificationManifestV3Schema.parse({
+    ...material,
+    manifest_hash: await sha256ContentHash(material),
+  });
+}
+
 export async function verifyFalcon24QualificationManifestDocument(input: unknown) {
   const manifest = falcon24QualificationManifestDocumentSchema.parse(input);
   await assertPromptHashes(manifest.slots);
@@ -240,3 +266,4 @@ export type Falcon24QualificationStage = z.infer<typeof falcon24QualificationSta
 export type Falcon24QualificationSlot = z.infer<typeof falcon24QualificationSlotSchema>;
 export type Falcon24QualificationManifest = z.infer<typeof falcon24QualificationManifestSchema>;
 export type Falcon24QualificationManifestV2 = z.infer<typeof falcon24QualificationManifestV2Schema>;
+export type Falcon24QualificationManifestV3 = z.infer<typeof falcon24QualificationManifestV3Schema>;

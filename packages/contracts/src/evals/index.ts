@@ -1195,6 +1195,7 @@ export * from "./falcon-semantic-release-set.js";
 export * from "./falcon24-acceptance-campaign.js";
 export * from "./falcon24-agent-analysis.js";
 export * from "./falcon24-authority-baseline.js";
+export * from "./falcon24-diagnostic.js";
 export * from "./falcon24-qualification.js";
 export * from "./test-center.js";
 export * from "./truth-types.js";

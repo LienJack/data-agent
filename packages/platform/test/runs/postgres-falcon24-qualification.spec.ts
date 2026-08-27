@@ -1,6 +1,7 @@
 import {
   buildFalcon24QualificationManifest,
   buildFalcon24QualificationManifestV2,
+  buildFalcon24QualificationManifestV3,
   FALCON24_QUALIFICATION_EXPECTED_PATH,
   falcon24AnalysisCaseIdSchema,
   sha256ContentHash,
@@ -61,6 +62,9 @@ function qualification(overrides: Record<string, unknown> = {}) {
     model_config_hash: hash("6"),
     web_build_hash: hash("7"),
     runtime_attestation_hash: hash("8"),
+    diagnostic_attempt_id: null,
+    diagnostic_run_id: null,
+    diagnostic_receipt_hash: null,
     manifest_hash: hash("9"),
     slot_count: 16,
     next_slot_ordinal: 0,
@@ -179,6 +183,27 @@ async function currentManifest() {
   });
 }
 
+async function e4Manifest() {
+  const historical = await manifest();
+  const {
+    manifest_hash: _manifestHash,
+    schema_version: _schemaVersion,
+    qualification_id: _qualificationId,
+    ...shared
+  } = historical;
+  return buildFalcon24QualificationManifestV3({
+    ...shared,
+    schema_version: "falcon24-qualification-manifest@3.0.0",
+    authority_epoch: "E4",
+    qualification_id: "E4-Q1",
+    diagnostic_receipt_ref: {
+      attempt_id: id(30),
+      run_id: id(31),
+      receipt_hash: hash("d"),
+    },
+  });
+}
+
 function scriptedPool(handler: (text: string, values?: readonly unknown[]) => unknown) {
   const calls: { readonly text: string; readonly values?: readonly unknown[] }[] = [];
   const client: SqlClient = {
@@ -230,6 +255,44 @@ describe("PostgreSQL Falcon24 qualification authority", () => {
         schema_version: "falcon24-qualification-begin@2.0.0",
         manifest: candidate,
         command_hash: expect.stringMatching(/^sha256:[0-9a-f]{64}$/),
+      }),
+    ]);
+  });
+
+  it("begins E4-Q1 only with the exact PASSED diagnostic receipt reference", async () => {
+    const auth = authority();
+    const candidate = await e4Manifest();
+    const scripted = scriptedPool((text) =>
+      text.includes("begin_falcon24_qualification")
+        ? qualification({
+            authority_epoch: "E4",
+            qualification_id: "E4-Q1",
+            manifest_hash: candidate.manifest_hash,
+            diagnostic_attempt_id: candidate.diagnostic_receipt_ref.attempt_id,
+            diagnostic_run_id: candidate.diagnostic_receipt_ref.run_id,
+            diagnostic_receipt_hash: candidate.diagnostic_receipt_ref.receipt_hash,
+          })
+        : undefined,
+    );
+    const result = await createPostgresFalcon24QualificationAuthority({
+      pool: scripted.pool,
+      authorizer: auth.authorizer,
+    }).begin(auth.capability, candidate);
+
+    expect(result).toMatchObject({
+      ok: true,
+      value: {
+        authority_epoch: "E4",
+        qualification_id: "E4-Q1",
+        diagnostic_receipt_hash: candidate.diagnostic_receipt_ref.receipt_hash,
+      },
+    });
+    expect(
+      scripted.calls.find(({ text }) => text.includes("begin_falcon24_qualification"))?.values,
+    ).toEqual([
+      expect.objectContaining({
+        schema_version: "falcon24-qualification-begin@3.0.0",
+        manifest: candidate,
       }),
     ]);
   });

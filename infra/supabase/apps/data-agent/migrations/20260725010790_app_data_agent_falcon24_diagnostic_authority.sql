@@ -1,0 +1,779 @@
+-- falcon24_diagnostic_authority_migration_checksum: sha256:1fa18ed845d99c4964b11bd92169119b42a7eb040e5cf5918761675d1c5f1294
+begin;
+
+select platform.acquire_migration_lock(
+  'app','00000000-0000-4000-8000-00000000da01'::uuid);
+
+do $preflight$
+declare relation_name text; function_name text;
+begin
+  if pg_catalog.current_setting('server_version_num')::integer not between 170000 and 179999
+    or not exists(select 1 from platform.migration_ledger
+      where owner_kind='app'
+        and app_id='00000000-0000-4000-8000-00000000da01'::uuid
+        and migration_version=
+          '20260725010789_app_data_agent_semantic_context_canonical_aliases')
+  then raise exception using errcode='P0001',
+    message='FALCON24_DIAGNOSTIC_AUTHORITY_BASELINE_DRIFT'; end if;
+
+  foreach relation_name in array array[
+    'app_data_agent.falcon24_current_authority_epoch',
+    'app_data_agent.falcon24_authority_baselines',
+    'app_data_agent.falcon24_qualifications','app_data_agent.falcon24_ui_receipts',
+    'app_data_agent.runs','app_data_agent.artifacts',
+    'semantic.semantic_active_pointer','semantic.semantic_runtime_activation',
+    'semantic.semantic_successor_release_stage',
+    'app_data_agent.workspace_run_defaults','app_data_agent.workspace_run_default_revisions'
+  ]::text[] loop
+    if pg_catalog.to_regclass(relation_name) is null
+    then raise exception using errcode='P0001',
+      message='FALCON24_DIAGNOSTIC_AUTHORITY_INVENTORY_DRIFT',detail=relation_name; end if;
+  end loop;
+  foreach function_name in array array[
+    'platform.current_backend_authority(boolean)',
+    'platform.backend_context_matches(uuid,uuid,text,boolean)',
+    'app_data_agent.u2_canonical_sha256(jsonb)',
+    'app_data_agent.provider_json_object_has_exact_keys(jsonb,text[])',
+    'app_data_agent.runtime_iso_timestamp(timestamptz)',
+    'app_data_agent.begin_falcon24_qualification(jsonb)'
+  ]::text[] loop
+    if pg_catalog.to_regprocedure(function_name) is null
+    then raise exception using errcode='P0001',
+      message='FALCON24_DIAGNOSTIC_AUTHORITY_FUNCTION_DRIFT',detail=function_name; end if;
+  end loop;
+  if pg_catalog.to_regclass('app_data_agent.falcon24_diagnostic_attempts') is not null
+    or pg_catalog.to_regclass('app_data_agent.falcon24_diagnostic_receipts') is not null
+    or pg_catalog.to_regprocedure('app_data_agent.begin_falcon24_diagnostic(jsonb)') is not null
+    or pg_catalog.to_regprocedure('app_data_agent.complete_falcon24_diagnostic(jsonb)') is not null
+  then raise exception using errcode='P0001',
+    message='FALCON24_DIAGNOSTIC_SECOND_AUTHORITY_DETECTED'; end if;
+end
+$preflight$;
+
+set local lock_timeout='2000ms';
+set local statement_timeout='300000ms';
+set local idle_in_transaction_session_timeout='60000ms';
+create table app_data_agent.falcon24_diagnostic_attempts(
+  app_id uuid not null check(app_id='00000000-0000-4000-8000-00000000da01'::uuid),
+  tenant_id uuid not null,environment text not null,
+  principal_id uuid not null,attempt_id uuid not null,run_id uuid not null,
+  authority_epoch text not null check(authority_epoch='E4'),
+  authority_baseline_id uuid not null,
+  authority_baseline_hash text not null check(authority_baseline_hash~'^sha256:[0-9a-f]{64}$'),
+  authority_activation_attempt_id uuid not null,
+  semantic_domain text not null check(semantic_domain~'^[A-Za-z_][A-Za-z0-9_]{0,63}$'),
+  semantic_release_id uuid not null,
+  semantic_release_generation bigint not null check(semantic_release_generation=2),
+  semantic_release_digest text not null check(semantic_release_digest~'^sha256:[0-9a-f]{64}$'),
+  datasource_id uuid not null,
+  source_commit text not null check(source_commit~'^[0-9a-f]{40}$'),
+  source_fingerprint text not null check(source_fingerprint~'^sha256:[0-9a-f]{64}$'),
+  web_build_id text not null check(web_build_id~'^sha256:[0-9a-f]{64}$'),
+  web_generation_id text not null check(web_generation_id~'^sha256:[0-9a-f]{64}$'),
+  worker_build_id text not null check(worker_build_id~'^sha256:[0-9a-f]{64}$'),
+  worker_generation_id text not null check(worker_generation_id~'^sha256:[0-9a-f]{64}$'),
+  runtime_attestation_hash text not null check(runtime_attestation_hash~'^sha256:[0-9a-f]{64}$'),
+  question_hash text not null check(question_hash~'^sha256:[0-9a-f]{64}$'),
+  manifest_hash text not null check(manifest_hash~'^sha256:[0-9a-f]{64}$'),
+  manifest_document jsonb not null check(pg_catalog.jsonb_typeof(manifest_document)='object'),
+  status text not null check(status in('ACTIVE','PASSED','FAILED')),
+  failure_class text check(failure_class in(
+    'FROZEN_CLOSURE_CHANGE_REQUIRED','EXTERNAL_DEPENDENCY')),
+  failure_code text check(failure_code is null or failure_code~'^[A-Z][A-Z0-9_]{2,127}$'),
+  terminal_receipt_hash text check(
+    terminal_receipt_hash is null or terminal_receipt_hash~'^sha256:[0-9a-f]{64}$'),
+  created_at timestamptz not null default pg_catalog.clock_timestamp(),completed_at timestamptz,
+  primary key(app_id,tenant_id,environment,attempt_id),
+  unique(app_id,tenant_id,environment,run_id),
+  foreign key(app_id,tenant_id,environment,authority_baseline_id,
+    authority_baseline_hash,authority_epoch)
+    references app_data_agent.falcon24_authority_baselines(
+      app_id,tenant_id,environment,baseline_id,baseline_hash,authority_epoch) on delete restrict,
+  foreign key(app_id,tenant_id,environment,authority_activation_attempt_id,
+    authority_baseline_id,authority_baseline_hash)
+    references app_data_agent.falcon24_authority_activation_attempts(
+      app_id,tenant_id,environment,attempt_id,baseline_id,expected_baseline_hash)
+    on delete restrict,
+  check(manifest_hash=app_data_agent.u2_canonical_sha256(manifest_document-'manifest_hash')),
+  check((status='ACTIVE' and failure_class is null and failure_code is null
+      and terminal_receipt_hash is null and completed_at is null)
+    or (status='PASSED' and failure_class is null and failure_code is null
+      and terminal_receipt_hash is not null and completed_at is not null)
+    or (status='FAILED' and failure_class is not null and failure_code is not null
+      and terminal_receipt_hash is not null and completed_at is not null))
+);
+
+create unique index falcon24_diagnostic_one_active_closure
+on app_data_agent.falcon24_diagnostic_attempts(
+  app_id,tenant_id,environment,authority_baseline_id,semantic_release_id)
+where status='ACTIVE';
+
+create table app_data_agent.falcon24_diagnostic_receipts(
+  app_id uuid not null,tenant_id uuid not null,environment text not null,
+  attempt_id uuid not null,run_id uuid not null,outcome text not null check(outcome in('PASS','FAIL')),
+  completion_command_hash text not null
+    check(completion_command_hash~'^sha256:[0-9a-f]{64}$'),
+  receipt_hash text not null check(receipt_hash~'^sha256:[0-9a-f]{64}$'),
+  receipt_document jsonb not null check(pg_catalog.jsonb_typeof(receipt_document)='object'),
+  created_at timestamptz not null default pg_catalog.clock_timestamp(),
+  primary key(app_id,tenant_id,environment,attempt_id),
+  unique(app_id,tenant_id,environment,run_id),
+  unique(app_id,tenant_id,environment,receipt_hash),
+  unique(app_id,tenant_id,environment,attempt_id,run_id,receipt_hash),
+  foreign key(app_id,tenant_id,environment,attempt_id)
+    references app_data_agent.falcon24_diagnostic_attempts(
+      app_id,tenant_id,environment,attempt_id) on delete restrict,
+  check(receipt_document->>'schema_version'='falcon24-diagnostic-receipt@1.0.0'),
+  check(receipt_document->>'attempt_id'=attempt_id::text),
+  check(receipt_document->>'run_id'=run_id::text),
+  check(receipt_document->>'outcome'=outcome),
+  check(receipt_hash=app_data_agent.u2_canonical_sha256(receipt_document-'receipt_hash'))
+);
+
+create function app_data_agent.falcon24_diagnostic_attempt_state_fence()
+returns trigger language plpgsql volatile security definer set search_path='' as $function$
+begin
+  if tg_op='DELETE'
+    or (pg_catalog.to_jsonb(new)-array[
+        'status','failure_class','failure_code','terminal_receipt_hash','completed_at'])
+      is distinct from
+      (pg_catalog.to_jsonb(old)-array[
+        'status','failure_class','failure_code','terminal_receipt_hash','completed_at'])
+    or old.status<>'ACTIVE' or new.status not in('PASSED','FAILED')
+  then raise exception using errcode='55000',message='FALCON24_DIAGNOSTIC_ATTEMPT_IMMUTABLE'; end if;
+  return new;
+end
+$function$;
+
+create function app_data_agent.falcon24_diagnostic_receipt_immutable()
+returns trigger language plpgsql volatile security definer set search_path='' as $function$
+begin
+  raise exception using errcode='55000',message='FALCON24_DIAGNOSTIC_ATTEMPT_IMMUTABLE';
+end
+$function$;
+
+create trigger falcon24_diagnostic_attempt_state_fence
+before update or delete on app_data_agent.falcon24_diagnostic_attempts
+for each row execute function app_data_agent.falcon24_diagnostic_attempt_state_fence();
+create trigger falcon24_diagnostic_receipt_immutable
+before update or delete on app_data_agent.falcon24_diagnostic_receipts
+for each row execute function app_data_agent.falcon24_diagnostic_receipt_immutable();
+
+alter table app_data_agent.falcon24_qualifications
+  add column diagnostic_attempt_id uuid,
+  add column diagnostic_run_id uuid,
+  add column diagnostic_receipt_hash text,
+  add constraint falcon24_qualification_diagnostic_columns_check check(
+    (diagnostic_attempt_id is null)=(diagnostic_run_id is null)
+    and (diagnostic_attempt_id is null)=(diagnostic_receipt_hash is null)
+    and (diagnostic_receipt_hash is null
+      or diagnostic_receipt_hash~'^sha256:[0-9a-f]{64}$')),
+  add constraint falcon24_qualification_diagnostic_receipt_fk foreign key(
+    app_id,tenant_id,environment,diagnostic_attempt_id,diagnostic_run_id,
+    diagnostic_receipt_hash)
+    references app_data_agent.falcon24_diagnostic_receipts(
+      app_id,tenant_id,environment,attempt_id,run_id,receipt_hash) on delete restrict;
+create function app_data_agent.begin_falcon24_diagnostic(command jsonb)
+returns jsonb language plpgsql volatile security definer set search_path='' as $function$
+#variable_conflict use_variable
+declare authority record;current_epoch record;baseline record;pointer record;runtime record;
+  defaults_pointer record;defaults_revision record;stage record;
+  manifest jsonb;semantic_release jsonb;semantic_domain_value text;
+  existing app_data_agent.falcon24_diagnostic_attempts%rowtype;
+begin
+  if command is null or pg_catalog.jsonb_typeof(command) is distinct from 'object'
+    or app_data_agent.provider_json_object_has_exact_keys(command,array[
+      'schema_version','manifest','command_hash']::text[]) is distinct from true
+    or command->>'schema_version' is distinct from 'falcon24-diagnostic-begin@1.0.0'
+    or command->>'command_hash' is distinct from
+      app_data_agent.u2_canonical_sha256(command-'command_hash')
+    or pg_catalog.jsonb_typeof(command->'manifest') is distinct from 'object'
+  then raise exception using errcode='22023',message='FALCON24_DIAGNOSTIC_COMMAND_INVALID'; end if;
+  manifest:=command->'manifest';semantic_release:=manifest->'semantic_release';
+  if app_data_agent.provider_json_object_has_exact_keys(manifest,array[
+      'schema_version','attempt_id','run_id','authority','semantic_release','source_commit',
+      'source_fingerprint','web_build','worker_build','runtime_attestation_hash',
+      'question','question_hash',
+      'manifest_hash']::text[]) is distinct from true
+    or manifest->>'schema_version'<>'falcon24-diagnostic-attempt@1.0.0'
+    or app_data_agent.canonical_uuid_json_string_is_valid(manifest->'attempt_id') is distinct from true
+    or app_data_agent.canonical_uuid_json_string_is_valid(manifest->'run_id') is distinct from true
+    or pg_catalog.jsonb_typeof(manifest->'authority') is distinct from 'object'
+    or app_data_agent.provider_json_object_has_exact_keys(manifest->'authority',array[
+      'schema_version','authority_epoch','baseline_id','baseline_hash',
+      'activation_attempt_id']::text[]) is distinct from true
+    or manifest#>>'{authority,schema_version}'<>'falcon24-authority-binding@2.0.0'
+    or manifest#>>'{authority,authority_epoch}'<>'E4'
+    or app_data_agent.canonical_uuid_json_string_is_valid(
+      manifest#>'{authority,baseline_id}') is distinct from true
+    or manifest#>>'{authority,baseline_hash}'!~'^sha256:[0-9a-f]{64}$'
+    or app_data_agent.canonical_uuid_json_string_is_valid(
+      manifest#>'{authority,activation_attempt_id}') is distinct from true
+    or pg_catalog.jsonb_typeof(semantic_release) is distinct from 'object'
+    or app_data_agent.provider_json_object_has_exact_keys(semantic_release,array[
+      'release_id','generation','release_digest','datasource_id']::text[]) is distinct from true
+    or app_data_agent.canonical_uuid_json_string_is_valid(
+      semantic_release->'release_id') is distinct from true
+    or semantic_release->>'generation'<>'2'
+    or semantic_release->>'release_digest'!~'^sha256:[0-9a-f]{64}$'
+    or app_data_agent.canonical_uuid_json_string_is_valid(
+      semantic_release->'datasource_id') is distinct from true
+    or manifest->>'source_commit'!~'^[0-9a-f]{40}$'
+    or manifest->>'source_fingerprint'!~'^sha256:[0-9a-f]{64}$'
+    or app_data_agent.provider_json_object_has_exact_keys(manifest->'web_build',array[
+      'build_id','generation_id']::text[]) is distinct from true
+    or app_data_agent.provider_json_object_has_exact_keys(manifest->'worker_build',array[
+      'build_id','generation_id']::text[]) is distinct from true
+    or exists(select 1 from pg_catalog.unnest(array[
+      manifest#>>'{web_build,build_id}',manifest#>>'{web_build,generation_id}',
+      manifest#>>'{worker_build,build_id}',manifest#>>'{worker_build,generation_id}',
+      manifest->>'runtime_attestation_hash']::text[]) value
+      where value!~'^sha256:[0-9a-f]{64}$')
+    or manifest->>'question'<>'最近 12 个完整月的订单收入趋势如何？请按月展示，并生成折线图。'
+    or manifest->>'question_hash' is distinct from
+      app_data_agent.u2_canonical_sha256(pg_catalog.to_jsonb(manifest->>'question'))
+    or manifest->>'manifest_hash' is distinct from
+      app_data_agent.u2_canonical_sha256(manifest-'manifest_hash')
+  then raise exception using errcode='22023',message='FALCON24_DIAGNOSTIC_MANIFEST_INVALID'; end if;
+
+  select * into strict authority from platform.current_backend_authority(true);
+  semantic_domain_value:=nullif(pg_catalog.current_setting('app.semantic_domain',true),'');
+  if semantic_domain_value is null
+  then raise exception using errcode='42501',message='FALCON24_DIAGNOSTIC_AUTHORITY_MISMATCH'; end if;
+  perform pg_catalog.pg_advisory_xact_lock(pg_catalog.hashtextextended(
+    'falcon24-diagnostic:'||authority.app_id::text||':'||authority.tenant_id::text||':'||
+      authority.environment,0));
+  select * into current_epoch from app_data_agent.falcon24_current_authority_epoch row
+    where row.app_id=authority.app_id and row.tenant_id=authority.tenant_id
+      and row.environment=authority.environment for share;
+  select * into baseline from app_data_agent.falcon24_authority_baselines row
+    where row.app_id=authority.app_id and row.tenant_id=authority.tenant_id
+      and row.environment=authority.environment and row.baseline_id=current_epoch.baseline_id
+      and row.baseline_hash=current_epoch.baseline_hash and row.authority_epoch='E4' for share;
+  select * into pointer from semantic.semantic_active_pointer row
+    where row.app_id=authority.app_id and row.tenant_id=authority.tenant_id
+      and row.environment=authority.environment and row.semantic_domain=semantic_domain_value
+    for share;
+  select * into runtime from semantic.semantic_runtime_activation row
+    where row.app_id=authority.app_id and row.tenant_id=authority.tenant_id
+      and row.environment=authority.environment and row.semantic_domain=semantic_domain_value
+    for share;
+  select * into defaults_pointer from app_data_agent.workspace_run_defaults row
+    where row.app_id=authority.app_id and row.tenant_id=authority.tenant_id
+      and row.environment=authority.environment for share;
+  select * into defaults_revision from app_data_agent.workspace_run_default_revisions row
+    where row.app_id=defaults_pointer.app_id and row.tenant_id=defaults_pointer.tenant_id
+      and row.environment=defaults_pointer.environment
+      and row.defaults_id=defaults_pointer.defaults_id
+      and row.defaults_revision=defaults_pointer.defaults_revision
+      and row.revision_id=defaults_pointer.revision_id
+      and row.defaults_hash=defaults_pointer.defaults_hash for share;
+  select * into stage from semantic.semantic_successor_release_stage row
+    where row.app_id=authority.app_id and row.tenant_id=authority.tenant_id
+      and row.environment=authority.environment and row.semantic_domain=semantic_domain_value
+      and row.candidate_release_id=(semantic_release->>'release_id')::uuid
+      and row.status='PROMOTED' for share;
+  if current_epoch.authority_epoch is distinct from 'E4'
+    or current_epoch.baseline_id is distinct from
+      (manifest#>>'{authority,baseline_id}')::uuid
+    or current_epoch.baseline_hash is distinct from manifest#>>'{authority,baseline_hash}'
+    or current_epoch.activation_attempt_id is distinct from
+      (manifest#>>'{authority,activation_attempt_id}')::uuid
+    or baseline.status is distinct from 'ACTIVE'
+    or baseline.source_commit is distinct from manifest->>'source_commit'
+    or baseline.web_build_hash is distinct from manifest#>>'{web_build,build_id}'
+  then raise exception using errcode='55000',message='FALCON24_DIAGNOSTIC_AUTHORITY_MISMATCH'; end if;
+  if stage.candidate_release_digest is distinct from semantic_release->>'release_digest'
+    or stage.target_generation is distinct from 2
+    or stage.datasource_id is distinct from (semantic_release->>'datasource_id')::uuid
+    or pointer.current_release_id is distinct from stage.candidate_release_id
+    or pointer.current_release_generation is distinct from stage.target_generation
+    or pointer.current_release_digest is distinct from stage.candidate_release_digest
+    or runtime.current_release_id is distinct from stage.candidate_release_id
+    or runtime.current_release_generation is distinct from stage.target_generation
+    or defaults_revision.defaults_json#>>'{semantic_release,resource_id}'
+      is distinct from stage.candidate_release_id::text
+    or (defaults_revision.defaults_json#>>'{semantic_release,resource_revision}')::bigint
+      is distinct from stage.target_generation
+    or defaults_revision.defaults_json#>>'{semantic_release,resource_hash}'
+      is distinct from stage.candidate_release_digest
+  then raise exception using errcode='55000',
+    message='FALCON24_DIAGNOSTIC_SEMANTIC_RELEASE_MISMATCH'; end if;
+  if exists(select 1 from app_data_agent.falcon24_qualifications row
+      where row.app_id=authority.app_id and row.tenant_id=authority.tenant_id
+        and row.environment=authority.environment and row.authority_epoch='E4')
+  then raise exception using errcode='55000',
+    message='FALCON24_DIAGNOSTIC_FORMAL_GATE_ALREADY_STARTED'; end if;
+
+  select * into existing from app_data_agent.falcon24_diagnostic_attempts row
+    where row.app_id=authority.app_id and row.tenant_id=authority.tenant_id
+      and row.environment=authority.environment
+      and row.attempt_id=(manifest->>'attempt_id')::uuid;
+  if found then
+    if existing.manifest_hash=manifest->>'manifest_hash' then return pg_catalog.to_jsonb(existing); end if;
+    raise exception using errcode='55000',message='FALCON24_DIAGNOSTIC_ATTEMPT_IMMUTABLE';
+  end if;
+  if exists(select 1 from app_data_agent.falcon24_diagnostic_attempts row
+      where row.app_id=authority.app_id and row.tenant_id=authority.tenant_id
+        and row.environment=authority.environment and row.authority_baseline_id=current_epoch.baseline_id
+        and row.semantic_release_id=stage.candidate_release_id and row.status='ACTIVE')
+  then raise exception using errcode='55000',message='FALCON24_DIAGNOSTIC_ACTIVE_ATTEMPT_EXISTS'; end if;
+
+  insert into app_data_agent.falcon24_diagnostic_attempts(
+    app_id,tenant_id,environment,principal_id,attempt_id,run_id,authority_epoch,
+    authority_baseline_id,authority_baseline_hash,authority_activation_attempt_id,
+    semantic_domain,semantic_release_id,semantic_release_generation,semantic_release_digest,
+    datasource_id,source_commit,source_fingerprint,web_build_id,web_generation_id,
+    worker_build_id,worker_generation_id,runtime_attestation_hash,question_hash,
+    manifest_hash,manifest_document,status)
+  values(authority.app_id,authority.tenant_id,authority.environment,authority.principal_id,
+    (manifest->>'attempt_id')::uuid,(manifest->>'run_id')::uuid,'E4',current_epoch.baseline_id,
+    current_epoch.baseline_hash,current_epoch.activation_attempt_id,semantic_domain_value,
+    stage.candidate_release_id,2,stage.candidate_release_digest,stage.datasource_id,
+    manifest->>'source_commit',manifest->>'source_fingerprint',manifest#>>'{web_build,build_id}',
+    manifest#>>'{web_build,generation_id}',manifest#>>'{worker_build,build_id}',
+    manifest#>>'{worker_build,generation_id}',manifest->>'runtime_attestation_hash',
+    manifest->>'question_hash',
+    manifest->>'manifest_hash',manifest,'ACTIVE') returning * into strict existing;
+  return pg_catalog.to_jsonb(existing);
+exception when invalid_text_representation or numeric_value_out_of_range then
+  raise exception using errcode='22023',message='FALCON24_DIAGNOSTIC_MANIFEST_INVALID';
+end
+$function$;
+
+create function app_data_agent.load_falcon24_diagnostic(command jsonb)
+returns jsonb language plpgsql stable security definer set search_path='' as $function$
+declare authority record;existing app_data_agent.falcon24_diagnostic_attempts%rowtype;
+begin
+  if command is null or pg_catalog.jsonb_typeof(command) is distinct from 'object'
+    or app_data_agent.provider_json_object_has_exact_keys(command,array[
+      'schema_version','attempt_id','command_hash']::text[]) is distinct from true
+    or command->>'schema_version'<>'falcon24-diagnostic-load@1.0.0'
+    or app_data_agent.canonical_uuid_json_string_is_valid(command->'attempt_id') is distinct from true
+    or command->>'command_hash' is distinct from
+      app_data_agent.u2_canonical_sha256(command-'command_hash')
+  then raise exception using errcode='22023',message='FALCON24_DIAGNOSTIC_COMMAND_INVALID'; end if;
+  select * into strict authority from platform.current_backend_authority(false);
+  select * into existing from app_data_agent.falcon24_diagnostic_attempts row
+    where row.app_id=authority.app_id and row.tenant_id=authority.tenant_id
+      and row.environment=authority.environment and row.principal_id=authority.principal_id
+      and row.attempt_id=(command->>'attempt_id')::uuid;
+  if not found then return null; end if;
+  return pg_catalog.to_jsonb(existing);
+end
+$function$;
+
+create function app_data_agent.complete_falcon24_diagnostic(command jsonb)
+returns jsonb language plpgsql volatile security definer set search_path='' as $function$
+#variable_conflict use_variable
+declare authority record;current_epoch record;pointer record;runtime record;stage record;run_row record;
+  attempt app_data_agent.falcon24_diagnostic_attempts%rowtype;
+  existing app_data_agent.falcon24_diagnostic_receipts%rowtype;
+  qa_receipt app_data_agent.falcon24_ui_receipts%rowtype;
+  trace_receipt app_data_agent.falcon24_ui_receipts%rowtype;
+  outcome_value text;now_at timestamptz;pass_evidence jsonb;receipt jsonb;receipt_hash_value text;
+  failure_class_value text;failure_code_value text;reference jsonb;artifact_count integer;
+  reclamation jsonb;
+begin
+  if command is null or pg_catalog.jsonb_typeof(command) is distinct from 'object'
+    or command->>'schema_version'<>'falcon24-diagnostic-complete@1.0.0'
+    or app_data_agent.canonical_uuid_json_string_is_valid(command->'attempt_id') is distinct from true
+    or command->>'command_hash' is distinct from
+      app_data_agent.u2_canonical_sha256(command-'command_hash')
+    or command->>'outcome' not in('PASS','FAIL')
+  then raise exception using errcode='22023',message='FALCON24_DIAGNOSTIC_COMMAND_INVALID'; end if;
+  outcome_value:=command->>'outcome';
+  if (outcome_value='PASS' and app_data_agent.provider_json_object_has_exact_keys(command,array[
+      'schema_version','attempt_id','outcome','viewport_width','observed_execution_path',
+      'sandbox_reclamation_receipt','command_hash']::text[]) is distinct from true)
+    or (outcome_value='FAIL' and app_data_agent.provider_json_object_has_exact_keys(command,array[
+      'schema_version','attempt_id','outcome','failure_class','failure_code',
+      'command_hash']::text[]) is distinct from true)
+  then raise exception using errcode='22023',message='FALCON24_DIAGNOSTIC_COMMAND_INVALID'; end if;
+
+  select * into strict authority from platform.current_backend_authority(true);
+  perform pg_catalog.pg_advisory_xact_lock(pg_catalog.hashtextextended(
+    'falcon24-diagnostic:'||authority.app_id::text||':'||authority.tenant_id::text||':'||
+      authority.environment,0));
+  select * into attempt from app_data_agent.falcon24_diagnostic_attempts row
+    where row.app_id=authority.app_id and row.tenant_id=authority.tenant_id
+      and row.environment=authority.environment and row.principal_id=authority.principal_id
+      and row.attempt_id=(command->>'attempt_id')::uuid for update;
+  if not found then raise exception using errcode='02000',message='FALCON24_DIAGNOSTIC_ATTEMPT_NOT_FOUND'; end if;
+  select * into existing from app_data_agent.falcon24_diagnostic_receipts row
+    where row.app_id=attempt.app_id and row.tenant_id=attempt.tenant_id
+      and row.environment=attempt.environment and row.attempt_id=attempt.attempt_id;
+  if found then
+    if existing.completion_command_hash=command->>'command_hash'
+    then return existing.receipt_document; end if;
+    raise exception using errcode='55000',message='FALCON24_DIAGNOSTIC_REPLAY_MISMATCH';
+  end if;
+  if attempt.status<>'ACTIVE'
+  then raise exception using errcode='55000',message='FALCON24_DIAGNOSTIC_ATTEMPT_IMMUTABLE'; end if;
+
+  select * into current_epoch from app_data_agent.falcon24_current_authority_epoch row
+    where row.app_id=attempt.app_id and row.tenant_id=attempt.tenant_id
+      and row.environment=attempt.environment for share;
+  select * into pointer from semantic.semantic_active_pointer row
+    where row.app_id=attempt.app_id and row.tenant_id=attempt.tenant_id
+      and row.environment=attempt.environment and row.semantic_domain=attempt.semantic_domain
+    for share;
+  select * into runtime from semantic.semantic_runtime_activation row
+    where row.app_id=attempt.app_id and row.tenant_id=attempt.tenant_id
+      and row.environment=attempt.environment and row.semantic_domain=attempt.semantic_domain
+    for share;
+  select * into stage from semantic.semantic_successor_release_stage row
+    where row.app_id=attempt.app_id and row.tenant_id=attempt.tenant_id
+      and row.environment=attempt.environment and row.semantic_domain=attempt.semantic_domain
+      and row.candidate_release_id=attempt.semantic_release_id and row.status='PROMOTED' for share;
+  if current_epoch.authority_epoch is distinct from attempt.authority_epoch
+    or current_epoch.baseline_id is distinct from attempt.authority_baseline_id
+    or current_epoch.baseline_hash is distinct from attempt.authority_baseline_hash
+    or current_epoch.activation_attempt_id is distinct from attempt.authority_activation_attempt_id
+  then raise exception using errcode='55000',message='FALCON24_DIAGNOSTIC_AUTHORITY_MISMATCH'; end if;
+  if stage.candidate_release_digest is distinct from attempt.semantic_release_digest
+    or stage.target_generation is distinct from attempt.semantic_release_generation
+    or pointer.current_release_id is distinct from attempt.semantic_release_id
+    or pointer.current_release_generation is distinct from attempt.semantic_release_generation
+    or pointer.current_release_digest is distinct from attempt.semantic_release_digest
+    or runtime.current_release_id is distinct from attempt.semantic_release_id
+    or runtime.current_release_generation is distinct from attempt.semantic_release_generation
+  then raise exception using errcode='55000',
+    message='FALCON24_DIAGNOSTIC_SEMANTIC_RELEASE_MISMATCH'; end if;
+
+  pass_evidence:=null;failure_class_value:=null;failure_code_value:=null;
+  if outcome_value='FAIL' then
+    failure_class_value:=command->>'failure_class';failure_code_value:=command->>'failure_code';
+    if failure_class_value not in('FROZEN_CLOSURE_CHANGE_REQUIRED','EXTERNAL_DEPENDENCY')
+      or failure_code_value!~'^[A-Z][A-Z0-9_]{2,127}$'
+    then raise exception using errcode='22023',message='FALCON24_DIAGNOSTIC_COMMAND_INVALID'; end if;
+  else
+    reclamation:=command->'sandbox_reclamation_receipt';
+    if pg_catalog.jsonb_typeof(command->'viewport_width') is distinct from 'number'
+      or command->>'viewport_width' not in('390','1440')
+      or command->'observed_execution_path' is distinct from
+        '["SEMANTIC","TEXT2SQL","SQL","QUERY_EVIDENCE","TYPED_ARROW","PYTHON_OPERATOR","ANALYSIS_REPORT","CHART"]'::jsonb
+      or pg_catalog.jsonb_typeof(reclamation) is distinct from 'object'
+      or reclamation->>'schema_version'<>'falcon24-sandbox-reclamation-receipt@3.0.0'
+      or reclamation->>'authority_epoch'<>'E4' or reclamation->>'campaign_id'<>'E4-Q1'
+      or reclamation->>'run_id'<>attempt.run_id::text or reclamation->>'residual'<>'0'
+      or reclamation->>'runtime_attestation_hash'<>attempt.runtime_attestation_hash
+      or reclamation->>'receipt_hash' is distinct from
+        app_data_agent.u2_canonical_sha256(reclamation-'receipt_hash')
+    then raise exception using errcode='22023',message='FALCON24_DIAGNOSTIC_COMMAND_INVALID'; end if;
+    select * into run_row from app_data_agent.runs row
+      where row.app_id=attempt.app_id and row.tenant_id=attempt.tenant_id
+        and row.environment=attempt.environment and row.run_id=attempt.run_id
+        and row.principal_id=attempt.principal_id and row.status='SUCCEEDED' for share;
+    if not found or run_row.question<>'最近 12 个完整月的订单收入趋势如何？请按月展示，并生成折线图。'
+      or run_row.authority_epoch is distinct from attempt.authority_epoch
+      or run_row.authority_baseline_id is distinct from attempt.authority_baseline_id
+      or run_row.authority_baseline_hash is distinct from attempt.authority_baseline_hash
+      or run_row.authority_activation_attempt_id is distinct from
+        attempt.authority_activation_attempt_id
+    then raise exception using errcode='55000',message='FALCON24_DIAGNOSTIC_RUN_NOT_READY'; end if;
+    select * into qa_receipt from app_data_agent.falcon24_ui_receipts row
+      where row.app_id=attempt.app_id and row.tenant_id=attempt.tenant_id
+        and row.environment=attempt.environment and row.run_id=attempt.run_id
+        and row.receipt_kind='QA_E2E'
+        and row.viewport_width=(command->>'viewport_width')::integer;
+    select * into trace_receipt from app_data_agent.falcon24_ui_receipts row
+      where row.app_id=attempt.app_id and row.tenant_id=attempt.tenant_id
+        and row.environment=attempt.environment and row.run_id=attempt.run_id
+        and row.receipt_kind='TRACE_UI'
+        and row.viewport_width=(command->>'viewport_width')::integer;
+    if qa_receipt.receipt_hash is null or trace_receipt.receipt_hash is null
+      or qa_receipt.authority_epoch is distinct from attempt.authority_epoch
+      or qa_receipt.baseline_id is distinct from attempt.authority_baseline_id
+      or qa_receipt.baseline_hash is distinct from attempt.authority_baseline_hash
+      or qa_receipt.activation_attempt_id is distinct from attempt.authority_activation_attempt_id
+      or qa_receipt.web_build_hash is distinct from attempt.web_build_id
+      or trace_receipt.authority_epoch is distinct from qa_receipt.authority_epoch
+      or trace_receipt.baseline_id is distinct from qa_receipt.baseline_id
+      or trace_receipt.baseline_hash is distinct from qa_receipt.baseline_hash
+      or trace_receipt.activation_attempt_id is distinct from qa_receipt.activation_attempt_id
+      or trace_receipt.web_build_hash is distinct from attempt.web_build_id
+      or qa_receipt.receipt_json->>'question_hash' is distinct from attempt.question_hash
+      or trace_receipt.receipt_json->>'trace_hash' is null
+      or pg_catalog.jsonb_array_length(trace_receipt.receipt_json->'opened_artifact_refs')<>5
+    then raise exception using errcode='55000',
+      message='FALCON24_DIAGNOSTIC_UI_RECEIPT_PAIR_REQUIRED'; end if;
+    if (select pg_catalog.array_agg(item->>'artifact_type' order by item->>'artifact_type')
+        from pg_catalog.jsonb_array_elements(
+          trace_receipt.receipt_json->'opened_artifact_refs') item)
+      is distinct from array['AnalysisReport','ArtifactWorkspaceDocument',
+        'DerivedAnalysisEvidence','QueryEvidence','SqlArtifact']::text[]
+    then raise exception using errcode='55000',
+      message='FALCON24_DIAGNOSTIC_ARTIFACT_CLOSURE_INVALID'; end if;
+    artifact_count:=0;
+    for reference in select item from pg_catalog.jsonb_array_elements(
+        trace_receipt.receipt_json->'opened_artifact_refs') item loop
+      if not exists(select 1 from app_data_agent.artifacts row
+        where row.app_id=attempt.app_id and row.tenant_id=attempt.tenant_id
+          and row.environment=attempt.environment and row.run_id=attempt.run_id
+          and row.artifact_id=(reference->>'artifact_id')::uuid
+          and row.artifact_type=reference->>'artifact_type'
+          and row.revision=(reference->>'revision')::integer
+          and row.content_hash=reference->>'content_hash' and row.is_active
+          and row.authority_epoch=attempt.authority_epoch
+          and row.authority_baseline_id=attempt.authority_baseline_id
+          and row.authority_baseline_hash=attempt.authority_baseline_hash
+          and row.authority_activation_attempt_id=attempt.authority_activation_attempt_id)
+      then raise exception using errcode='55000',
+        message='FALCON24_DIAGNOSTIC_ARTIFACT_CLOSURE_INVALID'; end if;
+      artifact_count:=artifact_count+1;
+    end loop;
+    if artifact_count<>5 then raise exception using errcode='55000',
+      message='FALCON24_DIAGNOSTIC_ARTIFACT_CLOSURE_INVALID'; end if;
+    pass_evidence:=pg_catalog.jsonb_build_object(
+      'qa_e2e_receipt_hash',qa_receipt.receipt_hash,
+      'trace_ui_receipt_hash',trace_receipt.receipt_hash,
+      'trace_hash',trace_receipt.receipt_json->>'trace_hash',
+      'opened_artifact_refs',trace_receipt.receipt_json->'opened_artifact_refs',
+      'observed_execution_path',command->'observed_execution_path',
+      'sandbox_reclamation_receipt_hash',reclamation->>'receipt_hash','residual',0);
+  end if;
+  now_at:=pg_catalog.clock_timestamp();
+  receipt:=pg_catalog.jsonb_build_object(
+    'schema_version','falcon24-diagnostic-receipt@1.0.0','attempt_id',attempt.attempt_id,
+    'run_id',attempt.run_id,'attempt_manifest_hash',attempt.manifest_hash,
+    'authority',attempt.manifest_document->'authority',
+    'semantic_release',attempt.manifest_document->'semantic_release','outcome',outcome_value,
+    'pass_evidence',pass_evidence,'failure_class',failure_class_value,
+    'failure_code',failure_code_value,'completed_at',app_data_agent.runtime_iso_timestamp(now_at));
+  receipt_hash_value:=app_data_agent.u2_canonical_sha256(receipt);
+  receipt:=receipt||pg_catalog.jsonb_build_object('receipt_hash',receipt_hash_value);
+  insert into app_data_agent.falcon24_diagnostic_receipts(
+    app_id,tenant_id,environment,attempt_id,run_id,outcome,completion_command_hash,
+    receipt_hash,receipt_document,created_at)
+  values(attempt.app_id,attempt.tenant_id,attempt.environment,attempt.attempt_id,attempt.run_id,
+    outcome_value,command->>'command_hash',receipt_hash_value,receipt,now_at);
+  update app_data_agent.falcon24_diagnostic_attempts set
+    status=case when outcome_value='PASS' then 'PASSED' else 'FAILED' end,
+    failure_class=failure_class_value,failure_code=failure_code_value,
+    terminal_receipt_hash=receipt_hash_value,completed_at=now_at
+    where app_id=attempt.app_id and tenant_id=attempt.tenant_id
+      and environment=attempt.environment and attempt_id=attempt.attempt_id and status='ACTIVE';
+  if not found then raise exception using errcode='55000',
+    message='FALCON24_DIAGNOSTIC_ATTEMPT_IMMUTABLE'; end if;
+  return receipt;
+exception when invalid_text_representation or numeric_value_out_of_range then
+  raise exception using errcode='22023',message='FALCON24_DIAGNOSTIC_COMMAND_INVALID';
+end
+$function$;
+alter function app_data_agent.begin_falcon24_qualification(jsonb)
+  rename to begin_falcon24_qualification_pre_diagnostic;
+
+create function app_data_agent.begin_falcon24_qualification(command jsonb)
+returns jsonb language plpgsql volatile security definer set search_path='' as $function$
+#variable_conflict use_variable
+declare authority record;manifest jsonb;legacy_manifest jsonb;legacy_command jsonb;
+  diagnostic_ref jsonb;diagnostic app_data_agent.falcon24_diagnostic_attempts%rowtype;
+  diagnostic_receipt app_data_agent.falcon24_diagnostic_receipts%rowtype;
+  existing app_data_agent.falcon24_qualifications%rowtype;created jsonb;
+begin
+  if command is null or pg_catalog.jsonb_typeof(command) is distinct from 'object'
+    or app_data_agent.provider_json_object_has_exact_keys(command,array[
+      'schema_version','manifest','command_hash']::text[]) is distinct from true
+    or command->>'command_hash' is distinct from
+      app_data_agent.u2_canonical_sha256(command-'command_hash')
+    or pg_catalog.jsonb_typeof(command->'manifest') is distinct from 'object'
+  then raise exception using errcode='22023',message='FALCON24_QUALIFICATION_COMMAND_INVALID'; end if;
+  manifest:=command->'manifest';
+  if command->>'schema_version'='falcon24-qualification-begin@2.0.0'
+    and manifest->>'schema_version'='falcon24-qualification-manifest@2.0.0'
+    and manifest->>'authority_epoch'<>'E4'
+  then return app_data_agent.begin_falcon24_qualification_pre_diagnostic(command); end if;
+  if command->>'schema_version'<>'falcon24-qualification-begin@3.0.0'
+    or manifest->>'schema_version'<>'falcon24-qualification-manifest@3.0.0'
+    or manifest->>'authority_epoch'<>'E4' or manifest->>'qualification_id'<>'E4-Q1'
+    or app_data_agent.provider_json_object_has_exact_keys(manifest,array[
+      'schema_version','authority_epoch','qualification_id','attempt_id','authority_baseline_hash',
+      'source_commit','source_fingerprint','frozen_contract_hash','semantic_release_hash',
+      'schema_snapshot_hash','operator_registry_digest','model_config_hash','web_build_hash',
+      'runtime_attestation_hash','model_provider','model_id','slots','diagnostic_receipt_ref',
+      'manifest_hash']::text[]) is distinct from true
+    or manifest->>'manifest_hash' is distinct from
+      app_data_agent.u2_canonical_sha256(manifest-'manifest_hash')
+    or pg_catalog.jsonb_typeof(manifest->'diagnostic_receipt_ref') is distinct from 'object'
+    or app_data_agent.provider_json_object_has_exact_keys(
+      manifest->'diagnostic_receipt_ref',array[
+        'attempt_id','run_id','receipt_hash']::text[]) is distinct from true
+    or app_data_agent.canonical_uuid_json_string_is_valid(
+      manifest#>'{diagnostic_receipt_ref,attempt_id}') is distinct from true
+    or app_data_agent.canonical_uuid_json_string_is_valid(
+      manifest#>'{diagnostic_receipt_ref,run_id}') is distinct from true
+    or manifest#>>'{diagnostic_receipt_ref,receipt_hash}'!~'^sha256:[0-9a-f]{64}$'
+  then raise exception using errcode='22023',message='FALCON24_QUALIFICATION_MANIFEST_INVALID'; end if;
+  diagnostic_ref:=manifest->'diagnostic_receipt_ref';
+  select * into strict authority from platform.current_backend_authority(true);
+  perform pg_catalog.pg_advisory_xact_lock(pg_catalog.hashtextextended(
+    'data-agent:E4-Q1:'||authority.app_id::text||':'||authority.tenant_id::text||':'||
+      authority.environment||':'||authority.principal_id::text,0));
+  select * into diagnostic from app_data_agent.falcon24_diagnostic_attempts row
+    where row.app_id=authority.app_id and row.tenant_id=authority.tenant_id
+      and row.environment=authority.environment
+      and row.attempt_id=(diagnostic_ref->>'attempt_id')::uuid for share;
+  select * into diagnostic_receipt from app_data_agent.falcon24_diagnostic_receipts row
+    where row.app_id=authority.app_id and row.tenant_id=authority.tenant_id
+      and row.environment=authority.environment
+      and row.attempt_id=(diagnostic_ref->>'attempt_id')::uuid
+      and row.run_id=(diagnostic_ref->>'run_id')::uuid
+      and row.receipt_hash=diagnostic_ref->>'receipt_hash' for share;
+  if diagnostic.status is distinct from 'PASSED'
+    or diagnostic.principal_id is distinct from authority.principal_id
+    or diagnostic.authority_epoch is distinct from 'E4'
+    or diagnostic.authority_baseline_hash is distinct from manifest->>'authority_baseline_hash'
+    or diagnostic.source_commit is distinct from manifest->>'source_commit'
+    or diagnostic.source_fingerprint is distinct from manifest->>'source_fingerprint'
+    or diagnostic.semantic_release_digest is distinct from manifest->>'semantic_release_hash'
+    or diagnostic.web_build_id is distinct from manifest->>'web_build_hash'
+    or diagnostic.runtime_attestation_hash is distinct from manifest->>'runtime_attestation_hash'
+    or diagnostic.terminal_receipt_hash is distinct from diagnostic_ref->>'receipt_hash'
+    or diagnostic_receipt.outcome is distinct from 'PASS'
+    or diagnostic_receipt.receipt_document#>>'{pass_evidence,residual}' is distinct from '0'
+  then raise exception using errcode='55000',
+    message='FALCON24_QUALIFICATION_DIAGNOSTIC_REQUIRED'; end if;
+  select * into existing from app_data_agent.falcon24_qualifications row
+    where row.app_id=authority.app_id and row.tenant_id=authority.tenant_id
+      and row.environment=authority.environment and row.principal_id=authority.principal_id
+      and row.qualification_id='E4-Q1' for update;
+  if found then
+    if existing.attempt_id=(manifest->>'attempt_id')::uuid
+      and existing.manifest_hash=manifest->>'manifest_hash'
+      and existing.diagnostic_attempt_id=(diagnostic_ref->>'attempt_id')::uuid
+      and existing.diagnostic_run_id=(diagnostic_ref->>'run_id')::uuid
+      and existing.diagnostic_receipt_hash=diagnostic_ref->>'receipt_hash'
+    then return pg_catalog.to_jsonb(existing); end if;
+    raise exception using errcode='55000',message='FALCON24_GATE_ATTEMPT_IMMUTABLE';
+  end if;
+  legacy_manifest:=(manifest-'diagnostic_receipt_ref')
+    ||pg_catalog.jsonb_build_object('schema_version','falcon24-qualification-manifest@2.0.0');
+  legacy_manifest:=legacy_manifest||pg_catalog.jsonb_build_object(
+    'manifest_hash',app_data_agent.u2_canonical_sha256(legacy_manifest-'manifest_hash'));
+  legacy_command:=pg_catalog.jsonb_build_object(
+    'schema_version','falcon24-qualification-begin@2.0.0','manifest',legacy_manifest);
+  legacy_command:=legacy_command||pg_catalog.jsonb_build_object(
+    'command_hash',app_data_agent.u2_canonical_sha256(legacy_command));
+  created:=app_data_agent.begin_falcon24_qualification_pre_diagnostic(legacy_command);
+  update app_data_agent.falcon24_qualifications row set
+    manifest_hash=manifest->>'manifest_hash',
+    diagnostic_attempt_id=(diagnostic_ref->>'attempt_id')::uuid,
+    diagnostic_run_id=(diagnostic_ref->>'run_id')::uuid,
+    diagnostic_receipt_hash=diagnostic_ref->>'receipt_hash'
+    where app_id=authority.app_id and tenant_id=authority.tenant_id
+      and environment=authority.environment and principal_id=authority.principal_id
+      and qualification_id='E4-Q1' and attempt_id=(manifest->>'attempt_id')::uuid
+    returning pg_catalog.to_jsonb(row) into strict created;
+  return created;
+exception when invalid_text_representation or numeric_value_out_of_range then
+  raise exception using errcode='22023',message='FALCON24_QUALIFICATION_BEGIN_INVALID';
+end
+$function$;
+alter table app_data_agent.falcon24_diagnostic_attempts owner to data_agent_u6_data_owner;
+alter table app_data_agent.falcon24_diagnostic_receipts owner to data_agent_u6_data_owner;
+alter table app_data_agent.falcon24_diagnostic_attempts enable row level security;
+alter table app_data_agent.falcon24_diagnostic_attempts force row level security;
+alter table app_data_agent.falcon24_diagnostic_receipts enable row level security;
+alter table app_data_agent.falcon24_diagnostic_receipts force row level security;
+
+create policy falcon24_diagnostic_attempts_rpc
+on app_data_agent.falcon24_diagnostic_attempts for all to data_agent_u6_rpc_owner
+using(platform.backend_context_matches(app_id,tenant_id,environment,false))
+with check(platform.backend_context_matches(app_id,tenant_id,environment,true));
+create policy falcon24_diagnostic_receipts_rpc
+on app_data_agent.falcon24_diagnostic_receipts for all to data_agent_u6_rpc_owner
+using(platform.backend_context_matches(app_id,tenant_id,environment,false))
+with check(platform.backend_context_matches(app_id,tenant_id,environment,true));
+
+revoke all on table app_data_agent.falcon24_diagnostic_attempts,
+  app_data_agent.falcon24_diagnostic_receipts from public,data_agent_backend;
+grant select,insert,update on table app_data_agent.falcon24_diagnostic_attempts
+  to data_agent_u6_rpc_owner;
+grant select,insert on table app_data_agent.falcon24_diagnostic_receipts
+  to data_agent_u6_rpc_owner;
+
+alter function app_data_agent.falcon24_diagnostic_attempt_state_fence()
+  owner to data_agent_u6_rpc_owner;
+alter function app_data_agent.falcon24_diagnostic_receipt_immutable()
+  owner to data_agent_u6_rpc_owner;
+alter function app_data_agent.begin_falcon24_diagnostic(jsonb)
+  owner to data_agent_u6_rpc_owner;
+alter function app_data_agent.load_falcon24_diagnostic(jsonb)
+  owner to data_agent_u6_rpc_owner;
+alter function app_data_agent.complete_falcon24_diagnostic(jsonb)
+  owner to data_agent_u6_rpc_owner;
+alter function app_data_agent.begin_falcon24_qualification_pre_diagnostic(jsonb)
+  owner to data_agent_u6_rpc_owner;
+alter function app_data_agent.begin_falcon24_qualification(jsonb)
+  owner to data_agent_u6_rpc_owner;
+
+revoke all on function app_data_agent.falcon24_diagnostic_attempt_state_fence(),
+  app_data_agent.falcon24_diagnostic_receipt_immutable(),
+  app_data_agent.begin_falcon24_diagnostic(jsonb),
+  app_data_agent.load_falcon24_diagnostic(jsonb),
+  app_data_agent.complete_falcon24_diagnostic(jsonb),
+  app_data_agent.begin_falcon24_qualification_pre_diagnostic(jsonb),
+  app_data_agent.begin_falcon24_qualification(jsonb)
+from public;
+revoke execute on function app_data_agent.begin_falcon24_qualification_pre_diagnostic(jsonb)
+  from data_agent_backend;
+grant execute on function app_data_agent.begin_falcon24_diagnostic(jsonb),
+  app_data_agent.load_falcon24_diagnostic(jsonb),
+  app_data_agent.complete_falcon24_diagnostic(jsonb),
+  app_data_agent.begin_falcon24_qualification(jsonb)
+to data_agent_backend;
+grant execute on function app_data_agent.falcon24_diagnostic_attempt_state_fence(),
+  app_data_agent.falcon24_diagnostic_receipt_immutable(),
+  app_data_agent.begin_falcon24_diagnostic(jsonb),
+  app_data_agent.load_falcon24_diagnostic(jsonb),
+  app_data_agent.complete_falcon24_diagnostic(jsonb),
+  app_data_agent.begin_falcon24_qualification_pre_diagnostic(jsonb),
+  app_data_agent.begin_falcon24_qualification(jsonb)
+to data_agent_u6_rpc_owner;
+
+revoke all on table app_data_agent.falcon24_diagnostic_attempts,
+  app_data_agent.falcon24_diagnostic_receipts from data_agent_backend;
+do $postconditions$
+declare relation_name text;function_name text;
+begin
+  foreach relation_name in array array[
+    'app_data_agent.falcon24_diagnostic_attempts',
+    'app_data_agent.falcon24_diagnostic_receipts'
+  ]::text[] loop
+    if pg_catalog.to_regclass(relation_name) is null
+      or not exists(select 1 from pg_catalog.pg_class row
+        where row.oid=relation_name::pg_catalog.regclass and row.relrowsecurity and row.relforcerowsecurity)
+    then raise exception using errcode='P0001',
+      message='FALCON24_DIAGNOSTIC_POSTCONDITION_FAILED',detail=relation_name; end if;
+  end loop;
+  foreach function_name in array array[
+    'app_data_agent.begin_falcon24_diagnostic(jsonb)',
+    'app_data_agent.load_falcon24_diagnostic(jsonb)',
+    'app_data_agent.complete_falcon24_diagnostic(jsonb)',
+    'app_data_agent.begin_falcon24_qualification(jsonb)'
+  ]::text[] loop
+    if pg_catalog.to_regprocedure(function_name) is null
+      or pg_catalog.has_function_privilege('public',function_name,'EXECUTE')
+      or not pg_catalog.has_function_privilege('data_agent_backend',function_name,'EXECUTE')
+    then raise exception using errcode='P0001',
+      message='FALCON24_DIAGNOSTIC_POSTCONDITION_FAILED',detail=function_name; end if;
+  end loop;
+  if pg_catalog.has_function_privilege('data_agent_backend',
+      'app_data_agent.begin_falcon24_qualification_pre_diagnostic(jsonb)','EXECUTE')
+    or pg_catalog.has_table_privilege('data_agent_backend',
+      'app_data_agent.falcon24_diagnostic_attempts','SELECT')
+    or pg_catalog.has_table_privilege('data_agent_backend',
+      'app_data_agent.falcon24_diagnostic_receipts','INSERT')
+    or not exists(select 1 from pg_catalog.pg_attribute row
+      where row.attrelid='app_data_agent.falcon24_qualifications'::pg_catalog.regclass
+        and row.attname='diagnostic_receipt_hash' and not row.attisdropped)
+  then raise exception using errcode='P0001',
+    message='FALCON24_DIAGNOSTIC_POSTCONDITION_FAILED'; end if;
+end
+$postconditions$;
+select platform.assert_migration_checksum(
+  'app','00000000-0000-4000-8000-00000000da01'::uuid,
+  '20260725010790_app_data_agent_falcon24_diagnostic_authority',
+  'sha256:1fa18ed845d99c4964b11bd92169119b42a7eb040e5cf5918761675d1c5f1294');
+commit;

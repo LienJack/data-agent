@@ -4,6 +4,7 @@ import { falcon24AnalysisCaseIdSchema } from "../src/evals/falcon24-agent-analys
 import {
   buildFalcon24QualificationManifest,
   buildFalcon24QualificationManifestV2,
+  buildFalcon24QualificationManifestV3,
   FALCON24_QUALIFICATION_EXPECTED_PATH,
   verifyFalcon24QualificationManifest,
   verifyFalcon24QualificationManifestDocument,
@@ -170,6 +171,25 @@ describe("Falcon24 qualification contracts", () => {
     ).rejects.toThrow("authority_epoch");
     await expect(
       buildFalcon24QualificationManifestV2({ ...material, qualification_id: "E2-Q2" }),
+    ).rejects.toThrow();
+  });
+
+  it("requires an exact PASSED diagnostic receipt reference for E4-Q1", async () => {
+    const material = {
+      ...(await manifestMaterial()),
+      schema_version: "falcon24-qualification-manifest@3.0.0",
+      authority_epoch: "E4",
+      qualification_id: "E4-Q1",
+      diagnostic_receipt_ref: {
+        attempt_id: id(30),
+        run_id: id(31),
+        receipt_hash: hash("d"),
+      },
+    };
+    const manifest = await buildFalcon24QualificationManifestV3(material);
+    await expect(verifyFalcon24QualificationManifestDocument(manifest)).resolves.toEqual(manifest);
+    await expect(
+      buildFalcon24QualificationManifestV3({ ...material, authority_epoch: "E5" }),
     ).rejects.toThrow();
   });
 });
