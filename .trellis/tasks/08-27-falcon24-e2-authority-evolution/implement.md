@@ -290,6 +290,15 @@ Status: completed on 2026-08-28.
   `SEMANTIC_SUCCESSOR_E4_ACTIVATION_ASSERTIONS_READY`；专用 E3 database/container 未连接、未修改。
 - Finalizer orchestration 尚未勾选：其现有文件属于 rejected generation-1 repair 的冻结审计现场，本包不覆盖、不暂存；后续仅在
   clean 新模块能完整接管或用户明确解除该文件边界时完成 stage -> smoke -> proof -> combined RPC -> readback wiring。
+- 新增 server-only `falcon24-successor-finalization` 协调器，已经把正确顺序固定为生产读口 exact E3/gen1/CAS preflight ->
+  唯一 publication authority stage -> Worker deterministic smoke -> 重载 `SMOKE_PASSED` stage -> proof v2 -> E4 staging callback ->
+  refs-only combined RPC -> production closure/promoted Release readback。协调器没有 projection payload/digest 参数，也没有 post-commit
+  补写/rollback 接口；receipt baseline/attempt 换绑、mixed readback 或 readback I/O 失败均以稳定 severe code 冻结后续执行。
+- 新协调器测试 7/7 PASS，覆盖严格顺序、Worker capability 传递、smoke/rejected stage 的 activation-before-smoke 禁止、refs-only
+  combined command、receipt 换绑、stale preflight 与 post-commit severe readback。Contracts dependency/semantic architecture 19/19 PASS，
+  scoped Biome 与 `git diff --check` PASS。Web typecheck 不再报告本包文件错误；剩余错误来自被冻结的 bootstrap/repair 审计现场和
+  既存 `direct-semantic-editor.tsx` exhaustiveness 缺口，后者转入独立 scoped 修复，前者仍等待明确处置授权。
+- 因冻结 CLI 尚未接入该协调器，W5 的 Finalizer 工作项仍不勾选，W7 production import graph 也仍不得标绿。
 
 **Commit**
 
