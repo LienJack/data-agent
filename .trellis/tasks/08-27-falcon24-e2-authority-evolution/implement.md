@@ -318,6 +318,12 @@ Status: completed on 2026-08-28.
 - E4 stager 7/7、与 Finalizer/readback/Worker smoke 合并聚焦 21/21 PASS；覆盖严格调用顺序、幂等 replay、stage/proof 换绑、
   supporting receipt 缺失、sandbox isolation 冒充、semantic receipt 替换和非 exact OPEN attempt。scoped Biome、`git diff --check`
   PASS；Web typecheck 对 clean modules 零错误，仍只报告冻结 bootstrap/repair 的 8 个既有错误。
+- `bcc89692` 新增 read-only workspace supporting-authority preflight，替代旧 `prepareWorkspaceAuthority` 中危险的 defaults CAS：
+  只从生产 Effective Config read port 加载现有 E3 defaults，验证 exact scope/defaults revision、generation-1 predecessor
+  id/generation/digest、datasource/model/schema snapshot/policies 和空 extension collections，再返回冻结 refs。模块没有 defaults writer；
+  stale/missing/cross-scope/malformed closure 均在 supporting receipt staging 前拒绝。
+- Supporting preflight 5/5、W5 clean Web modules 合并聚焦 26/26 PASS；scoped Biome 与 `git diff --check` PASS，Web typecheck 仍仅有
+  冻结 bootstrap/repair 的 8 个既有错误。旧 CLI 尚未删除对 `prepareWorkspaceAuthority` 的调用，因此该 checklist 项在接线前仍不勾选。
 - 因冻结 CLI 尚未接入该协调器，W5 的 Finalizer 工作项仍不勾选，W7 production import graph 也仍不得标绿。
 
 **Commit**
