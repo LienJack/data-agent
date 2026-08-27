@@ -20,11 +20,12 @@ createPostgresqlText2SqlQueryRuntime({ pool, schema_snapshots, datasources, secr
 ```
 
 ```text
-Root turn (AUTO)
-  -> strict FINAL_ANSWER
-  -> or delegate_to_subagent@1 native tool call(s)
-     -> admission against frozen Catalog and current exact V2 Profile
-     -> Semantic | Governed Text2SQL | Report
+Root turn 0..3 (AUTO)
+  -> strict FINAL_ANSWER -> Host verifier -> terminal or verifier feedback
+  -> or delegate_to_subagent@2 current native tool call(s)
+     -> admission against frozen Catalog, accepted input Artifacts and current exact V2 Profile
+     -> accepted Artifact + safe Tool Result
+     -> next Root turn decides the next action
 ```
 
 ## 3. Root Authority
@@ -32,7 +33,10 @@ Root turn (AUTO)
 - Run acceptance freezes the exact Subagent Capability Catalog in the V3 lease。
 - Root uses the catalog's semantic `description/when_to_use/when_not_to_use/examples` and is the only component allowed to choose a Profile。
 - Root direct answers are limited to `GENERAL_TEXT` based on general knowledge or visible user messages. Workspace facts, semantic definitions/relationships, aggregates, rankings, trends, rows and charts require delegation or accepted Artifact evidence。
-- Root uses server-owned `toolChoice=AUTO`. When an initial direct answer is returned, the same Root performs one bounded `DIRECT_ANSWER_REVIEW`; it may retain a genuinely general answer or replace it with a native Subagent call. This is Root self-review, not a Host classifier。
+- Root uses server-owned `toolChoice=AUTO` for at most four normal turns. Each turn decides only the current next action or final answer; there is no dedicated review stage or predeclared future call chain。
+- Subagent terminal results return to Root as strict safe Tool Results. A later turn may pass an exact accepted output only through ordinary `input_artifact_refs`。
+- Multiple calls in one turn are allowed only when each call already has every required accepted input and can execute independently. Their parallel execution is a performance optimization, not a Host business planner。
+- Host validates only the current calls: frozen Card/Profile, scope, budget, accepted inputs, datasource/schema/release binding, SQL/Sandbox safety, idempotency and recovery. Host never selects a subsequent business capability。
 - Provider output is normalized through the strict Root Harness. Mixed text/tool output, unknown tools, unknown Profiles and catalog hash mismatch fail closed。
 - `ROOT_HARNESS@1` is the only Q&A executor. V1/V2/`LEGACY_FIXED@1` leases return `ROOT_AGENT_LEASE_VERSION_UNSUPPORTED` and never fall back。
 
@@ -136,7 +140,7 @@ The only model output contract is `text2sql-query-candidate@1.0.0`:
 
 ## 9. Required Tests
 
-- Root Harness: direct answer, native single/multi delegation, mixed response rejection, AUTO tool choice and direct-answer review。
+- Root Harness: direct answer, native single delegation, cross-turn serial delegation, same-turn independent calls, safe Tool Result feedback, verifier feedback, mixed response rejection, four-turn exhaustion and durable replay。
 - V2 Profile materialization/admission: exact revision/hash/tool/Skill closure; V1 and stale revision rejection。
 - Semantic: exact release projection/hash verification, retrieval/graph/inference audit and no SQL execution。
 - Text2SQL: strict candidate schema, literal parameterization, relation/function/AST rejection, exact binding, EXPLAIN/read-only transaction, SQLSTATE classes, bounded repair and result-shape closure。
