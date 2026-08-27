@@ -147,6 +147,7 @@ function assertStageCommandBinding(
 function assertSmokeClosure(
   stage: SemanticSuccessorStage,
   receipt: SemanticRuntimeSmokeReceipt,
+  expectedWorkerBuild: RuntimeBuildIdentity,
 ): void {
   if (
     receipt.outcome !== "PASS" ||
@@ -157,6 +158,9 @@ function assertSmokeClosure(
     !exact(receipt.projection_refs, stage.projection_refs)
   ) {
     fail("FALCON24_SEMANTIC_SUCCESSOR_SMOKE_REQUIRED");
+  }
+  if (!exact(receipt.worker_build_identity, expectedWorkerBuild)) {
+    fail("FALCON24_SEMANTIC_SUCCESSOR_SMOKE_BUILD_MISMATCH");
   }
 }
 
@@ -232,7 +236,7 @@ export async function finalizeFalcon24SemanticSuccessor(input: {
       }),
     ),
   );
-  assertSmokeClosure(stagedEnvelope.stage, smoke);
+  assertSmokeClosure(stagedEnvelope.stage, smoke, input.worker_build_identity);
 
   const smokePassedEnvelope = await verifySemanticReleaseEnvelope(
     await input.publication_authority.loadStagedSuccessor({
@@ -252,7 +256,7 @@ export async function finalizeFalcon24SemanticSuccessor(input: {
   if (validation.outcome !== "PASS") {
     fail("FALCON24_SEMANTIC_SUCCESSOR_VALIDATION_REQUIRED");
   }
-  assertSmokeClosure(smokePassedEnvelope.stage, smoke);
+  assertSmokeClosure(smokePassedEnvelope.stage, smoke, input.worker_build_identity);
 
   const proof = await buildFalcon24SemanticSuccessorAuthorityProof({
     stage: smokePassedEnvelope.stage,

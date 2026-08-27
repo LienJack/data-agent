@@ -390,6 +390,26 @@ describe("Falcon24 semantic successor finalization", () => {
     expect(arranged.calls.loadCurrentClosure).toHaveBeenCalledTimes(1);
   });
 
+  it("rejects a smoke receipt produced by a different Worker build", async () => {
+    const arranged = await arrange();
+    const { smoke_receipt_hash: _receiptHash, ...smokeMaterial } = arranged.smoke;
+    const wrongBuildSmoke = await buildSemanticRuntimeSmokeReceipt({
+      ...smokeMaterial,
+      worker_build_identity: {
+        ...buildIdentity,
+        generation_id: hash("b"),
+        build_id: hash("c"),
+      },
+    });
+    arranged.calls.runSmoke.mockResolvedValueOnce({ ok: true, value: wrongBuildSmoke });
+
+    await expect(finalizeFalcon24SemanticSuccessor(finalizationInput(arranged))).rejects.toThrow(
+      "FALCON24_SEMANTIC_SUCCESSOR_SMOKE_BUILD_MISMATCH",
+    );
+    expect(arranged.calls.stageFalconAuthority).not.toHaveBeenCalled();
+    expect(arranged.calls.promoteStagedSuccessor).not.toHaveBeenCalled();
+  });
+
   it("rejects a rejected successor before running smoke", async () => {
     const arranged = await arrange();
     const rejected = await buildSemanticSuccessorStage({
