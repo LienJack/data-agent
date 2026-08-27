@@ -200,10 +200,31 @@ Status: completed on 2026-08-28.
 
 **Work**
 
-- [ ] 生产 read port 改为调用 shared validator，不保留 Worker 私有近似 schema。
-- [ ] Stage smoke 精确加载 stage envelope；固定 metric/dimension/window/Asia-Shanghai 计划。
-- [ ] 明确禁止 model/provider、正式 Run、计分 gate 与网络副作用。
-- [ ] 生成 smoke receipt，PASS CAS `SMOKE_PASSED`；semantic FAIL receipt + CAS `REJECTED`；process interruption留在 STAGED。
+- [x] 生产 read port 改为调用 shared validator，不保留 Worker 私有近似 schema。
+- [x] Stage smoke 精确加载 stage envelope；固定 metric/dimension/window/Asia-Shanghai 计划。
+- [x] 明确禁止 model/provider、正式 Run、计分 gate 与网络副作用。
+- [x] 生成 smoke receipt，PASS CAS `SMOKE_PASSED`；semantic FAIL receipt + CAS `REJECTED`；process interruption留在 STAGED。
+
+**Evidence (2026-08-28, W4)**
+
+- 新增 `PostgresSemanticSuccessorSmokeAuthority`：按 `stage_id` 加载未提升候选、按 exact `release_id` 加载已提升四投影
+  envelope，并通过唯一 `commit_semantic_successor_smoke` RPC 提交 exact receipt；生产 read port 与 stage smoke 均调用
+  `verifySemanticReleaseEnvelope` + `validateSemanticRuntimeClosure`，generation 1 缺少 promoted successor 时继续以
+  `SEMANTIC_RELEASE_PROJECTION_INVALID` fail closed。
+- Worker smoke 仅接受 authority/build identity，没有 model/provider/Run/gate/network 依赖；固定
+  `metric.order_revenue`、`dimension.order_month`、`Asia/Shanghai` 与
+  `[2023-11-01T00:00:00.000Z, 2024-11-01T00:00:00.000Z)`，绑定 exact stage、四类 projection、resolved binding、
+  validator 与 Worker build 后生成确定性 plan/receipt hash。进程在唯一 commit RPC 前中断时零写入；PASS/FAIL/replay
+  均由 PostgreSQL CAS/幂等约束封口。
+- 10783 增加窄的 `load_promoted_semantic_successor_release(jsonb)` read RPC，返回前逐项核对正式 source release、三类 runtime
+  projection、graph binding 与 immutable staged bytes；更新后 migration checksum 为
+  `sha256:d2889c065ceda0ab1a039b77ed3d27a986dad2525b7e3460ea5c85541069da13`。
+- PostgreSQL 17 临时库 `data_agent_semantic_successor_w2_52de40d0` 实跑 migration + assertions PASS：FAIL receipt 在测试
+  子事务中观察到 `REJECTED` 后回滚，PASS/replay 通过，combined activation 后 exact release loader 返回 `PROMOTED`；专用
+  E3 数据库未连接、未修改。
+- 验证：Contracts 97 files / 943 tests PASS；Platform 106 files / 667 tests PASS；Worker 86 passed + 2 skipped files、
+  405 passed + 9 skipped tests；Contracts/Platform/Worker typecheck PASS，Worker build PASS；migration renderer/inventory、
+  focused Biome 与 `git diff --check` PASS。
 
 **Validation**
 

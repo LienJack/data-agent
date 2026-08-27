@@ -22,6 +22,7 @@
     "dev:guarded:semantic-authoring": "tsx ../../scripts/guarded-app-entry.ts semantic-authoring",
     "start": "node dist/run-worker-cli.js",
     "start:semantic-authoring": "node dist/semantic/authoring-worker-cli.js",
+    "semantic:successor:smoke": "tsx src/semantic/semantic-successor-stage-smoke-cli.ts",
     "typecheck": "tsc -p tsconfig.json --noEmit",
     "test:unit": "vitest run test/credentialed-provider-certification.spec.ts test/semantic-relationship-indexer.spec.ts test/runs",
     "test:integration": "vitest run test/integration --passWithNoTests=false",

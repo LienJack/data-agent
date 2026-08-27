@@ -76,6 +76,7 @@ describe("10783 semantic successor and E4 activation authority", () => {
     for (const functionName of [
       "record_semantic_successor_stage",
       "load_semantic_successor_stage",
+      "load_promoted_semantic_successor_release",
       "commit_semantic_successor_smoke",
     ]) {
       expect(migration).toContain(`function semantic.${functionName}(jsonb)`);
@@ -83,6 +84,7 @@ describe("10783 semantic successor and E4 activation authority", () => {
     expect(migration).toContain("semantic-successor-stage-record@1.0.0");
     expect(migration).toContain("semantic-successor-stage-record-idempotency@1.0.0");
     expect(migration).toContain("semantic-successor-stage-load@1.0.0");
+    expect(migration).toContain("semantic-successor-release-load@1.0.0");
     expect(migration).toContain("semantic-successor-smoke-commit@1.0.0");
     expect(migration).toContain("validator_identity");
     expect(migration).toContain("worker_build_identity");
@@ -147,6 +149,9 @@ describe("10783 semantic successor and E4 activation authority", () => {
     expect(migration).toContain("from public,anon,authenticated,service_role,data_agent_backend");
     expect(migration).toMatch(
       /grant execute on function[\s\S]*semantic\.load_semantic_successor_stage\(jsonb\)[\s\S]*to data_agent_backend/u,
+    );
+    expect(migration).toMatch(
+      /grant execute on function[\s\S]*semantic\.load_promoted_semantic_successor_release\(jsonb\)[\s\S]*to data_agent_backend/u,
     );
     expect(migration).toMatch(
       /grant execute on function[\s\S]*app_data_agent\.activate_falcon24_authority_with_semantic_successor\(jsonb\)[\s\S]*to data_agent_backend/u,

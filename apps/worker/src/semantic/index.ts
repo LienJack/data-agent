@@ -25,3 +25,13 @@ export {
   type FrozenSemanticReleaseCatalog,
   type FrozenSemanticReleaseReadPort,
 } from "./semantic-release-read-port.js";
+export {
+  createSemanticSuccessorStageSmoke,
+  SEMANTIC_SUCCESSOR_SMOKE_DIMENSION_ID,
+  SEMANTIC_SUCCESSOR_SMOKE_METRIC_ID,
+  SEMANTIC_SUCCESSOR_SMOKE_TIMEZONE,
+  SEMANTIC_SUCCESSOR_SMOKE_WINDOW_END_EXCLUSIVE,
+  SEMANTIC_SUCCESSOR_SMOKE_WINDOW_START,
+  type SemanticSuccessorStageSmoke,
+  type SemanticSuccessorStageSmokeAuthority,
+} from "./semantic-successor-stage-smoke.js";

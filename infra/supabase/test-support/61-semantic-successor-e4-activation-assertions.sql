@@ -681,8 +681,36 @@ set local role data_agent_backend;
 
 do $smoke_state_machine$
 declare command jsonb:=pg_temp.semantic_successor_smoke_command(); receipt jsonb;
-  invalid_receipt jsonb; invalid_command jsonb;
+  invalid_receipt jsonb; invalid_command jsonb; fail_receipt jsonb; fail_command jsonb;
+  load_command jsonb; loaded_envelope jsonb;
 begin
+  load_command:=pg_catalog.jsonb_build_object(
+    'schema_version','semantic-successor-stage-load@1.0.0',
+    'stage_id','00000000-0000-4000-8000-000000008832');
+  load_command:=load_command||pg_catalog.jsonb_build_object(
+    'command_hash',pg_temp.successor_hash(load_command));
+  fail_receipt:=pg_catalog.jsonb_set(command->'receipt','{outcome}','"FAIL"'::jsonb);
+  fail_receipt:=pg_catalog.jsonb_set(
+    fail_receipt,'{failure_code}','"SEMANTIC_RUNTIME_FORMULA_DEPENDENCY_INVALID"'::jsonb);
+  fail_receipt:=pg_catalog.jsonb_set(fail_receipt,'{smoke_receipt_hash}',
+    pg_catalog.to_jsonb(pg_temp.successor_hash(pg_catalog.jsonb_build_object(
+      'hash_domain','semantic-runtime-smoke-receipt@1.0.0',
+      'receipt',fail_receipt-'smoke_receipt_hash'))));
+  fail_command:=pg_catalog.jsonb_set(command,'{receipt}',fail_receipt);
+  fail_command:=pg_catalog.jsonb_set(fail_command,'{idempotency_key}','"smoke-fail-branch"'::jsonb);
+  fail_command:=pg_catalog.jsonb_set(fail_command,'{command_hash}',pg_catalog.to_jsonb(
+    pg_temp.successor_hash(fail_command-'command_hash')));
+  begin
+    receipt:=semantic.commit_semantic_successor_smoke(fail_command);
+    loaded_envelope:=semantic.load_semantic_successor_stage(load_command);
+    if receipt->>'outcome'<>'FAIL'
+      or receipt->>'failure_code'<>'SEMANTIC_RUNTIME_FORMULA_DEPENDENCY_INVALID'
+      or loaded_envelope#>>'{stage,status}'<>'REJECTED'
+    then raise exception 'SEMANTIC_SUCCESSOR_FAIL_BRANCH_INVALID'; end if;
+    raise exception 'SEMANTIC_SUCCESSOR_FAIL_BRANCH_ROLLBACK';
+  exception when raise_exception then
+    if sqlerrm<>'SEMANTIC_SUCCESSOR_FAIL_BRANCH_ROLLBACK' then raise; end if;
+  end;
   invalid_receipt:=(command->'receipt')-'calendar_timezone';
   invalid_receipt:=pg_catalog.jsonb_set(invalid_receipt,'{smoke_receipt_hash}',
     pg_catalog.to_jsonb(pg_temp.successor_hash(pg_catalog.jsonb_build_object(

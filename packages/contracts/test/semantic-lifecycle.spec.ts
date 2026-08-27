@@ -4,7 +4,10 @@ import {
   buildSemanticChangeSet,
   buildSemanticRuntimeClosureValidationReceipt,
   buildSemanticRuntimeSmokeReceipt,
+  buildSemanticSuccessorReleaseLoadCommand,
+  buildSemanticSuccessorSmokeCommitCommand,
   buildSemanticSuccessorStage,
+  buildSemanticSuccessorStageLoadCommand,
   buildStageReviewedSemanticSuccessorCommand,
   semanticSuccessorStageEnvelopeSchema,
   stageReviewedSemanticSuccessorCommandSchema,
@@ -218,6 +221,68 @@ describe("semantic lifecycle contracts", () => {
         smoke_receipt_hash: validation.validation_receipt_hash,
       }),
     ).rejects.toThrow("SEMANTIC_RUNTIME_SMOKE_RECEIPT_HASH_MISMATCH");
+  });
+
+  it("binds exact stage/release loads and smoke CAS to canonical command hashes", async () => {
+    const stage = await buildSemanticSuccessorStage(successorStageMaterial());
+    const smoke = await buildSemanticRuntimeSmokeReceipt({
+      schema_version: "semantic-runtime-smoke-receipt@1.0.0",
+      receipt_id: id(49),
+      stage_id: stage.stage_id,
+      stage_digest: stage.stage_digest,
+      candidate_release: stage.candidate_release,
+      projection_refs: stage.projection_refs,
+      resolved_metric_id: "metric.order_revenue",
+      resolved_dimension_id: "dimension.order_month",
+      resolved_binding_hash: hash("a"),
+      plan_hash: hash("b"),
+      calendar_timezone: "Asia/Shanghai",
+      window_start: "2023-11-01T00:00:00.000Z",
+      window_end_exclusive: "2024-11-01T00:00:00.000Z",
+      validator_identity: {
+        validator_version: "semantic-runtime-closure-validator@1.0.0",
+        validator_hash: hash("9"),
+      },
+      worker_build_identity: {
+        schema_version: "runtime-build-identity@1.0.0",
+        consumer_role: "worker",
+        generation_id: hash("c"),
+        build_id: hash("d"),
+        built_at: "2026-08-27T00:00:00.000Z",
+        git_commit: "1234567",
+        git_dirty: false,
+      },
+      outcome: "PASS",
+      failure_code: null,
+    });
+    const stageLoad = await buildSemanticSuccessorStageLoadCommand({
+      schema_version: "semantic-successor-stage-load@1.0.0",
+      stage_id: stage.stage_id,
+    });
+    const releaseLoad = await buildSemanticSuccessorReleaseLoadCommand({
+      schema_version: "semantic-successor-release-load@1.0.0",
+      semantic_domain: scope.semantic_domain,
+      release_id: stage.candidate_release.release_id,
+    });
+    const commit = await buildSemanticSuccessorSmokeCommitCommand({
+      schema_version: "semantic-successor-smoke-commit@1.0.0",
+      idempotency_key: "falcon24-e4-stage-smoke",
+      stage_id: stage.stage_id,
+      expected_stage_digest: stage.stage_digest,
+      receipt: smoke,
+    });
+
+    expect(stageLoad.command_hash).not.toBe(releaseLoad.command_hash);
+    expect(commit.receipt.smoke_receipt_hash).toBe(smoke.smoke_receipt_hash);
+    await expect(
+      buildSemanticSuccessorSmokeCommitCommand({
+        schema_version: "semantic-successor-smoke-commit@1.0.0",
+        idempotency_key: commit.idempotency_key,
+        stage_id: id(50),
+        expected_stage_digest: commit.expected_stage_digest,
+        receipt: smoke,
+      }),
+    ).rejects.toThrow("SEMANTIC_SUCCESSOR_SMOKE_COMMAND_RECEIPT_MISMATCH");
   });
 
   it("builds stable assertion identity independently of assertion id and provenance", async () => {

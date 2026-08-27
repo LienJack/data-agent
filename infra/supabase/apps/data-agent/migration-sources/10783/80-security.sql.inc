@@ -155,6 +155,8 @@ alter function semantic.record_semantic_successor_stage(jsonb)
   owner to data_agent_u6_rpc_owner;
 alter function semantic.load_semantic_successor_stage(jsonb)
   owner to data_agent_u6_rpc_owner;
+alter function semantic.load_promoted_semantic_successor_release(jsonb)
+  owner to data_agent_u6_rpc_owner;
 alter function semantic.commit_semantic_successor_smoke(jsonb)
   owner to data_agent_u6_rpc_owner;
 alter function app_data_agent.activate_falcon24_authority_with_semantic_successor(jsonb)
@@ -179,12 +181,14 @@ revoke all on function
   semantic.semantic_formal_history_immutable(),
   semantic.record_semantic_successor_stage(jsonb),
   semantic.load_semantic_successor_stage(jsonb),
+  semantic.load_promoted_semantic_successor_release(jsonb),
   semantic.commit_semantic_successor_smoke(jsonb),
   app_data_agent.activate_falcon24_authority_with_semantic_successor(jsonb)
 from public,anon,authenticated,service_role,data_agent_backend;
 grant execute on function
   semantic.record_semantic_successor_stage(jsonb),
   semantic.load_semantic_successor_stage(jsonb),
+  semantic.load_promoted_semantic_successor_release(jsonb),
   semantic.commit_semantic_successor_smoke(jsonb),
   app_data_agent.activate_falcon24_authority_with_semantic_successor(jsonb)
 to data_agent_backend;

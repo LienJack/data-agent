@@ -75,3 +75,10 @@ export {
   createPostgresSemanticPortabilityRepository,
   type PostgresSemanticPortabilityRepository,
 } from "../semantic/postgres-semantic-portability.js";
+export {
+  createPostgresSemanticSuccessorSmokeAuthority,
+  type PostgresSemanticSuccessorSmokeAuthority,
+  type SemanticSuccessorReleaseLocator,
+  type SemanticSuccessorSmokeCommitInput,
+  type SemanticSuccessorStageLocator,
+} from "../semantic/postgres-semantic-successor-smoke.js";

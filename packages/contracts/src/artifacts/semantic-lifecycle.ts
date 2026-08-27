@@ -16,6 +16,12 @@ export const SEMANTIC_REVIEW_DECISION_VERSION = "semantic-review-decision@1.0.0"
 export const SEMANTIC_PUBLICATION_RECEIPT_VERSION = "semantic-publication-receipt@1.0.0" as const;
 export const STAGE_REVIEWED_SEMANTIC_SUCCESSOR_COMMAND_VERSION =
   "stage-reviewed-semantic-successor-command@1.0.0" as const;
+export const SEMANTIC_SUCCESSOR_STAGE_LOAD_COMMAND_VERSION =
+  "semantic-successor-stage-load@1.0.0" as const;
+export const SEMANTIC_SUCCESSOR_RELEASE_LOAD_COMMAND_VERSION =
+  "semantic-successor-release-load@1.0.0" as const;
+export const SEMANTIC_SUCCESSOR_SMOKE_COMMIT_COMMAND_VERSION =
+  "semantic-successor-smoke-commit@1.0.0" as const;
 
 export const semanticReleaseReferenceSchema = z.strictObject({
   release_id: immutableIdSchema,
@@ -374,6 +380,77 @@ export async function verifySemanticRuntimeSmokeReceipt(input: unknown) {
     throw new TypeError("SEMANTIC_RUNTIME_SMOKE_RECEIPT_HASH_MISMATCH");
   }
   return receipt;
+}
+
+const semanticSuccessorStageLoadCommandMaterialSchema = z.strictObject({
+  schema_version: z.literal(SEMANTIC_SUCCESSOR_STAGE_LOAD_COMMAND_VERSION),
+  stage_id: immutableIdSchema,
+});
+
+export const semanticSuccessorStageLoadCommandSchema =
+  semanticSuccessorStageLoadCommandMaterialSchema.extend({
+    command_hash: contentHashSchema,
+  });
+
+export async function buildSemanticSuccessorStageLoadCommand(input: unknown) {
+  const material = semanticSuccessorStageLoadCommandMaterialSchema.parse(input);
+  return semanticSuccessorStageLoadCommandSchema.parse({
+    ...material,
+    command_hash: await sha256ContentHash(material),
+  });
+}
+
+const semanticSuccessorReleaseLoadCommandMaterialSchema = z.strictObject({
+  schema_version: z.literal(SEMANTIC_SUCCESSOR_RELEASE_LOAD_COMMAND_VERSION),
+  semantic_domain: semanticScopeSchema.shape.semantic_domain,
+  release_id: immutableIdSchema,
+});
+
+export const semanticSuccessorReleaseLoadCommandSchema =
+  semanticSuccessorReleaseLoadCommandMaterialSchema.extend({
+    command_hash: contentHashSchema,
+  });
+
+export async function buildSemanticSuccessorReleaseLoadCommand(input: unknown) {
+  const material = semanticSuccessorReleaseLoadCommandMaterialSchema.parse(input);
+  return semanticSuccessorReleaseLoadCommandSchema.parse({
+    ...material,
+    command_hash: await sha256ContentHash(material),
+  });
+}
+
+const semanticSuccessorSmokeCommitCommandMaterialSchema = z
+  .strictObject({
+    schema_version: z.literal(SEMANTIC_SUCCESSOR_SMOKE_COMMIT_COMMAND_VERSION),
+    idempotency_key: z.string().trim().min(1).max(256),
+    stage_id: immutableIdSchema,
+    expected_stage_digest: contentHashSchema,
+    receipt: semanticRuntimeSmokeReceiptSchema,
+  })
+  .superRefine((command, context) => {
+    if (
+      command.receipt.stage_id !== command.stage_id ||
+      command.receipt.stage_digest !== command.expected_stage_digest
+    ) {
+      context.addIssue({
+        code: "custom",
+        message: "SEMANTIC_SUCCESSOR_SMOKE_COMMAND_RECEIPT_MISMATCH",
+        path: ["receipt"],
+      });
+    }
+  });
+
+export const semanticSuccessorSmokeCommitCommandSchema =
+  semanticSuccessorSmokeCommitCommandMaterialSchema.extend({
+    command_hash: contentHashSchema,
+  });
+
+export async function buildSemanticSuccessorSmokeCommitCommand(input: unknown) {
+  const material = semanticSuccessorSmokeCommitCommandMaterialSchema.parse(input);
+  return semanticSuccessorSmokeCommitCommandSchema.parse({
+    ...material,
+    command_hash: await sha256ContentHash(material),
+  });
 }
 
 export const semanticAssertionSourceKindSchema = z.enum([
@@ -764,3 +841,12 @@ export type SemanticRuntimeClosureValidationReceipt = z.infer<
   typeof semanticRuntimeClosureValidationReceiptSchema
 >;
 export type SemanticRuntimeSmokeReceipt = z.infer<typeof semanticRuntimeSmokeReceiptSchema>;
+export type SemanticSuccessorStageLoadCommand = z.infer<
+  typeof semanticSuccessorStageLoadCommandSchema
+>;
+export type SemanticSuccessorReleaseLoadCommand = z.infer<
+  typeof semanticSuccessorReleaseLoadCommandSchema
+>;
+export type SemanticSuccessorSmokeCommitCommand = z.infer<
+  typeof semanticSuccessorSmokeCommitCommandSchema
+>;

@@ -1,4 +1,4 @@
--- semantic_successor_e4_activation_migration_checksum: sha256:ac529bd370b56b0d4f492d384cb0e1fdb70f567481d0a0617de6599b543ce0b0
+-- semantic_successor_e4_activation_migration_checksum: sha256:d2889c065ceda0ab1a039b77ed3d27a986dad2525b7e3460ea5c85541069da13
 begin;
 
 select platform.acquire_migration_lock(
@@ -628,6 +628,114 @@ begin
       where projection.app_id=stage.app_id and projection.tenant_id=stage.tenant_id
         and projection.environment=stage.environment and projection.semantic_domain=stage.semantic_domain
         and projection.stage_id=stage.stage_id));
+end
+$function$;
+
+create function semantic.load_promoted_semantic_successor_release(command jsonb)
+returns jsonb language plpgsql stable security definer set search_path='' as $function$
+declare authority record; stage semantic.semantic_successor_release_stage%rowtype;
+  projections jsonb;
+begin
+  if command is null or pg_catalog.jsonb_typeof(command) is distinct from 'object'
+    or app_data_agent.provider_json_object_has_exact_keys(command,array[
+      'schema_version','semantic_domain','release_id','command_hash']::text[]) is distinct from true
+    or command->>'schema_version' is distinct from 'semantic-successor-release-load@1.0.0'
+    or command->>'semantic_domain'!~'^[A-Za-z_][A-Za-z0-9_]{0,63}$'
+    or app_data_agent.canonical_uuid_json_string_is_valid(command->'release_id') is distinct from true
+    or command->>'command_hash' is distinct from
+      app_data_agent.u2_canonical_sha256(command-'command_hash')
+  then raise exception using errcode='22023',
+    message='SEMANTIC_SUCCESSOR_RELEASE_LOAD_INVALID'; end if;
+  select * into strict authority from platform.current_backend_authority(false);
+  if nullif(pg_catalog.current_setting('app.semantic_domain',true),'')
+      is distinct from command->>'semantic_domain'
+  then raise exception using errcode='42501',
+    message='SEMANTIC_SUCCESSOR_SCOPE_FORBIDDEN'; end if;
+  select * into stage from semantic.semantic_successor_release_stage row
+    where row.app_id=authority.app_id and row.tenant_id=authority.tenant_id
+      and row.environment=authority.environment
+      and row.semantic_domain=command->>'semantic_domain'
+      and row.candidate_release_id=(command->>'release_id')::uuid
+      and row.status='PROMOTED';
+  if not found then raise exception using errcode='02000',
+    message='SEMANTIC_SUCCESSOR_PROMOTED_RELEASE_NOT_FOUND'; end if;
+  if not exists(select 1 from semantic.semantic_source_release release
+      where release.app_id=stage.app_id and release.tenant_id=stage.tenant_id
+        and release.environment=stage.environment and release.semantic_domain=stage.semantic_domain
+        and release.release_id=stage.candidate_release_id
+        and release.release_generation=stage.target_generation
+        and release.release_digest=stage.candidate_release_digest
+        and release.compiler_bundle_digest=stage.compiler_bundle_hash
+        and release.executable_projection_ref=
+          (stage.stage_document#>>'{projection_refs,executable,projection_id}')::uuid
+        and release.executable_projection_hash=
+          stage.stage_document#>>'{projection_refs,executable,projection_digest}'
+        and release.relationship_projection_ref=
+          (stage.stage_document#>>'{projection_refs,relationship,projection_id}')::uuid
+        and release.relationship_projection_hash=
+          stage.stage_document#>>'{projection_refs,relationship,projection_digest}'
+        and release.runtime_restriction_projection_ref=
+          (stage.stage_document#>>'{projection_refs,runtime_restriction,projection_id}')::uuid
+        and release.runtime_restriction_projection_hash=
+          stage.stage_document#>>'{projection_refs,runtime_restriction,projection_digest}')
+    or not exists(select 1 from semantic.semantic_executable_projection projection
+      where projection.app_id=stage.app_id and projection.tenant_id=stage.tenant_id
+        and projection.environment=stage.environment and projection.semantic_domain=stage.semantic_domain
+        and projection.release_id=stage.candidate_release_id
+        and projection.projection_id=
+          (stage.stage_document#>>'{projection_refs,executable,projection_id}')::uuid
+        and projection.projection_digest=
+          stage.stage_document#>>'{projection_refs,executable,projection_digest}')
+    or not exists(select 1 from semantic.semantic_relationship_projection projection
+      where projection.app_id=stage.app_id and projection.tenant_id=stage.tenant_id
+        and projection.environment=stage.environment and projection.semantic_domain=stage.semantic_domain
+        and projection.release_id=stage.candidate_release_id
+        and projection.datasource_id=stage.datasource_id
+        and projection.projection_id=
+          (stage.stage_document#>>'{projection_refs,relationship,projection_id}')::uuid
+        and projection.projection_digest=
+          stage.stage_document#>>'{projection_refs,relationship,projection_digest}')
+    or not exists(select 1 from semantic.semantic_runtime_restriction_projection projection
+      where projection.app_id=stage.app_id and projection.tenant_id=stage.tenant_id
+        and projection.environment=stage.environment and projection.semantic_domain=stage.semantic_domain
+        and projection.release_id=stage.candidate_release_id
+        and projection.projection_id=
+          (stage.stage_document#>>'{projection_refs,runtime_restriction,projection_id}')::uuid
+        and projection.projection_digest=
+          stage.stage_document#>>'{projection_refs,runtime_restriction,projection_digest}')
+    or not exists(select 1 from semantic.semantic_source_release_graph_projection binding
+      join semantic.semantic_graph_projection projection
+        on projection.app_id=binding.app_id and projection.tenant_id=binding.tenant_id
+       and projection.environment=binding.environment
+       and projection.semantic_domain=binding.semantic_domain
+       and projection.projection_id=binding.projection_id
+      where binding.app_id=stage.app_id and binding.tenant_id=stage.tenant_id
+        and binding.environment=stage.environment and binding.semantic_domain=stage.semantic_domain
+        and binding.release_id=stage.candidate_release_id
+        and binding.projection_id=
+          (stage.stage_document#>>'{projection_refs,graph,projection_id}')::uuid
+        and binding.projection_storage_digest=
+          stage.stage_document#>>'{projection_refs,graph,projection_digest}'
+        and projection.projection_storage_digest=binding.projection_storage_digest)
+  then raise exception using errcode='55000',
+    message='SEMANTIC_SUCCESSOR_FORMAL_RELEASE_BINDING_MISMATCH'; end if;
+  select pg_catalog.jsonb_object_agg(
+    case projection_kind when 'EXECUTABLE' then 'executable'
+      when 'RELATIONSHIP' then 'relationship'
+      when 'RUNTIME_RESTRICTION' then 'runtime_restriction' else 'graph' end,
+    pg_catalog.jsonb_build_object('projection_kind',projection_kind,
+      'projection_id',projection_id,'projection_digest',projection_digest,
+      'projection_payload',projection_payload)) into projections
+    from semantic.semantic_successor_projection_stage projection
+    where projection.app_id=stage.app_id and projection.tenant_id=stage.tenant_id
+      and projection.environment=stage.environment and projection.semantic_domain=stage.semantic_domain
+      and projection.stage_id=stage.stage_id;
+  if (select pg_catalog.count(*) from pg_catalog.jsonb_object_keys(projections))<>4
+  then raise exception using errcode='55000',
+    message='SEMANTIC_SUCCESSOR_PROJECTION_SET_INVALID'; end if;
+  return pg_catalog.jsonb_build_object(
+    'stage',pg_catalog.jsonb_set(stage.stage_document,'{status}',to_jsonb(stage.status)),
+    'projections',projections);
 end
 $function$;
 
@@ -1518,6 +1626,8 @@ alter function semantic.record_semantic_successor_stage(jsonb)
   owner to data_agent_u6_rpc_owner;
 alter function semantic.load_semantic_successor_stage(jsonb)
   owner to data_agent_u6_rpc_owner;
+alter function semantic.load_promoted_semantic_successor_release(jsonb)
+  owner to data_agent_u6_rpc_owner;
 alter function semantic.commit_semantic_successor_smoke(jsonb)
   owner to data_agent_u6_rpc_owner;
 alter function app_data_agent.activate_falcon24_authority_with_semantic_successor(jsonb)
@@ -1542,12 +1652,14 @@ revoke all on function
   semantic.semantic_formal_history_immutable(),
   semantic.record_semantic_successor_stage(jsonb),
   semantic.load_semantic_successor_stage(jsonb),
+  semantic.load_promoted_semantic_successor_release(jsonb),
   semantic.commit_semantic_successor_smoke(jsonb),
   app_data_agent.activate_falcon24_authority_with_semantic_successor(jsonb)
 from public,anon,authenticated,service_role,data_agent_backend;
 grant execute on function
   semantic.record_semantic_successor_stage(jsonb),
   semantic.load_semantic_successor_stage(jsonb),
+  semantic.load_promoted_semantic_successor_release(jsonb),
   semantic.commit_semantic_successor_smoke(jsonb),
   app_data_agent.activate_falcon24_authority_with_semantic_successor(jsonb)
 to data_agent_backend;
@@ -1604,6 +1716,8 @@ begin
     or not pg_catalog.has_function_privilege('data_agent_backend',
       'semantic.load_semantic_successor_stage(jsonb)','EXECUTE')
     or not pg_catalog.has_function_privilege('data_agent_backend',
+      'semantic.load_promoted_semantic_successor_release(jsonb)','EXECUTE')
+    or not pg_catalog.has_function_privilege('data_agent_backend',
       'app_data_agent.activate_falcon24_authority_with_semantic_successor(jsonb)','EXECUTE')
   then raise exception using errcode='P0001',message='SEMANTIC_SUCCESSOR_GRANT_DRIFT'; end if;
   select procedure.prosrc into strict definition from pg_catalog.pg_proc procedure
@@ -1623,5 +1737,5 @@ $security_postconditions$;
 select platform.assert_migration_checksum(
   'app','00000000-0000-4000-8000-00000000da01'::uuid,
   '20260725010783_app_data_agent_semantic_successor_e4_activation',
-  'sha256:ac529bd370b56b0d4f492d384cb0e1fdb70f567481d0a0617de6599b543ce0b0');
+  'sha256:d2889c065ceda0ab1a039b77ed3d27a986dad2525b7e3460ea5c85541069da13');
 commit;

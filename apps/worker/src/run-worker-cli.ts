@@ -65,6 +65,7 @@ import {
   createPostgresSemanticContextRegistry,
   createPostgresSemanticExplorerReader,
   createPostgresSemanticInductionRegistry,
+  createPostgresSemanticSuccessorSmokeAuthority,
 } from "@data-agent/platform/semantic-postgres";
 import {
   createClamAvInstreamClient,
@@ -575,11 +576,16 @@ export async function runWorkerProcess(
           ),
           secrets: createPostgresSecretRefRepository(sqlPool, capabilityAuthority.authorizer),
         });
+        const semanticSuccessor = createPostgresSemanticSuccessorSmokeAuthority({
+          pool: sqlPool,
+          authorizer: capabilityAuthority.authorizer,
+        });
         const semanticRelease = createFrozenSemanticReleaseReadPort(
           createPostgresSemanticExplorerReader({
             pool: sqlPool,
             authorizer: capabilityAuthority.authorizer,
           }),
+          semanticSuccessor,
         );
         const governedAnalysisRuntime = createProductionGovernedAnalysisRuntime({
           research_authority: researchAuthority,
