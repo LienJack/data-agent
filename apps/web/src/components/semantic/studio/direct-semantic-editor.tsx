@@ -1,6 +1,7 @@
 "use client";
 
 import {
+  SEMANTIC_FORMULA_AST_VERSION,
   type SemanticEdgeTypeDefinition,
   type SemanticFormulaExpression,
   type SemanticGraphEdge,
@@ -16,6 +17,11 @@ import {
 import { ArrowRight, FloppyDisk, Link, Plus, Trash, X } from "@phosphor-icons/react";
 import { useEffect, useMemo, useState } from "react";
 import { createSemanticManualEditCommand } from "./manual-edit-command";
+import {
+  defaultFormulaExpression,
+  FORMULA_EXPRESSION_KINDS,
+  semanticFormulaLanguageVersion,
+} from "./semantic-formula-editor-model";
 
 export type DirectEditorMode = "EDIT_SELECTION" | "ADD_NODE" | "ADD_EDGE" | "PROPOSE_EDGE_TYPE";
 
@@ -113,7 +119,7 @@ function baseNode(type: SemanticNodeType, id: string, name: string, owner: strin
         formula_type: "other",
         return_type: "numeric",
         language: "semantic-ast",
-        language_version: "semantic-formula-ast@1",
+        language_version: SEMANTIC_FORMULA_AST_VERSION,
         expression: { kind: "LITERAL", value: 0 },
       };
     case "GLOSSARY_TERM":
@@ -135,60 +141,6 @@ const fieldClass =
   "h-9 w-full border border-[var(--color-border-default)] bg-white px-3 text-[11px] text-[var(--color-text-primary)] outline-none focus:border-[var(--color-accent)]";
 
 type EdgeAttributes = SemanticGraphEdge["attributes"];
-
-function defaultFormulaExpression(
-  kind: SemanticFormulaExpression["kind"],
-): SemanticFormulaExpression {
-  switch (kind) {
-    case "LITERAL":
-      return { kind, value: 0 };
-    case "SLOT":
-      return { kind, slot_id: "value" };
-    case "BINARY":
-      return {
-        kind,
-        operator: "ADD",
-        left: { kind: "SLOT", slot_id: "value" },
-        right: { kind: "LITERAL", value: 0 },
-      };
-    case "BOOLEAN":
-      return {
-        kind,
-        operator: "AND",
-        operands: [
-          { kind: "LITERAL", value: true },
-          { kind: "LITERAL", value: true },
-        ],
-      };
-    case "NOT":
-      return { kind, operand: { kind: "LITERAL", value: true } };
-    case "CASE":
-      return {
-        kind,
-        branches: [
-          {
-            when: { kind: "LITERAL", value: true },
-            result: { kind: "LITERAL", value: 0 },
-          },
-        ],
-        otherwise: null,
-      };
-    case "AGGREGATE":
-      return {
-        kind,
-        function: "SUM",
-        input: { kind: "SLOT", slot_id: "value" },
-        distinct: false,
-        filter: null,
-      };
-    case "DATE_BUCKET":
-      return {
-        kind,
-        granularity: "day",
-        input: { kind: "SLOT", slot_id: "value" },
-      };
-  }
-}
 
 function EnumSelect<const T extends string>({
   label,
@@ -234,16 +186,7 @@ function FormulaExpressionEditor({
       <EnumSelect
         label="表达式类型"
         value={value.kind}
-        options={[
-          "LITERAL",
-          "SLOT",
-          "BINARY",
-          "BOOLEAN",
-          "NOT",
-          "CASE",
-          "AGGREGATE",
-          "DATE_BUCKET",
-        ]}
+        options={FORMULA_EXPRESSION_KINDS}
         onChange={(kind) => onChange(defaultFormulaExpression(kind))}
       />
       {value.kind === "LITERAL" ? (
@@ -438,6 +381,70 @@ function FormulaExpressionEditor({
               + 添加过滤条件
             </button>
           )}
+        </>
+      ) : null}
+      {value.kind === "GROUP_COUNT" ? (
+        <>
+          <span className="text-[10px] font-semibold text-[var(--color-accent)]">分组键</span>
+          {value.group_by.map((group, index) => (
+            <div
+              // biome-ignore lint/suspicious/noArrayIndexKey: formula AST groups have no persisted identity and remain fully controlled.
+              key={`${path}.group_by.${index}`}
+              className="grid gap-2"
+            >
+              <FormulaExpressionEditor
+                value={group}
+                depth={depth + 1}
+                path={`${path}.group_by.${index}`}
+                onChange={(next) =>
+                  onChange({
+                    ...value,
+                    group_by: value.group_by.map((item, itemIndex) =>
+                      itemIndex === index ? next : item,
+                    ),
+                  })
+                }
+              />
+              {value.group_by.length > 1 ? (
+                <button
+                  type="button"
+                  className="justify-self-start text-[10px] text-red-700"
+                  onClick={() =>
+                    onChange({
+                      ...value,
+                      group_by: value.group_by.filter((_, itemIndex) => itemIndex !== index),
+                    })
+                  }
+                >
+                  移除此分组键
+                </button>
+              ) : null}
+            </div>
+          ))}
+          {value.group_by.length < 32 ? (
+            <button
+              type="button"
+              className="justify-self-start text-[10px] font-semibold text-[var(--color-accent)]"
+              onClick={() =>
+                onChange({
+                  ...value,
+                  group_by: [
+                    ...value.group_by,
+                    { kind: "SLOT", slot_id: `group_key_${value.group_by.length + 1}` },
+                  ],
+                })
+              }
+            >
+              + 添加分组键
+            </button>
+          ) : null}
+          <span className="text-[10px] font-semibold text-[var(--color-accent)]">HAVING 条件</span>
+          <FormulaExpressionEditor
+            value={value.having}
+            depth={depth + 1}
+            path={`${path}.having`}
+            onChange={(having) => onChange({ ...value, having })}
+          />
         </>
       ) : null}
       {value.kind === "CASE" ? (
@@ -773,6 +780,12 @@ export function DirectSemanticEditor({
     selectedNode?.node.node_type === "PHYSICAL_COLUMN" ||
     selectedEdge?.edge.edge_type === "CONTAINS_COLUMN" ||
     selectedEdge?.edge.edge_type === "FOREIGN_KEY_TO";
+  const formulaLanguageVersion = semanticFormulaLanguageVersion(
+    formulaExpression,
+    selectedNode?.node.node_type === "FORMULA"
+      ? selectedNode.node.language_version
+      : SEMANTIC_FORMULA_AST_VERSION,
+  );
 
   useEffect(() => {
     if (mode !== "ADD_EDGE" || !selectedDefinition) return;
@@ -812,7 +825,13 @@ export function DirectSemanticEditor({
               lifecycle,
             };
       const node = semanticGraphNodeSchema.parse(
-        nodeType === "FORMULA" ? { ...draft, expression: formulaExpression } : draft,
+        nodeType === "FORMULA"
+          ? {
+              ...draft,
+              expression: formulaExpression,
+              language_version: formulaLanguageVersion,
+            }
+          : draft,
       );
       onApply(
         createSemanticManualEditCommand(
@@ -1113,7 +1132,7 @@ export function DirectSemanticEditor({
               </label>
               {nodeType === "FORMULA" ? (
                 <div className="text-[10px] text-[var(--color-text-secondary)] md:col-span-2 xl:col-span-4">
-                  <p>公式构建器 · semantic-formula-ast@1</p>
+                  <p>公式构建器 · {formulaLanguageVersion}</p>
                   <div className="mt-1 border border-[var(--color-border-default)] p-3">
                     <FormulaExpressionEditor
                       value={formulaExpression}
