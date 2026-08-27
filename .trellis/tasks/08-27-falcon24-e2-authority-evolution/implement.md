@@ -343,11 +343,35 @@ Status: completed on 2026-08-28.
 **Work / Validation**
 
 - [ ] Contracts、Semantic、Platform、Worker、Web focused/full suites、typecheck/build。
-- [ ] 10783 fresh PG17 + exact E3 fixture upgrade；10790 同样验证。
-- [ ] 历史 immutability pre/post digest、RLS/grants/capability scope、direct DML denial。
-- [ ] Combined activation failure-injection/concurrency all-old/all-new。
+- [x] 10783 fresh PG17 + exact E3 fixture upgrade；10790 同样验证。
+- [x] 历史 immutability pre/post digest、RLS/grants/capability scope、direct DML denial。
+- [x] Combined activation failure-injection/concurrency all-old/all-new。
 - [ ] Production import graph：无 repair RPC、第二 publisher、Worker fallback、client projection payload面。
-- [ ] Docker inventory保持单一专用数据库；不创建新的数据库容器。
+- [x] Docker inventory保持单一专用数据库；不创建新的数据库容器。
+
+**W7 evidence（未全绿）**
+
+- Final W1-W6 commit 上的全量结果：Contracts 99 files / 949 tests、Semantic 29 / 182、Platform 109 / 679、Worker
+  86 passed + 2 skipped files / 405 passed + 9 skipped tests；四个 package 的 typecheck/build 全部通过。Web 在明确排除两个冻结审计
+  test 后为 121 passed + 1 skipped files / 493 passed + 1 skipped tests。
+- Web full/typecheck/build 未勾选：`bootstrap-falcon24-e1.ts`、`finalize-falcon24-authority.ts` 及对应 tests 是用户要求原样保留、不得
+  执行/覆盖的 rejected generation-1 repair 审计现场；W7 不以运行这些 dirty 文件伪造全量通过。
+- `infra/supabase/test-support/static-check.sh` 全绿；10783 checksum
+  `sha256:bbbec227c257178bc6c92654ab4a7ec0a4cc2520cb303d16c909914b97703930`，10790 checksum
+  `sha256:1fa18ed845d99c4964b11bd92169119b42a7eb040e5cf5918761675d1c5f1294`。
+- 通用 PostgreSQL 17 容器内的 W7 scratch DB `data_agent_falcon24_w7_a26b976e` 从已验证 exact E3/10783 fixture
+  前进应用 10784-10790。并发 observer 只看到 `1:E3:1:SMOKE_PASSED` 或 `2:E4:2:PROMOTED:1`；两个并发调用和 replay
+  返回同一 activation receipt hash `sha256:9bd409a44e0fa89bbcd7e43d63518b481320b413b7e6b2e808490f0069230966`。
+- activation 前后 generation 1 source release digest 均为
+  `sha256:4756735c7f6f0095efe00273cf1b0f4ae52def1f4f9bcca399a12d4bf53bd1fd`；E1-E3 baseline digest 均为
+  `sha256:67637a6e5d9d3119cbbfebe3769a49a4ea0f103dc92015a1149ac770292c56f6`；正式 generation 2 恰好一条。
+- 新增 `62-falcon24-diagnostic-authority-assertions.sql`，实际通过 one-active closure、append-only trigger、RLS/grants、backend
+  direct-DML denial 与旧 qualification mutator 隐藏，输出 `FALCON24_DIAGNOSTIC_AUTHORITY_ASSERTIONS_READY`。
+- Docker 仍只有 `data-agent-postgres`、`data-agent-clamav`、`data-agent-neo4j` 与唯一专用
+  `data-agent-falcon24-e1-e81a29c6`；W7 未连接、未修改专用 E3 数据库。
+- Production graph 扫描未发现 repair RPC 被提交，也未发现 Worker 对无效 runtime release 的 fallback；唯一 successor publisher 仍为
+  `publishReviewedSemanticChangeSet` + `createPostgresSemanticPublicationAuthority`。但 HEAD 的历史 bootstrap 仍直接写
+  `projection_payload`，Finalizer 仍走 generation-1 proof/普通 activation。该冻结接线使本项和 W7 保持未勾选，禁止进入 W8。
 
 **Stop conditions**
 
