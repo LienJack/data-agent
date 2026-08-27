@@ -27,12 +27,12 @@
 
 ## E2-3 — Platform Authority and Runtime Propagation
 
-- [ ] 泛化 authority epoch port、effective config fence、repository predicates与 error mapping。
-- [ ] Run创建、catalog、Artifact/Publisher/Analysis authority全部传播 exact current E2 binding；stale E1/current mismatch在 I/O前拒绝。
-- [ ] Root prompt去除固定E1称谓；保留 stable delegation-key native batch协议。
-- [ ] 更新Platform/Agent Runtime/Worker tests，加入E1历史读取与E2 current双夹具。
-- [ ] 验证：focused tests、各package typecheck、production import-boundary scan。
-- [ ] Commit：`feat: propagate current Falcon24 epoch through runtime`。
+- [x] 泛化 authority epoch port、effective config fence、repository predicates与 error mapping。
+- [x] Run创建、catalog、Artifact/Publisher/Analysis authority全部传播 exact current E2 binding；stale E1/current mismatch在 I/O前拒绝。
+- [x] Root prompt去除固定E1称谓；保留 stable delegation-key native batch协议。
+- [x] 更新Platform/Agent Runtime/Worker tests，加入E1历史读取与E2 current双夹具。
+- [x] 验证：focused tests、各package typecheck、production import-boundary scan。
+- [x] Commit：`feat: propagate current Falcon24 epoch through runtime`。
 
 ## E2-4 — Trace, Web and Browser Gate
 
