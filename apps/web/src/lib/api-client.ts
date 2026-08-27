@@ -155,14 +155,16 @@ export async function createQaRun(
     acceptance_fence:
       | Readonly<{
           authority_kind: "QUALIFICATION";
-          qualification_id: "E1-Q1";
+          authority_epoch: string;
+          qualification_id: string;
           attempt_id: string;
           run_id: string;
           claim_fence_token: string;
         }>
       | Readonly<{
           authority_kind: "FINAL_CAMPAIGN";
-          campaign_id: "E1-C1";
+          authority_epoch: string;
+          campaign_id: string;
           attempt_id: string;
           run_id: string;
           claim_fence_token: string;

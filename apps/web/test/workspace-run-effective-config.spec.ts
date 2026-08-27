@@ -317,7 +317,7 @@ describe("workspace Effective Config routes", () => {
     );
   });
 
-  it("freezes the only E1 Root Harness catalog policy on replay", async () => {
+  it("freezes the only current Root Harness catalog policy on replay", async () => {
     const makeRequest = () =>
       new NextRequest(`http://localhost/api/workspaces/${ids.workspace}/runs`, {
         method: "POST",
@@ -339,7 +339,7 @@ describe("workspace Effective Config routes", () => {
     expect(replay.status).toBe(201);
     expect(mocks.freezeCatalog).toHaveBeenCalledWith(
       expect.objectContaining({
-        policy_version: "falcon24-e1-root-v3@1.0.0",
+        policy_version: "falcon24-root-v4@1.0.0",
       }),
     );
     expect(mocks.resolveAndAccept).toHaveBeenCalledTimes(2);

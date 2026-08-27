@@ -1,11 +1,16 @@
 import type { ArtifactReference } from "@data-agent/contracts/artifacts";
-import type { ResolutionTrace } from "@data-agent/contracts/runs";
+import {
+  buildFalcon24QaE2eReceiptV2,
+  buildFalcon24TraceUiReceiptV2,
+  type ResolutionTrace,
+} from "@data-agent/contracts/runs";
 import { describe, expect, it, vi } from "vitest";
 import {
   exactRequiredFalcon24ArtifactReferences,
   falcon24QaStartUrl,
   preflightFalcon24BrowserSubmission,
   submitFalcon24QuestionFromBrowser,
+  verifyFalcon24UiReceiptPair,
 } from "../src/cli/falcon24-browser-trace-gate";
 
 const execFileAsyncMock = vi.hoisted(() => vi.fn());
@@ -51,7 +56,7 @@ function traceWith(references: readonly ArtifactReference[]): ResolutionTrace {
   } as ResolutionTrace;
 }
 
-describe("Falcon24 E1 browser gate", () => {
+describe("Falcon24 versioned browser gate", () => {
   it("always starts from the real Q&A composer without a prebuilt Run or event route", () => {
     const url = falcon24QaStartUrl({
       web_base_url: "https://data-agent.example/trace?run=forbidden&event=forbidden",
@@ -97,6 +102,7 @@ describe("Falcon24 E1 browser gate", () => {
                 question_input_visible: true,
                 submit_visible: true,
                 composer_ready: composerReady,
+                gate_claim_absent: true,
                 expected_run_absent: true,
                 error_banners: [],
                 web_build: { build_id: buildId, generation_id: generationId },
@@ -161,10 +167,18 @@ describe("Falcon24 E1 browser gate", () => {
           ? true
           : source.includes("sessionStorage.getItem")
             ? {
-                schema_version: "falcon24-e1-browser-submit-consumed@1.0.0",
+                schema_version: "falcon24-browser-submit-consumed@2.0.0",
                 run_id: runId,
                 attempt_id: attemptId,
                 conversation_id: conversationId,
+                acceptance_fence: {
+                  authority_kind: "QUALIFICATION",
+                  authority_epoch: "E2",
+                  qualification_id: "E2-Q1",
+                  attempt_id: attemptId,
+                  run_id: runId,
+                  claim_fence_token: "00000000-0000-4000-8000-000000000106",
+                },
               }
             : undefined;
       return {
@@ -187,13 +201,14 @@ describe("Falcon24 E1 browser gate", () => {
         question,
         viewport: { width: 1440, height: 900 },
         claim: {
-          schema_version: "falcon24-e1-browser-submit-claim@1.0.0",
+          schema_version: "falcon24-browser-submit-claim@2.0.0",
           question,
           conversation_id: conversationId,
           idempotency_key: "00000000-0000-4000-8000-000000000107",
           acceptance_fence: {
             authority_kind: "QUALIFICATION",
-            qualification_id: "E1-Q1",
+            authority_epoch: "E2",
+            qualification_id: "E2-Q1",
             attempt_id: attemptId,
             run_id: runId,
             claim_fence_token: "00000000-0000-4000-8000-000000000106",
@@ -204,9 +219,73 @@ describe("Falcon24 E1 browser gate", () => {
     expect(
       execFileAsyncMock.mock.calls.some(([, args]) =>
         (args as readonly string[]).includes(
-          '[data-testid="qa-submit-question"][data-composer-ready="true"]',
+          '[data-testid="qa-submit-question"][data-composer-ready="true"][data-falcon24-claim-ready="true"]',
         ),
       ),
     ).toBe(true);
+  });
+
+  it("fails closed when QA and Trace UI receipts do not share one exact authority and browser identity", async () => {
+    const authority = {
+      schema_version: "falcon24-authority-binding@2.0.0" as const,
+      authority_epoch: "E2" as const,
+      baseline_id: "00000000-0000-4000-8000-000000000108",
+      baseline_hash: `sha256:${"a".repeat(64)}`,
+      activation_attempt_id: "00000000-0000-4000-8000-000000000109",
+    };
+    const webBuild = {
+      build_id: `sha256:${"b".repeat(64)}`,
+      generation_id: `sha256:${"c".repeat(64)}`,
+    };
+    const references = artifactTypes.map(reference);
+    const chartRef = references.find(
+      (candidate) => candidate.artifact_type === "ArtifactWorkspaceDocument",
+    );
+    if (!chartRef) throw new Error("FALCON24_BROWSER_TEST_CHART_MISSING");
+    const qa = await buildFalcon24QaE2eReceiptV2({
+      schema_version: "falcon24-qa-e2e-receipt@2.0.0",
+      run_id: runId,
+      conversation_id: conversationId,
+      authority,
+      web_build: webBuild,
+      browser_harness_version: "falcon24-agent-browser-trace-gate@2.0.0",
+      viewport: { width: 1440, height: 900 },
+      entry_path: "QUESTION_COMPOSER_SUBMIT_TO_RESULT",
+      question_hash: `sha256:${"d".repeat(64)}`,
+      terminal_status: "COMPLETED",
+      answer_visible: true,
+      table_visible: true,
+      chart_rendered: true,
+      report_visible: true,
+      error_banner: null,
+      dom_snapshot_hash: `sha256:${"e".repeat(64)}`,
+      screenshot_hash: `sha256:${"f".repeat(64)}`,
+      observed_at: "2026-08-27T00:00:00.000+08:00",
+    });
+    const trace = await buildFalcon24TraceUiReceiptV2({
+      schema_version: "falcon24-trace-ui-receipt@2.0.0",
+      run_id: runId,
+      conversation_id: conversationId,
+      trace_hash: `sha256:${"1".repeat(64)}`,
+      authority,
+      web_build: { ...webBuild, generation_id: `sha256:${"2".repeat(64)}` },
+      browser_harness_version: "falcon24-agent-browser-trace-gate@2.0.0",
+      viewport: { width: 1440, height: 900 },
+      entry_path: "RESULT_TRACE_ENTRY_TO_EXACT_RUN",
+      opened_nodes: [{ node_id: "node-1", detail_hash: `sha256:${"3".repeat(64)}` }],
+      opened_artifact_refs: references,
+      chart_ref: chartRef,
+      chart_rendered: true,
+      source_table_visible: true,
+      returned_to_result: true,
+      error_banner: null,
+      dom_snapshot_hash: `sha256:${"4".repeat(64)}`,
+      screenshot_hash: `sha256:${"5".repeat(64)}`,
+      observed_at: "2026-08-27T00:00:01.000+08:00",
+    });
+
+    expect(() => verifyFalcon24UiReceiptPair({ qa_e2e: qa, trace_ui: trace })).toThrow(
+      "FALCON24_UI_RECEIPT_PAIR_IDENTITY_MISMATCH",
+    );
   });
 });

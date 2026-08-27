@@ -4,7 +4,7 @@ import { buildRunConfigRequestCandidate } from "@data-agent/contracts/runs";
 import type { WorkspaceFileReference } from "@data-agent/contracts/workspaces";
 import { createPostgresRepository } from "@data-agent/platform/persistence";
 import { freezeSubagentCapabilityCatalog } from "@data-agent/platform/runs";
-import { E1_ROOT_CATALOG_POLICY_VERSION } from "@/lib/e1-root-authority";
+import { FALCON24_ROOT_CATALOG_POLICY_VERSION } from "@/lib/falcon24-root-authority";
 import { deriveRunCommandIdentities } from "@/lib/run-command-identity";
 import {
   getAgentProfileRegistry,
@@ -54,14 +54,16 @@ export interface StartQuestionRunInput {
   readonly acceptance_fence?:
     | {
         readonly authority_kind: "FINAL_CAMPAIGN";
-        readonly campaign_id: "E1-C1";
+        readonly authority_epoch: string;
+        readonly campaign_id: string;
         readonly attempt_id: string;
         readonly run_id: string;
         readonly claim_fence_token: string;
       }
     | {
         readonly authority_kind: "QUALIFICATION";
-        readonly qualification_id: "E1-Q1";
+        readonly authority_epoch: string;
+        readonly qualification_id: string;
         readonly attempt_id: string;
         readonly run_id: string;
         readonly claim_fence_token: string;
@@ -213,7 +215,7 @@ export function createStartQuestionRunUseCase(
       scope: input.scope,
       principal_id: input.principal_id,
       enabled_profiles: profiles.value,
-      policy_version: E1_ROOT_CATALOG_POLICY_VERSION,
+      policy_version: FALCON24_ROOT_CATALOG_POLICY_VERSION,
     });
     const configRequest = await buildRunConfigRequestCandidate({
       schema_version: "run-config-request@1.0.0",

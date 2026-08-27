@@ -8,15 +8,19 @@ import type { BuiltinTeamProfileSetSnapshot } from "@data-agent/agent-runtime";
 import { artifactReferenceIdentity } from "@data-agent/contracts/artifacts";
 import { sha256ContentHash } from "@data-agent/contracts/common";
 import {
-  buildFalcon24QualificationManifest,
-  buildFalcon24ResolutionTraceGateReceipt,
-  buildFalcon24ResolutionTraceUiGateReceipt,
+  authorityEpochForFalcon24Gate,
+  buildFalcon24QualificationManifestV2,
+  buildFalcon24ResolutionTraceGateReceiptV2,
+  buildFalcon24ResolutionTraceUiGateReceiptV2,
   FALCON24_QUALIFICATION_EXPECTED_PATH,
   FALCON24_STRICT_ACCEPTANCE_POLICY_ID,
   type Falcon24AcceptanceFailureLayer,
-  falcon24QualificationIdSchema,
+  falcon24QualificationGateIdSchema,
 } from "@data-agent/contracts/evals";
-import { buildFalcon24QaE2eReceipt, buildFalcon24TraceUiReceipt } from "@data-agent/contracts/runs";
+import {
+  buildFalcon24QaE2eReceiptV2,
+  buildFalcon24TraceUiReceiptV2,
+} from "@data-agent/contracts/runs";
 import { STATISTICAL_OPERATOR_REGISTRY_DIGEST } from "@data-agent/contracts/statistical-operators";
 import { buildFalcon24AgentAnalysisAcceptanceSuite } from "@data-agent/evals";
 import { createPostgresRepository } from "@data-agent/platform/persistence";
@@ -59,6 +63,7 @@ import {
   preflightFalcon24BrowserSubmission,
   runFalcon24BrowserTraceGate,
   submitFalcon24QuestionFromBrowser,
+  verifyFalcon24UiReceiptPair,
 } from "./falcon24-browser-trace-gate";
 import { verifyFalcon24ResolutionTraceGate } from "./falcon24-resolution-trace-gate";
 
@@ -164,7 +169,8 @@ async function main(): Promise<void> {
       environment.WORKER_PRINCIPAL_ID ??
       environment.SEMANTIC_PRINCIPAL_ID,
   });
-  const qualificationId = falcon24QualificationIdSchema.parse(argument("qualification-id"));
+  const qualificationId = falcon24QualificationGateIdSchema.parse(argument("qualification-id"));
+  const authorityEpoch = authorityEpochForFalcon24Gate(qualificationId);
   const attemptId = z.uuid().parse(argument("attempt-id"));
   const workspaceAuthority = getWorkspaceAuthority();
   const capability = requireValue(
@@ -306,8 +312,12 @@ async function main(): Promise<void> {
       throw new Error("FALCON24_QUALIFICATION_DEFAULTS_REQUIRED");
     }
     const webBuildHash = getWebRuntimeBuildIdentity().build_id;
-    const manifest = await buildFalcon24QualificationManifest({
-      schema_version: "falcon24-qualification-manifest@1.0.0",
+    if (currentAuthority.authority_epoch !== authorityEpoch) {
+      throw new Error("FALCON24_GATE_EPOCH_MISMATCH");
+    }
+    const manifest = await buildFalcon24QualificationManifestV2({
+      schema_version: "falcon24-qualification-manifest@2.0.0",
+      authority_epoch: authorityEpoch,
       qualification_id: qualificationId,
       attempt_id: attemptId,
       authority_baseline_hash: currentAuthority.baseline_hash,
@@ -358,7 +368,7 @@ async function main(): Promise<void> {
 
   const assertCurrentAttempt = <T extends { readonly attempt_id: string }>(value: T | null): T => {
     if (!value || value.attempt_id !== attemptId) {
-      throw new Error("FALCON24_E1_GATE_ATTEMPT_MISMATCH");
+      throw new Error("FALCON24_GATE_ATTEMPT_MISMATCH");
     }
     return value;
   };
@@ -426,8 +436,9 @@ async function main(): Promise<void> {
     try {
       requireStrictPolicy(environment);
       const { trace, details, verified } = await loadAndVerifyTrace();
-      const traceGateReceipt = await buildFalcon24ResolutionTraceGateReceipt({
-        schema_version: "falcon24-resolution-trace-gate-receipt@2.0.0",
+      const traceGateReceipt = await buildFalcon24ResolutionTraceGateReceiptV2({
+        schema_version: "falcon24-resolution-trace-gate-receipt@3.0.0",
+        authority_epoch: authorityEpoch,
         campaign_id: qualificationId,
         run_id: slot.run_id,
         trace_hash: trace.trace_hash,
@@ -458,6 +469,8 @@ async function main(): Promise<void> {
         conversation_id: slot.identities.conversationId,
         question: slot.prompt,
         attempt_id: attemptId,
+        authority_epoch: authorityEpoch,
+        gate_id: qualificationId,
         viewport: { width: browserWidth, height: browserWidth === 390 ? 844 : 900 },
         trace,
         details,
@@ -470,8 +483,9 @@ async function main(): Promise<void> {
       ) {
         throw new Error("FALCON24_BROWSER_BUILD_IDENTITY_MISMATCH");
       }
-      const uiTraceGateReceipt = await buildFalcon24ResolutionTraceUiGateReceipt({
-        schema_version: "falcon24-resolution-trace-ui-gate-receipt@1.0.0",
+      const uiTraceGateReceipt = await buildFalcon24ResolutionTraceUiGateReceiptV2({
+        schema_version: "falcon24-resolution-trace-ui-gate-receipt@2.0.0",
+        authority_epoch: authorityEpoch,
         campaign_id: qualificationId,
         run_id: slot.run_id,
         workspace_id: scope.workspaceId,
@@ -488,8 +502,14 @@ async function main(): Promise<void> {
       const runAuthority = requireValue(
         await epochAuthority.loadRunBinding(capability, { run_id: slot.run_id }),
       );
-      const qaE2eReceipt = await buildFalcon24QaE2eReceipt({
-        schema_version: "falcon24-qa-e2e-receipt@1.0.0",
+      if (
+        runAuthority.schema_version !== "falcon24-authority-binding@2.0.0" ||
+        runAuthority.authority_epoch !== authorityEpoch
+      ) {
+        throw new Error("FALCON24_BROWSER_GATE_AUTHORITY_MISMATCH");
+      }
+      const qaE2eReceipt = await buildFalcon24QaE2eReceiptV2({
+        schema_version: "falcon24-qa-e2e-receipt@2.0.0",
         run_id: slot.run_id,
         conversation_id: slot.identities.conversationId,
         authority: runAuthority,
@@ -508,8 +528,8 @@ async function main(): Promise<void> {
         screenshot_hash: browserGate.qa_e2e.screenshot_hash,
         observed_at: browserGate.qa_e2e.observed_at,
       });
-      const traceUiReceipt = await buildFalcon24TraceUiReceipt({
-        schema_version: "falcon24-trace-ui-receipt@1.0.0",
+      const traceUiReceipt = await buildFalcon24TraceUiReceiptV2({
+        schema_version: "falcon24-trace-ui-receipt@2.0.0",
         run_id: slot.run_id,
         conversation_id: slot.identities.conversationId,
         trace_hash: trace.trace_hash,
@@ -529,6 +549,7 @@ async function main(): Promise<void> {
         screenshot_hash: browserObservation.screenshot_hash,
         observed_at: browserObservation.observed_at,
       });
+      verifyFalcon24UiReceiptPair({ qa_e2e: qaE2eReceipt, trace_ui: traceUiReceipt });
       requireValue(await epochAuthority.commitUiReceipt(capability, qaE2eReceipt));
       requireValue(await epochAuthority.commitUiReceipt(capability, traceUiReceipt));
       report({
@@ -632,6 +653,10 @@ async function main(): Promise<void> {
     reportRecovered(await resolveSubmitFailure(new Error("FALCON24_QUALIFICATION_SLOT_NOT_FOUND")));
     return;
   }
+  if (currentSlot.authority_epoch !== authorityEpoch) {
+    reportRecovered(await resolveSubmitFailure(new Error("FALCON24_GATE_EPOCH_MISMATCH")));
+    return;
+  }
   if (currentSlot.status !== "PLANNED") {
     reportRecovered(
       await resolveSubmitFailure(new Error("FALCON24_QUALIFICATION_ORDER_OR_STATE_INVALID")),
@@ -661,6 +686,8 @@ async function main(): Promise<void> {
     if (
       !currentAuthority ||
       !selected ||
+      currentAuthority.authority_epoch !== authorityEpoch ||
+      currentQualification.authority_epoch !== authorityEpoch ||
       (currentQualification.status !== "READY" && currentQualification.status !== "RUNNING") ||
       currentQualification.next_slot_ordinal !== ordinal ||
       currentQualification.authority_baseline_hash !== currentAuthority.baseline_hash ||
@@ -749,13 +776,14 @@ async function main(): Promise<void> {
       question: slot.prompt,
       viewport: { width: browserWidth, height: browserWidth === 390 ? 844 : 900 },
       claim: {
-        schema_version: "falcon24-e1-browser-submit-claim@1.0.0",
+        schema_version: "falcon24-browser-submit-claim@2.0.0",
         question: slot.prompt,
         conversation_id: slot.identities.conversationId,
         idempotency_key: slot.identities.idempotencyKey,
         acceptance_fence: {
           authority_kind: "QUALIFICATION",
-          qualification_id: "E1-Q1",
+          authority_epoch: authorityEpoch,
+          qualification_id: qualificationId,
           attempt_id: attemptId,
           run_id: slot.run_id,
           claim_fence_token: claimFenceToken,

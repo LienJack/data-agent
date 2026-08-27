@@ -171,6 +171,7 @@ export function ChatInput() {
                   type="button"
                   data-testid="qa-submit-question"
                   data-composer-ready={composerReady ? "true" : "false"}
+                  data-falcon24-claim-ready="false"
                   onClick={() => void handleSend()}
                   disabled={sendDisabled}
                   aria-label="发送消息"

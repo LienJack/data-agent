@@ -224,12 +224,17 @@ export function verifyFalcon24ResolutionTraceGate(
   });
   const publisherNodes = trace.nodes.filter(({ kind, title, node_id: nodeId }) => {
     const detail = detailsByNode.get(nodeId);
+    const authorityEpoch = /^((?:E[1-9][0-9]*)) Publisher$/u.exec(title)?.[1];
+    const expectedSchema =
+      authorityEpoch === "E1"
+        ? ["e1-analysis-publication", "e1-analysis-publication@1.0.0"]
+        : ["falcon24-analysis-publication", "falcon24-analysis-publication@2.0.0"];
     return (
       kind === "CONTEXT" &&
-      title === "E1 Publisher" &&
+      authorityEpoch !== undefined &&
       detail?.schema.state === "AVAILABLE" &&
-      detail.schema.schema_name === "e1-analysis-publication" &&
-      detail.schema.schema_version === "e1-analysis-publication@1.0.0"
+      detail.schema.schema_name === expectedSchema[0] &&
+      detail.schema.schema_version === expectedSchema[1]
     );
   });
 

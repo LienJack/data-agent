@@ -433,6 +433,35 @@ async function rebuildDetail(
 }
 
 describe("Falcon24 Resolution Trace acceptance gate", () => {
+  it("accepts a Publisher bound to the E2 Run authority", async () => {
+    const historical = await traceFixture();
+    const { trace_hash: _traceHash, ...material } = historical;
+    const trace = await buildResolutionTrace({
+      ...material,
+      nodes: material.nodes.map((node) =>
+        node.node_id === publisherNodeId ? { ...node, title: "E2 Publisher" } : node,
+      ),
+    });
+    const details = await Promise.all(
+      (await detailsFixture(trace)).map((candidate) =>
+        candidate.node_id === publisherNodeId
+          ? rebuildDetail(candidate, {
+              schema: {
+                state: "AVAILABLE",
+                schema_name: "falcon24-analysis-publication",
+                schema_version: "falcon24-analysis-publication@2.0.0",
+                fields: [],
+              },
+            })
+          : candidate,
+      ),
+    );
+
+    expect(verifyFalcon24ResolutionTraceGate(trace, details)).toMatchObject({
+      report_node_count: 1,
+      chart_node_count: 1,
+    });
+  });
   it("accepts the completed SQL to query evidence to derived evidence to chart and report chain", async () => {
     const trace = await traceFixture();
     const details = await detailsFixture(trace);

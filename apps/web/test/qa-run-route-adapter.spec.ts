@@ -104,7 +104,7 @@ describe("Q&A Run route adapter", () => {
     );
   });
 
-  it("把 exact E1 gate attempt fence 传给 use-case", async () => {
+  it("把 exact current-Epoch gate attempt fence 传给 use-case", async () => {
     const execute = vi.fn<QuestionRunRouteDependencies["execute"]>();
     execute.mockResolvedValue({ kind: "CREATED", projection });
     const route = createQuestionRunRoute({
@@ -117,7 +117,8 @@ describe("Q&A Run route adapter", () => {
     });
     const acceptanceFence = {
       authority_kind: "QUALIFICATION" as const,
-      qualification_id: "E1-Q1" as const,
+      authority_epoch: "E2" as const,
+      qualification_id: "E2-Q1" as const,
       attempt_id: "10000000-0000-4000-8000-000000000061",
       run_id: "10000000-0000-4000-8000-000000000062",
       claim_fence_token: "10000000-0000-4000-8000-000000000063",
@@ -126,7 +127,7 @@ describe("Q&A Run route adapter", () => {
       request({
         schema_version: "qa-run-start@1.0.0",
         question: "统计订单数",
-        idempotency_key: "route-adapter-e1",
+        idempotency_key: "route-adapter-e2",
         acceptance_fence: acceptanceFence,
       }),
       { params: Promise.resolve({ conversationId, workspaceId }) },
@@ -134,6 +135,44 @@ describe("Q&A Run route adapter", () => {
     expect(response.status).toBe(201);
     expect(execute).toHaveBeenCalledWith(
       expect.objectContaining({ acceptance_fence: acceptanceFence }),
+    );
+  });
+
+  it("拒绝 gate ID 与 authority_epoch 跨纪元混用", async () => {
+    const execute = vi.fn<QuestionRunRouteDependencies["execute"]>();
+    const projectError = vi
+      .fn<QuestionRunRouteDependencies["projectError"]>()
+      .mockImplementation((error) => NextResponse.json({ error }, { status: 400 }));
+    const route = createQuestionRunRoute({
+      authorize: vi.fn<QuestionRunRouteDependencies["authorize"]>().mockResolvedValue({
+        ok: true,
+        value: { capability, session },
+      }),
+      execute,
+      projectError,
+    });
+
+    const response = await route(
+      request({
+        schema_version: "qa-run-start@1.0.0",
+        question: "统计订单数",
+        idempotency_key: "route-adapter-cross-epoch",
+        acceptance_fence: {
+          authority_kind: "QUALIFICATION",
+          authority_epoch: "E2",
+          qualification_id: "E1-Q1",
+          attempt_id: "10000000-0000-4000-8000-000000000061",
+          run_id: "10000000-0000-4000-8000-000000000062",
+          claim_fence_token: "10000000-0000-4000-8000-000000000063",
+        },
+      }),
+      { params: Promise.resolve({ conversationId, workspaceId }) },
+    );
+
+    expect(response.status).toBe(400);
+    expect(execute).not.toHaveBeenCalled();
+    expect(projectError).toHaveBeenCalledWith(
+      expect.objectContaining({ code: "RUN_INPUT_INVALID" }),
     );
   });
 });

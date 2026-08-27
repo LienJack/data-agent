@@ -8,14 +8,18 @@ import type { BuiltinTeamProfileSetSnapshot } from "@data-agent/agent-runtime";
 import { artifactReferenceIdentity } from "@data-agent/contracts/artifacts";
 import { sha256ContentHash } from "@data-agent/contracts/common";
 import {
-  buildFalcon24AcceptanceRunManifest,
-  buildFalcon24ResolutionTraceGateReceipt,
-  buildFalcon24ResolutionTraceUiGateReceipt,
+  authorityEpochForFalcon24Gate,
+  buildFalcon24AcceptanceRunManifestV2,
+  buildFalcon24ResolutionTraceGateReceiptV2,
+  buildFalcon24ResolutionTraceUiGateReceiptV2,
   FALCON24_STRICT_ACCEPTANCE_POLICY_ID,
   type Falcon24AcceptanceFailureLayer,
   falcon24AcceptanceCampaignIdSchema,
 } from "@data-agent/contracts/evals";
-import { buildFalcon24QaE2eReceipt, buildFalcon24TraceUiReceipt } from "@data-agent/contracts/runs";
+import {
+  buildFalcon24QaE2eReceiptV2,
+  buildFalcon24TraceUiReceiptV2,
+} from "@data-agent/contracts/runs";
 import { buildFalcon24AgentAnalysisAcceptanceSuite } from "@data-agent/evals";
 import { createPostgresRepository } from "@data-agent/platform/persistence";
 import {
@@ -49,6 +53,7 @@ import {
   preflightFalcon24BrowserSubmission,
   runFalcon24BrowserTraceGate,
   submitFalcon24QuestionFromBrowser,
+  verifyFalcon24UiReceiptPair,
 } from "./falcon24-browser-trace-gate";
 import { verifyFalcon24ResolutionTraceGate } from "./falcon24-resolution-trace-gate";
 
@@ -314,6 +319,7 @@ async function main(): Promise<void> {
       environment.SEMANTIC_PRINCIPAL_ID,
   });
   const campaignId = falcon24AcceptanceCampaignIdSchema.parse(argument("campaign-id"));
+  const authorityEpoch = authorityEpochForFalcon24Gate(campaignId);
   const attemptId = z.uuid().parse(argument("attempt-id"));
   const winningQualificationAttemptId = z.uuid().parse(argument("qualification-attempt-id"));
   const workspaceAuthority = getWorkspaceAuthority();
@@ -392,7 +398,9 @@ async function main(): Promise<void> {
         loadBuiltinTeamAuthority(),
         epochAuthority.loadCurrent(capability).then(requireValue),
       ]);
-    if (!currentAuthority) throw new Error("FALCON24_E1_NOT_ACTIVE");
+    if (!currentAuthority || currentAuthority.authority_epoch !== authorityEpoch) {
+      throw new Error("FALCON24_GATE_EPOCH_MISMATCH");
+    }
     const runs = suite.cases.flatMap((testCase) =>
       (["COLD", "WARM"] as const).flatMap((variant) =>
         [1, 2, 3].map((repetition) => ({
@@ -411,8 +419,9 @@ async function main(): Promise<void> {
         })),
       ),
     );
-    const manifest = await buildFalcon24AcceptanceRunManifest({
-      schema_version: "falcon24-analysis-run-manifest@2.0.0",
+    const manifest = await buildFalcon24AcceptanceRunManifestV2({
+      schema_version: "falcon24-analysis-run-manifest@3.0.0",
+      authority_epoch: authorityEpoch,
       campaign_id: campaignId,
       attempt_id: attemptId,
       winning_qualification_attempt_id: winningQualificationAttemptId,
@@ -473,7 +482,7 @@ async function main(): Promise<void> {
 
   const assertCurrentAttempt = <T extends { readonly attempt_id: string }>(value: T | null): T => {
     if (!value || value.attempt_id !== attemptId) {
-      throw new Error("FALCON24_E1_GATE_ATTEMPT_MISMATCH");
+      throw new Error("FALCON24_GATE_ATTEMPT_MISMATCH");
     }
     return value;
   };
@@ -536,8 +545,9 @@ async function main(): Promise<void> {
     try {
       requireStrictPolicy(environment);
       const { trace, details, verified } = await loadAndVerifyTrace();
-      const traceGateReceipt = await buildFalcon24ResolutionTraceGateReceipt({
-        schema_version: "falcon24-resolution-trace-gate-receipt@2.0.0",
+      const traceGateReceipt = await buildFalcon24ResolutionTraceGateReceiptV2({
+        schema_version: "falcon24-resolution-trace-gate-receipt@3.0.0",
+        authority_epoch: authorityEpoch,
         campaign_id: campaignId,
         run_id: identities.run_id,
         trace_hash: trace.trace_hash,
@@ -569,6 +579,8 @@ async function main(): Promise<void> {
         conversation_id: identities.conversationId,
         question: testCase.question,
         attempt_id: attemptId,
+        authority_epoch: authorityEpoch,
+        gate_id: campaignId,
         viewport: { width: browserWidth, height: browserWidth === 390 ? 844 : 900 },
         trace,
         details,
@@ -581,8 +593,9 @@ async function main(): Promise<void> {
       ) {
         throw new Error("FALCON24_BROWSER_BUILD_IDENTITY_MISMATCH");
       }
-      const uiTraceGateReceipt = await buildFalcon24ResolutionTraceUiGateReceipt({
-        schema_version: "falcon24-resolution-trace-ui-gate-receipt@1.0.0",
+      const uiTraceGateReceipt = await buildFalcon24ResolutionTraceUiGateReceiptV2({
+        schema_version: "falcon24-resolution-trace-ui-gate-receipt@2.0.0",
+        authority_epoch: authorityEpoch,
         campaign_id: campaignId,
         run_id: identities.run_id,
         workspace_id: scope.workspaceId,
@@ -600,8 +613,14 @@ async function main(): Promise<void> {
       const runAuthority = requireValue(
         await epochAuthority.loadRunBinding(capability, { run_id: identities.run_id }),
       );
-      const qaE2eReceipt = await buildFalcon24QaE2eReceipt({
-        schema_version: "falcon24-qa-e2e-receipt@1.0.0",
+      if (
+        runAuthority.schema_version !== "falcon24-authority-binding@2.0.0" ||
+        runAuthority.authority_epoch !== authorityEpoch
+      ) {
+        throw new Error("FALCON24_BROWSER_GATE_AUTHORITY_MISMATCH");
+      }
+      const qaE2eReceipt = await buildFalcon24QaE2eReceiptV2({
+        schema_version: "falcon24-qa-e2e-receipt@2.0.0",
         run_id: identities.run_id,
         conversation_id: identities.conversationId,
         authority: runAuthority,
@@ -620,8 +639,8 @@ async function main(): Promise<void> {
         screenshot_hash: browserGate.qa_e2e.screenshot_hash,
         observed_at: browserGate.qa_e2e.observed_at,
       });
-      const traceUiReceipt = await buildFalcon24TraceUiReceipt({
-        schema_version: "falcon24-trace-ui-receipt@1.0.0",
+      const traceUiReceipt = await buildFalcon24TraceUiReceiptV2({
+        schema_version: "falcon24-trace-ui-receipt@2.0.0",
         run_id: identities.run_id,
         conversation_id: identities.conversationId,
         trace_hash: trace.trace_hash,
@@ -641,6 +660,7 @@ async function main(): Promise<void> {
         screenshot_hash: browserObservation.screenshot_hash,
         observed_at: browserObservation.observed_at,
       });
+      verifyFalcon24UiReceiptPair({ qa_e2e: qaE2eReceipt, trace_ui: traceUiReceipt });
       requireValue(await epochAuthority.commitUiReceipt(capability, qaE2eReceipt));
       requireValue(await epochAuthority.commitUiReceipt(capability, traceUiReceipt));
       report({
@@ -845,6 +865,10 @@ async function main(): Promise<void> {
     reportRecovered(await resolveSubmitFailure(new Error("FALCON24_RUN_NOT_FOUND")));
     return;
   }
+  if (currentRun.authority_epoch !== authorityEpoch) {
+    reportRecovered(await resolveSubmitFailure(new Error("FALCON24_GATE_EPOCH_MISMATCH")));
+    return;
+  }
   if (currentRun.status === "CLAIMED") {
     reportRecovered(await resolveSubmitFailure(new Error("FALCON24_CLAIM_ORPHANED")));
     return;
@@ -879,6 +903,8 @@ async function main(): Promise<void> {
     const currentCampaign = assertCurrentAttempt(campaign);
     if (
       !currentAuthority ||
+      currentAuthority.authority_epoch !== authorityEpoch ||
+      currentCampaign.authority_epoch !== authorityEpoch ||
       !["READY", "RUNNING"].includes(currentCampaign.status) ||
       currentCampaign.next_run_ordinal !== runOrdinal ||
       currentCampaign.winning_qualification_attempt_id !== winningQualificationAttemptId ||
@@ -953,13 +979,14 @@ async function main(): Promise<void> {
       question: testCase.question,
       viewport: { width: browserWidth, height: browserWidth === 390 ? 844 : 900 },
       claim: {
-        schema_version: "falcon24-e1-browser-submit-claim@1.0.0",
+        schema_version: "falcon24-browser-submit-claim@2.0.0",
         question: testCase.question,
         conversation_id: identities.conversationId,
         idempotency_key: identities.idempotencyKey,
         acceptance_fence: {
           authority_kind: "FINAL_CAMPAIGN",
-          campaign_id: "E1-C1",
+          authority_epoch: authorityEpoch,
+          campaign_id: campaignId,
           attempt_id: attemptId,
           run_id: identities.run_id,
           claim_fence_token: claimFenceToken,

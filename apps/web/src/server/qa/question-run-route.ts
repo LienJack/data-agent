@@ -1,4 +1,10 @@
 import {
+  authorityEpochForFalcon24Gate,
+  falcon24AcceptanceCampaignIdSchema,
+  falcon24QualificationGateIdSchema,
+} from "@data-agent/contracts/evals";
+import { falcon24AuthorityEpochSchema } from "@data-agent/contracts/runs";
+import {
   qaRunStartInputSchema,
   workspaceFileReferenceSchema,
   workspaceIdempotencyKeySchema,
@@ -19,19 +25,32 @@ const effectiveConfigQaRunStartInputSchema = qaRunStartInputSchema.extend({
     .discriminatedUnion("authority_kind", [
       z.strictObject({
         authority_kind: z.literal("QUALIFICATION"),
-        qualification_id: z.literal("E1-Q1"),
+        authority_epoch: falcon24AuthorityEpochSchema,
+        qualification_id: falcon24QualificationGateIdSchema,
         attempt_id: z.uuid(),
         run_id: z.uuid(),
         claim_fence_token: z.uuid(),
       }),
       z.strictObject({
         authority_kind: z.literal("FINAL_CAMPAIGN"),
-        campaign_id: z.literal("E1-C1"),
+        authority_epoch: falcon24AuthorityEpochSchema,
+        campaign_id: falcon24AcceptanceCampaignIdSchema,
         attempt_id: z.uuid(),
         run_id: z.uuid(),
         claim_fence_token: z.uuid(),
       }),
     ])
+    .superRefine((fence, context) => {
+      const gateId =
+        fence.authority_kind === "QUALIFICATION" ? fence.qualification_id : fence.campaign_id;
+      if (authorityEpochForFalcon24Gate(gateId) !== fence.authority_epoch) {
+        context.addIssue({
+          code: "custom",
+          message: "Falcon24 browser fence authority epoch 与 gate ID 不一致。",
+          path: [fence.authority_kind === "QUALIFICATION" ? "qualification_id" : "campaign_id"],
+        });
+      }
+    })
     .optional(),
 });
 

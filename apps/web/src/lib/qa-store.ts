@@ -39,8 +39,8 @@ import type {
 } from "./qa-types";
 import type { RunConnectionState, RunProjection } from "./run-projection";
 
-const FALCON24_GATE_CLAIM_KEY = "falcon24-e1-browser-submit-claim";
-const FALCON24_GATE_CONSUMED_KEY = "falcon24-e1-browser-submit-consumed";
+const FALCON24_GATE_CLAIM_KEY = "falcon24-browser-submit-claim";
+const FALCON24_GATE_CONSUMED_KEY = "falcon24-browser-submit-consumed";
 
 function readFalcon24GateClaim(question: string, conversationId: string) {
   const raw = window.sessionStorage.getItem(FALCON24_GATE_CLAIM_KEY);
@@ -53,6 +53,7 @@ function readFalcon24GateClaim(question: string, conversationId: string) {
     idempotency_key?: unknown;
     acceptance_fence?: {
       authority_kind?: unknown;
+      authority_epoch?: unknown;
       qualification_id?: unknown;
       campaign_id?: unknown;
       attempt_id?: unknown;
@@ -61,11 +62,19 @@ function readFalcon24GateClaim(question: string, conversationId: string) {
     };
   };
   const fence = candidate.acceptance_fence;
+  const gateId =
+    fence?.authority_kind === "QUALIFICATION"
+      ? fence.qualification_id
+      : fence?.authority_kind === "FINAL_CAMPAIGN"
+        ? fence.campaign_id
+        : null;
   const exactAuthority =
-    (fence?.authority_kind === "QUALIFICATION" && fence.qualification_id === "E1-Q1") ||
-    (fence?.authority_kind === "FINAL_CAMPAIGN" && fence.campaign_id === "E1-C1");
+    typeof fence?.authority_epoch === "string" &&
+    /^E[1-9][0-9]*$/u.test(fence.authority_epoch) &&
+    typeof gateId === "string" &&
+    gateId === `${fence.authority_epoch}-${fence.authority_kind === "QUALIFICATION" ? "Q1" : "C1"}`;
   if (
-    candidate.schema_version !== "falcon24-e1-browser-submit-claim@1.0.0" ||
+    candidate.schema_version !== "falcon24-browser-submit-claim@2.0.0" ||
     candidate.question !== question ||
     candidate.conversation_id !== conversationId ||
     typeof candidate.idempotency_key !== "string" ||
@@ -81,14 +90,16 @@ function readFalcon24GateClaim(question: string, conversationId: string) {
     acceptance_fence:
       | {
           authority_kind: "QUALIFICATION";
-          qualification_id: "E1-Q1";
+          authority_epoch: string;
+          qualification_id: string;
           attempt_id: string;
           run_id: string;
           claim_fence_token: string;
         }
       | {
           authority_kind: "FINAL_CAMPAIGN";
-          campaign_id: "E1-C1";
+          authority_epoch: string;
+          campaign_id: string;
           attempt_id: string;
           run_id: string;
           claim_fence_token: string;
@@ -1010,10 +1021,11 @@ export const useQAStore = create<QAStore>((set, get) => ({
         window.sessionStorage.setItem(
           FALCON24_GATE_CONSUMED_KEY,
           JSON.stringify({
-            schema_version: "falcon24-e1-browser-submit-consumed@1.0.0",
+            schema_version: "falcon24-browser-submit-consumed@2.0.0",
             run_id: run.runId,
             attempt_id: gateClaim.acceptance_fence.attempt_id,
             conversation_id: conversationId,
+            acceptance_fence: gateClaim.acceptance_fence,
           }),
         );
       }

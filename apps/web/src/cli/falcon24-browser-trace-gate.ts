@@ -4,8 +4,20 @@ import { readFile } from "node:fs/promises";
 import { promisify } from "node:util";
 import { type ArtifactReference, artifactReferenceIdentity } from "@data-agent/contracts/artifacts";
 import { sha256ContentHash } from "@data-agent/contracts/common";
-import { FALCON24_REQUIRED_UI_ARTIFACT_TYPES } from "@data-agent/contracts/evals";
-import type { ResolutionTrace, ResolutionTraceDetail } from "@data-agent/contracts/runs";
+import {
+  authorityEpochForFalcon24Gate,
+  FALCON24_REQUIRED_UI_ARTIFACT_TYPES,
+  falcon24AcceptanceCampaignIdSchema,
+  falcon24GateIdSchema,
+  falcon24QualificationGateIdSchema,
+} from "@data-agent/contracts/evals";
+import {
+  falcon24AuthorityEpochSchema,
+  falcon24QaE2eReceiptV2Schema,
+  falcon24TraceUiReceiptV2Schema,
+  type ResolutionTrace,
+  type ResolutionTraceDetail,
+} from "@data-agent/contracts/runs";
 import { z } from "zod";
 
 const execFileAsync = promisify(execFile);
@@ -16,9 +28,57 @@ const QA_REQUIRED_VISIBLE_ARTIFACT_TYPES = Object.freeze([
   "ArtifactWorkspaceDocument",
   "AnalysisReport",
 ] as const);
-const GATE_CLAIM_KEY = "falcon24-e1-browser-submit-claim";
-const GATE_CONSUMED_KEY = "falcon24-e1-browser-submit-consumed";
+const GATE_CLAIM_KEY = "falcon24-browser-submit-claim";
+const GATE_CONSUMED_KEY = "falcon24-browser-submit-consumed";
 const COMPOSER_READY_SELECTOR = '[data-testid="qa-submit-question"][data-composer-ready="true"]';
+const CLAIMED_READY_SELECTOR =
+  '[data-testid="qa-submit-question"][data-composer-ready="true"][data-falcon24-claim-ready="true"]';
+
+const browserGateFenceSchema = z
+  .discriminatedUnion("authority_kind", [
+    z.strictObject({
+      authority_kind: z.literal("QUALIFICATION"),
+      authority_epoch: falcon24AuthorityEpochSchema,
+      qualification_id: falcon24QualificationGateIdSchema,
+      attempt_id: z.uuid(),
+      run_id: z.uuid(),
+      claim_fence_token: z.uuid(),
+    }),
+    z.strictObject({
+      authority_kind: z.literal("FINAL_CAMPAIGN"),
+      authority_epoch: falcon24AuthorityEpochSchema,
+      campaign_id: falcon24AcceptanceCampaignIdSchema,
+      attempt_id: z.uuid(),
+      run_id: z.uuid(),
+      claim_fence_token: z.uuid(),
+    }),
+  ])
+  .superRefine((fence, context) => {
+    const gateId =
+      fence.authority_kind === "QUALIFICATION" ? fence.qualification_id : fence.campaign_id;
+    if (authorityEpochForFalcon24Gate(gateId) !== fence.authority_epoch) {
+      context.addIssue({
+        code: "custom",
+        message: "Falcon24 browser fence authority epoch 与 gate ID 不一致。",
+      });
+    }
+  });
+
+const browserGateClaimSchema = z.strictObject({
+  schema_version: z.literal("falcon24-browser-submit-claim@2.0.0"),
+  question: z.string().trim().min(1).max(4_000),
+  conversation_id: z.uuid(),
+  idempotency_key: z.string().min(1).max(512),
+  acceptance_fence: browserGateFenceSchema,
+});
+
+const browserGateConsumedSchema = z.strictObject({
+  schema_version: z.literal("falcon24-browser-submit-consumed@2.0.0"),
+  run_id: z.uuid(),
+  attempt_id: z.uuid(),
+  conversation_id: z.uuid(),
+  acceptance_fence: browserGateFenceSchema,
+});
 
 const agentBrowserOutputSchema = z.strictObject({
   success: z.literal(true),
@@ -75,6 +135,7 @@ const browserPreflightObservationSchema = z.strictObject({
   question_input_visible: z.literal(true),
   submit_visible: z.literal(true),
   composer_ready: z.literal(true),
+  gate_claim_absent: z.literal(true),
   expected_run_absent: z.literal(true),
   error_banners: z.array(z.string().max(2_000)).max(32),
   web_build: webBuildSchema,
@@ -159,32 +220,38 @@ export interface Falcon24BrowserTraceGateInput {
   readonly conversation_id: string;
   readonly question: string;
   readonly attempt_id: string;
+  readonly authority_epoch: string;
+  readonly gate_id: string;
   readonly viewport: Readonly<{ width: 1440 | 390; height: number }>;
   readonly trace: ResolutionTrace;
   readonly details: readonly ResolutionTraceDetail[];
 }
 
-export type Falcon24BrowserGateClaim = Readonly<{
-  schema_version: "falcon24-e1-browser-submit-claim@1.0.0";
-  question: string;
-  conversation_id: string;
-  idempotency_key: string;
-  acceptance_fence:
-    | Readonly<{
-        authority_kind: "QUALIFICATION";
-        qualification_id: "E1-Q1";
-        attempt_id: string;
-        run_id: string;
-        claim_fence_token: string;
-      }>
-    | Readonly<{
-        authority_kind: "FINAL_CAMPAIGN";
-        campaign_id: "E1-C1";
-        attempt_id: string;
-        run_id: string;
-        claim_fence_token: string;
-      }>;
-}>;
+export type Falcon24BrowserGateClaim = Readonly<z.infer<typeof browserGateClaimSchema>>;
+
+export function verifyFalcon24UiReceiptPair(input: {
+  readonly qa_e2e: unknown;
+  readonly trace_ui: unknown;
+}) {
+  const qa = falcon24QaE2eReceiptV2Schema.parse(input.qa_e2e);
+  const trace = falcon24TraceUiReceiptV2Schema.parse(input.trace_ui);
+  if (
+    qa.run_id !== trace.run_id ||
+    qa.conversation_id !== trace.conversation_id ||
+    qa.authority.authority_epoch !== trace.authority.authority_epoch ||
+    qa.authority.baseline_id !== trace.authority.baseline_id ||
+    qa.authority.baseline_hash !== trace.authority.baseline_hash ||
+    qa.authority.activation_attempt_id !== trace.authority.activation_attempt_id ||
+    qa.web_build.build_id !== trace.web_build.build_id ||
+    qa.web_build.generation_id !== trace.web_build.generation_id ||
+    qa.viewport.width !== trace.viewport.width ||
+    qa.viewport.height !== trace.viewport.height ||
+    qa.browser_harness_version !== trace.browser_harness_version
+  ) {
+    throw new TypeError("FALCON24_UI_RECEIPT_PAIR_IDENTITY_MISMATCH");
+  }
+  return Object.freeze({ qa_e2e: qa, trace_ui: trace });
+}
 
 export async function preflightFalcon24BrowserSubmission(input: {
   readonly session: string;
@@ -219,7 +286,7 @@ export async function preflightFalcon24BrowserSubmission(input: {
   const expectedRunSelector = `[data-testid="qa-result-trace-entry"][data-run-id="${selectorValue(expectedRunId)}"]`;
   const observation = await browserEval(
     session,
-    `(async () => { const visible=(element)=>Boolean(element && element.getBoundingClientRect().width>0 && element.getBoundingClientRect().height>0); const response=await fetch('/api/ready?workspace_id=${encodeURIComponent(input.workspace_id)}',{cache:'no-store'}); const build=await response.json(); const submit=document.querySelector('[data-testid="qa-submit-question"]'); return {location:window.location.href,ready:response.ok&&build.ready===true,question_input_visible:visible(document.querySelector('[data-testid="qa-question-input"]')),submit_visible:visible(submit),composer_ready:submit?.getAttribute('data-composer-ready')==='true',expected_run_absent:!document.querySelector(${JSON.stringify(expectedRunSelector)}),error_banners:[...document.querySelectorAll('[role="alert"]')].map((element)=>element.textContent?.trim()||''),web_build:{build_id:build.build_id,generation_id:build.generation_id}}; })()`,
+    `(async () => { const visible=(element)=>Boolean(element && element.getBoundingClientRect().width>0 && element.getBoundingClientRect().height>0); const response=await fetch('/api/ready?workspace_id=${encodeURIComponent(input.workspace_id)}',{cache:'no-store'}); const build=await response.json(); const submit=document.querySelector('[data-testid="qa-submit-question"]'); return {location:window.location.href,ready:response.ok&&build.ready===true,question_input_visible:visible(document.querySelector('[data-testid="qa-question-input"]')),submit_visible:visible(submit),composer_ready:submit?.getAttribute('data-composer-ready')==='true',gate_claim_absent:sessionStorage.getItem(${JSON.stringify(GATE_CLAIM_KEY)})===null&&sessionStorage.getItem(${JSON.stringify(GATE_CONSUMED_KEY)})===null,expected_run_absent:!document.querySelector(${JSON.stringify(expectedRunSelector)}),error_banners:[...document.querySelectorAll('[role="alert"]')].map((element)=>element.textContent?.trim()||''),web_build:{build_id:build.build_id,generation_id:build.generation_id}}; })()`,
     browserPreflightObservationSchema,
   );
   if (
@@ -247,11 +314,12 @@ export async function submitFalcon24QuestionFromBrowser(input: {
     .regex(/^[A-Za-z0-9._-]{3,128}$/u)
     .parse(input.session);
   const expectedRunId = z.uuid().parse(input.expected_run_id);
+  const claim = browserGateClaimSchema.parse(input.claim);
   const startUrl = falcon24QaStartUrl(input);
   if (
-    input.claim.question !== input.question ||
-    input.claim.conversation_id !== input.conversation_id ||
-    input.claim.acceptance_fence.run_id !== expectedRunId
+    claim.question !== input.question ||
+    claim.conversation_id !== input.conversation_id ||
+    claim.acceptance_fence.run_id !== expectedRunId
   ) {
     throw new Error("FALCON24_BROWSER_GATE_CLAIM_IDENTITY_INVALID");
   }
@@ -278,26 +346,23 @@ export async function submitFalcon24QuestionFromBrowser(input: {
   }
   await browserEval(
     session,
-    `(() => { sessionStorage.removeItem(${JSON.stringify(GATE_CONSUMED_KEY)}); sessionStorage.setItem(${JSON.stringify(GATE_CLAIM_KEY)},${JSON.stringify(JSON.stringify(input.claim))}); return true; })()`,
+    `(() => { sessionStorage.removeItem(${JSON.stringify(GATE_CONSUMED_KEY)}); sessionStorage.setItem(${JSON.stringify(GATE_CLAIM_KEY)},${JSON.stringify(JSON.stringify(claim))}); const submit=document.querySelector('[data-testid="qa-submit-question"]'); if(!submit||submit.getAttribute('data-composer-ready')!=='true') return false; submit.setAttribute('data-falcon24-claim-ready','true'); return true; })()`,
     z.literal(true),
   );
+  await agentBrowser(session, ["wait", CLAIMED_READY_SELECTOR]);
   await agentBrowser(session, ["fill", '[data-testid="qa-question-input"]', input.question]);
   await agentBrowser(session, ["click", '[data-testid="qa-submit-question"]']);
   await agentBrowser(session, ["wait", `#chat-run-${selectorValue(expectedRunId)}`]);
   const consumed = await browserEval(
     session,
     `(() => { const raw=sessionStorage.getItem(${JSON.stringify(GATE_CONSUMED_KEY)}); return raw ? JSON.parse(raw) : null; })()`,
-    z.strictObject({
-      schema_version: z.literal("falcon24-e1-browser-submit-consumed@1.0.0"),
-      run_id: z.uuid(),
-      attempt_id: z.uuid(),
-      conversation_id: z.uuid(),
-    }),
+    browserGateConsumedSchema,
   );
   if (
     consumed.run_id !== expectedRunId ||
-    consumed.attempt_id !== input.claim.acceptance_fence.attempt_id ||
-    consumed.conversation_id !== input.conversation_id
+    consumed.attempt_id !== claim.acceptance_fence.attempt_id ||
+    consumed.conversation_id !== input.conversation_id ||
+    JSON.stringify(consumed.acceptance_fence) !== JSON.stringify(claim.acceptance_fence)
   ) {
     throw new Error("FALCON24_BROWSER_GATE_CONSUMPTION_INVALID");
   }
@@ -311,6 +376,11 @@ export async function runFalcon24BrowserTraceGate(input: Falcon24BrowserTraceGat
     .parse(input.session);
   const question = z.string().trim().min(1).max(4_000).parse(input.question);
   const attemptId = z.uuid().parse(input.attempt_id);
+  const authorityEpoch = falcon24AuthorityEpochSchema.parse(input.authority_epoch);
+  const gateId = falcon24GateIdSchema.parse(input.gate_id);
+  if (authorityEpochForFalcon24Gate(gateId) !== authorityEpoch) {
+    throw new Error("FALCON24_BROWSER_GATE_AUTHORITY_MISMATCH");
+  }
   const viewport = z
     .strictObject({
       width: z.union([z.literal(1440), z.literal(390)]),
@@ -352,17 +422,18 @@ export async function runFalcon24BrowserTraceGate(input: Falcon24BrowserTraceGat
   const consumed = await browserEval(
     session,
     `(() => { const raw=sessionStorage.getItem(${JSON.stringify(GATE_CONSUMED_KEY)}); return raw ? JSON.parse(raw) : null; })()`,
-    z.strictObject({
-      schema_version: z.literal("falcon24-e1-browser-submit-consumed@1.0.0"),
-      run_id: z.uuid(),
-      attempt_id: z.uuid(),
-      conversation_id: z.uuid(),
-    }),
+    browserGateConsumedSchema,
   );
+  const consumedGateId =
+    consumed.acceptance_fence.authority_kind === "QUALIFICATION"
+      ? consumed.acceptance_fence.qualification_id
+      : consumed.acceptance_fence.campaign_id;
   if (
     consumed.run_id !== input.trace.run_id ||
     consumed.attempt_id !== attemptId ||
-    consumed.conversation_id !== input.conversation_id
+    consumed.conversation_id !== input.conversation_id ||
+    consumed.acceptance_fence.authority_epoch !== authorityEpoch ||
+    consumedGateId !== gateId
   ) {
     throw new Error("FALCON24_BROWSER_GATE_CONSUMPTION_INVALID");
   }
