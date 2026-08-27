@@ -16,8 +16,8 @@ import {
   assertAnalysisContextJournalTransition,
   buildAnalysisContextJournalAppend,
   buildAnalysisResultStageCommand,
-  type E1AnalysisPublicationCommand,
-  type E1AnalysisPublicationReceipt,
+  type AnalysisPublicationV2Command,
+  type AnalysisPublicationV2Receipt,
   verifyAnalysisContextJournalEntry,
   verifyAnalysisResultStageCommand,
 } from "@data-agent/contracts/ports";
@@ -92,11 +92,11 @@ export interface AnalysisLifecyclePersistenceAuthority {
       }
     | { readonly ok: false; readonly error_code: string }
   >;
-  commitE1AnalysisPublication(
+  commitAnalysisPublication(
     capabilityInput: unknown,
-    command: E1AnalysisPublicationCommand,
+    command: AnalysisPublicationV2Command,
   ): Promise<
-    | { readonly ok: true; readonly receipt: E1AnalysisPublicationReceipt }
+    | { readonly ok: true; readonly receipt: AnalysisPublicationV2Receipt }
     | { readonly ok: false; readonly error_code: string }
   >;
   readAnalysisResultStage(
@@ -205,7 +205,7 @@ export interface AnalysisLifecycleAuthorityPort {
   prepareAuthorityJournal(
     input: Identity & { readonly command: AnalysisAuthorityCommit },
   ): Promise<ReturnType<typeof analysisContextJournalAppendCommandSchema.parse>>;
-  commitPublication(command: E1AnalysisPublicationCommand): Promise<E1AnalysisPublicationReceipt>;
+  commitPublication(command: AnalysisPublicationV2Command): Promise<AnalysisPublicationV2Receipt>;
   cleanup(input: Identity & { readonly stage: AnalysisResultStage }): Promise<void>;
 }
 
@@ -562,10 +562,10 @@ export function createResearchAnalysisLifecycleAuthorityPort(input: {
       });
     },
     async commitPublication(command) {
-      const result = await input.authority.commitE1AnalysisPublication(capability(), command);
+      const result = await input.authority.commitAnalysisPublication(capability(), command);
       if (!result.ok) throw new TypeError(result.error_code);
       if (result.receipt.publication_hash !== command.publication_hash) {
-        throw new TypeError("E1_ANALYSIS_PUBLICATION_SUBSTITUTION");
+        throw new TypeError("FALCON24_ANALYSIS_PUBLICATION_SUBSTITUTION");
       }
       return result.receipt;
     },

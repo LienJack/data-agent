@@ -26,6 +26,13 @@ import { buildTestQueryEvidenceSemanticBinding } from "../analysis/support/query
 const id = (suffix: number) => `00000000-0000-4000-8000-${String(suffix).padStart(12, "0")}`;
 const hash = (character: string) => `sha256:${character.repeat(64)}`;
 const scope = { app_id: id(1), tenant_id: id(2), environment: "test" } as const;
+const authority = {
+  schema_version: "falcon24-authority-binding@2.0.0",
+  authority_epoch: "E2",
+  baseline_id: id(4),
+  baseline_hash: hash("a"),
+  activation_attempt_id: id(5),
+} as const;
 const profileIds = [
   "governed-analysis-agent",
   "governed-text2sql-agent",
@@ -406,6 +413,7 @@ describe("Production Team runtime", () => {
     await expect(
       runtime.execute({
         lease: await lease(),
+        authority,
         profiles: new Map([
           ["governed-text2sql-agent", text2sql],
           ["report-writing-agent", report],
@@ -546,6 +554,7 @@ describe("Production Team runtime", () => {
     await expect(
       runtime.execute({
         lease: replayLease,
+        authority,
         profiles: new Map([["report-writing-agent", report]]),
         admitted_delegations: delegations,
         semantic_context_package: {} as never,
@@ -587,6 +596,7 @@ describe("Production Team runtime", () => {
     await expect(
       runtime.execute({
         lease: await lease(),
+        authority,
         profiles: new Map([
           ["governed-text2sql-agent", text2sql],
           ["report-writing-agent", report],
@@ -686,6 +696,7 @@ describe("Production Team runtime", () => {
     await expect(
       runtime.execute({
         lease: await lease(),
+        authority,
         profiles: new Map([
           ["governed-text2sql-agent", text2sql],
           ["report-writing-agent", report],
@@ -764,6 +775,7 @@ describe("Production Team runtime", () => {
     await expect(
       runtime.execute({
         lease: await lease(),
+        authority,
         profiles: new Map([["semantic-management-agent", semantic]]),
         admitted_delegations: [delegation],
         semantic_context_package: {} as never,

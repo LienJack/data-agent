@@ -21,9 +21,9 @@ import {
   type AnalysisAuthorityCommit,
   type AnalysisContextJournalAppendCommand,
   type AnalysisOracleReceipt,
-  buildE1AnalysisPublicationCommand,
+  buildAnalysisPublicationV2Command,
 } from "@data-agent/contracts/ports";
-import type { RunWorkLease } from "@data-agent/contracts/runs";
+import type { Falcon24AuthorityBindingV2, RunWorkLease } from "@data-agent/contracts/runs";
 import { STATISTICAL_OPERATOR_REGISTRY_DIGEST } from "@data-agent/contracts/statistical-operators";
 import { compilePublishedAnalysisContext } from "@data-agent/semantic/runtime-context";
 import { z } from "zod";
@@ -61,6 +61,7 @@ export interface GovernedAnalysisMethodRegistryPort {
 export interface GovernedAnalysisProgramExecutor {
   execute(input: {
     readonly lease: GovernedAnalysisCommand["lease"];
+    readonly authority: GovernedAnalysisCommand["authority"];
     readonly principal_id: string;
     readonly brief: ResearchBriefV3Payload;
     readonly brief_ref: ArtifactReference;
@@ -271,7 +272,7 @@ function artifactHref(reference: ArtifactReference): string {
 }
 
 /**
- * The only E1 production orchestration entrypoint for model-authored governed analysis.
+ * The only production orchestration entrypoint for model-authored governed analysis.
  * It derives authority from the accepted QueryEvidence and Published Semantic Release;
  * only frozen semantic bindings and published method contracts enter planning.
  */
@@ -453,6 +454,7 @@ export function createGovernedAnalysisRuntime(input: {
           })
           .execute({
             lease: command.lease,
+            authority: command.authority,
             principal_id: command.lease.principal_id,
             brief,
             brief_ref: briefRef,
@@ -567,13 +569,13 @@ function chartType(
 
 export function projectStagedAnalysisChart(input: AnalysisResultClosureArtifact) {
   if (input.artifact_kind !== "CHART") {
-    throw new TypeError("E1_ANALYSIS_PUBLICATION_CHART_ARTIFACT_REQUIRED");
+    throw new TypeError("FALCON24_ANALYSIS_PUBLICATION_CHART_ARTIFACT_REQUIRED");
   }
   const chart = publishedChartSchema.parse(
     JSON.parse(new TextDecoder("utf-8", { fatal: true }).decode(input.content)),
   );
   if (chart.dataset.total_rows !== chart.dataset.rows.length) {
-    throw new TypeError("E1_ANALYSIS_PUBLICATION_CHART_DATASET_INVALID");
+    throw new TypeError("FALCON24_ANALYSIS_PUBLICATION_CHART_DATASET_INVALID");
   }
   const projection = artifactWorkspaceChartProjectionV3Schema.parse({
     kind: "CHART",
@@ -609,7 +611,7 @@ export function projectStagedAnalysisChart(input: AnalysisResultClosureArtifact)
 
 type PreparedL2 = Awaited<ReturnType<typeof buildAnalysisResearchArtifactCommit>>;
 
-export interface PreparedE1PublicationNode {
+export interface PreparedAnalysisPublicationNode {
   readonly node_id: string;
   readonly authority_commit: AnalysisAuthorityCommit;
   readonly journal_command: AnalysisContextJournalAppendCommand;
@@ -629,21 +631,22 @@ export interface PreparedE1PublicationNode {
   readonly provider_invocation_ref: ProviderInvocationResourceRef;
 }
 
-export async function assembleE1AnalysisPublication(input: {
+export async function assembleAnalysisPublication(input: {
   readonly lease: RunWorkLease;
+  readonly authority: Falcon24AuthorityBindingV2;
   readonly principal_id: string;
   readonly program: AnalysisProgramPayload;
   readonly analysis_program_ref: ArtifactReference & { readonly artifact_type: "AnalysisProgram" };
   readonly context: AnalysisContext;
   readonly completion: PreparedL2;
-  readonly nodes: readonly PreparedE1PublicationNode[];
+  readonly nodes: readonly PreparedAnalysisPublicationNode[];
   readonly question: string;
   readonly committed_at: string;
 }) {
   const nodeById = new Map(input.nodes.map((node) => [node.node_id, node]));
   const orderedNodes = input.program.nodes.map((node) => {
     const prepared = nodeById.get(node.node_id);
-    if (!prepared) throw new TypeError("E1_ANALYSIS_PUBLICATION_NODE_MISSING");
+    if (!prepared) throw new TypeError("FALCON24_ANALYSIS_PUBLICATION_NODE_MISSING");
     return prepared;
   });
   const chartDocuments: ArtifactWorkspaceChartDocumentV3[] = [];
@@ -653,7 +656,7 @@ export async function assembleE1AnalysisPublication(input: {
         schema_version: "artifact-workspace-chart-document@3.0.0",
         document_ref: {
           artifact_id: deterministicAnalysisUuid(
-            `e1-analysis-chart\0${input.lease.run_id}\0${node.node_id}\0${chart.chart_id}`,
+            `falcon24-analysis-chart\0${input.lease.run_id}\0${node.node_id}\0${chart.chart_id}`,
           ),
           artifact_type: "ArtifactWorkspaceDocument",
           ...input.lease.scope,
@@ -682,7 +685,7 @@ export async function assembleE1AnalysisPublication(input: {
     }
   }
   if (chartDocuments.length === 0 || orderedNodes.length + chartDocuments.length + 1 > 16) {
-    throw new TypeError("E1_ANALYSIS_PUBLICATION_REPORT_SOURCE_BOUND_EXCEEDED");
+    throw new TypeError("FALCON24_ANALYSIS_PUBLICATION_REPORT_SOURCE_BOUND_EXCEEDED");
   }
   for (const node of orderedNodes) {
     const expected = await Promise.all(
@@ -694,7 +697,7 @@ export async function assembleE1AnalysisPublication(input: {
         (hash, index) => hash !== node.oracle_receipt.input_binding.chart_dataset_hashes[index],
       )
     ) {
-      throw new TypeError("E1_ANALYSIS_PUBLICATION_CHART_ORACLE_MISMATCH");
+      throw new TypeError("FALCON24_ANALYSIS_PUBLICATION_CHART_ORACLE_MISMATCH");
     }
   }
   const sourceRefs = [
@@ -705,7 +708,7 @@ export async function assembleE1AnalysisPublication(input: {
   const reportDocument: ProductTeamArtifactDocument = await buildProductTeamArtifactDocument({
     schema_version: "product-team-artifact@2.0.0",
     artifact_ref: {
-      artifact_id: deterministicAnalysisUuid(`e1-analysis-report\0${input.lease.run_id}`),
+      artifact_id: deterministicAnalysisUuid(`falcon24-analysis-report\0${input.lease.run_id}`),
       artifact_type: "AnalysisReport",
       ...input.lease.scope,
       run_id: input.lease.run_id,
@@ -713,7 +716,7 @@ export async function assembleE1AnalysisPublication(input: {
       content_hash: `sha256:${"0".repeat(64)}`,
     },
     profile_id: "governed-analysis-agent",
-    task_id: deterministicAnalysisUuid(`e1-analysis-task\0${input.lease.run_id}`),
+    task_id: deterministicAnalysisUuid(`falcon24-analysis-task\0${input.lease.run_id}`),
     source_refs: sourceRefs,
     provenance: null,
     projection: {
@@ -742,14 +745,14 @@ export async function assembleE1AnalysisPublication(input: {
     },
     committed_at: input.committed_at,
   });
-  const command = await buildE1AnalysisPublicationCommand({
-    schema_version: "e1-analysis-publication@1.0.0",
+  const command = await buildAnalysisPublicationV2Command({
+    schema_version: "falcon24-analysis-publication@2.0.0",
     scope: input.lease.scope,
     run_id: input.lease.run_id,
     principal_id: input.principal_id,
     attempt_id: input.lease.attempt_id,
     worker_fence: input.lease.worker_fence,
-    idempotency_key: `e1-analysis-publication:${input.program.program_hash}`,
+    idempotency_key: `falcon24-analysis-publication:${input.program.program_hash}`,
     analysis_program_ref: input.analysis_program_ref,
     nodes: orderedNodes.map((node) => ({
       authority_commit: node.authority_commit,
@@ -762,8 +765,9 @@ export async function assembleE1AnalysisPublication(input: {
     ],
     chart_documents: chartDocuments,
     report_document: reportDocument,
+    authority: input.authority,
     public_event_id: deterministicAnalysisUuid(
-      `e1-analysis-publication-event\0${input.lease.run_id}\0${input.program.program_hash}`,
+      `falcon24-analysis-publication-event\0${input.lease.run_id}\0${input.program.program_hash}`,
     ),
   });
   return Object.freeze({

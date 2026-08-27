@@ -23,6 +23,7 @@ import {
 import {
   type AgentProductProfileRegistryItemV2,
   type ArtifactReference,
+  type Falcon24AuthorityBindingV2,
   artifactReferenceIdentity,
   canonicalizeJson,
   type PortResult,
@@ -70,6 +71,7 @@ export interface ProductionTeamRuntimeDependencies {
 
 export interface ProductionTeamToolFactoryInput {
   readonly lease: Parameters<DataAgentProductTeamRuntimePort["execute"]>[0]["lease"];
+  readonly authority: Falcon24AuthorityBindingV2;
   readonly execution_context: RunExecutionContext;
   readonly semantic_context_ref: Parameters<
     DataAgentProductTeamRuntimePort["execute"]
@@ -856,6 +858,7 @@ export function createProductionTeamRuntime(
           const tools =
             dependencies.create_tools?.({
               lease: input.lease,
+              authority: input.authority,
               execution_context: input.execution_context,
               semantic_context_ref: input.semantic_context_ref,
               semantic_context_package: input.semantic_context_package,

@@ -42,10 +42,6 @@ import {
   consumeReportReadGrantInputSchema,
   createU6DbResultSchema,
   currentReadinessConsumeResultSchema,
-  type E1AnalysisPublicationCommand,
-  type E1AnalysisPublicationReceipt,
-  e1AnalysisPublicationCommandSchema,
-  e1AnalysisPublicationReceiptSchema,
   expiredReportReadGrantSchema,
   expireReportReadGrantInputSchema,
   frontierAdvanceInputSchema,
@@ -70,6 +66,12 @@ import {
   type U6DbResult,
   type U6PlatformError,
 } from "@data-agent/contracts";
+import {
+  type AnalysisPublicationV2Command,
+  type AnalysisPublicationV2Receipt,
+  analysisPublicationV2CommandSchema,
+  analysisPublicationV2ReceiptSchema,
+} from "@data-agent/contracts/ports";
 import { z } from "zod";
 import {
   type AppTransactionOptions,
@@ -269,8 +271,8 @@ const analysisAuthorityCommitRpcResultSchema = z.union([
   }),
   z.strictObject({ ok: z.literal(false), error_code: analysisLifecycleErrorCodeSchema }),
 ]);
-const e1AnalysisPublicationRpcResultSchema = z.union([
-  z.strictObject({ ok: z.literal(true), receipt: e1AnalysisPublicationReceiptSchema }),
+const analysisPublicationV2RpcResultSchema = z.union([
+  z.strictObject({ ok: z.literal(true), receipt: analysisPublicationV2ReceiptSchema }),
   z.strictObject({
     ok: z.literal(false),
     error_code: z.string().regex(/^[A-Z][A-Z0-9_]{2,127}$/u),
@@ -444,11 +446,11 @@ type ResearchAuthorityPorts = ResearchArtifactAuthorityPort &
         }
       | { readonly ok: false; readonly error_code: string }
     >;
-    commitE1AnalysisPublication(
+    commitAnalysisPublication(
       capabilityInput: unknown,
-      command: E1AnalysisPublicationCommand,
+      command: AnalysisPublicationV2Command,
     ): Promise<
-      | { readonly ok: true; readonly receipt: E1AnalysisPublicationReceipt }
+      | { readonly ok: true; readonly receipt: AnalysisPublicationV2Receipt }
       | { readonly ok: false; readonly error_code: string }
     >;
   };
@@ -1702,9 +1704,9 @@ export function createPostgresResearchAuthority(
         throw new ResearchAuthorityTransportError("Authority commit failure mapped to success.");
       return { ok: false as const, error_code: failure.error.code };
     },
-    async commitE1AnalysisPublication(capabilityInput, commandInput) {
+    async commitAnalysisPublication(capabilityInput, commandInput) {
       const capabilityBundle = capabilityInputSchema.safeParse(capabilityInput);
-      const command = e1AnalysisPublicationCommandSchema.safeParse(commandInput);
+      const command = analysisPublicationV2CommandSchema.safeParse(commandInput);
       if (!capabilityBundle.success || !command.success) {
         return { ok: false as const, error_code: "RESEARCH_DATABASE_CONTRACT_INVALID" };
       }
@@ -1722,27 +1724,27 @@ export function createPostgresResearchAuthority(
             access: "WRITE",
             allowed_roles: ["OWNER", "ANALYST"],
             map_database_error: databaseFailure,
-            operation_name: "research_authority.commit_e1_analysis_publication",
+            operation_name: "research_authority.commit_analysis_publication",
             correlation_id: command.data.run_id,
           },
           async ({ capability, client }) => {
             if (!scopeMatches(command.data, capability)) {
               throw new PersistenceBoundaryError(
                 "RESEARCH_CAPABILITY_SCOPE_MISMATCH",
-                "E1 Analysis Publication 与事务内 Scope/Principal 不一致。",
+                "Analysis Publication 与事务内 Scope/Principal 不一致。",
               );
             }
             const databaseResult = await client.query<JsonResultRow>(
-              "select app_data_agent.commit_e1_analysis_publication($1::jsonb) as result",
+              "select app_data_agent.commit_falcon24_analysis_publication($1::jsonb) as result",
               [envelope],
             );
-            const parsed = e1AnalysisPublicationRpcResultSchema.safeParse(
+            const parsed = analysisPublicationV2RpcResultSchema.safeParse(
               databaseResult.rows[0]?.result,
             );
             if (!parsed.success) {
               throw new PersistenceBoundaryError(
                 "RESEARCH_DATABASE_CONTRACT_INVALID",
-                "E1 Analysis Publication RPC 返回无效。",
+                "Analysis Publication RPC 返回无效。",
               );
             }
             return parsed.data;
@@ -1752,7 +1754,7 @@ export function createPostgresResearchAuthority(
       if (transaction.ok) return transaction.value;
       const failure = boundaryFailureToU6<never>(transaction.error);
       if (failure.ok) {
-        throw new ResearchAuthorityTransportError("E1 publication failure mapped to success.");
+        throw new ResearchAuthorityTransportError("Publication failure mapped to success.");
       }
       return { ok: false as const, error_code: failure.error.code };
     },

@@ -31,6 +31,7 @@ import {
 import { analysisOracleReceiptSchema, verifyAnalysisOracleReceipt } from "./analysis-oracle.js";
 import { analysisResultStageArtifactSchema } from "./analysis-result-stage.js";
 import { analysisAgentFinalResponseSchema } from "./analysis-tools.js";
+import { falcon24AuthorityBindingV2Schema } from "../runs/authority-epoch.js";
 
 export const analysisAuthorityOutputBindingSchema = z.strictObject({
   stage_artifact: analysisResultStageArtifactSchema,
@@ -392,6 +393,85 @@ export async function verifyE1AnalysisPublicationCommand(
   });
   if (observedHash !== expectedHash) {
     throw new TypeError("E1_ANALYSIS_PUBLICATION_HASH_MISMATCH");
+  }
+  return deepFreeze(command);
+}
+
+const analysisPublicationV2MaterialSchema = z
+  .strictObject({
+    ...e1AnalysisPublicationMaterialSchema.shape,
+    schema_version: z.literal("falcon24-analysis-publication@2.0.0"),
+    authority: falcon24AuthorityBindingV2Schema,
+  })
+  .superRefine((publication, context) => {
+    const { authority: _authority, ...versionedMaterial } = publication;
+    const legacyProjection = e1AnalysisPublicationMaterialSchema.safeParse({
+      ...versionedMaterial,
+      schema_version: "e1-analysis-publication@1.0.0",
+    });
+    if (!legacyProjection.success) {
+      for (const issue of legacyProjection.error.issues) {
+        context.addIssue({
+          code: "custom",
+          message: issue.message,
+          path: issue.path,
+        });
+      }
+    }
+  });
+
+export const analysisPublicationV2CommandSchema = analysisPublicationV2MaterialSchema.extend({
+  publication_hash: contentHashSchema,
+});
+
+export const analysisPublicationV2ReceiptSchema = z.strictObject({
+  schema_version: z.literal("falcon24-analysis-publication-receipt@2.0.0"),
+  created: z.boolean(),
+  publication_hash: contentHashSchema,
+  public_event_id: immutableIdSchema,
+  references: e1AnalysisPublicationReceiptSchema.shape.references,
+});
+
+export type AnalysisPublicationV2Command = z.infer<typeof analysisPublicationV2CommandSchema>;
+export type AnalysisPublicationV2Receipt = z.infer<typeof analysisPublicationV2ReceiptSchema>;
+
+async function verifyAnalysisPublicationV2Material(input: unknown) {
+  const material = analysisPublicationV2MaterialSchema.parse(input);
+  const { authority: _authority, ...versionedMaterial } = material;
+  await verifyE1PublicationMaterial({
+    ...versionedMaterial,
+    schema_version: "e1-analysis-publication@1.0.0",
+  });
+  return material;
+}
+
+export async function buildAnalysisPublicationV2Command(
+  input: z.input<typeof analysisPublicationV2MaterialSchema>,
+): Promise<AnalysisPublicationV2Command> {
+  const material = await verifyAnalysisPublicationV2Material(input);
+  return deepFreeze(
+    analysisPublicationV2CommandSchema.parse({
+      ...material,
+      publication_hash: await sha256ContentHash({
+        hash_domain: "falcon24-analysis-publication@2.0.0",
+        value: material,
+      }),
+    }),
+  );
+}
+
+export async function verifyAnalysisPublicationV2Command(
+  input: unknown,
+): Promise<AnalysisPublicationV2Command> {
+  const command = analysisPublicationV2CommandSchema.parse(input);
+  const { publication_hash: observedHash, ...materialInput } = command;
+  const material = await verifyAnalysisPublicationV2Material(materialInput);
+  const expectedHash = await sha256ContentHash({
+    hash_domain: "falcon24-analysis-publication@2.0.0",
+    value: material,
+  });
+  if (observedHash !== expectedHash) {
+    throw new TypeError("FALCON24_ANALYSIS_PUBLICATION_HASH_MISMATCH");
   }
   return deepFreeze(command);
 }

@@ -380,6 +380,7 @@ export async function verifyFalcon24UiReceiptDocument(input: unknown) {
 }
 
 export type Falcon24AuthorityBinding = z.infer<typeof falcon24AuthorityBindingSchema>;
+export type Falcon24AuthorityBindingV2 = z.infer<typeof falcon24AuthorityBindingV2Schema>;
 export type Falcon24AuthorityPersistenceBinding = z.infer<
   typeof falcon24AuthorityPersistenceBindingSchema
 >;

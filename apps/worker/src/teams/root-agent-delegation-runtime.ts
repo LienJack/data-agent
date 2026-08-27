@@ -112,6 +112,7 @@ export function createRootAgentDelegationRuntime(
       readonly decision: RootAgentDecisionCandidate;
       readonly execution: RootExecution;
       readonly profiles: readonly AgentProductProfileRegistryItemV2[];
+      readonly authority: Parameters<DataAgentProductTeamRuntimePort["execute"]>[0]["authority"];
     }) {
       try {
         const payload = effectiveConfigRunLeasePayloadSchema.parse(input.execution.lease.payload);
@@ -159,6 +160,7 @@ export function createRootAgentDelegationRuntime(
         const context = await resolveContext(input.execution);
         const result = await dependencies.runtime.execute({
           lease: input.execution.lease,
+          authority: input.authority,
           profiles,
           admitted_delegations: admitted,
           semantic_context_ref: {

@@ -257,6 +257,13 @@ describe("Production Team governed chart publication", () => {
       },
       {
         lease: lease as ProductionTeamToolFactoryInput["lease"],
+        authority: {
+          schema_version: "falcon24-authority-binding@2.0.0",
+          authority_epoch: "E2",
+          baseline_id: id(4),
+          baseline_hash: hash("d"),
+          activation_attempt_id: id(5),
+        },
         execution_context: executionContext,
         semantic_context_ref: {
           package_id: id(20),
@@ -474,6 +481,13 @@ describe("Production Team governed chart publication", () => {
       },
       {
         lease: lease as ProductionTeamToolFactoryInput["lease"],
+        authority: {
+          schema_version: "falcon24-authority-binding@2.0.0",
+          authority_epoch: "E2",
+          baseline_id: id(4),
+          baseline_hash: hash("d"),
+          activation_attempt_id: id(5),
+        },
         execution_context: executionContext,
         semantic_context_ref: {
           package_id: id(20),
@@ -760,6 +774,13 @@ describe("Production Team governed chart publication", () => {
       },
       {
         lease: lease as ProductionTeamToolFactoryInput["lease"],
+        authority: {
+          schema_version: "falcon24-authority-binding@2.0.0",
+          authority_epoch: "E2",
+          baseline_id: id(4),
+          baseline_hash: hash("d"),
+          activation_attempt_id: id(5),
+        },
         execution_context: executionContext,
         semantic_context_ref: {
           package_id: id(20),

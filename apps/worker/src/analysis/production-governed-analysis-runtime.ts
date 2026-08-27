@@ -62,7 +62,8 @@ type ProductionAnalysisResearchAuthority = ResearchArtifactAuthorityPort &
   AnalysisLifecyclePersistenceAuthority &
   AnalysisPythonSourceAuthorityPort;
 
-export const E1_SINGLE_SERIES_TREND_METHOD_ID = "published-single-series-trend@1" as const;
+export const FALCON24_SINGLE_SERIES_TREND_METHOD_ID =
+  "published-single-series-trend@1" as const;
 
 function referenceFactory() {
   return Object.freeze({
@@ -74,7 +75,7 @@ function referenceFactory() {
     }) {
       return artifactReferenceSchema.parse({
         artifact_id: deterministicAnalysisUuid(
-          `e1-analysis-system\0${input.lease.run_id}\0${input.artifact_type}\0${input.label}`,
+          `falcon24-analysis-system\0${input.lease.run_id}\0${input.artifact_type}\0${input.label}`,
         ),
         artifact_type: input.artifact_type,
         ...input.lease.scope,
@@ -93,7 +94,7 @@ function referenceFactory() {
     }) {
       return artifactReferenceSchema.parse({
         artifact_id: deterministicAnalysisUuid(
-          `e1-analysis-output\0${input.lease.run_id}\0${input.analysis_program_ref.artifact_id}\0${input.node_id}\0${input.artifact_kind}\0${input.artifact_name}`,
+          `falcon24-analysis-output\0${input.lease.run_id}\0${input.analysis_program_ref.artifact_id}\0${input.node_id}\0${input.artifact_kind}\0${input.artifact_name}`,
         ),
         artifact_type: "SandboxResult",
         ...input.lease.scope,
@@ -121,7 +122,7 @@ async function questionFrameRef(input: {
   readonly question: string;
 }) {
   const artifactId = deterministicAnalysisUuid(
-    `e1-analysis-question-frame\0${input.lease.run_id}\0${input.task_id}`,
+    `falcon24-analysis-question-frame\0${input.lease.run_id}\0${input.task_id}`,
   );
   return artifactReferenceSchema.parse({
     artifact_id: artifactId,
@@ -152,7 +153,7 @@ function methodRegistry(): GovernedAnalysisMethodRegistryPort {
       });
       return Object.freeze([
         Object.freeze({
-          method_id: E1_SINGLE_SERIES_TREND_METHOD_ID,
+          method_id: FALCON24_SINGLE_SERIES_TREND_METHOD_ID,
           skill_id: "trend-change@1" as const,
           result_contract: plan.result_contract,
           required_operator_obligations: plan.required_operator_obligations,

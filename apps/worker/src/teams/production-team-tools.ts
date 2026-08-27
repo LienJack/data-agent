@@ -565,6 +565,7 @@ export function createProductionTeamTools(
         }
         const result = await analysis.analyze({
           lease: factoryInput.lease,
+          authority: factoryInput.authority,
           task_id: input.task.task_id,
           max_context_bytes: input.task.bounds.max_context_bytes,
           accepted_query_evidence_ref: evidenceRef.data,

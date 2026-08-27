@@ -213,11 +213,11 @@ describe("durable analysis lifecycle authority", () => {
           journal_entry: entry,
         } as const;
       },
-      async commitE1AnalysisPublication(_capability, command) {
+      async commitAnalysisPublication(_capability, command) {
         return {
           ok: true,
           receipt: {
-            schema_version: "e1-analysis-publication-receipt@1.0.0",
+            schema_version: "falcon24-analysis-publication-receipt@2.0.0",
             created: true,
             publication_hash: command.publication_hash,
             public_event_id: command.public_event_id,

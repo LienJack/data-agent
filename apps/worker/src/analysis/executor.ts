@@ -28,7 +28,7 @@ import {
   buildAnalysisAuthorityCommit,
   buildAnalysisOracleReceipt,
 } from "@data-agent/contracts/ports";
-import type { RunWorkLease } from "@data-agent/contracts/runs";
+import type { Falcon24AuthorityBindingV2, RunWorkLease } from "@data-agent/contracts/runs";
 import {
   computeAnalysisDerivationHash,
   type DerivationFailure,
@@ -52,8 +52,8 @@ import type { AnalysisAgentModelPort } from "./deepseek-analysis-agent.js";
 import { deterministicAnalysisUuid } from "./deterministic-id.js";
 import type { GovernedAnalysisInput } from "./governed-analysis-input.js";
 import {
-  assembleE1AnalysisPublication,
-  type PreparedE1PublicationNode,
+  assembleAnalysisPublication,
+  type PreparedAnalysisPublicationNode,
   projectStagedAnalysisChart,
 } from "./governed-analysis-runtime.js";
 import type { AnalysisGovernedResultAuthorityPort } from "./governed-result-bridge.js";
@@ -336,7 +336,7 @@ export interface AnalysisExecutionResult {
   }[];
   readonly chart_refs: readonly ArtifactReference[];
   readonly report_ref: ArtifactReference;
-  readonly publication_receipt: import("@data-agent/contracts/ports").E1AnalysisPublicationReceipt;
+  readonly publication_receipt: import("@data-agent/contracts/ports").AnalysisPublicationV2Receipt;
 }
 
 class BudgetLedger {
@@ -508,6 +508,7 @@ export function createAnalysisProgramExecutor(dependencies: AnalysisExecutorDepe
   return Object.freeze({
     async execute(input: {
       readonly lease: RunWorkLease;
+      readonly authority: Falcon24AuthorityBindingV2;
       readonly principal_id: string;
       readonly brief: ResearchBriefV3Payload;
       readonly brief_ref: ArtifactReference;
@@ -516,7 +517,7 @@ export function createAnalysisProgramExecutor(dependencies: AnalysisExecutorDepe
       readonly signal?: AbortSignal;
     }): Promise<AnalysisExecutionResult> {
       const prepareL2 = dependencies.artifacts.prepareL2;
-      if (!prepareL2) throw new TypeError("E1_ANALYSIS_PUBLICATION_PORT_REQUIRED");
+      if (!prepareL2) throw new TypeError("FALCON24_ANALYSIS_PUBLICATION_PORT_REQUIRED");
       const gate = await gateAnalysisProgram({
         program: input.program,
         brief: input.brief,
@@ -560,7 +561,7 @@ export function createAnalysisProgramExecutor(dependencies: AnalysisExecutorDepe
       const oracleReceipts: unknown[] = [];
       const publishedOutputs = new Map<string, readonly AnalysisBoundOutput[]>();
       const explanations = new Map<string, z.infer<typeof analysisAgentFinalResponseSchema>>();
-      const preparedPublicationNodes = new Map<string, PreparedE1PublicationNode>();
+      const preparedPublicationNodes = new Map<string, PreparedAnalysisPublicationNode>();
       const cleanupInputs = new Map<
         string,
         Parameters<AnalysisLifecycleAuthorityPort["cleanup"]>[0]
@@ -689,7 +690,7 @@ export function createAnalysisProgramExecutor(dependencies: AnalysisExecutorDepe
           .filter(({ artifact_kind: artifactKind }) => artifactKind === "CHART")
           .map(projectStagedAnalysisChart);
         if (stagedCharts.length === 0) {
-          throw new TypeError("E1_ANALYSIS_PUBLICATION_CHART_REQUIRED");
+          throw new TypeError("FALCON24_ANALYSIS_PUBLICATION_CHART_REQUIRED");
         }
         const chartDatasetHashes = await Promise.all(
           stagedCharts.map(({ projection }) =>
@@ -1108,7 +1109,7 @@ export function createAnalysisProgramExecutor(dependencies: AnalysisExecutorDepe
         }),
       });
       if (completion.terminal !== "READY") {
-        throw new TypeError(`E1_ANALYSIS_PUBLICATION_TERMINAL_${completion.terminal}`);
+        throw new TypeError(`FALCON24_ANALYSIS_PUBLICATION_TERMINAL_${completion.terminal}`);
       }
       const preparedCompletion = await prepareL2({
         lease: input.lease,
@@ -1119,11 +1120,12 @@ export function createAnalysisProgramExecutor(dependencies: AnalysisExecutorDepe
       const completionRef = preparedCompletion.reference;
       const preparedNodes = analysisProgram.nodes.map((node) => {
         const prepared = preparedPublicationNodes.get(node.node_id);
-        if (!prepared) throw new TypeError("E1_ANALYSIS_PUBLICATION_NODE_MISSING");
+        if (!prepared) throw new TypeError("FALCON24_ANALYSIS_PUBLICATION_NODE_MISSING");
         return prepared;
       });
-      const publication = await assembleE1AnalysisPublication({
+      const publication = await assembleAnalysisPublication({
         lease: input.lease,
+        authority: input.authority,
         principal_id: input.principal_id,
         program: analysisProgram,
         analysis_program_ref: analysisProgramRef,
