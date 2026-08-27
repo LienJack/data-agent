@@ -89,6 +89,8 @@ W0 方案提交：`35f55d21 docs: plan Falcon24 generation 2 E4 recovery`。W1 �
 
 ### W2 — 10783 successor staging storage and combined activation RPC
 
+Status: completed on 2026-08-28.
+
 **Ownership**
 
 - `infra/supabase/apps/data-agent/migration-sources/10783/`
@@ -98,13 +100,13 @@ W0 方案提交：`35f55d21 docs: plan Falcon24 generation 2 E4 recovery`。W1 �
 
 **Work**
 
-- [ ] 新增三张 stage/receipt 表、exact constraints、one-live-stage index、append-only/immutability triggers、RLS/minimal grants。
-- [ ] 为既有正式 Release/projection/graph 历史补数据库级 UPDATE/DELETE deny protection，不改任何现存 row bytes。
-- [ ] 新增 server-owned stage/smoke CAS functions 与
+- [x] 新增三张 stage/receipt 表、exact constraints、one-live-stage index、append-only/immutability triggers、RLS/minimal grants。
+- [x] 为既有正式 Release/projection/graph 历史补数据库级 UPDATE/DELETE deny protection，不改任何现存 row bytes。
+- [x] 新增 server-owned stage/smoke CAS functions 与
   `app_data_agent.activate_falcon24_authority_with_semantic_successor(jsonb)`。
-- [ ] Combined RPC 实现固定锁顺序、exact E3/gen1 preconditions、stage/smoke/baseline binding、E4 pollution scan、formal promotion、
+- [x] Combined RPC 实现固定锁顺序、exact E3/gen1 preconditions、stage/smoke/baseline binding、E4 pollution scan、formal promotion、
   semantic pointer/runtime/defaults/E4/outbox/receipt/stage PROMOTED 的单事务切换。
-- [ ] Postconditions 审计 function definition、owner、RLS、grants、trigger、constraint、ledger/checksum。
+- [x] Postconditions 审计 function definition、owner、RLS、grants、trigger、constraint、ledger/checksum。
 
 **Validation**
 
@@ -113,6 +115,22 @@ W0 方案提交：`35f55d21 docs: plan Falcon24 generation 2 E4 recovery`。W1 �
 - Exact E3 fixture upgrade，pre/post generation 1/E1-E3 counts/hashes/documents/projection bytes相同。
 - Direct UPDATE/DELETE deny、scope/RLS/grant越权、same-key replay/different-key conflict。
 - Failure injection + two-session concurrency only all-old/all-new；lock-order/no-deadlock。
+
+**Evidence**
+
+- 10783 declarative renderer write/verify PASS；最终 checksum
+  `sha256:ac529bd370b56b0d4f492d384cb0e1fdb70f567481d0a0617de6599b543ce0b0`。
+- Migration renderer、workspace inventory 与 10783 static contract：3 files / 17 tests PASS；scoped Biome 与 `git diff --check` PASS。
+- Platform typecheck、`bash -n` smoke harness、workspace migration inventory verifier 与完整 Supabase SQL static checks PASS。
+- 复用既有 PostgreSQL 17 容器，在临时 scratch database
+  `data_agent_semantic_successor_w2_52de40d0` 从 C7 frozen database clone 后应用 10783；migration checksum、owner/ACL/postconditions 与
+  pre/post formal-history row count/digest 全部 PASS，没有新建 Docker 容器。
+- `61-semantic-successor-e4-activation-assertions.sql` 返回
+  `SEMANTIC_SUCCESSOR_E4_ACTIVATION_ASSERTIONS_READY`：覆盖 exact four projections、derived idempotency digest、same-key replay/conflict、
+  malformed validation/smoke/version rejection、direct DML denial、generation-one formal history immutability、proof v2 evidence binding 与 late-failure rollback。
+- PostgreSQL 双连接竞争观察值固定为 pre-commit `1:E3:1:SMOKE_PASSED`、post-commit
+  `2:E4:2:PROMOTED:1`；两条并发调用和后续 replay 返回同一 activation hash，promotion 后 stage replay 返回 `PROMOTED`。
+- 专用 E3 database/container 未读取、未迁移、未激活；W8 仍要求新的用户明确授权。
 
 **Stop conditions**
 

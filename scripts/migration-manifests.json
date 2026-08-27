@@ -2517,6 +2517,25 @@
       }
     },
     {
+      "id": "10783",
+      "migration_name": "20260725010783_app_data_agent_semantic_successor_e4_activation.sql",
+      "source_directory": "infra/supabase/apps/data-agent/migration-sources/10783",
+      "segments": [
+        "00-preamble.sql.inc",
+        "10-successor-storage.sql.inc",
+        "20-successor-stage-rpcs.sql.inc",
+        "30-combined-activation.sql.inc",
+        "80-security.sql.inc",
+        "90-postconditions.sql.inc",
+        "99-ledger.sql.inc"
+      ],
+      "placeholder": "__SEMANTIC_SUCCESSOR_E4_ACTIVATION_MIGRATION_CHECKSUM__",
+      "checksum_header": "semantic_successor_e4_activation_migration_checksum",
+      "postcondition": {
+        "checksum_occurrences": 2
+      }
+    },
+    {
       "id": "10784",
       "migration_name": "20260725010784_app_data_agent_conversational_root_context.sql",
       "source_directory": "infra/supabase/apps/data-agent/migration-sources/10784",

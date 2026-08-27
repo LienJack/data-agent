@@ -1801,6 +1801,99 @@ run_operations_release_drill() {
   echo "Operations release drill passed: clean install and backup/restore."
 }
 
+run_semantic_successor_e4_activation_race_probe() {
+  successor_app="00000000-0000-4000-8000-00000000da01"
+  successor_tenant="00000000-0000-4000-8000-00000000aa83"
+  successor_lock_key="falcon24-authority-activation:${successor_app}:${successor_tenant}:test"
+  successor_holder_output=$(mktemp)
+  successor_a_output=$(mktemp)
+  successor_b_output=$(mktemp)
+
+  docker exec "$container_name" \
+    psql -X -v ON_ERROR_STOP=1 -U postgres -d "$database_name" \
+    -c "begin; select pg_catalog.pg_advisory_xact_lock(pg_catalog.hashtextextended('$successor_lock_key',0)); select pg_catalog.pg_sleep(3); commit;" \
+    >"$successor_holder_output" 2>&1 &
+  successor_holder_pid=$!
+
+  successor_lock_ready=0
+  successor_lock_attempt=0
+  while [ "$successor_lock_attempt" -lt 30 ]; do
+    successor_lock_available=$(docker exec "$container_name" \
+      psql -X -q -A -t -v ON_ERROR_STOP=1 -U postgres -d "$database_name" \
+      -c "select pg_catalog.pg_try_advisory_lock(pg_catalog.hashtextextended('$successor_lock_key',0));")
+    if [ "$successor_lock_available" = "f" ]; then
+      successor_lock_ready=1
+      break
+    fi
+    successor_lock_attempt=$((successor_lock_attempt + 1))
+    sleep 0.1
+  done
+  if [ "$successor_lock_ready" -ne 1 ]; then
+    echo "Semantic successor concurrency holder did not acquire the Falcon lock." >&2
+    sed -n '1,80p' "$successor_holder_output" >&2
+    rm -f "$successor_holder_output" "$successor_a_output" "$successor_b_output"
+    exit 1
+  fi
+
+  docker exec "$container_name" \
+    psql -X -q -A -t -v ON_ERROR_STOP=1 -U postgres -d "$database_name" \
+    -c "select test_support.activate_semantic_successor_e4_probe();" \
+    >"$successor_a_output" 2>&1 &
+  successor_a_pid=$!
+  docker exec "$container_name" \
+    psql -X -q -A -t -v ON_ERROR_STOP=1 -U postgres -d "$database_name" \
+    -c "select test_support.activate_semantic_successor_e4_probe();" \
+    >"$successor_b_output" 2>&1 &
+  successor_b_pid=$!
+  sleep 0.25
+
+  successor_old_state=$(docker exec "$container_name" \
+    psql -X -q -A -t -v ON_ERROR_STOP=1 -U postgres -d "$database_name" \
+    -c "select pointer.current_release_generation::text||':'||current.authority_epoch||':'||defaults.defaults_revision::text||':'||stage.status from semantic.semantic_active_pointer pointer join app_data_agent.falcon24_current_authority_epoch current using(app_id,tenant_id,environment) join app_data_agent.workspace_run_defaults defaults using(app_id,tenant_id,environment) join semantic.semantic_successor_release_stage stage using(app_id,tenant_id,environment,semantic_domain) where pointer.app_id='$successor_app'::uuid and pointer.tenant_id='$successor_tenant'::uuid and pointer.environment='test' and pointer.semantic_domain='falcon24_successor';")
+  if [ "$successor_old_state" != "1:E3:1:SMOKE_PASSED" ]; then
+    echo "Semantic successor observer saw a mixed pre-commit state: $successor_old_state" >&2
+    rm -f "$successor_holder_output" "$successor_a_output" "$successor_b_output"
+    exit 1
+  fi
+
+  successor_wait_failed=0
+  wait "$successor_holder_pid" || successor_wait_failed=1
+  wait "$successor_a_pid" || successor_wait_failed=1
+  wait "$successor_b_pid" || successor_wait_failed=1
+  if [ "$successor_wait_failed" -ne 0 ]; then
+    echo "Semantic successor concurrent activation failed." >&2
+    sed -n '1,80p' "$successor_holder_output" >&2
+    sed -n '1,80p' "$successor_a_output" >&2
+    sed -n '1,80p' "$successor_b_output" >&2
+    rm -f "$successor_holder_output" "$successor_a_output" "$successor_b_output"
+    exit 1
+  fi
+
+  successor_a_hash=$(sed -n '1p' "$successor_a_output")
+  successor_b_hash=$(sed -n '1p' "$successor_b_output")
+  successor_new_state=$(docker exec "$container_name" \
+    psql -X -q -A -t -v ON_ERROR_STOP=1 -U postgres -d "$database_name" \
+    -c "select pointer.current_release_generation::text||':'||current.authority_epoch||':'||defaults.defaults_revision::text||':'||stage.status||':'||(select pg_catalog.count(*) from semantic.semantic_successor_stage_receipt receipt where receipt.app_id=pointer.app_id and receipt.tenant_id=pointer.tenant_id and receipt.environment=pointer.environment and receipt.semantic_domain=pointer.semantic_domain and receipt.stage_id=stage.stage_id and receipt.receipt_kind='PROMOTION')::text from semantic.semantic_active_pointer pointer join app_data_agent.falcon24_current_authority_epoch current using(app_id,tenant_id,environment) join app_data_agent.workspace_run_defaults defaults using(app_id,tenant_id,environment) join semantic.semantic_successor_release_stage stage using(app_id,tenant_id,environment,semantic_domain) where pointer.app_id='$successor_app'::uuid and pointer.tenant_id='$successor_tenant'::uuid and pointer.environment='test' and pointer.semantic_domain='falcon24_successor';")
+  successor_replay_hash=$(docker exec "$container_name" \
+    psql -X -q -A -t -v ON_ERROR_STOP=1 -U postgres -d "$database_name" \
+    -c "select test_support.activate_semantic_successor_e4_probe();")
+  successor_stage_replay_status=$(docker exec "$container_name" \
+    psql -X -q -A -t -v ON_ERROR_STOP=1 -U postgres -d "$database_name" \
+    -c "select test_support.replay_semantic_successor_stage_probe();")
+  if [ "$successor_new_state" != "2:E4:2:PROMOTED:1" ] \
+    || [ "$successor_a_hash" != "$successor_b_hash" ] \
+    || [ "$successor_a_hash" != "$successor_replay_hash" ] \
+    || [ "$successor_stage_replay_status" != "PROMOTED" ] \
+    || ! printf '%s' "$successor_a_hash" | rg -q '^sha256:[0-9a-f]{64}$'; then
+    echo "Semantic successor concurrency/replay assertion failed." >&2
+    echo "state=$successor_new_state a=$successor_a_hash b=$successor_b_hash replay=$successor_replay_hash stage_replay=$successor_stage_replay_status" >&2
+    rm -f "$successor_holder_output" "$successor_a_output" "$successor_b_output"
+    exit 1
+  fi
+  rm -f "$successor_holder_output" "$successor_a_output" "$successor_b_output"
+  echo "Semantic successor E4 activation concurrency assertions passed."
+}
+
 run_reset_only_guard_probe
 run_runtime_prefix_fail_closed_probe
 
@@ -1938,6 +2031,9 @@ for assertion_file in $(find "$script_dir" -type f -name '*-assertions.sql' | so
       ;;
     *"/25z-runtime-concurrent-resume-setup-assertions.sql")
       run_concurrent_resume_probe
+      ;;
+    *"/61-semantic-successor-e4-activation-assertions.sql")
+      run_semantic_successor_e4_activation_race_probe
       ;;
   esac
 done
