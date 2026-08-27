@@ -153,6 +153,64 @@ describe("Falcon24 versioned browser gate", () => {
     });
   });
 
+  it.each([
+    { width: 1440 as const, height: 900 },
+    { width: 390 as const, height: 844 },
+  ])("passes the exact $width x $height viewport to browser preflight", async (viewport) => {
+    execFileAsyncMock.mockReset();
+    execFileAsyncMock.mockImplementation(async (_file: string, args: readonly string[]) => ({
+      stdout: JSON.stringify({
+        success: true,
+        data: args.includes("eval")
+          ? {
+              result: {
+                location: `https://data-agent.example/w/${workspaceId}/qa?conversation=${conversationId}&tab=conversation`,
+                ready: true,
+                question_input_visible: true,
+                submit_visible: true,
+                composer_ready: true,
+                gate_claim_absent: true,
+                expected_run_absent: true,
+                error_banners: [],
+                web_build: {
+                  build_id: `sha256:${"a".repeat(64)}`,
+                  generation_id: `sha256:${"b".repeat(64)}`,
+                },
+              },
+            }
+          : {},
+        error: null,
+      }),
+      stderr: "",
+    }));
+
+    await preflightFalcon24BrowserSubmission({
+      session: `falcon24-e2-${viewport.width}-preflight`,
+      web_base_url: "https://data-agent.example",
+      workspace_id: workspaceId,
+      conversation_id: conversationId,
+      expected_run_id: runId,
+      expected_web_build: {
+        build_id: `sha256:${"a".repeat(64)}`,
+        generation_id: `sha256:${"b".repeat(64)}`,
+      },
+      viewport,
+    });
+
+    expect(execFileAsyncMock).toHaveBeenCalledWith(
+      "agent-browser",
+      expect.arrayContaining([
+        "--session",
+        `falcon24-e2-${viewport.width}-preflight`,
+        "set",
+        "viewport",
+        String(viewport.width),
+        String(viewport.height),
+      ]),
+      expect.any(Object),
+    );
+  });
+
   it("waits for the hydrated composer again after a slot is claimed", async () => {
     const attemptId = "00000000-0000-4000-8000-000000000105";
     const question = "最近12个完整月的订单收入有什么趋势？";
