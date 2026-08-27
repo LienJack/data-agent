@@ -62,6 +62,7 @@ export const SYSTEM_ARTIFACT_TYPES = [
   "ScoreCard",
   "ModelCertificationReceipt",
   "ProviderTaskArtifact",
+  "ConversationContextSummary",
   "ProviderResponseArtifact",
   "ProviderStaleMarkerRecoveryReceipt",
   "ExternalAgentAuditReceipt",

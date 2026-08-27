@@ -59,14 +59,16 @@
 
 ### R8 长对话压缩
 
-- 当前消息和最近完整 user/assistant 对永远优先；更早历史在预算外时生成 `conversation-context-summary@1.0.0`。
+- 当前消息和至少最近 16 条原始 user/assistant messages 永远优先，选择边界向前扩到 user message 以保留完整 pair；冻结的最近 64 条中，更早的最多 48 条生成确定性 `conversation-context-summary@1.0.0`。
 - Summary 绑定覆盖的 message IDs/hashes，只服务语境理解，不是数据证据；使用现有 Artifact Store，不新增业务表。
+- Summary 作为明确标记的 untrusted user context 进入 provider，不得进入 system message 或 Conversation `accepted_artifact_refs`。
+- Worker 提交前并发追加的消息按 accepted-message 切点排除；冻结 Run 不因 live Conversation version 已前进而失败。
 
 ### R9 安全、持久化与范围
 
 - 不向模型或公开 Trace 暴露密钥、连接信息、原始 provider payload、system prompt、chain-of-thought 或未验收 raw rows。
 - 跨 Tenant/Principal/Conversation、无权/删除 Conversation、未验收 Artifact 均拒绝。
-- 最多允许一条前向 migration 演进既有 ProviderTask/Root lease RPC；不新增业务表、发布 authority、Epoch 或诊断 authority。
+- 已提交 10784 后，允许一条后继 10785 只为 summary/并发隔离继续演进同一 ProviderTask RPC；不修改 10784，不新增业务表、发布 authority、Epoch 或诊断 authority。
 - 首期不重构 Web UI，只验证同 Conversation 提交、消息/Run/Artifact refs 回写和连续展示。
 
 ## Acceptance Criteria

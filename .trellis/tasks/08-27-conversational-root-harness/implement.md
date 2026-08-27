@@ -107,6 +107,24 @@ Commit: `feat(agent-runtime): continue root through analysis results`
 
 新增 ConversationContextSummary、budget selector 和 summary Artifact writer。覆盖 64/80+ messages、stable coverage hash、recent-pair retention、summary replay、concurrent append isolation、summary prompt injection 和 summary-not-evidence。
 
+Status: completed on 2026-08-27.
+
+Implementation boundary:
+
+- 10785 只演进既有 ProviderTask commit/load authority：从 frozen EffectiveConfig + accepted message cutoff 选择最近 64 条；较早最多 48 条生成 summary，至少最近 16 条保留原文，并向前扩展 user 边界以保留完整 user/assistant pair。
+- Summary 和 ProviderTask 同事务写入现有 Artifact Store；历史 v1 与无摘要 v2 只读重放，不原地改写。
+- Worker 用 `summary.covered_messages + task.visible_messages` 对齐 lease refs；summary 仅作为 untrusted user context，不能进入 system 或 accepted evidence。
+- 不执行迁移、不启动 Docker、不触碰专用 Falcon E3 数据库；先完成合同、静态迁移、Worker 与 Web evidence-projection 聚焦验证。
+
+Evidence:
+
+- Contracts: 97 files / 942 tests；ConversationContextSummary 覆盖 stable hash、frontier/duplicate rejection、ProviderTask exact scope/run/hash/non-overlap binding 和 client cannot provide summary ref。
+- Worker Root/Provider focused: 9 files / 39 tests；覆盖 summary binding、单一 system message、prompt injection 保持 user role、summary coverage + raw visible refs 对齐 lease，以及 direct/audited dispatcher 路径。
+- Platform/Provider focused: 8 files / 59 tests（含合同/Worker 交叉聚焦）和独立 10785 static migration 5/5；Web accepted Artifact projection 16/16，确认 ConversationContextSummary 不进入 answer evidence refs。
+- Contracts、Agent Runtime、Worker、Platform typechecks passed；Agent Runtime 27 files / 168 tests。
+- 10785 render/verify checksum passed，完整 rendered SQL 由 PostgreSQL 18 parser 成功解析为 21 statements；未运行 migration、未启动 Docker、未访问专用 Falcon E3 数据库。
+- Scoped Biome、dependency boundary gate、预编排/完整链禁用扫描和 `git diff --check` passed。
+
 Commit: `feat(agent-runtime): summarize bounded conversation history`
 
 ## C7 — End-to-end acceptance

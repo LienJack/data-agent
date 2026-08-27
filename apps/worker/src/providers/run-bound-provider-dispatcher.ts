@@ -11,7 +11,10 @@ import {
 } from "@data-agent/contracts/runs";
 import type { ProviderExecutionProfile } from "@data-agent/contracts/workspaces";
 import type { RunBoundProviderDispatcher } from "../runs/run-execution-context.js";
-import { buildRootConversationMessages } from "../teams/conversation-context-builder.js";
+import {
+  buildRootConversationMessages,
+  collectProviderTaskContextMessageIds,
+} from "../teams/conversation-context-builder.js";
 import type {
   AgentDataProjectionReceiptAuthority,
   AuditedModelProvider,
@@ -166,8 +169,12 @@ export function createRunBoundProviderDispatcher(input: {
         );
       }
       if (
-        JSON.stringify(task.value.document.visible_messages.map(({ message_id }) => message_id)) !==
-        JSON.stringify(leasePayload.data.visible_message_refs)
+        JSON.stringify(
+          collectProviderTaskContextMessageIds({
+            task: task.value.document,
+            context_summary: task.value.context_summary ?? null,
+          }),
+        ) !== JSON.stringify(leasePayload.data.visible_message_refs)
       ) {
         return failure(
           "ROOT_CONVERSATION_CONTEXT_BINDING_INVALID",
@@ -181,6 +188,7 @@ export function createRunBoundProviderDispatcher(input: {
       const messages = buildRootConversationMessages({
         system_message: await buildRootAgentSystemMessage(leasePayload.data.catalog_snapshot),
         task: task.value.document,
+        context_summary: task.value.context_summary ?? null,
         current_run_messages: buildRootLoopMessages(request.turn),
       });
       const inspected = inspectProviderMessageProjection({

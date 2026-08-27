@@ -1,5 +1,11 @@
 import { z } from "zod";
 import {
+  type ConversationContextSummaryDocument,
+  conversationContextSummaryDocumentSchema,
+  conversationContextSummaryReferenceSchema,
+  verifyConversationContextSummary,
+} from "../artifacts/conversation-context-summary.js";
+import {
   artifactReferenceFor,
   artifactReferenceIdentity,
   artifactReferenceSchema,
@@ -846,7 +852,7 @@ const providerTaskArtifactV2DocumentDraftSchema = z
     conversation_resource_version: positiveRevisionSchema,
     current_message: providerTaskCurrentMessageSchema,
     visible_messages: z.array(providerTaskVisibleMessageSchema).min(1).max(64),
-    context_summary_ref: artifactReferenceSchema.nullable(),
+    context_summary_ref: conversationContextSummaryReferenceSchema.nullable(),
     context_selection_hash: contentHashSchema,
   })
   .superRefine((document, ctx) => {
@@ -982,7 +988,7 @@ export const commitProviderTaskArtifactCommandSchema = z.strictObject({
   scope: providerInvocationScopeSchema,
   run_id: immutableIdSchema,
   conversation_binding: providerTaskConversationBindingSchema,
-  context_summary_ref: artifactReferenceSchema.nullable(),
+  context_summary_ref: z.null(),
 });
 
 export const commitProviderTaskArtifactResultSchema = z
@@ -991,6 +997,7 @@ export const commitProviderTaskArtifactResultSchema = z
     disposition: z.enum(["CREATED", "REPLAYED"]),
     reference: providerTaskArtifactReferenceSchema,
     document: providerTaskArtifactDocumentSchema,
+    context_summary: conversationContextSummaryDocumentSchema.nullable().optional(),
     committed_at: canonicalU2TimestampSchema,
   })
   .superRefine((result, ctx) => {
@@ -1013,7 +1020,54 @@ export const commitProviderTaskArtifactResultSchema = z
         message: "Provider Task Artifact result 必须绑定 DB-resolved accepted message document。",
       });
     }
+    addProviderTaskSummaryIssues(
+      result.document,
+      result.context_summary ?? null,
+      result.reference,
+      ctx,
+    );
   });
+
+function addProviderTaskSummaryIssues(
+  task: z.infer<typeof providerTaskArtifactDocumentSchema>,
+  summary: ConversationContextSummaryDocument | null,
+  taskReference: z.infer<typeof providerTaskArtifactReferenceSchema>,
+  ctx: z.RefinementCtx,
+) {
+  if (task.schema_version !== "provider-task-artifact@2.0.0") {
+    if (summary !== null) {
+      ctx.addIssue({ code: "custom", message: "Legacy Provider Task cannot carry a summary." });
+    }
+    return;
+  }
+  if ((task.context_summary_ref === null) !== (summary === null)) {
+    ctx.addIssue({
+      code: "custom",
+      message: "Provider Task summary ref and document must be present together.",
+    });
+    return;
+  }
+  if (!summary || !task.context_summary_ref) return;
+  const visibleIds = new Set(task.visible_messages.map(({ message_id: messageId }) => messageId));
+  if (
+    summary.summary_id !== task.context_summary_ref.artifact_id ||
+    summary.run_id !== task.context_summary_ref.run_id ||
+    summary.content_hash !== task.context_summary_ref.content_hash ||
+    summary.conversation_id !== task.conversation_id ||
+    summary.conversation_resource_version !== task.conversation_resource_version ||
+    task.context_summary_ref.app_id !== taskReference.app_id ||
+    task.context_summary_ref.tenant_id !== taskReference.tenant_id ||
+    task.context_summary_ref.environment !== taskReference.environment ||
+    task.context_summary_ref.run_id !== taskReference.run_id ||
+    task.context_summary_ref.revision !== 1 ||
+    summary.covered_messages.some(({ message_id: messageId }) => visibleIds.has(messageId))
+  ) {
+    ctx.addIssue({
+      code: "custom",
+      message: "Provider Task summary must bind the exact non-overlapping Conversation frontier.",
+    });
+  }
+}
 
 export async function verifyCommitProviderTaskArtifactResult(
   commandInput: unknown,
@@ -1022,6 +1076,7 @@ export async function verifyCommitProviderTaskArtifactResult(
   const command = commitProviderTaskArtifactCommandSchema.parse(commandInput);
   const result = commitProviderTaskArtifactResultSchema.parse(resultInput);
   await verifyProviderTaskArtifactDocument(result.document);
+  if (result.context_summary) await verifyConversationContextSummary(result.context_summary);
   const conversationMatches =
     result.document.schema_version === "provider-task-artifact@1.0.0"
       ? result.document.conversation_id === command.conversation_binding.conversation_id &&
@@ -1068,6 +1123,7 @@ export const loadProviderTaskArtifactResultSchema = z
     schema_version: z.literal("provider-task-artifact-load-result@1.0.0"),
     reference: providerTaskArtifactReferenceSchema,
     document: providerTaskArtifactDocumentSchema,
+    context_summary: conversationContextSummaryDocumentSchema.nullable().optional(),
   })
   .superRefine((result, ctx) => {
     const documentArtifactId =
@@ -1089,6 +1145,12 @@ export const loadProviderTaskArtifactResultSchema = z
         message: "Loaded Provider Task Artifact ref/document 不一致。",
       });
     }
+    addProviderTaskSummaryIssues(
+      result.document,
+      result.context_summary ?? null,
+      result.reference,
+      ctx,
+    );
   });
 
 export async function verifyLoadProviderTaskArtifactResult(
@@ -1098,6 +1160,7 @@ export async function verifyLoadProviderTaskArtifactResult(
   const command = loadProviderTaskArtifactCommandSchema.parse(commandInput);
   const result = loadProviderTaskArtifactResultSchema.parse(resultInput);
   await verifyProviderTaskArtifactDocument(result.document);
+  if (result.context_summary) await verifyConversationContextSummary(result.context_summary);
   if (
     artifactReferenceIdentity(result.reference) !== artifactReferenceIdentity(command.reference)
   ) {

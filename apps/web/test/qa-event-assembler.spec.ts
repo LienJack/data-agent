@@ -328,6 +328,7 @@ describe("Q&A public event assembly", () => {
         | "QueryEvidence"
         | "ArtifactWorkspaceDocument"
         | "AnalysisReport"
+        | "ConversationContextSummary"
         | "SqlArtifact",
       character: string,
     ) => ({
@@ -344,6 +345,7 @@ describe("Q&A public event assembly", () => {
     const chart = artifact("000000000012", "ArtifactWorkspaceDocument", "b");
     const rejectedReport = artifact("000000000013", "AnalysisReport", "c");
     const privateSql = artifact("000000000014", "SqlArtifact", "d");
+    const conversationSummary = artifact("000000000015", "ConversationContextSummary", "e");
     const events = [
       teamEvent(1, "tool", {
         call_id: "query-1",
@@ -357,7 +359,7 @@ describe("Q&A public event assembly", () => {
         output: "12 rows",
         duration_ms: 41,
         error_code: null,
-        artifact_refs: [chart, query, privateSql],
+        artifact_refs: [chart, query, privateSql, conversationSummary],
       }),
       teamEvent(2, "tool", {
         call_id: "chart-replay-1",

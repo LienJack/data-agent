@@ -36,7 +36,10 @@ import type {
   RunBoundProviderDispatcher,
   RunModelProviderResult,
 } from "../runs/run-execution-context.js";
-import { buildRootConversationMessages } from "../teams/conversation-context-builder.js";
+import {
+  buildRootConversationMessages,
+  collectProviderTaskContextMessageIds,
+} from "../teams/conversation-context-builder.js";
 import type { ProviderTaskArtifactAuthority } from "./postgres-provider-task-artifact.js";
 import { createTrustedUtf8InputTokenUpperBoundCounter } from "./trusted-input-token-upper-bound.js";
 
@@ -367,8 +370,15 @@ export function createDirectRunBoundProviderDispatcher(input: {
         rootTurn &&
         rootLease &&
         (rootTaskDocument === null ||
-          JSON.stringify(rootTaskDocument.visible_messages.map(({ message_id }) => message_id)) !==
-            JSON.stringify(rootLease.visible_message_refs))
+          JSON.stringify(
+            collectProviderTaskContextMessageIds({
+              task: rootTaskDocument,
+              context_summary:
+                committedRootTask?.ok === true
+                  ? (committedRootTask.value.context_summary ?? null)
+                  : null,
+            }),
+          ) !== JSON.stringify(rootLease.visible_message_refs))
       ) {
         return failure(
           "ROOT_CONVERSATION_CONTEXT_BINDING_INVALID",
@@ -409,6 +419,10 @@ export function createDirectRunBoundProviderDispatcher(input: {
           ? buildRootConversationMessages({
               system_message: await buildRootAgentSystemMessage(rootLease.catalog_snapshot),
               task: rootTaskDocument,
+              context_summary:
+                committedRootTask?.ok === true
+                  ? (committedRootTask.value.context_summary ?? null)
+                  : null,
               current_run_messages: buildRootLoopMessages(parsedRootRequest?.data),
             })
           : providerSmoke

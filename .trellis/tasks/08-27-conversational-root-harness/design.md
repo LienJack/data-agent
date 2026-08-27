@@ -56,7 +56,7 @@ type ProviderTaskArtifactV2 = {
 };
 ```
 
-`ConversationContextBuilder` 从 `workspace-data-repository` 使用 Run 已冻结的 resource version 加载消息。选择器先验证 current message 唯一且为最后 user message，再以稳定顺序保留最近对话；超预算部分由 summary ref 覆盖。`context_selection_hash` 对 conversation/version/current/selected message identities/hashes/summary ref 作 canonical hash。
+ProviderTask commit RPC 从 exact EffectiveConfig receipt 读取 Run 已冻结的 conversation binding，并以 `run.accepted` 对应 message 的 `created_at + message_id` 为上界。它不再要求提交时 live Conversation version 仍等于冻结版本，因此 admission 后并发追加的新消息既不会进入旧 Run，也不会让旧 Run 误失败。选择器验证 current message 唯一且为最后 user message，再以稳定顺序保留最近对话；超预算部分由 summary ref 覆盖。`context_selection_hash` 对 conversation/version/current/selected message identities/hashes/summary ref 作 canonical hash。
 
 Provider assembler 保留各消息原 role；历史内容不能进入 system。当前 Run 内 `RootToolObservation` 使用 assistant/tool messages 追加，且只投影 safe fields。
 
@@ -117,13 +117,15 @@ Production team runtime 只执行当前 turn 已准入且互不依赖的调用�
 
 ## 6. Long-context summary
 
-`conversation-context-summary@1.0.0` 包含 conversation id、covered-through id、ordered covered message ids/hashes、summary、active terms、user-confirmed constraints 和 content hash。只有超预算才生成，保存到现有 Artifact Store。摘要绝不出现在 evidence admission 列表，且不允许生成 SQL/semantic binding。
+`conversation-context-summary@1.0.0` 包含 conversation id/version、current Run、covered-through id、ordered covered message ids/hashes、summary、active terms、user-confirmed constraints 和 content hash。冻结窗口固定为最近 64 条：不超过 16 条时不生成摘要；超过时把较早的最多 48 条做确定性、长度受限的抽取摘要，并至少保留最近 16 条原文。若第 16 条边界落在 assistant message，边界向前扩到最近的 user message，避免把 user/assistant pair 拆开。摘要与 ProviderTask 在同一 PostgreSQL 事务中写入现有 Artifact Store，重放必须返回 exact document/hash；旧的无摘要 ProviderTask 保持原样重放。
+
+摘要在 provider 输入里使用明确标记的 untrusted `user` message，永不提升为 `system`。摘要 Artifact 不进入 Conversation `accepted_artifact_refs`，不能作为 SQL、semantic binding 或最终事实证据；当前 Run 需要数据事实时仍必须调用工具产生已验收 Artifact。
 
 ## 7. Failure, concurrency and recovery
 
 | Failure | Stable behavior |
 | --- | --- |
-| conversation/version/current message mismatch | provider 前拒绝 |
+| EffectiveConfig/conversation/current message mismatch | provider 前拒绝 |
 | later message races with frozen Run | later message excluded |
 | cross-scope/conversation ref | not-found-or-denied |
 | Provider decision invalid/mixed/unknown | strict parse failure |
@@ -139,7 +141,7 @@ Concurrent runs in one Conversation share the admission snapshot only; each Run 
 
 ## 8. Storage and migration
 
-Prefer extending existing JSON contracts and repository projections without migration. Only if the current Root lease/provider-task RPC exact-key validator cannot persist v2 fields may one forward migration evolve that existing RPC/payload. It must add no table and preserve v1 historical reads.
+Root context v2 已由 10784 演进现有 lease/provider-task RPC。C6 发现不能通过修改已提交 10784 来安全加入 summary authority，因此新增且只新增后继 10785：不建表，只演进同一 commit/load RPC、私有 validator 与现有 Artifact Store RLS。10785 保留 v1 load 和 10784 已提交的无摘要 v2 replay，不 UPDATE/DELETE 历史 Artifact；摘要与新 ProviderTask 同事务提交。
 
 ## 9. File ownership
 
@@ -148,7 +150,7 @@ Prefer extending existing JSON contracts and repository projections without migr
 - Worker: direct dispatcher, root turn/delegation/production runtimes, team tools, Text2SQL runtime, new conversation context builder.
 - Platform: workspace data repository and provider invocation store.
 - Web: validation-only unless a concrete missing current-conversation binding defect is proven.
-- Database: at most one forward RPC evolution migration.
+- Database: 10784 Root context migration + 10785 summary follow-up；均只演进同一 RPC authority，不新增表。
 
 W2-owned dirty files, migration 10783 and the retained E3 database are excluded from this task.
 
