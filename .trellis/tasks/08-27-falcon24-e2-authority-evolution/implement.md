@@ -246,6 +246,7 @@ Status: completed on 2026-08-28.
 
 - `packages/platform/src/runs/postgres-authority-epoch.ts`
 - `packages/platform/src/semantic/falcon24-retained-authority-proof.ts`
+- `apps/web/src/lib/falcon24-successor-authority-staging.ts`
 - `apps/web/src/cli/finalize-falcon24-authority.ts`
 - 相关 Platform/Web tests
 
@@ -255,7 +256,7 @@ Status: completed on 2026-08-28.
 - [x] 删除 successor=predecessor proof requirement；保留旧 builder only for history verification。
 - [ ] 拆分 `prepareWorkspaceAuthority`，禁止从 gen1 current 自动推导 E4 semantic ref。
 - [ ] Finalizer固定 stage -> smoke -> proof -> stage E4 receipts/baseline/session -> combined RPC -> production-port readback。
-- [ ] Readback mismatch 只报告 severe incident并冻结，不执行补写/rollback。
+- [x] Readback mismatch 只报告 severe incident并冻结，不执行补写/rollback。
 
 **Validation**
 
@@ -310,6 +311,13 @@ Status: completed on 2026-08-28.
 - Web 增加 capability-bound production readback adapter，把 closure reader 与 existing promoted-successor reader 绑定到同一 domain；
   增加 bounded Worker smoke process adapter，只经环境传 stage/domain/idempotency/build identity refs，严格解析 stdout receipt，拒绝
   stderr、stage/build mismatch，且不把 child diagnostics 泄漏给调用方。readback 3/3、smoke process 3/3、Finalizer 8/8 聚焦测试 PASS。
+- `b7c2cef3` 新增 clean E4 staging authority：任何 PostgreSQL 写入前先 exact 验证 `SMOKE_PASSED` stage 与 proof v2；开始 E4
+  staging session 后只接受五类 exact supporting receipts，再把 candidate `release_digest` 与 proof `proof_hash` 分别写入
+  `SEMANTIC_RELEASE` receipt 的 subject/evidence hash，构建并暂存 baseline 和 deterministic OPEN activation attempt。该端口没有
+  semantic pointer、workspace defaults、current authority 或 `activate` 写方法，combined RPC 仍是唯一切换点。
+- E4 stager 7/7、与 Finalizer/readback/Worker smoke 合并聚焦 21/21 PASS；覆盖严格调用顺序、幂等 replay、stage/proof 换绑、
+  supporting receipt 缺失、sandbox isolation 冒充、semantic receipt 替换和非 exact OPEN attempt。scoped Biome、`git diff --check`
+  PASS；Web typecheck 对 clean modules 零错误，仍只报告冻结 bootstrap/repair 的 8 个既有错误。
 - 因冻结 CLI 尚未接入该协调器，W5 的 Finalizer 工作项仍不勾选，W7 production import graph 也仍不得标绿。
 
 **Commit**
