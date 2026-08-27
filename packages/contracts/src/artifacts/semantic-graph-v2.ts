@@ -25,6 +25,7 @@ import {
 
 export const SEMANTIC_GRAPH_SOURCE_VERSION = "semantic-graph-source@2" as const;
 export const SEMANTIC_FORMULA_AST_VERSION = "semantic-formula-ast@1" as const;
+export const SEMANTIC_FORMULA_AST_V2_VERSION = "semantic-formula-ast@2" as const;
 export const SEMANTIC_GRAPH_PATCH_VERSION = "semantic-graph-patch@1" as const;
 export const SEMANTIC_GRAPH_PROJECTION_VERSION = "semantic-graph-projection@1" as const;
 export const SEMANTIC_ONTOLOGY_COVERAGE_RECEIPT_VERSION = "semantic-ontology-coverage@1" as const;
@@ -138,6 +139,11 @@ export type SemanticFormulaExpression =
       readonly kind: "DATE_BUCKET";
       readonly granularity: "hour" | "day" | "week" | "month" | "quarter" | "year";
       readonly input: SemanticFormulaExpression;
+    }
+  | {
+      readonly kind: "GROUP_COUNT";
+      readonly group_by: readonly SemanticFormulaExpression[];
+      readonly having: SemanticFormulaExpression;
     };
 
 export const semanticFormulaExpressionSchema: z.ZodType<SemanticFormulaExpression> = z.lazy(() =>
@@ -194,8 +200,43 @@ export const semanticFormulaExpressionSchema: z.ZodType<SemanticFormulaExpressio
       granularity: z.enum(["hour", "day", "week", "month", "quarter", "year"]),
       input: semanticFormulaExpressionSchema,
     }),
+    z.strictObject({
+      kind: z.literal("GROUP_COUNT"),
+      group_by: z.array(semanticFormulaExpressionSchema).min(1).max(32),
+      having: semanticFormulaExpressionSchema,
+    }),
   ]),
 );
+
+function containsGroupCount(expression: SemanticFormulaExpression): boolean {
+  switch (expression.kind) {
+    case "GROUP_COUNT":
+      return true;
+    case "BINARY":
+      return containsGroupCount(expression.left) || containsGroupCount(expression.right);
+    case "BOOLEAN":
+      return expression.operands.some(containsGroupCount);
+    case "NOT":
+      return containsGroupCount(expression.operand);
+    case "CASE":
+      return (
+        expression.branches.some(
+          ({ when, result }) => containsGroupCount(when) || containsGroupCount(result),
+        ) ||
+        (expression.otherwise !== null && containsGroupCount(expression.otherwise))
+      );
+    case "AGGREGATE":
+      return (
+        (expression.input !== null && containsGroupCount(expression.input)) ||
+        (expression.filter !== null && containsGroupCount(expression.filter))
+      );
+    case "DATE_BUCKET":
+      return containsGroupCount(expression.input);
+    case "LITERAL":
+    case "SLOT":
+      return false;
+  }
+}
 
 const semanticNodeCommonShape = {
   node_id: versionIdentifierSchema,
@@ -231,23 +272,36 @@ export const metricNodeSchema = z.strictObject({
   fanout_policy: z.enum(METRIC_FANOUT_POLICY),
   analysis: semanticMetricAnalysisSchema,
 });
-export const formulaNodeSchema = z.strictObject({
-  ...semanticNodeCommonShape,
-  node_type: z.literal("FORMULA"),
-  formula_type: z.enum([
-    "additive_aggregate",
-    "semi_additive_aggregate",
-    "non_additive_aggregate",
-    "ratio",
-    "compound",
-    "window",
-    "other",
-  ]),
-  return_type: z.enum(["numeric", "integer", "boolean", "text", "date", "timestamp"]),
-  language: z.literal("semantic-ast"),
-  language_version: z.literal(SEMANTIC_FORMULA_AST_VERSION),
-  expression: semanticFormulaExpressionSchema,
-});
+export const formulaNodeSchema = z
+  .strictObject({
+    ...semanticNodeCommonShape,
+    node_type: z.literal("FORMULA"),
+    formula_type: z.enum([
+      "additive_aggregate",
+      "semi_additive_aggregate",
+      "non_additive_aggregate",
+      "ratio",
+      "compound",
+      "window",
+      "other",
+    ]),
+    return_type: z.enum(["numeric", "integer", "boolean", "text", "date", "timestamp"]),
+    language: z.literal("semantic-ast"),
+    language_version: z.enum([SEMANTIC_FORMULA_AST_VERSION, SEMANTIC_FORMULA_AST_V2_VERSION]),
+    expression: semanticFormulaExpressionSchema,
+  })
+  .superRefine((formula, context) => {
+    if (
+      formula.language_version === SEMANTIC_FORMULA_AST_VERSION &&
+      containsGroupCount(formula.expression)
+    ) {
+      context.addIssue({
+        code: "custom",
+        message: "GROUP_COUNT requires semantic-formula-ast@2.",
+        path: ["language_version"],
+      });
+    }
+  });
 export const physicalTableNodeSchema = z.strictObject({
   ...semanticNodeCommonShape,
   node_type: z.literal("PHYSICAL_TABLE"),

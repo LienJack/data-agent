@@ -68,6 +68,12 @@ describe("Text2SQL 基础契约的 Column/Table 所有权", () => {
     }
   });
 
+  it("逻辑复合 Metric 可以没有直接物理依赖列，但仍保留自身事实绑定", () => {
+    expect(metricBindingSchema.safeParse({ ...metric, dependency_column_ids: [] }).success).toBe(
+      true,
+    );
+  });
+
   it("Dimension、AllowedSchema 与 MandatoryPredicate 都强制 Column 归属", () => {
     expect(
       dimensionBindingSchema.safeParse({

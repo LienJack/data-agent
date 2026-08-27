@@ -69,6 +69,10 @@ function renderExpression(expression: SemanticFormulaExpression): string {
       })${expression.filter === null ? "" : ` FILTER(${renderExpression(expression.filter)})`}`;
     case "DATE_BUCKET":
       return `DATE_BUCKET(${expression.granularity}, ${renderExpression(expression.input)})`;
+    case "GROUP_COUNT":
+      return `COUNT_GROUPS(BY ${expression.group_by
+        .map(renderExpression)
+        .join(", ")} HAVING ${renderExpression(expression.having)})`;
   }
 }
 

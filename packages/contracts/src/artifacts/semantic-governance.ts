@@ -190,7 +190,7 @@ export const semanticMetricSchema = z.strictObject({
   additivity: z.enum(METRIC_ADDITIVITY),
   null_policy: z.enum(METRIC_NULL_POLICY),
   fanout_policy: z.enum(METRIC_FANOUT_POLICY),
-  dependency_column_ids: z.array(z.string().min(1).max(256)).min(1),
+  dependency_column_ids: z.array(z.string().min(1).max(256)),
   tags: z.array(z.string().min(1).max(128)).default([]),
   analysis: semanticMetricAnalysisSchema,
 });

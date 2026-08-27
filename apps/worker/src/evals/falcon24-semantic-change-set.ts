@@ -245,6 +245,7 @@ export async function buildFalcon24SemanticChangeSet(input: {
   }
 
   for (const formulaId of Object.keys(FALCON24_SEMANTIC_RELEASE_BLUEPRINT.formulas)) {
+    const expression = falcon24FormulaExpression(formulaId);
     const ratioFormula = [
       "average_order_value",
       "buyer_frequency",
@@ -257,6 +258,10 @@ export async function buildFalcon24SemanticChangeSet(input: {
       "on_time_rate",
       "repeat_purchase_rate",
     ].includes(formulaId);
+    const countFormula =
+      expression.kind === "GROUP_COUNT" ||
+      (expression.kind === "AGGREGATE" &&
+        (expression.function === "COUNT" || expression.function === "COUNT_DISTINCT"));
     await add("FORMULA", `formula.${formulaId}`, {
       formula: {
         ...commonNode,
@@ -272,13 +277,13 @@ export async function buildFalcon24SemanticChangeSet(input: {
             ? "other"
             : formulaId === "buyer_frequency_aov"
               ? "compound"
-              : formulaId === "delivery_minutes"
+              : formulaId === "delivery_minutes" || countFormula
                 ? "non_additive_aggregate"
                 : "additive_aggregate",
-        return_type: formulaId === "cohort_month_index" ? "integer" : "numeric",
+        return_type: formulaId === "cohort_month_index" || countFormula ? "integer" : "numeric",
         language: "semantic-ast",
-        language_version: "semantic-formula-ast@1",
-        expression: falcon24FormulaExpression(formulaId),
+        language_version: "semantic-formula-ast@2",
+        expression,
       },
     });
   }

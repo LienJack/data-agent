@@ -294,7 +294,7 @@ describe("semantic successor publication projection", () => {
     });
     const compilerBundleHash = await semanticPublicationCompilerBundleDigest();
     expect(projection.compiler_bundle_digest).toBe(compilerBundleHash);
-    expect(projection.graph_projection.compiler_version).toBe("semantic-change-set-publication@2");
+    expect(projection.graph_projection.compiler_version).toBe("semantic-change-set-publication@3");
     expect(projection.graph_projection.nodes.map(({ node_type }) => node_type)).toEqual(
       expect.arrayContaining([
         "METRIC",
@@ -344,7 +344,7 @@ describe("semantic successor publication projection", () => {
         snapshot_hash: snapshot.snapshot_content_hash,
       },
       compiler_bundle_ref: {
-        compiler_version: "semantic-change-set-publication@2",
+        compiler_version: projection.graph_projection.compiler_version,
         compiler_bundle_hash: compilerBundleHash,
       },
       candidate_release: {

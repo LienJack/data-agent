@@ -201,7 +201,7 @@ describe("Falcon24 governed semantic change set", () => {
     ).rejects.toThrow("FALCON24_SEMANTIC_DOMAIN_INVALID");
   });
 
-  it("fails closed while Falcon24 cohort formula slots still lack reviewed dependency definitions", async () => {
+  it("closes reviewed cohort and repeat-customer formula dependencies without stored KPI fallback", async () => {
     const built = await buildFalcon24SemanticChangeSet({
       scope: {
         app_id: id(1),
@@ -255,7 +255,7 @@ describe("Falcon24 governed semantic change set", () => {
         snapshot_hash: snapshot.snapshot_content_hash,
       },
       compiler_bundle_ref: {
-        compiler_version: "semantic-change-set-publication@2",
+        compiler_version: projection.graph_projection.compiler_version,
         compiler_bundle_hash: await semanticPublicationCompilerBundleDigest(),
       },
       candidate_release: {
@@ -293,9 +293,27 @@ describe("Falcon24 governed semantic change set", () => {
       },
     });
     expect(await validateSemanticRuntimeClosure(verified)).toMatchObject({
-      outcome: "FAIL",
-      reason_codes: ["SEMANTIC_RUNTIME_FORMULA_DEPENDENCY_INVALID"],
+      outcome: "PASS",
+      reason_codes: [],
     });
+    const repeatFormula = projection.executable_projection.formulas.find(
+      ({ node_id: nodeId }) => nodeId === "formula.repeat_customers",
+    );
+    expect(repeatFormula?.expression).toMatchObject({
+      kind: "GROUP_COUNT",
+      group_by: [{ kind: "SLOT", slot_id: "customer_id" }],
+      having: { kind: "BINARY", operator: "GT" },
+    });
+    expect(JSON.stringify(repeatFormula)).not.toContain("total_orders");
+    for (const metricId of [
+      "metric.cohort_customers",
+      "metric.retained_customers",
+      "metric.repeat_customers",
+    ]) {
+      expect(
+        projection.executable_projection.metrics.some(({ metric_id: id }) => id === metricId),
+      ).toBe(true);
+    }
   });
 
   it("fails closed for an unpublished formula instead of manufacturing a fallback AST", () => {

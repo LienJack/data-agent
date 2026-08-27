@@ -63,6 +63,10 @@ function collectSlots(
     case "DATE_BUCKET":
       collectSlots(expression.input, slots);
       break;
+    case "GROUP_COUNT":
+      for (const group of expression.group_by) collectSlots(group, slots);
+      collectSlots(expression.having, slots);
+      break;
     case "LITERAL":
       break;
   }

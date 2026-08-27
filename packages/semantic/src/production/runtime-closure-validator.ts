@@ -276,6 +276,10 @@ function collectFormulaSlots(expression: SemanticFormulaExpression, slots: Set<s
       return;
     case "DATE_BUCKET":
       collectFormulaSlots(expression.input, slots);
+      return;
+    case "GROUP_COUNT":
+      for (const group of expression.group_by) collectFormulaSlots(group, slots);
+      collectFormulaSlots(expression.having, slots);
   }
 }
 
@@ -375,6 +379,7 @@ export async function validateSemanticRuntimeClosure(
   const dimensionsById = new Map(
     executable.dimensions.map((dimension) => [dimension.dimension_id, dimension]),
   );
+  const metricsById = new Map(executable.metrics.map((metric) => [metric.metric_id, metric]));
   const formulasById = new Map(executable.formulas.map((formula) => [formula.node_id, formula]));
   const graphNodesById = new Map(graph.nodes.map((node) => [node.node_id, node]));
   const timeDomainsById = new Map(
@@ -465,11 +470,28 @@ export async function validateSemanticRuntimeClosure(
                   `${target.table_name}.${target.column_name}` === columnId),
             );
           }
-          if (target?.node_type === "METRIC" || target?.node_type === "FORMULA") {
+          if (target?.node_type === "METRIC") {
             const slotId = edge.attributes.kind === "SLOT_BINDING" ? edge.attributes.slot_id : "";
-            return ![slotId, `metric.${slotId}`, `formula.${slotId}`].includes(target.node_id);
+            return (
+              !metricsById.has(target.node_id) ||
+              ![slotId, `metric.${slotId}`].includes(target.node_id)
+            );
+          }
+          if (target?.node_type === "FORMULA") {
+            const slotId = edge.attributes.kind === "SLOT_BINDING" ? edge.attributes.slot_id : "";
+            return (
+              !formulasById.has(target.node_id) ||
+              ![slotId, `formula.${slotId}`].includes(target.node_id)
+            );
           }
           return true;
+        }) ||
+        slotEdges.some((edge) => {
+          const dependency = metricsById.get(edge.target_node_id);
+          return dependency
+            ? dependency.grain.grain_id !== metric.grain.grain_id ||
+                canonicalizeJson(dependency.time_domain) !== canonicalizeJson(metric.time_domain)
+            : false;
         })
       ) {
         reasonCodes.add("SEMANTIC_RUNTIME_FORMULA_DEPENDENCY_INVALID");

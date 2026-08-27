@@ -171,9 +171,9 @@ Status: completed on 2026-08-28.
 - `apps/web/test/postgres-semantic-successor-publication.spec.ts` 证明错误 scope 在 connect 前拒绝，record RPC 收到的四类 payload
   来自 server compiler 而非 command；严格 command schema 拒绝额外 `projections` 字段。
 - Falcon24 全量 characterization 已把既有 Source 的时间域统一为 half-open `Asia/Shanghai` 合同，并显式生成缺失的 runtime time
-  dimensions / 多列物理 formula dependencies。当前剩余 `cohort_retention` / `repeat_purchase_rate` AST slots 尚无受审 dependency
-  definitions，shared validator 稳定返回 `SEMANTIC_RUNTIME_FORMULA_DEPENDENCY_INVALID`，因此只会写 `REJECTED` stage，绝不会伪装
-  为可执行 generation 2。该 Source 合同缺口必须在 W5 prepare/review 前结构化解决，禁止 validator fallback。
+  dimensions / 多列物理 formula dependencies。W3 提交时 `cohort_retention` / `repeat_purchase_rate` AST slots 尚无受审
+  dependency definitions，shared validator 会稳定返回 `SEMANTIC_RUNTIME_FORMULA_DEPENDENCY_INVALID`；该 blocker 已在 W5 以
+  `GROUP_COUNT` + `cohort_customers` / `retained_customers` / `repeat_customers` 结构化定义解决，未放宽 validator。
 - 聚焦验证：Semantic/Worker typecheck PASS；5 个测试文件 27 tests PASS；10 个 owned files Biome 与 `git diff --check` PASS。
 - Fresh bootstrap wiring 仍与冻结审计文件 `apps/web/src/cli/bootstrap-falcon24-e1.ts` 重叠，本包不覆盖该文件；在用户明确处置
   rejected implementation 前保持 admission fail closed，并在 W5 composition 一并接入唯一 Port。
@@ -272,6 +272,12 @@ Status: completed on 2026-08-28.
 - Platform 新增 successor-only proof builder：从 exact `SMOKE_PASSED` stage、PASS validation、PASS smoke 与 expected CAS
   构造 `falcon24-semantic-release-authority-proof@2.0.0`；显式证明 gen1 -> gen2 lineage、四投影、source/compiler 与不同
   hash domain，不再要求 successor proof 等于 predecessor proof。旧 generation-1 builder 仅保留 historical compatibility 名称。
+- Semantic Formula AST 新增结构化 `GROUP_COUNT(group_by, having)`，复购客户由 orders 上按 customer 分组且
+  `COUNT(DISTINCT order_id)>1` 证明；新增三条 reviewed helper metrics 后，cohort/repeat ratio 只引用同 generation 的逻辑指标，
+  允许复合指标没有伪造的直接物理 dependency column。Falcon 全量 envelope shared validator 由唯一
+  `SEMANTIC_RUNTIME_FORMULA_DEPENDENCY_INVALID` 变为 PASS，且断言投影中不出现不可信 `customers.total_orders` fallback。
+- Contracts 98 files / 945 tests、Semantic 29 files / 182 tests、Worker 86 passed + 2 skipped files / 405 passed + 9 skipped
+  tests、Contracts/Evals/Semantic/Worker typecheck/build 与 focused Biome PASS。
 - 普通 `PostgresFalcon24AuthorityEpoch.activate` 对 E4 及以后在 PostgreSQL I/O 前返回
   `FALCON24_COMBINED_SEMANTIC_ACTIVATION_REQUIRED`；10783 同时撤销 `data_agent_backend` 对旧
   `activate_falcon24_authority(jsonb)` 的 EXECUTE，仅保留 combined RPC。

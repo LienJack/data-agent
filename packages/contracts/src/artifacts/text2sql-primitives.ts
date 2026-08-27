@@ -241,7 +241,7 @@ export const metricBindingSchema = z
     time_column_id: qualifiedColumnIdSchema.nullable(),
     additivity: z.enum(["additive", "semi-additive", "non-additive"]),
     null_policy: z.enum(["preserve", "coalesce-zero", "exclude"]),
-    dependency_column_ids: z.array(qualifiedColumnIdSchema).min(1),
+    dependency_column_ids: z.array(qualifiedColumnIdSchema),
     fanout_policy: z.enum(["preaggregate", "reject"]),
   })
   .superRefine((metric, ctx) => {

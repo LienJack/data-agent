@@ -2,6 +2,7 @@ import { createHash } from "node:crypto";
 import {
   formulaNodeSchema,
   physicalBindingEntrySchema,
+  SEMANTIC_FORMULA_AST_V2_VERSION,
   type SemanticAssertionCandidate,
   type SemanticChangeSet,
   type SemanticGraphEdge,
@@ -84,13 +85,14 @@ export interface SemanticPublicationProjectionContext {
   readonly source_snapshot: PhysicalSchemaSnapshot;
 }
 
-export const SEMANTIC_PUBLICATION_COMPILER_VERSION = "semantic-change-set-publication@2" as const;
+export const SEMANTIC_PUBLICATION_COMPILER_VERSION = "semantic-change-set-publication@3" as const;
 
 export async function semanticPublicationCompilerBundleDigest(): Promise<`sha256:${string}`> {
   return sha256ContentHash({
     compiler_version: SEMANTIC_PUBLICATION_COMPILER_VERSION,
     source_contract: "semantic-change-set@1.0.0",
     physical_snapshot_contract: "physical-schema-snapshot@1.0.0",
+    formula_ast_contract: SEMANTIC_FORMULA_AST_V2_VERSION,
     runtime_closure_contract: "semantic-successor-runtime-closure@1.0.0",
   });
 }
@@ -260,6 +262,10 @@ function collectFormulaSlots(
       return;
     case "DATE_BUCKET":
       collectFormulaSlots(expression.input, slots);
+      return;
+    case "GROUP_COUNT":
+      for (const group of expression.group_by) collectFormulaSlots(group, slots);
+      collectFormulaSlots(expression.having, slots);
   }
 }
 

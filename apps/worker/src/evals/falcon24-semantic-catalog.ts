@@ -78,6 +78,14 @@ const aggregate = (
   distinct: options.distinct ?? fn === "COUNT_DISTINCT",
   filter: options.filter ?? null,
 });
+const groupCount = (
+  groupBy: readonly string[],
+  having: SemanticFormulaExpression,
+): SemanticFormulaExpression => ({
+  kind: "GROUP_COUNT",
+  group_by: groupBy.map(slot),
+  having,
+});
 const safeDivide = (
   numerator: SemanticFormulaExpression,
   denominator: SemanticFormulaExpression,
@@ -112,6 +120,8 @@ export function falcon24FormulaExpression(formulaId: string): SemanticFormulaExp
       );
     case "clicks":
       return aggregate("SUM", "clicks");
+    case "cohort_customers":
+      return aggregate("COUNT_DISTINCT", "customer_id", { distinct: true });
     case "click_through_rate":
       return safeDivide(aggregate("SUM", "clicks"), aggregate("SUM", "impressions"), 0);
     case "cohort_month_index":
@@ -162,8 +172,15 @@ export function falcon24FormulaExpression(formulaId: string): SemanticFormulaExp
       return aggregate("COUNT_DISTINCT", "order_id", { distinct: true });
     case "order_revenue":
       return aggregate("SUM", "order_total");
+    case "repeat_customers":
+      return groupCount(
+        ["customer_id"],
+        binary("GT", aggregate("COUNT_DISTINCT", "order_id", { distinct: true }), literal(1)),
+      );
     case "repeat_purchase_rate":
       return safeDivide(slot("repeat_customers"), slot("cohort_customers"), 0);
+    case "retained_customers":
+      return aggregate("COUNT_DISTINCT", "customer_id", { distinct: true });
     case "sales_quantity":
       return aggregate("SUM", "quantity");
     case "stock_received":
@@ -203,21 +220,20 @@ function formulaSlots(expression: SemanticFormulaExpression, slots: Set<string>)
       return;
     case "DATE_BUCKET":
       formulaSlots(expression.input, slots);
+      return;
+    case "GROUP_COUNT":
+      for (const group of expression.group_by) formulaSlots(group, slots);
+      formulaSlots(expression.having, slots);
   }
 }
 
-function physicalFormulaDependencies(
-  tableId: string,
-  formulaId: FormulaId,
-  primaryColumn: string,
-): string[] {
+function physicalFormulaDependencies(tableId: string, formulaId: FormulaId): string[] {
   const table = FALCON24_SEMANTIC_RELEASE_BLUEPRINT.tables.find(
     ({ table_id: candidate }) => candidate === tableId,
   );
   if (!table) throw new TypeError(`FALCON24_FORMULA_TABLE_UNKNOWN:${tableId}`);
   const slots = new Set<string>();
   formulaSlots(falcon24FormulaExpression(formulaId), slots);
-  slots.add(primaryColumn);
   const physicalColumns = new Set(table.columns);
   return [...slots]
     .filter((slotId) => physicalColumns.has(slotId))
@@ -341,6 +357,17 @@ export const FALCON24_METRICS = Object.freeze({
     ["客户留存"],
     units.ratio,
     grain("grain.cohort_customer", "Registration cohort and customer population."),
+    dimensionIds("customer_segment", "registration_cohort"),
+    ["CONCENTRATION", "TREND_CHANGE", "CHART_DATASET"],
+  ),
+  cohort_customers: metric(
+    "blinkit_customers",
+    "customer_id",
+    "count_distinct",
+    "cohort_customers",
+    ["批次客户数", "注册客户数"],
+    units.count,
+    grain("grain.cohort_customer", "Distinct customers in each registration cohort."),
     dimensionIds("customer_segment", "registration_cohort"),
     ["CONCENTRATION", "TREND_CHANGE", "CHART_DATASET"],
   ),
@@ -523,6 +550,34 @@ export const FALCON24_METRICS = Object.freeze({
     dimensionIds("customer_segment", "registration_cohort"),
     ["CONCENTRATION", "TREND_CHANGE", "CHART_DATASET"],
   ),
+  repeat_customers: metric(
+    "blinkit_orders",
+    "customer_id",
+    "count_distinct",
+    "repeat_customers",
+    ["复购客户数"],
+    units.count,
+    grain(
+      "grain.cohort_customer",
+      "Distinct customer groups with more than one distinct order in the selected window.",
+    ),
+    dimensionIds("customer_segment", "order_month", "registration_cohort"),
+    ["CONCENTRATION", "TREND_CHANGE", "CHART_DATASET"],
+  ),
+  retained_customers: metric(
+    "blinkit_orders",
+    "customer_id",
+    "count_distinct",
+    "retained_customers",
+    ["留存客户数"],
+    units.count,
+    grain(
+      "grain.cohort_customer",
+      "Distinct cohort customers with at least one order in the selected observation month.",
+    ),
+    dimensionIds("customer_segment", "order_month", "registration_cohort"),
+    ["CONCENTRATION", "TREND_CHANGE", "CHART_DATASET"],
+  ),
   sales_quantity: metric(
     "blinkit_order_items",
     "quantity",
@@ -578,7 +633,7 @@ function metric(
     additivity: aggregation === "sum" ? "additive" : "non-additive",
     null_policy: "exclude",
     fanout_policy: "preaggregate",
-    dependency_column_ids: physicalFormulaDependencies(table_id, formula_id, column),
+    dependency_column_ids: physicalFormulaDependencies(table_id, formula_id),
     tags: ["falcon24"],
     analysis: {
       primary: ["order_revenue", "order_count"].includes(formula_id),
@@ -679,6 +734,7 @@ export const FALCON24_FORMULA_ALIASES = Object.freeze({
   clicks: ["点击量"],
   click_through_rate: ["点击率"],
   cohort_month_index: ["注册后月份"],
+  cohort_customers: ["批次客户数", "注册客户数"],
   cohort_retention: ["客户留存率"],
   conversions: ["转化量"],
   conversion_rate: ["转化率"],
@@ -694,7 +750,9 @@ export const FALCON24_FORMULA_ALIASES = Object.freeze({
   on_time_rate: ["准时率"],
   order_count: ["订单量"],
   order_revenue: ["订单收入"],
+  repeat_customers: ["复购客户数"],
   repeat_purchase_rate: ["复购率"],
+  retained_customers: ["留存客户数"],
   sales_quantity: ["销量"],
   stock_received: ["入库量"],
 } as const satisfies Record<FormulaId, readonly string[]>);
