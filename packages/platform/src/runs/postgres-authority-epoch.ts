@@ -305,6 +305,9 @@ export function createPostgresFalcon24AuthorityEpoch(input: {
 
     async activate(capability: unknown, candidate: unknown) {
       const request = falcon24ActivationRequestV2Schema.parse(candidate);
+      if (BigInt(request.authority_epoch.slice(1)) >= 4n) {
+        throw new TypeError("FALCON24_COMBINED_SEMANTIC_ACTIVATION_REQUIRED");
+      }
       const command = await commandWithHash(request);
       return invoke({
         capability,

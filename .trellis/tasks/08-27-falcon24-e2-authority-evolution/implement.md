@@ -119,7 +119,8 @@ Status: completed on 2026-08-28.
 **Evidence**
 
 - 10783 declarative renderer write/verify PASS；最终 checksum
-  `sha256:ac529bd370b56b0d4f492d384cb0e1fdb70f567481d0a0617de6599b543ce0b0`。
+  `sha256:bbbec227c257178bc6c92654ab4a7ec0a4cc2520cb303d16c909914b97703930`（W5 增加旧 activation RPC
+  fail-closed 后的当前值）。
 - Migration renderer、workspace inventory 与 10783 static contract：3 files / 17 tests PASS；scoped Biome 与 `git diff --check` PASS。
 - Platform typecheck、`bash -n` smoke harness、workspace migration inventory verifier 与完整 Supabase SQL static checks PASS。
 - 复用既有 PostgreSQL 17 容器，在临时 scratch database
@@ -218,7 +219,7 @@ Status: completed on 2026-08-28.
   均由 PostgreSQL CAS/幂等约束封口。
 - 10783 增加窄的 `load_promoted_semantic_successor_release(jsonb)` read RPC，返回前逐项核对正式 source release、三类 runtime
   projection、graph binding 与 immutable staged bytes；更新后 migration checksum 为
-  `sha256:d2889c065ceda0ab1a039b77ed3d27a986dad2525b7e3460ea5c85541069da13`。
+  `sha256:bbbec227c257178bc6c92654ab4a7ec0a4cc2520cb303d16c909914b97703930`（包含 W5 旧入口权限收紧）。
 - PostgreSQL 17 临时库 `data_agent_semantic_successor_w2_52de40d0` 实跑 migration + assertions PASS：FAIL receipt 在测试
   子事务中观察到 `REJECTED` 后回滚，PASS/replay 通过，combined activation 后 exact release loader 返回 `PROMOTED`；专用
   E3 数据库未连接、未修改。
@@ -265,6 +266,24 @@ Status: completed on 2026-08-28.
 **Stop conditions**
 
 - Finalizer 任一步在 combined RPC 之前更新 semantic pointer/defaults/current，立即停止。
+
+**Evidence（已完成的 clean boundary）**
+
+- Platform 新增 successor-only proof builder：从 exact `SMOKE_PASSED` stage、PASS validation、PASS smoke 与 expected CAS
+  构造 `falcon24-semantic-release-authority-proof@2.0.0`；显式证明 gen1 -> gen2 lineage、四投影、source/compiler 与不同
+  hash domain，不再要求 successor proof 等于 predecessor proof。旧 generation-1 builder 仅保留 historical compatibility 名称。
+- 普通 `PostgresFalcon24AuthorityEpoch.activate` 对 E4 及以后在 PostgreSQL I/O 前返回
+  `FALCON24_COMBINED_SEMANTIC_ACTIVATION_REQUIRED`；10783 同时撤销 `data_agent_backend` 对旧
+  `activate_falcon24_authority(jsonb)` 的 EXECUTE，仅保留 combined RPC。
+- 10783 renderer write/verify、Platform proof/adapter/static tests、Platform full unit 107 files / 671 tests、typecheck/build、
+  focused Biome 与 `git diff --check` PASS；全量测试发现的大载荷 NDJSON fixture 未等待 stdout flush 问题已先以独立
+  `ef57bf9d` 修复并经 7/7 聚焦测试验证。
+  当前 checksum 为 `sha256:bbbec227c257178bc6c92654ab4a7ec0a4cc2520cb303d16c909914b97703930`。
+- 复用现有 PostgreSQL 17 容器，将任务 scratch DB `data_agent_semantic_successor_w2_52de40d0` 从 C7 frozen template 重建后
+  应用 10783，并重跑 `61-semantic-successor-e4-activation-assertions.sql`，返回
+  `SEMANTIC_SUCCESSOR_E4_ACTIVATION_ASSERTIONS_READY`；专用 E3 database/container 未连接、未修改。
+- Finalizer orchestration 尚未勾选：其现有文件属于 rejected generation-1 repair 的冻结审计现场，本包不覆盖、不暂存；后续仅在
+  clean 新模块能完整接管或用户明确解除该文件边界时完成 stage -> smoke -> proof -> combined RPC -> readback wiring。
 
 **Commit**
 

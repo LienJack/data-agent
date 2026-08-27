@@ -1,6 +1,8 @@
 import { canonicalizeJson, sha256ContentHash } from "@data-agent/contracts/common";
 import {
+  buildFalcon24SemanticReleaseAuthorityProofV2,
   type Falcon24RetainedAssetsManifest,
+  type Falcon24SemanticReleaseAuthorityProofV2,
   falcon24RetainedLlmConfigSchema,
 } from "@data-agent/contracts/evals";
 import type {
@@ -11,7 +13,13 @@ import type {
 } from "@data-agent/contracts/models";
 import {
   loadInitialSemanticReleaseResultSchema,
+  type SemanticRuntimeClosureValidationReceipt,
+  type SemanticRuntimeSmokeReceipt,
+  type SemanticSuccessorStage,
   verifyPublishedInitialSemanticReleaseBundle,
+  verifySemanticRuntimeClosureValidationReceipt,
+  verifySemanticRuntimeSmokeReceipt,
+  verifySemanticSuccessorStage,
 } from "@data-agent/contracts/semantic";
 
 function canonicalEqual(left: unknown, right: unknown): boolean {
@@ -28,7 +36,7 @@ function modelCapabilities(capabilities: readonly string[]) {
   } as const;
 }
 
-export async function buildFalcon24SemanticReleaseAuthorityProof(input: {
+export async function buildFalcon24HistoricalSemanticReleaseAuthorityProof(input: {
   readonly retained_semantics: Falcon24RetainedAssetsManifest["semantics"];
   readonly definition_keys: readonly string[];
   readonly loaded_release: unknown;
@@ -71,6 +79,87 @@ export async function buildFalcon24SemanticReleaseAuthorityProof(input: {
       validation_receipt_hash: loaded.release_set.validation_ref.receipt_hash,
       first_release_receipt_hash: loaded.first_release_receipt.receipt_hash,
     }),
+  });
+}
+
+/**
+ * Historical generation-1 proof compatibility only. E4 and later must use
+ * buildFalcon24SemanticSuccessorAuthorityProof so predecessor equality cannot
+ * be mistaken for successor evidence.
+ */
+export async function buildFalcon24SemanticReleaseAuthorityProof(input: {
+  readonly retained_semantics: Falcon24RetainedAssetsManifest["semantics"];
+  readonly definition_keys: readonly string[];
+  readonly loaded_release: unknown;
+}) {
+  return buildFalcon24HistoricalSemanticReleaseAuthorityProof(input);
+}
+
+function exactSuccessorReceiptClosure(input: {
+  readonly stage: SemanticSuccessorStage;
+  readonly validation: SemanticRuntimeClosureValidationReceipt;
+  readonly smoke: SemanticRuntimeSmokeReceipt;
+}): boolean {
+  const { stage, validation, smoke } = input;
+  return (
+    validation.stage_id === stage.stage_id &&
+    validation.stage_digest === stage.stage_digest &&
+    canonicalEqual(validation.candidate_release, stage.candidate_release) &&
+    canonicalEqual(validation.projection_refs, stage.projection_refs) &&
+    smoke.stage_id === stage.stage_id &&
+    smoke.stage_digest === stage.stage_digest &&
+    canonicalEqual(smoke.candidate_release, stage.candidate_release) &&
+    canonicalEqual(smoke.projection_refs, stage.projection_refs) &&
+    canonicalEqual(smoke.validator_identity, validation.validator_identity)
+  );
+}
+
+export async function buildFalcon24SemanticSuccessorAuthorityProof(input: {
+  readonly stage: unknown;
+  readonly validation_receipt: unknown;
+  readonly smoke_receipt: unknown;
+  readonly expected_versions: Falcon24SemanticReleaseAuthorityProofV2["expected_versions"];
+}): Promise<Falcon24SemanticReleaseAuthorityProofV2> {
+  const [stage, validation, smoke] = await Promise.all([
+    verifySemanticSuccessorStage(input.stage),
+    verifySemanticRuntimeClosureValidationReceipt(input.validation_receipt),
+    verifySemanticRuntimeSmokeReceipt(input.smoke_receipt),
+  ]);
+  if (
+    stage.status !== "SMOKE_PASSED" ||
+    validation.outcome !== "PASS" ||
+    smoke.outcome !== "PASS" ||
+    input.expected_versions.semantic_pointer !== stage.expected_pointer_version
+  ) {
+    throw new TypeError("FALCON24_SEMANTIC_SUCCESSOR_NOT_ACTIVATABLE");
+  }
+  if (!exactSuccessorReceiptClosure({ stage, validation, smoke })) {
+    throw new TypeError("FALCON24_SEMANTIC_SUCCESSOR_RECEIPT_CLOSURE_INVALID");
+  }
+  return buildFalcon24SemanticReleaseAuthorityProofV2({
+    schema_version: "falcon24-semantic-release-authority-proof@2.0.0",
+    authority_epoch: "E4",
+    predecessor_release: {
+      ...stage.predecessor_release,
+      datasource_id: stage.candidate_release.datasource_id,
+    },
+    candidate_release: stage.candidate_release,
+    projections: stage.projection_refs,
+    change_set_ref: stage.change_set_ref,
+    review_ref: stage.review_ref,
+    source_snapshot_ref: stage.source_snapshot_ref,
+    compiler_bundle_ref: stage.compiler_bundle_ref,
+    validation_receipt_ref: {
+      schema_version: validation.schema_version,
+      receipt_id: validation.receipt_id,
+      validation_receipt_hash: validation.validation_receipt_hash,
+    },
+    smoke_receipt_ref: {
+      schema_version: smoke.schema_version,
+      receipt_id: smoke.receipt_id,
+      smoke_receipt_hash: smoke.smoke_receipt_hash,
+    },
+    expected_versions: input.expected_versions,
   });
 }
 

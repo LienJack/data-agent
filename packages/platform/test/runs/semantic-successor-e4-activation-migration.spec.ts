@@ -156,6 +156,9 @@ describe("10783 semantic successor and E4 activation authority", () => {
     expect(migration).toMatch(
       /grant execute on function[\s\S]*app_data_agent\.activate_falcon24_authority_with_semantic_successor\(jsonb\)[\s\S]*to data_agent_backend/u,
     );
+    expect(migration).toMatch(
+      /revoke execute on function app_data_agent\.activate_falcon24_authority\(jsonb\)[\s\S]*from data_agent_backend/u,
+    );
     expect(migration).toContain("pg_catalog.has_table_privilege('data_agent_backend'");
     expect(migration).toContain("pg_catalog.has_function_privilege('public'");
   });

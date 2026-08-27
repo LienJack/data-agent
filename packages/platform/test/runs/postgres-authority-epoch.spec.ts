@@ -186,4 +186,23 @@ describe("PostgreSQL Falcon24 versioned authority epoch", () => {
     ).rejects.toThrow();
     expect(scripted.calls).toHaveLength(0);
   });
+
+  it("rejects non-atomic E4 activation before PostgreSQL I/O", async () => {
+    const auth = authority();
+    const scripted = scriptedPool(() => undefined);
+
+    await expect(
+      createPostgresFalcon24AuthorityEpoch({
+        pool: scripted.pool,
+        authorizer: auth.authorizer,
+      }).activate(auth.capability, {
+        schema_version: "falcon24-activation-request@2.0.0",
+        authority_epoch: "E4",
+        attempt_id: id(50),
+        baseline_id: id(51),
+        expected_baseline_hash: hash("e"),
+      }),
+    ).rejects.toThrow("FALCON24_COMBINED_SEMANTIC_ACTIVATION_REQUIRED");
+    expect(scripted.calls).toHaveLength(0);
+  });
 });

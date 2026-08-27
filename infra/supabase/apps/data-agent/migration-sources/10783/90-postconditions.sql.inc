@@ -52,6 +52,8 @@ begin
       'semantic.load_semantic_successor_stage(jsonb)','EXECUTE')
     or not pg_catalog.has_function_privilege('data_agent_backend',
       'semantic.load_promoted_semantic_successor_release(jsonb)','EXECUTE')
+    or pg_catalog.has_function_privilege('data_agent_backend',
+      'app_data_agent.activate_falcon24_authority(jsonb)','EXECUTE')
     or not pg_catalog.has_function_privilege('data_agent_backend',
       'app_data_agent.activate_falcon24_authority_with_semantic_successor(jsonb)','EXECUTE')
   then raise exception using errcode='P0001',message='SEMANTIC_SUCCESSOR_GRANT_DRIFT'; end if;

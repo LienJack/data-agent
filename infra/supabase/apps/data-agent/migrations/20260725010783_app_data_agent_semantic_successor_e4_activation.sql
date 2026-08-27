@@ -1,4 +1,4 @@
--- semantic_successor_e4_activation_migration_checksum: sha256:d2889c065ceda0ab1a039b77ed3d27a986dad2525b7e3460ea5c85541069da13
+-- semantic_successor_e4_activation_migration_checksum: sha256:bbbec227c257178bc6c92654ab4a7ec0a4cc2520cb303d16c909914b97703930
 begin;
 
 select platform.acquire_migration_lock(
@@ -1656,6 +1656,8 @@ revoke all on function
   semantic.commit_semantic_successor_smoke(jsonb),
   app_data_agent.activate_falcon24_authority_with_semantic_successor(jsonb)
 from public,anon,authenticated,service_role,data_agent_backend;
+revoke execute on function app_data_agent.activate_falcon24_authority(jsonb)
+from data_agent_backend;
 grant execute on function
   semantic.record_semantic_successor_stage(jsonb),
   semantic.load_semantic_successor_stage(jsonb),
@@ -1717,6 +1719,8 @@ begin
       'semantic.load_semantic_successor_stage(jsonb)','EXECUTE')
     or not pg_catalog.has_function_privilege('data_agent_backend',
       'semantic.load_promoted_semantic_successor_release(jsonb)','EXECUTE')
+    or pg_catalog.has_function_privilege('data_agent_backend',
+      'app_data_agent.activate_falcon24_authority(jsonb)','EXECUTE')
     or not pg_catalog.has_function_privilege('data_agent_backend',
       'app_data_agent.activate_falcon24_authority_with_semantic_successor(jsonb)','EXECUTE')
   then raise exception using errcode='P0001',message='SEMANTIC_SUCCESSOR_GRANT_DRIFT'; end if;
@@ -1737,5 +1741,5 @@ $security_postconditions$;
 select platform.assert_migration_checksum(
   'app','00000000-0000-4000-8000-00000000da01'::uuid,
   '20260725010783_app_data_agent_semantic_successor_e4_activation',
-  'sha256:d2889c065ceda0ab1a039b77ed3d27a986dad2525b7e3460ea5c85541069da13');
+  'sha256:bbbec227c257178bc6c92654ab4a7ec0a4cc2520cb303d16c909914b97703930');
 commit;

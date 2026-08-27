@@ -185,6 +185,8 @@ revoke all on function
   semantic.commit_semantic_successor_smoke(jsonb),
   app_data_agent.activate_falcon24_authority_with_semantic_successor(jsonb)
 from public,anon,authenticated,service_role,data_agent_backend;
+revoke execute on function app_data_agent.activate_falcon24_authority(jsonb)
+from data_agent_backend;
 grant execute on function
   semantic.record_semantic_successor_stage(jsonb),
   semantic.load_semantic_successor_stage(jsonb),
