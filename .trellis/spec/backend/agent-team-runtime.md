@@ -44,7 +44,7 @@ Root turn 0..3 (AUTO)
 
 | Profile | Use | Direct tools | Accepted output |
 | --- | --- | --- | --- |
-| `semantic-management-agent` | frozen definitions, relationships, lineage, dependencies and governance semantics | `semantic.catalog.read` | `AnalysisReport` |
+| `semantic-management-agent` | frozen definitions, relationships, lineage, dependencies and governance semantics | `semantic.catalog.read` | `SemanticQueryContext` |
 | `governed-text2sql-agent` | rows, values, aggregates, comparisons, rankings and trends | `semantic.release.read`, `sql.compiler.compile`, `sql.sandbox.execute` | `QueryEvidence` |
 | `report-writing-agent` | formal narrative from accepted evidence | `evidence.read`, `report.project` | `AnalysisReport` |
 
@@ -111,7 +111,9 @@ The only model output contract is `text2sql-query-candidate@1.0.0`:
 ## 6. Semantic and Report
 
 - Semantic consumption verifies the exact historical release and current publication projection hashes. It reads executable metrics/dimensions/formulas, relationships, time semantics and quality constraints from the frozen release contract; no legacy Explorer projection is accepted。
-- The semantic Artifact keeps retrieval/fusion/pruning, graph expansion, inference closure, lineage and release identity for audit; the public answer renders only its conclusion。
+- The Semantic model returns only `semantic-query-selection-intent@1.0.0`: canonical exact metric/dimension/formula/relationship/time/quality IDs or typed ambiguity candidates. It cannot author definitions, formulas, joins, bindings, SQL or an answer。
+- Host validates every selected ID against the frozen retrieval/inference closure, expands required formula/time/dimension-parent/relationship and physical-binding context, then commits `semantic-query-context@1.0.0` with exact Scope/Run, release/generation/digest, schema snapshot, datasource, retrieval/inference receipts and `context_hash`。
+- `SemanticQueryContext` returns to Root as a structured safe Tool Result. Root may answer a semantic-only question from allowlisted exact fields, or a later Root turn may pass the accepted Artifact through ordinary `input_artifact_refs`; Host does not schedule that later call。
 - Report can run only after accepted `QueryEvidence` is available and must bind source refs exactly。
 
 ## 7. Tables and Charts
@@ -142,9 +144,9 @@ The only model output contract is `text2sql-query-candidate@1.0.0`:
 
 - Root Harness: direct answer, native single delegation, cross-turn serial delegation, same-turn independent calls, safe Tool Result feedback, verifier feedback, mixed response rejection, four-turn exhaustion and durable replay。
 - V2 Profile materialization/admission: exact revision/hash/tool/Skill closure; V1 and stale revision rejection。
-- Semantic: exact release projection/hash verification, retrieval/graph/inference audit and no SQL execution。
+- Semantic: strict selection intent, exact release/projection/hash/resource binding, metric/formula/dependency, dimension/grain/parent, relationship/join/cardinality, time/restriction, ambiguity, semantic-only final and no SQL execution。
 - Text2SQL: strict candidate schema, literal parameterization, relation/function/AST rejection, exact binding, EXPLAIN/read-only transaction, SQLSTATE classes, bounded repair and result-shape closure。
-- Artifact: `SqlArtifact -> QueryEvidence -> Chart/Report` source refs, hashes and accepted-state ordering。
+- Artifact: `SemanticQueryContext` exact Run/resource/hash binding plus `SqlArtifact -> QueryEvidence -> Chart/Report` source refs, hashes and accepted-state ordering。
 - Real Falcon db24: DeepSeek Root selects Text2SQL for a business aggregate and the browser shows both QueryEvidence table and same-source chart; relationship question selects Semantic only; general knowledge remains direct。
 
 ## 10. Forbidden Patterns

@@ -76,6 +76,7 @@ export const SYSTEM_ARTIFACT_TYPES = [
   "SemanticSourceBundle",
   "SemanticGraphCandidate",
   "SemanticRelease",
+  "SemanticQueryContext",
   "SchemaSnapshot",
   "PolicyReceipt",
   "AgentDataProjectionReceipt",

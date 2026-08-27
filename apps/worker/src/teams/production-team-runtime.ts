@@ -373,8 +373,8 @@ async function commitAcceptedCompletion(input: {
   }
   if (
     (input.task.profile_id === "semantic-management-agent" &&
-      (document.artifact_ref.artifact_type !== "AnalysisReport" ||
-        document.projection.kind !== "REPORT")) ||
+      (document.artifact_ref.artifact_type !== "SemanticQueryContext" ||
+        document.projection.kind !== "SEMANTIC_CONTEXT")) ||
     (input.task.profile_id === "governed-analysis-agent" &&
       (document.artifact_ref.artifact_type !== "AnalysisReport" ||
         document.projection.kind !== "REPORT" ||
@@ -534,7 +534,11 @@ function rootToolObservation(input: {
   readonly document: ProductTeamArtifactDocument;
 }): RootToolObservation {
   const projection = input.document.projection;
-  if (projection.kind !== "TABLE" && projection.kind !== "REPORT") {
+  if (
+    projection.kind !== "TABLE" &&
+    projection.kind !== "REPORT" &&
+    projection.kind !== "SEMANTIC_CONTEXT"
+  ) {
     throw new ProductionTeamRuntimeError("TEAM_OUTPUT_PROJECTION_INVALID");
   }
   return rootAgentToolResultSchema.parse({
@@ -547,17 +551,34 @@ function rootToolObservation(input: {
       schema_version: "root-tool-safe-projection@1.0.0",
       artifact_ref: input.document.artifact_ref,
       projection_kind: projection.kind,
-      title: projection.kind === "REPORT" ? projection.title : null,
+      title:
+        projection.kind === "REPORT"
+          ? projection.title
+          : projection.kind === "SEMANTIC_CONTEXT"
+            ? "Verified semantic query context"
+            : null,
       summary:
         projection.kind === "REPORT"
           ? `${projection.sections.length} accepted governed report sections are available.`
-          : `${projection.total_rows} accepted governed rows are available.`,
+          : projection.kind === "SEMANTIC_CONTEXT"
+            ? [
+                `${projection.context.metrics.length} metrics`,
+                `${projection.context.dimensions.length} dimensions`,
+                `${projection.context.formulas.length} formulas`,
+                `${projection.context.relationships.length} relationships`,
+                `${projection.context.unresolved_ambiguities.length} unresolved ambiguities`,
+              ].join(", ")
+            : `${projection.total_rows} accepted governed rows are available.`,
       column_keys:
         projection.kind === "TABLE" ? projection.columns.map(({ key }) => key).sort() : [],
       total_rows: projection.kind === "TABLE" ? projection.total_rows : null,
       source_artifact_refs: [...input.document.source_refs].sort((left, right) =>
         artifactReferenceIdentity(left).localeCompare(artifactReferenceIdentity(right)),
       ),
+      semantic_query_context:
+        projection.kind === "SEMANTIC_CONTEXT"
+          ? (JSON.parse(canonicalizeJson(projection.context)) as ReturnType<typeof JSON.parse>)
+          : null,
     },
     error_code: null,
   });

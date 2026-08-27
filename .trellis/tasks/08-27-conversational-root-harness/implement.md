@@ -57,6 +57,17 @@ Commit: `feat(agent-runtime): execute dynamic root tool loops`
 
 新增合同、Artifact registration、Host projection 和 Semantic output；Agent Card 宣告输出。覆盖 metric/formula/dependency、dimension/grain、relationship/join/cardinality、time/restriction、ambiguity、semantic-only final、cross-release/schema/run denial。
 
+Status: completed on 2026-08-27.
+
+Evidence:
+
+- Contracts: 96 files / 938 tests; focused SemanticQueryContext/Product Artifact/Root Tool contracts: 3 files / 16 tests.
+- Agent Runtime: 27 files / 168 tests, including immutable historical rev3 migration binding and current Semantic runtime rev4.
+- Worker Team/Provider: 17 files / 76 tests (75 passed, 1 intentional characterization failure), including Host projection, semantic-only Root facts, current output verifier and same-turn independent calls.
+- Evals: 13 files / 96 tests.
+- Contracts, Agent Runtime, Worker, Evals and Platform typechecks; scoped Biome and `git diff --check`.
+- Web typecheck remains independently blocked only by the frozen W2 repair现场 files (`bootstrap-falcon24-e1.ts` and `repair-falcon24-semantic-projections.ts`); C3 does not edit or stage them.
+
 Commit: `feat(semantic): publish root semantic query context`
 
 ## C4 — Optional Semantic to Text2SQL

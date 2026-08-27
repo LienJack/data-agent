@@ -197,6 +197,7 @@ function observation(input: Awaited<ReturnType<typeof fixture>>): RootToolObserv
       column_keys: [],
       total_rows: null,
       source_artifact_refs: [],
+      semantic_query_context: null,
     },
     error_code: null,
   };
@@ -331,6 +332,7 @@ describe("bounded Root tool loop", () => {
         column_keys: ["month", "revenue"],
         total_rows: 12,
         source_artifact_refs: [],
+        semantic_query_context: null,
       },
       error_code: null,
     };

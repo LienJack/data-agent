@@ -11,11 +11,13 @@ import {
 } from "../common/index.js";
 import { artifactReferenceFor, artifactReferenceSchema } from "./envelope.js";
 import { artifactWorkspaceProjectionSchema } from "./export-receipt.js";
+import { verifySemanticQueryContext } from "./semantic-query-context.js";
 
 const productArtifactReferenceSchema = z.union([
   artifactReferenceFor("SqlArtifact"),
   artifactReferenceFor("QueryEvidence"),
   artifactReferenceFor("AnalysisReport"),
+  artifactReferenceFor("SemanticQueryContext"),
 ]);
 
 const queryEvidenceResourceRefSchema = z.strictObject({
@@ -228,7 +230,9 @@ const productTeamArtifactDraftSchema = z
         ? "SQL"
         : document.artifact_ref.artifact_type === "QueryEvidence"
           ? "TABLE"
-          : "REPORT";
+          : document.artifact_ref.artifact_type === "SemanticQueryContext"
+            ? "SEMANTIC_CONTEXT"
+            : "REPORT";
     if (document.projection.kind !== expectedKind) {
       ctx.addIssue({
         code: "custom",
@@ -318,6 +322,30 @@ const productTeamArtifactDraftSchema = z
         path: ["provenance"],
       });
     }
+    if (
+      document.artifact_ref.artifact_type === "SemanticQueryContext" &&
+      (document.provenance !== null || document.source_refs.length !== 0)
+    ) {
+      ctx.addIssue({
+        code: "custom",
+        message: "SemanticQueryContext authority is carried by its exact resource binding.",
+        path: ["provenance"],
+      });
+    }
+    if (
+      document.artifact_ref.artifact_type === "SemanticQueryContext" &&
+      document.projection.kind === "SEMANTIC_CONTEXT" &&
+      (document.projection.context.run_id !== document.artifact_ref.run_id ||
+        document.projection.context.scope.app_id !== document.artifact_ref.app_id ||
+        document.projection.context.scope.tenant_id !== document.artifact_ref.tenant_id ||
+        document.projection.context.scope.environment !== document.artifact_ref.environment)
+    ) {
+      ctx.addIssue({
+        code: "custom",
+        message: "SemanticQueryContext must bind the Product Team Artifact Scope and Run.",
+        path: ["projection", "context"],
+      });
+    }
     for (const [index, reference] of document.source_refs.entries()) {
       if (
         reference.app_id !== document.artifact_ref.app_id ||
@@ -354,6 +382,9 @@ export async function computeProductTeamArtifactHash(input: unknown) {
 
 export async function buildProductTeamArtifactDocument(input: unknown) {
   const document = productTeamArtifactDocumentSchema.parse(input);
+  if (document.projection.kind === "SEMANTIC_CONTEXT") {
+    await verifySemanticQueryContext(document.projection.context);
+  }
   return productTeamArtifactDocumentSchema.parse({
     ...document,
     artifact_ref: {
@@ -365,6 +396,9 @@ export async function buildProductTeamArtifactDocument(input: unknown) {
 
 export async function verifyProductTeamArtifactDocument(input: unknown) {
   const document = productTeamArtifactDocumentSchema.parse(input);
+  if (document.projection.kind === "SEMANTIC_CONTEXT") {
+    await verifySemanticQueryContext(document.projection.context);
+  }
   if ((await computeProductTeamArtifactHash(document)) !== document.artifact_ref.content_hash) {
     throw new TypeError("PRODUCT_TEAM_ARTIFACT_HASH_MISMATCH");
   }

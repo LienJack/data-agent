@@ -25,6 +25,7 @@ import {
   sha256ContentHash,
   text2sqlQueryCandidateSchema,
 } from "@data-agent/contracts";
+import { semanticQuerySelectionIntentSchema } from "@data-agent/contracts/artifacts";
 import { z } from "zod";
 import { analysisProgramCandidateSchema } from "../analysis/analysis-program-compiler.js";
 import {
@@ -40,6 +41,7 @@ import type { ProviderTaskArtifactAuthority } from "./postgres-provider-task-art
 import { createTrustedUtf8InputTokenUpperBoundCounter } from "./trusted-input-token-upper-bound.js";
 
 const SPECIALIST_ANSWER_RESPONSE_SCHEMA_VERSION = "specialist-answer@1.0.0";
+const SEMANTIC_QUERY_SELECTION_INTENT_SCHEMA_VERSION = "semantic-query-selection-intent@1.0.0";
 const PROVIDER_SMOKE_RESPONSE_SCHEMA_VERSION = "provider-smoke-answer@1.0.0";
 const ANALYSIS_PYTHON_RESPONSE_SCHEMA_VERSION = "analysis-python-source@1.0.0";
 const ANALYSIS_AGENT_FINAL_RESPONSE_SCHEMA_VERSION = "analysis-agent-final@1.0.0";
@@ -175,6 +177,10 @@ export function createDirectRunBoundProviderDispatcher(input: {
     {
       response_schema_version: SPECIALIST_ANSWER_RESPONSE_SCHEMA_VERSION,
       schema: specialistAnswerSchema,
+    },
+    {
+      response_schema_version: SEMANTIC_QUERY_SELECTION_INTENT_SCHEMA_VERSION,
+      schema: semanticQuerySelectionIntentSchema,
     },
     {
       response_schema_version: PROVIDER_SMOKE_RESPONSE_SCHEMA_VERSION,
@@ -422,12 +428,12 @@ export function createDirectRunBoundProviderDispatcher(input: {
                       specialistTurn.stage === "SEMANTIC"
                         ? [
                             "You are the governed semantic-layer specialist.",
-                            "Return exactly one JSON object with a non-empty answer field.",
-                            "Answer the business question directly from the exact frozen published semantic catalog, retrieval receipt, graph expansion, inference closure, and pruning evidence supplied below.",
-                            "Lead with the relevant entity, metric, dimension, formula, relationship, lineage, time, or quality definition instead of dumping the catalog.",
-                            "State retrieval degradation or incomplete closure when material. Do not invent data values, schema objects, relationships, formulas, or causal claims.",
-                            "A PARTIAL route must be described as incomplete retrieval. closure_complete means only that the selected mandatory closure is complete; it never proves the global graph has no missing relation.",
-                            "Do not interpret row-preservation metadata as a foreign-key existence guarantee unless the published proof explicitly states that guarantee.",
+                            "Return exactly one semantic-query-selection-intent@1.0.0 JSON object and no prose.",
+                            "The only accepted fields are schema_version, selected_metric_ids, selected_dimension_ids, selected_formula_ids, selected_relationship_ids, selected_time_domain_ids, selected_quality_constraint_ids, and unresolved_ambiguities.",
+                            "Select only exact IDs present in the frozen retrieval and published catalog supplied below.",
+                            "Every selected id array must be unique and sorted. Each unresolved ambiguity must name an object_kind and at least two unique sorted candidate_ids; ambiguities themselves must be sorted by kind and candidate ids.",
+                            "Do not return definitions, formulas, joins, bindings, lineage prose, SQL, data values, or an answer. The Host projects authoritative objects after validating your selection.",
+                            "If the request is unambiguous, return an empty unresolved_ambiguities array. Do not use ambiguity to describe ordinary missing database values.",
                             `Frozen semantic evidence: ${specialistTurn.context_text}`,
                           ].join("\n")
                         : specialistTurn.stage === "TEXT2SQL"
@@ -525,11 +531,13 @@ export function createDirectRunBoundProviderDispatcher(input: {
               ? TEXT2SQL_QUERY_CANDIDATE_SCHEMA_VERSION
               : specialistTurn?.stage === "ANALYSIS_PROGRAM"
                 ? ANALYSIS_PROGRAM_CANDIDATE_SCHEMA_VERSION
-                : specialistTurn?.stage === "SEMANTIC" || specialistTurn?.stage === "REPORT"
-                  ? SPECIALIST_ANSWER_RESPONSE_SCHEMA_VERSION
-                  : (analysisAgent?.response_schema_version ??
-                    analysisPython?.response_schema_version ??
-                    PROVIDER_SMOKE_RESPONSE_SCHEMA_VERSION),
+                : specialistTurn?.stage === "SEMANTIC"
+                  ? SEMANTIC_QUERY_SELECTION_INTENT_SCHEMA_VERSION
+                  : specialistTurn?.stage === "REPORT"
+                    ? SPECIALIST_ANSWER_RESPONSE_SCHEMA_VERSION
+                    : (analysisAgent?.response_schema_version ??
+                      analysisPython?.response_schema_version ??
+                      PROVIDER_SMOKE_RESPONSE_SCHEMA_VERSION),
           ...(analysisAgent || rootTurn || specialistTurn ? { sampling: { temperature: 0 } } : {}),
           budget: {
             timeout_ms: Math.min(config.execution_safety_policy.max_elapsed_ms, 120_000),

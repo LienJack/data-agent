@@ -1,6 +1,7 @@
 import {
   type ArtifactReference,
   artifactReferenceIdentity,
+  canonicalizeJson,
   type PortResult,
   type ProductTeamArtifactDocument,
   type RootAgentDecisionCandidate,
@@ -76,6 +77,30 @@ function renderArtifactFacts(
       fields.push(`rows=${JSON.stringify(document.projection.rows)}`);
     }
     return fields.join("\n");
+  }
+  if (document.projection.kind === "SEMANTIC_CONTEXT") {
+    const allowed = new Map<string, unknown>([
+      ["projection.context.datasource", document.projection.context.datasource],
+      ["projection.context.dimensions", document.projection.context.dimensions],
+      ["projection.context.formulas", document.projection.context.formulas],
+      ["projection.context.metrics", document.projection.context.metrics],
+      ["projection.context.physical_bindings", document.projection.context.physical_bindings],
+      ["projection.context.quality_constraints", document.projection.context.quality_constraints],
+      ["projection.context.relationships", document.projection.context.relationships],
+      ["projection.context.requested_object_ids", document.projection.context.requested_object_ids],
+      ["projection.context.schema_snapshot", document.projection.context.schema_snapshot],
+      ["projection.context.semantic_context_ref", document.projection.context.semantic_context_ref],
+      ["projection.context.semantic_release", document.projection.context.semantic_release],
+      ["projection.context.time_semantics", document.projection.context.time_semantics],
+      [
+        "projection.context.unresolved_ambiguities",
+        document.projection.context.unresolved_ambiguities,
+      ],
+    ]);
+    if (selectors.some((selector) => !allowed.has(selector))) return null;
+    return selectors
+      .map((selector) => `${selector}=${canonicalizeJson(allowed.get(selector))}`)
+      .join("\n");
   }
   return null;
 }

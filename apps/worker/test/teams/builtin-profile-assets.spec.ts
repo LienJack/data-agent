@@ -43,7 +43,7 @@ describe("built-in Team product assets", () => {
       )?.revision,
     ).toBe(2);
     expect(materialized.profile_revisions.map(({ profile_id }) => profile_id)).toEqual(profiles);
-    expect(materialized.profile_revisions.map(({ revision }) => revision)).toEqual([4, 4, 4, 5]);
+    expect(materialized.profile_revisions.map(({ revision }) => revision)).toEqual([4, 4, 4, 6]);
     expect(
       materialized.profile_revisions.find(
         ({ profile_id: profileId }) => profileId === "governed-analysis-agent",
@@ -54,9 +54,9 @@ describe("built-in Team product assets", () => {
         ({ profile_id: profileId }) => profileId === "semantic-management-agent",
       ),
     ).toMatchObject({
-      runtime_profile_ref: { revision: 3 },
+      runtime_profile_ref: { revision: 4 },
       direct_tool_allowlist: ["semantic.catalog.read"],
-      discovery: { produced_artifact_types: ["AnalysisReport"] },
+      discovery: { produced_artifact_types: ["SemanticQueryContext"] },
     });
     expect(
       new Set(materialized.skill_revisions.map(({ revision_hash }) => revision_hash)),
@@ -118,9 +118,9 @@ describe("built-in Team product assets", () => {
   it("freezes the exact ordered workflow steps for each specialist", () => {
     expect(BUILTIN_TEAM_WORKFLOWS["semantic-management-agent"]).toEqual([
       "load_frozen_release",
-      "read_relationships",
-      "read_definitions",
-      "read_lineage",
+      "select_exact_ids",
+      "validate_selection",
+      "project_semantic_query_context",
       "complete",
     ]);
     expect(BUILTIN_TEAM_WORKFLOWS["governed-analysis-agent"]).toContain(

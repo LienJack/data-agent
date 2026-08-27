@@ -183,8 +183,8 @@ describe("built-in Team materialization", () => {
         expected_head_version: 0,
         revision: expect.objectContaining({
           profile_id: "semantic-management-agent",
-          revision: 5,
-          runtime_profile_ref: expect.objectContaining({ revision: 3 }),
+          revision: 6,
+          runtime_profile_ref: expect.objectContaining({ revision: 4 }),
         }),
       }),
     );
@@ -507,7 +507,7 @@ describe("built-in Team materialization", () => {
       .find(({ revision }) => revision.profile_id === "semantic-management-agent");
     expect(semanticCommand).toMatchObject({
       expected_head_version: 7,
-      revision: { revision: 5, runtime_profile_ref: { revision: 3 } },
+      revision: { revision: 6, runtime_profile_ref: { revision: 4 } },
     });
   });
 });

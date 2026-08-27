@@ -11,11 +11,20 @@ import {
   type Text2SqlQueryCandidate,
   text2sqlQueryCandidateSchema,
 } from "@data-agent/contracts";
+import {
+  buildSemanticQueryContext,
+  type SemanticQueryContext,
+  type SemanticQuerySelectionIntent,
+  semanticQuerySelectionIntentSchema,
+} from "@data-agent/contracts/artifacts";
 import { buildQueryEvidenceChartDocument } from "@data-agent/platform/artifacts";
 import { z } from "zod";
 import type { GovernedAgentAnalysisPort } from "../analysis/governed-agent-analysis-port.js";
 import { hasRunProviderDispatchCapability } from "../runs/run-execution-context.js";
-import type { FrozenSemanticReleaseReadPort } from "../semantic/semantic-release-read-port.js";
+import type {
+  FrozenSemanticReleaseCatalog,
+  FrozenSemanticReleaseReadPort,
+} from "../semantic/semantic-release-read-port.js";
 import type {
   ProductProfileToolPort,
   ProductProfileToolResult,
@@ -254,7 +263,11 @@ async function commitArtifact(
   dependencies: ProductionTeamToolsDependencies,
   factoryInput: ProductionTeamToolFactoryInput,
   input: {
-    readonly artifact_type: "SqlArtifact" | "QueryEvidence" | "AnalysisReport";
+    readonly artifact_type:
+      | "SqlArtifact"
+      | "QueryEvidence"
+      | "AnalysisReport"
+      | "SemanticQueryContext";
     readonly profile_id:
       | "governed-analysis-agent"
       | "governed-text2sql-agent"
@@ -289,6 +302,255 @@ async function commitArtifact(
   return portValue(
     await dependencies.artifacts.commit(dependencies.capability, factoryInput.lease, document),
   );
+}
+
+function stringCompare(left: string, right: string): number {
+  return left < right ? -1 : left > right ? 1 : 0;
+}
+
+function semanticSelectionIds(intent: SemanticQuerySelectionIntent): readonly string[] {
+  return [
+    ...intent.selected_metric_ids,
+    ...intent.selected_dimension_ids,
+    ...intent.selected_formula_ids,
+    ...intent.selected_relationship_ids,
+    ...intent.selected_time_domain_ids,
+    ...intent.selected_quality_constraint_ids,
+    ...intent.unresolved_ambiguities.flatMap(({ candidate_ids: candidateIds }) => candidateIds),
+  ].sort(stringCompare);
+}
+
+function requiredSemanticObject<T>(
+  objects: ReadonlyMap<string, T>,
+  id: string,
+  errorCode: string,
+): T {
+  const value = objects.get(id);
+  if (!value) throw new ProductionTeamToolError(errorCode);
+  return value;
+}
+
+async function projectSemanticQueryContext(input: {
+  readonly factory: ProductionTeamToolFactoryInput;
+  readonly catalog: FrozenSemanticReleaseCatalog;
+  readonly intent: SemanticQuerySelectionIntent;
+}): Promise<SemanticQueryContext> {
+  const packageDocument = input.factory.semantic_context_package;
+  const allowedObjectIds = new Set([
+    ...packageDocument.retrieval_receipt.selected_object_ids,
+    ...packageDocument.inference_receipt.mandatory_object_ids,
+  ]);
+  const allowedRelationshipIds = new Set(
+    packageDocument.inference_receipt.mandatory_relationship_ids,
+  );
+  const metricById = new Map(
+    input.catalog.executable.metrics.map((metric) => [metric.metric_id, metric]),
+  );
+  const dimensionById = new Map(
+    input.catalog.executable.dimensions.map((dimension) => [dimension.dimension_id, dimension]),
+  );
+  const formulaById = new Map(
+    input.catalog.executable.formulas.map((formula) => [formula.node_id, formula]),
+  );
+  const relationshipById = new Map(
+    input.catalog.relationships.relationships.map((relationship) => [
+      relationship.relationship_id,
+      relationship,
+    ]),
+  );
+  const timeDomainById = new Map(
+    input.catalog.restrictions.time_semantics.map((timeDomain) => [
+      timeDomain.time_domain_id,
+      timeDomain,
+    ]),
+  );
+  const qualityById = new Map(
+    input.catalog.restrictions.quality_constraints.map((constraint) => [
+      constraint.constraint_id,
+      constraint,
+    ]),
+  );
+
+  const assertSelected = (
+    ids: readonly string[],
+    available: ReadonlyMap<string, unknown>,
+    allowed: ReadonlySet<string>,
+  ): void => {
+    if (ids.some((id) => !allowed.has(id) || !available.has(id))) {
+      throw new ProductionTeamToolError("TEAM_SEMANTIC_SELECTION_OUTSIDE_FROZEN_CLOSURE");
+    }
+  };
+  assertSelected(input.intent.selected_metric_ids, metricById, allowedObjectIds);
+  assertSelected(input.intent.selected_dimension_ids, dimensionById, allowedObjectIds);
+  assertSelected(input.intent.selected_formula_ids, formulaById, allowedObjectIds);
+  assertSelected(
+    input.intent.selected_relationship_ids,
+    relationshipById,
+    new Set([...allowedObjectIds, ...allowedRelationshipIds]),
+  );
+  assertSelected(input.intent.selected_time_domain_ids, timeDomainById, allowedObjectIds);
+  assertSelected(input.intent.selected_quality_constraint_ids, qualityById, allowedObjectIds);
+  for (const ambiguity of input.intent.unresolved_ambiguities) {
+    const available = {
+      DIMENSION: dimensionById,
+      FORMULA: formulaById,
+      METRIC: metricById,
+      QUALITY: qualityById,
+      RELATIONSHIP: relationshipById,
+      TIME: timeDomainById,
+    }[ambiguity.object_kind];
+    const allowed =
+      ambiguity.object_kind === "RELATIONSHIP"
+        ? new Set([...allowedObjectIds, ...allowedRelationshipIds])
+        : allowedObjectIds;
+    if (ambiguity.candidate_ids.some((id) => !allowed.has(id) || !available.has(id))) {
+      throw new ProductionTeamToolError("TEAM_SEMANTIC_SELECTION_OUTSIDE_FROZEN_CLOSURE");
+    }
+  }
+
+  const metrics = input.intent.selected_metric_ids.map((id) =>
+    requiredSemanticObject(metricById, id, "TEAM_SEMANTIC_METRIC_CLOSURE_INVALID"),
+  );
+  const selectedDimensionIds = new Set(input.intent.selected_dimension_ids);
+  for (let changed = true; changed; ) {
+    changed = false;
+    for (const dimensionId of [...selectedDimensionIds]) {
+      const parentId = dimensionById.get(dimensionId)?.parent_dimension_id;
+      if (parentId && !selectedDimensionIds.has(parentId)) {
+        if (!dimensionById.has(parentId)) {
+          throw new ProductionTeamToolError("TEAM_SEMANTIC_DIMENSION_CLOSURE_INVALID");
+        }
+        selectedDimensionIds.add(parentId);
+        changed = true;
+      }
+    }
+  }
+  const dimensions = [...selectedDimensionIds]
+    .map((id) =>
+      requiredSemanticObject(dimensionById, id, "TEAM_SEMANTIC_DIMENSION_CLOSURE_INVALID"),
+    )
+    .sort((left, right) => stringCompare(left.dimension_id, right.dimension_id));
+  const selectedFormulaIds = new Set(input.intent.selected_formula_ids);
+  for (const metric of metrics) {
+    if (metric.formula) selectedFormulaIds.add(metric.formula.formula_id);
+  }
+  const formulas = [...selectedFormulaIds]
+    .map((id) => formulaById.get(id))
+    .filter((formula): formula is NonNullable<typeof formula> => formula !== undefined)
+    .sort((left, right) => stringCompare(left.node_id, right.node_id));
+  if (formulas.length !== selectedFormulaIds.size) {
+    throw new ProductionTeamToolError("TEAM_SEMANTIC_FORMULA_CLOSURE_INVALID");
+  }
+  const relationshipIds = new Set([
+    ...input.intent.selected_relationship_ids,
+    ...packageDocument.inference_receipt.mandatory_relationship_ids.filter((id) =>
+      relationshipById.has(id),
+    ),
+  ]);
+  const relationships = [...relationshipIds]
+    .map((id) =>
+      requiredSemanticObject(relationshipById, id, "TEAM_SEMANTIC_RELATIONSHIP_CLOSURE_INVALID"),
+    )
+    .sort((left, right) => stringCompare(left.relationship_id, right.relationship_id));
+  const selectedTimeIds = new Set(input.intent.selected_time_domain_ids);
+  for (const metric of metrics) {
+    if (metric.time_domain) selectedTimeIds.add(metric.time_domain.time_domain_id);
+  }
+  const timeSemantics = [...selectedTimeIds]
+    .map((id) => timeDomainById.get(id))
+    .filter((timeDomain): timeDomain is NonNullable<typeof timeDomain> => timeDomain !== undefined)
+    .sort((left, right) => stringCompare(left.time_domain_id, right.time_domain_id));
+  if (timeSemantics.length !== selectedTimeIds.size) {
+    throw new ProductionTeamToolError("TEAM_SEMANTIC_TIME_CLOSURE_INVALID");
+  }
+  const qualityConstraints = input.intent.selected_quality_constraint_ids.map((id) =>
+    requiredSemanticObject(qualityById, id, "TEAM_SEMANTIC_QUALITY_CLOSURE_INVALID"),
+  );
+
+  const relevantBindingIds = new Set<string>([
+    ...metrics.flatMap((metric) => [
+      metric.metric_id,
+      metric.table_id,
+      metric.column_id,
+      ...metric.dependency_column_ids,
+      ...(metric.time_column_id ? [metric.time_column_id] : []),
+    ]),
+    ...dimensions.flatMap((dimension) => [
+      dimension.dimension_id,
+      dimension.table_id,
+      dimension.column_id,
+    ]),
+    ...formulas.map(({ node_id: id }) => id),
+    ...relationships.flatMap((relationship) => [
+      relationship.relationship_id,
+      relationship.left_table_id,
+      relationship.right_table_id,
+      ...relationship.left_column_ids,
+      ...relationship.right_column_ids,
+    ]),
+  ]);
+  const physicalBindings = input.catalog.executable.physical_bindings
+    .filter((binding) => relevantBindingIds.has(binding.logical_object_id))
+    .sort((left, right) =>
+      stringCompare(
+        [
+          left.logical_object_id,
+          left.logical_object_type,
+          left.schema_name,
+          left.table_name,
+          left.column_name ?? "",
+        ].join("\0"),
+        [
+          right.logical_object_id,
+          right.logical_object_type,
+          right.schema_name,
+          right.table_name,
+          right.column_name ?? "",
+        ].join("\0"),
+      ),
+    );
+
+  const effectiveConfig = input.factory.execution_context.getEffectiveConfig();
+  if (
+    packageDocument.scope.app_id !== input.factory.lease.scope.app_id ||
+    packageDocument.scope.tenant_id !== input.factory.lease.scope.tenant_id ||
+    packageDocument.scope.environment !== input.factory.lease.scope.environment ||
+    input.catalog.release_identity.release_id !== packageDocument.semantic_release.resource_id ||
+    input.catalog.release_identity.release_digest !==
+      packageDocument.semantic_release.resource_hash ||
+    input.catalog.release_identity.release_generation !==
+      packageDocument.semantic_release.semantic_generation ||
+    input.catalog.release_identity.datasource_id !== effectiveConfig.datasource.resource_id
+  ) {
+    throw new ProductionTeamToolError("TEAM_SEMANTIC_AUTHORITY_BINDING_INVALID");
+  }
+
+  return buildSemanticQueryContext({
+    schema_version: "semantic-query-context@1.0.0",
+    scope: input.factory.lease.scope,
+    run_id: input.factory.lease.run_id,
+    semantic_domain: packageDocument.semantic_domain,
+    semantic_release: packageDocument.semantic_release,
+    schema_snapshot: packageDocument.schema_snapshot,
+    datasource: effectiveConfig.datasource,
+    semantic_context_ref: {
+      package_id: input.factory.semantic_context_ref.package_id,
+      package_hash: input.factory.semantic_context_ref.package_hash,
+      receipt_id: input.factory.semantic_context_ref.receipt_id,
+      receipt_hash: input.factory.semantic_context_ref.receipt_hash,
+      retrieval_receipt_hash: packageDocument.retrieval_receipt.receipt_hash,
+      inference_receipt_hash: packageDocument.inference_receipt.receipt_hash,
+    },
+    requested_object_ids: semanticSelectionIds(input.intent),
+    metrics: [...metrics].sort((left, right) => stringCompare(left.metric_id, right.metric_id)),
+    dimensions,
+    formulas,
+    relationships,
+    physical_bindings: physicalBindings,
+    time_semantics: timeSemantics,
+    quality_constraints: qualityConstraints,
+    unresolved_ambiguities: input.intent.unresolved_ambiguities,
+  });
 }
 
 export function createProductionTeamTools(
@@ -385,58 +647,9 @@ export function createProductionTeamTools(
           }),
         );
         const packageDocument = factoryInput.semantic_context_package;
-        const selectedIds = new Set(packageDocument.retrieval_receipt.selected_object_ids);
-        const relationshipLines = catalog.relationships.relationships.map(
-          (relationship) =>
-            `[${relationship.kind.toUpperCase()}] ${relationship.relationship_id} ${relationship.name}: ` +
-            `${relationship.left_table_id}(${relationship.left_column_ids.join(", ")}) -> ` +
-            `${relationship.right_table_id}(${relationship.right_column_ids.join(", ")}); ` +
-            `cardinality=${relationship.cardinality}; fanout_closed=${String(relationship.analysis.fanout_closed)}; ` +
-            `proof=${relationship.proof_kind}${relationship.proof_detail ? ` (${relationship.proof_detail})` : ""}; ` +
-            `ontology_path=${relationship.analysis.ontology_path.join(" -> ") || "none"}`,
-        );
-        const metricLines = catalog.executable.metrics
-          .filter((metric) => selectedIds.has(metric.metric_id))
-          .map(
-            (metric) =>
-              `${metric.metric_id} ${metric.name}: aggregation=${metric.aggregation}; table=${metric.table_id}; ` +
-              `column=${metric.column_id}; formula=${metric.formula?.expression ?? "none"}`,
-          );
-        const dimensionLines = catalog.executable.dimensions
-          .filter((dimension) => selectedIds.has(dimension.dimension_id))
-          .map(
-            (dimension) =>
-              `${dimension.dimension_id} ${dimension.name}: table=${dimension.table_id}; ` +
-              `column=${dimension.column_id}; grain=${dimension.grain.grain_id}`,
-          );
-        const formulaLines = catalog.executable.formulas
-          .filter((formula) => selectedIds.has(formula.node_id))
-          .map(
-            (formula) =>
-              `${formula.node_id} ${formula.name}: ${canonicalizeJson(formula.expression)}`,
-          );
         const retrieval = packageDocument.retrieval_receipt;
         const inference = packageDocument.inference_receipt;
-        const hitLines = retrieval.hits
-          .slice(0, 20)
-          .map(
-            (hit) =>
-              `#${hit.rank} ${hit.route} ${hit.object_id} matched=${hit.matched_text} ` +
-              `rrf=${hit.rrf_score.toFixed(6)}`,
-          );
-        const expansionLines = retrieval.expansions.map(
-          (expansion) =>
-            `hop=${expansion.hop} ${expansion.direction} ${expansion.source_object_id} ` +
-            `-[${expansion.relationship_id}/${expansion.relationship_kind}]-> ` +
-            `${expansion.target_object_id}; mandatory=${String(expansion.mandatory)}`,
-        );
-        const inferenceLines = inference.steps.map(
-          (step) =>
-            `${step.rule_id}: ${step.premise_object_ids.join(", ")} => ` +
-            `${step.conclusion_object_ids.join(", ")}; path=${step.relationship_path_ids.join(" -> ") || "none"}; ` +
-            `${step.explanation}`,
-        );
-        const semanticAnswer = reportAnswerSchema.safeParse(
+        const semanticSelection = semanticQuerySelectionIntentSchema.safeParse(
           await specialistProviderJson({
             factory: factoryInput,
             stage: "SEMANTIC",
@@ -459,87 +672,23 @@ export function createProductionTeamTools(
             }),
           }),
         );
-        if (!semanticAnswer.success) {
+        if (!semanticSelection.success) {
           throw new ProductionTeamToolError("TEAM_SEMANTIC_RESPONSE_INVALID");
         }
+        const semanticContext = await projectSemanticQueryContext({
+          factory: factoryInput,
+          catalog,
+          intent: semanticSelection.data,
+        });
         state.semantic_ref = await commitArtifact(dependencies, factoryInput, {
-          artifact_type: "AnalysisReport",
+          artifact_type: "SemanticQueryContext",
           profile_id: "semantic-management-agent",
           task_id: input.task.task_id,
           source_refs: [],
           provenance: null,
           projection: {
-            kind: "REPORT",
-            title: "冻结语义图关系证据",
-            sections: [
-              {
-                heading: "结论",
-                body_text: semanticAnswer.data.answer,
-                source_refs: [],
-              },
-              {
-                heading: "冻结版本",
-                body_text:
-                  `已校验 Semantic Release ${catalog.release_identity.release_id} ` +
-                  `（digest ${catalog.release_identity.release_digest}）。当前发布包含 ` +
-                  `${catalog.executable.metrics.length} 个指标、${catalog.executable.dimensions.length} 个维度、` +
-                  `${catalog.executable.formulas.length} 个公式、${catalog.relationships.relationships.length} 条关系、` +
-                  `${catalog.restrictions.quality_constraints.length} 条质量约束。`,
-                source_refs: [],
-              },
-              {
-                heading: "召回、融合与截枝",
-                body_text:
-                  `route=${packageDocument.route_decision.route}; state=${packageDocument.route_decision.state}; ` +
-                  `LEXICON=${retrieval.route_states.LEXICON}; SPARSE=${retrieval.route_states.SPARSE}; ` +
-                  `VECTOR=${retrieval.route_states.VECTOR}; GRAPH=${retrieval.route_states.GRAPH}; ` +
-                  `selected=${retrieval.selected_object_ids.length}; pruned=${retrieval.pruned_object_ids.length}.\n` +
-                  (hitLines.length > 0 ? hitLines.join("\n") : "没有返回召回候选。"),
-                source_refs: [],
-              },
-              {
-                heading: "图扩展与逻辑闭包",
-                body_text:
-                  `closure_complete=${String(inference.closure_complete)}; ` +
-                  `mandatory_objects=${inference.mandatory_object_ids.join(", ") || "none"}; ` +
-                  `mandatory_relationships=${inference.mandatory_relationship_ids.join(", ") || "none"}.\n` +
-                  [
-                    ...(expansionLines.length > 0 ? expansionLines : ["没有新增图扩展边。"]),
-                    ...(inferenceLines.length > 0 ? inferenceLines : ["没有新增逻辑推断步骤。"]),
-                  ].join("\n"),
-                source_refs: [],
-              },
-              {
-                heading: "发布关系与血缘",
-                body_text:
-                  relationshipLines.length > 0
-                    ? relationshipLines.join("\n")
-                    : "该冻结 Release 没有发布关系。",
-                source_refs: [],
-              },
-              {
-                heading: "命中的指标、维度与公式",
-                body_text:
-                  [...metricLines, ...dimensionLines, ...formulaLines].join("\n") ||
-                  "本次召回没有选中指标、维度或公式。",
-                source_refs: [],
-              },
-              {
-                heading: "时间与质量口径",
-                body_text: [
-                  ...catalog.restrictions.time_semantics.map(
-                    (time) =>
-                      `${time.time_domain_id}: ${time.min_time ?? "open"} <= time <= ${time.max_time ?? "open"}; ` +
-                      `timezone=${time.timezone}; calendar=${time.calendar}`,
-                  ),
-                  ...catalog.restrictions.quality_constraints.map(
-                    (constraint) =>
-                      `${constraint.constraint_id} [${constraint.severity}/${constraint.sensitivity}]: ${constraint.expression}`,
-                  ),
-                ].join("\n"),
-                source_refs: [],
-              },
-            ],
+            kind: "SEMANTIC_CONTEXT",
+            context: semanticContext,
           },
         });
         return toolResult(state.semantic_ref);

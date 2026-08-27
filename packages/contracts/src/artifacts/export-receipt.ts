@@ -13,6 +13,7 @@ import {
   artifactReferenceIdentity,
   artifactReferenceSchema,
 } from "./envelope.js";
+import { semanticQueryContextSchema } from "./semantic-query-context.js";
 
 export const ARTIFACT_WORKSPACE_RENDERER_VERSION = "artifact-workspace-renderer@1.0.0";
 export const ARTIFACT_WORKSPACE_RENDERER_VERSION_V2 = "artifact-workspace-renderer@2.0.0";
@@ -124,6 +125,10 @@ export const artifactWorkspaceProjectionSchema = z
           }),
         )
         .max(100),
+    }),
+    z.strictObject({
+      kind: z.literal("SEMANTIC_CONTEXT"),
+      context: semanticQueryContextSchema,
     }),
   ])
   .superRefine((projection, ctx) => {

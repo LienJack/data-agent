@@ -1,7 +1,7 @@
 import { readFileSync } from "node:fs";
 import { fileURLToPath } from "node:url";
 import { describe, expect, it } from "vitest";
-import { getAgentProfileRevision } from "../src/teams/agent-profiles.js";
+import { AGENT_PROFILE_REVISIONS } from "../src/teams/agent-profiles.js";
 
 const migrationPath = fileURLToPath(
   new URL(
@@ -12,7 +12,11 @@ const migrationPath = fileURLToPath(
 
 describe("Falcon24 E1 runtime profile migration", () => {
   it("installs the exact source-owned semantic read profile", () => {
-    const profile = getAgentProfileRevision("semantic-management-agent");
+    const profile = AGENT_PROFILE_REVISIONS.find(
+      (candidate) =>
+        candidate.profile_id === "semantic-management-agent" && candidate.revision === 3,
+    );
+    if (!profile) throw new TypeError("missing historical E1 semantic profile");
     const migration = readFileSync(migrationPath, "utf8");
 
     expect(profile).toMatchObject({

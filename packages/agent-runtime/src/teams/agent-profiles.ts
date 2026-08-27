@@ -250,6 +250,21 @@ export const AGENT_PROFILE_REVISIONS = deepFreeze([
   }),
   profile({
     schema_version: "agent-profile-revision@2.0.0",
+    profile_id: "semantic-management-agent",
+    revision: 4,
+    direct_tool_allowlist: ["semantic.catalog.read"],
+    delegation_ceiling: [],
+    mandatory_context: ["GOAL", "POLICY", "QUESTION", "SCHEMA_MAPPING", "SEMANTIC_RELEASE"],
+    workflow: { workflow_id: "team.semantic-query-context.v4", workflow_revision: 1 },
+    expected_output_artifact_types: ["SemanticQueryContext"],
+    verifier: {
+      verifier_id: "team.semantic-query-context-verifier.v4",
+      required_dimensions: [...dimensions],
+      semantic_fallback: "SEMANTICALLY_UNVERIFIED",
+    },
+  }),
+  profile({
+    schema_version: "agent-profile-revision@2.0.0",
     profile_id: "governed-text2sql-agent",
     revision: 1,
     direct_tool_allowlist: ["semantic.release.read", "sql.compiler.compile", "sql.sandbox.execute"],

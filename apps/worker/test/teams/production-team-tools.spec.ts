@@ -173,8 +173,14 @@ describe("Production Team governed chart publication", () => {
       ok: true as const,
       value: {
         output_text: JSON.stringify({
-          answer:
-            "订单通过 blinkit_orders.customer_id 以 many-to-one 关系连接 blinkit_customers.customer_id。",
+          schema_version: "semantic-query-selection-intent@1.0.0",
+          selected_metric_ids: [],
+          selected_dimension_ids: [],
+          selected_formula_ids: [],
+          selected_relationship_ids: ["relationship.order_customer"],
+          selected_time_domain_ids: [],
+          selected_quality_constraint_ids: [],
+          unresolved_ambiguities: [],
         }),
         tool_calls: [],
         projection: { status: "COMPLETED" as const },
@@ -213,10 +219,12 @@ describe("Production Team governed chart publication", () => {
       value: {
         release_identity: {
           semantic_domain: "commerce",
-          release_id: id(22),
-          release_digest: hash("c"),
+          release_id: config.semantic_release.resource_id,
+          release_digest: config.semantic_release.resource_hash,
+          release_generation: config.semantic_release.semantic_generation,
+          datasource_id: config.datasource.resource_id,
         },
-        executable: { metrics: [], dimensions: [], formulas: [] },
+        executable: { metrics: [], dimensions: [], formulas: [], physical_bindings: [] },
         relationships: {
           relationships: [
             {
@@ -228,9 +236,16 @@ describe("Production Team governed chart publication", () => {
               right_table_id: "customers",
               right_column_ids: ["customers.id"],
               cardinality: "many-to-one",
+              left_row_preservation: "required",
+              right_row_preservation: "optional",
               proof_kind: "SNAPSHOT_CERTIFIED",
               proof_detail: "fixed snapshot",
-              analysis: { fanout_closed: true, ontology_path: ["orders", "customers"] },
+              tags: [],
+              analysis: {
+                join_allowed: true,
+                fanout_closed: true,
+                ontology_path: ["customers", "orders"],
+              },
             },
           ],
         },
@@ -275,19 +290,25 @@ describe("Production Team governed chart publication", () => {
           semantic_release_hash: hash("c"),
         },
         semantic_context_package: {
+          scope,
+          semantic_domain: "commerce",
+          semantic_release: config.semantic_release,
+          schema_snapshot: config.schema_snapshot,
           route_decision: { route: "GRAPH", state: "READY" },
           retrieval_receipt: {
             route_states: { LEXICON: "READY", SPARSE: "READY", VECTOR: "READY", GRAPH: "READY" },
-            selected_object_ids: [],
+            selected_object_ids: ["relationship.order_customer"],
             pruned_object_ids: [],
             hits: [],
             expansions: [],
+            receipt_hash: hash("f"),
           },
           inference_receipt: {
             closure_complete: true,
             mandatory_object_ids: [],
-            mandatory_relationship_ids: [],
+            mandatory_relationship_ids: ["relationship.order_customer"],
             steps: [],
+            receipt_hash: hash("e"),
           },
         } as never,
         semantic_context: {
@@ -316,26 +337,25 @@ describe("Production Team governed chart publication", () => {
       context_epoch: { epoch_id: id(25), build_signature: hash("e") },
     });
 
-    expect(result).toMatchObject({ output_ref: { artifact_type: "AnalysisReport" } });
+    expect(result).toMatchObject({ output_ref: { artifact_type: "SemanticQueryContext" } });
     expect(releaseRead).toHaveBeenCalledOnce();
     expect(semanticProvider).toHaveBeenCalledOnce();
     expect(text2sqlPrepare).not.toHaveBeenCalled();
     expect(text2sqlExecute).not.toHaveBeenCalled();
     expect(committed).toMatchObject({
       projection: {
-        kind: "REPORT",
-        title: "冻结语义图关系证据",
-        sections: expect.arrayContaining([
-          expect.objectContaining({
-            heading: "结论",
-            body_text: expect.stringContaining("blinkit_orders.customer_id"),
-          }),
-          expect.objectContaining({
-            body_text: expect.stringContaining(
-              "[PHYSICAL] relationship.order_customer order_customer: orders(orders.customer_id) -> customers(customers.id)",
-            ),
-          }),
-        ]),
+        kind: "SEMANTIC_CONTEXT",
+        context: expect.objectContaining({
+          schema_version: "semantic-query-context@1.0.0",
+          run_id: lease.run_id,
+          semantic_release: config.semantic_release,
+          relationships: [
+            expect.objectContaining({
+              relationship_id: "relationship.order_customer",
+              cardinality: "many-to-one",
+            }),
+          ],
+        }),
       },
     });
   });
@@ -751,6 +771,8 @@ describe("Production Team governed chart publication", () => {
                 semantic_domain: "commerce",
                 release_id: config.semantic_release.resource_id,
                 release_digest: config.semantic_release.resource_hash,
+                release_generation: config.semantic_release.semantic_generation,
+                datasource_id: config.datasource.resource_id,
               },
               executable: {
                 schema_version: "semantic-executable-projection@1.0.0" as const,

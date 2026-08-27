@@ -7,6 +7,7 @@ import {
   type AgentProductProfileRegistryItemV2,
   type ArtifactReference,
   buildProductTeamArtifactDocument,
+  buildSemanticQueryContext,
   buildSubagentCapabilityCatalogSnapshot,
   DEFAULT_RUN_EXECUTION_POLICY,
   type ProductTeamArtifactDocument,
@@ -164,7 +165,7 @@ async function admittedSemanticDelegation(
 }
 
 function reference(
-  artifactType: "SqlArtifact" | "QueryEvidence" | "AnalysisReport",
+  artifactType: "SqlArtifact" | "QueryEvidence" | "AnalysisReport" | "SemanticQueryContext",
   taskId: string,
 ): ArtifactReference {
   return {
@@ -173,8 +174,65 @@ function reference(
     ...scope,
     run_id: id(50),
     revision: 1,
-    content_hash: hash(artifactType === "AnalysisReport" ? "a" : "e"),
+    content_hash: hash(
+      artifactType === "AnalysisReport" ? "a" : artifactType === "SemanticQueryContext" ? "c" : "e",
+    ),
   };
+}
+
+async function semanticDocument(taskId: string, artifactId: string) {
+  const datasourceId = id(140);
+  const semanticReleaseId = id(141);
+  const context = await buildSemanticQueryContext({
+    schema_version: "semantic-query-context@1.0.0",
+    scope,
+    run_id: id(50),
+    semantic_domain: "commerce",
+    semantic_release: {
+      resource_id: semanticReleaseId,
+      resource_revision: 1,
+      resource_hash: hash("1"),
+      datasource_id: datasourceId,
+      semantic_generation: 1,
+      publication_status: "PUBLISHED",
+    },
+    schema_snapshot: {
+      resource_id: id(142),
+      resource_revision: 1,
+      resource_hash: hash("2"),
+      datasource_id: datasourceId,
+      semantic_release_id: semanticReleaseId,
+      semantic_generation: 1,
+    },
+    datasource: { resource_id: datasourceId, resource_revision: 1, resource_hash: hash("3") },
+    semantic_context_ref: {
+      package_id: id(143),
+      package_hash: hash("4"),
+      receipt_id: id(144),
+      receipt_hash: hash("5"),
+      retrieval_receipt_hash: hash("6"),
+      inference_receipt_hash: hash("7"),
+    },
+    requested_object_ids: [],
+    metrics: [],
+    dimensions: [],
+    formulas: [],
+    relationships: [],
+    physical_bindings: [],
+    time_semantics: [],
+    quality_constraints: [],
+    unresolved_ambiguities: [],
+  });
+  return buildProductTeamArtifactDocument({
+    schema_version: "product-team-artifact@2.0.0",
+    artifact_ref: reference("SemanticQueryContext", artifactId),
+    profile_id: "semantic-management-agent",
+    task_id: taskId,
+    source_refs: [],
+    provenance: null,
+    projection: { kind: "SEMANTIC_CONTEXT", context },
+    committed_at: "2026-08-18T12:00:00.000Z",
+  });
 }
 
 async function queryProvenance(outputName: string) {
@@ -762,21 +820,7 @@ describe("Production Team runtime", () => {
       tools: {
         async invoke({ task, tool_id }) {
           invoked.push(tool_id);
-          const output = reference("AnalysisReport", id(96));
-          const document = await buildProductTeamArtifactDocument({
-            schema_version: "product-team-artifact@2.0.0",
-            artifact_ref: output,
-            profile_id: "semantic-management-agent",
-            task_id: task.task_id,
-            source_refs: [],
-            provenance: null,
-            projection: {
-              kind: "REPORT",
-              title: "冻结语义层说明",
-              sections: [{ heading: "结论", body_text: "只读语义层。", source_refs: [] }],
-            },
-            committed_at: "2026-08-18T12:00:00.000Z",
-          });
+          const document = await semanticDocument(task.task_id, id(96));
           documents.push(document);
           return document.artifact_ref;
         },
@@ -817,7 +861,7 @@ describe("Production Team runtime", () => {
     });
     expect(invoked).toEqual(["semantic.catalog.read"]);
     expect(invoked).not.toContain("semantic.candidate.write");
-    expect(documents[0]?.artifact_ref.artifact_type).toBe("AnalysisReport");
+    expect(documents[0]?.artifact_ref.artifact_type).toBe("SemanticQueryContext");
     expect(
       JSON.stringify(calls.filter(({ operation }) => operation === "COMMIT_COMPLETION")),
     ).not.toContain("SemanticGraphCandidate");
@@ -856,25 +900,9 @@ describe("Production Team runtime", () => {
             await reachBarrier(task.profile_id);
           }
           if (task.profile_id === "semantic-management-agent") {
-            const output = reference("AnalysisReport", id(110));
-            documents.set(
-              output.artifact_id,
-              await buildProductTeamArtifactDocument({
-                schema_version: "product-team-artifact@2.0.0",
-                artifact_ref: output,
-                profile_id: task.profile_id,
-                task_id: task.task_id,
-                source_refs: [],
-                provenance: null,
-                projection: {
-                  kind: "REPORT",
-                  title: "Semantic",
-                  sections: [{ heading: "结论", body_text: "语义已解析。", source_refs: [] }],
-                },
-                committed_at: "2026-08-18T12:00:00.000Z",
-              }),
-            );
-            return documents.get(output.artifact_id)?.artifact_ref ?? null;
+            const document = await semanticDocument(task.task_id, id(110));
+            documents.set(document.artifact_ref.artifact_id, document);
+            return document.artifact_ref;
           }
           if (tool_id === "sql.compiler.compile") return reference("SqlArtifact", id(111));
           if (tool_id === "sql.sandbox.execute") {

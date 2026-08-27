@@ -1,8 +1,8 @@
+export * from "./analysis-input-materialization.js";
+export * from "./analysis-python-source.js";
+export * from "./analysis-result-contract.js";
 export * from "./envelope.js";
 export * from "./export-receipt.js";
-export * from "./analysis-python-source.js";
-export * from "./analysis-input-materialization.js";
-export * from "./analysis-result-contract.js";
 export {
   assertGroundingAuthorityBundleConsistency,
   assertGroundingAuthorityOriginConsistency,
@@ -77,6 +77,7 @@ export {
 export * from "./semantic-graph-v2.js";
 export * from "./semantic-induction.js";
 export * from "./semantic-lifecycle.js";
+export * from "./semantic-query-context.js";
 export * from "./semantic-relationship-index.js";
 export * from "./sensitive-execution-artifact.js";
 export * from "./tabular-import.js";

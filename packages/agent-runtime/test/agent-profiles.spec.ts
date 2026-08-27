@@ -26,7 +26,7 @@ describe("Agent Team v2 profiles", () => {
     }
     expect(
       new Set(AGENT_PROFILE_REVISIONS.map((profile) => profile.workflow.workflow_id)).size,
-    ).toBe(8);
+    ).toBe(9);
     const rootRevisions = AGENT_PROFILE_REVISIONS.filter(
       ({ profile_id }) => profile_id === "data-agent-orchestrator",
     );
@@ -34,7 +34,7 @@ describe("Agent Team v2 profiles", () => {
     const semanticRevisions = AGENT_PROFILE_REVISIONS.filter(
       ({ profile_id }) => profile_id === "semantic-management-agent",
     );
-    expect(semanticRevisions.map(({ revision }) => revision)).toEqual([1, 2, 3]);
+    expect(semanticRevisions.map(({ revision }) => revision)).toEqual([1, 2, 3, 4]);
     for (const semantic of semanticRevisions) {
       expect(
         getAgentProfileRevisionExact(semantic.profile_id, semantic.revision, semantic.profile_hash),
@@ -42,7 +42,7 @@ describe("Agent Team v2 profiles", () => {
     }
     expect(semanticRevisions.at(-1)).toMatchObject({
       direct_tool_allowlist: ["semantic.catalog.read"],
-      expected_output_artifact_types: ["AnalysisReport"],
+      expected_output_artifact_types: ["SemanticQueryContext"],
     });
   });
 

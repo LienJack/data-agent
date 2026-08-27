@@ -4,6 +4,7 @@ import {
   artifactReferenceIdentity,
   artifactReferenceSchema,
 } from "../artifacts/envelope.js";
+import { semanticQueryContextSchema } from "../artifacts/semantic-query-context.js";
 import { knownArtifactTypeSchema } from "../artifacts/types.js";
 import {
   type AppScope,
@@ -316,8 +317,10 @@ export const rootToolSafeProjectionSchema = z
     column_keys: z.array(z.string().min(1).max(256)).max(128),
     total_rows: z.number().int().nonnegative().safe().nullable(),
     source_artifact_refs: z.array(artifactReferenceSchema).max(32),
+    semantic_query_context: z.json().nullable().default(null),
   })
   .superRefine((projection, ctx) => {
+    const semanticContext = projection.semantic_query_context ?? null;
     if (!isCanonicallySorted(projection.column_keys)) {
       ctx.addIssue({
         code: "custom",
@@ -345,6 +348,30 @@ export const rootToolSafeProjectionSchema = z
         });
       }
     });
+    if ((projection.projection_kind === "SEMANTIC_CONTEXT") !== (semanticContext !== null)) {
+      ctx.addIssue({
+        code: "custom",
+        message: "Semantic Root tool projections must carry exactly one verified context.",
+        path: ["semantic_query_context"],
+      });
+    }
+    if (semanticContext && projection.artifact_ref.artifact_type !== "SemanticQueryContext") {
+      ctx.addIssue({
+        code: "custom",
+        message: "Semantic Root tool projection must bind its exact Artifact and Run.",
+        path: ["semantic_query_context"],
+      });
+    }
+    if (semanticContext) {
+      const context = semanticQueryContextSchema.safeParse(semanticContext);
+      if (!context.success || context.data.run_id !== projection.artifact_ref.run_id) {
+        ctx.addIssue({
+          code: "custom",
+          message: "Semantic Root tool projection must contain a verified Context for its Run.",
+          path: ["semantic_query_context"],
+        });
+      }
+    }
   });
 
 const completedRootToolObservationSchema = z

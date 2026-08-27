@@ -96,7 +96,11 @@ function nativeCall(input: {
   readonly tool_call_id: string;
   readonly profile_id: (typeof profileIds)[number];
   readonly objective: string;
-  readonly requested_artifact_types: readonly ("AnalysisReport" | "QueryEvidence")[];
+  readonly requested_artifact_types: readonly (
+    | "AnalysisReport"
+    | "QueryEvidence"
+    | "SemanticQueryContext"
+  )[];
   readonly input_artifact_refs?: readonly ArtifactReference[];
 }) {
   const toolCounts = {
@@ -169,7 +173,7 @@ describe("Falcon24 E1 Root V3 routing boundary", () => {
         tool_call_id: "semantic-relationship",
         profile_id: "semantic-management-agent",
         objective: "从冻结 E1 Release 解释订单与客户的关系、Join 和血缘。",
-        requested_artifact_types: ["AnalysisReport"],
+        requested_artifact_types: ["SemanticQueryContext"],
       }),
     ]);
 

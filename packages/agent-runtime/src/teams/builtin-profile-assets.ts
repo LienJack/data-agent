@@ -23,14 +23,14 @@ export const BUILTIN_PRODUCT_PROFILE_REVISIONS = Object.freeze({
   "governed-analysis-agent": 4,
   "governed-text2sql-agent": 4,
   "report-writing-agent": 4,
-  "semantic-management-agent": 5,
+  "semantic-management-agent": 6,
 } as const satisfies Readonly<Record<DataAgentSpecialistProfileId, number>>);
 
 const prompts = {
   "governed-analysis-agent":
     "You execute registered governed multi-step analyses from accepted QueryEvidence and an exact semantic closure. Python may orchestrate approved statistical operators, but cannot query datasources, reimplement governed operators, or publish unverified results.",
   "semantic-management-agent":
-    "You read only the exact frozen published semantic release and return relationship, dependency, lineage, join, metric, dimension, formula, time, and quality definitions as governed evidence. Never execute SQL or mutate semantics.",
+    "You select exact relationship, dependency, lineage, join, metric, dimension, formula, time, and quality IDs from the frozen published semantic release. The Host validates that selection and projects an immutable SemanticQueryContext; never author definitions, execute SQL, or mutate semantics.",
   "governed-text2sql-agent":
     "You consume the exact frozen published semantic release, schema snapshot, and datasource binding, then produce QueryEvidence only after the compiler, firewall, and real read-only adapter succeed. Never mutate semantics or fabricate rows.",
   "report-writing-agent":
@@ -60,7 +60,8 @@ const discovery = {
   },
   "semantic-management-agent": {
     display_name: "Semantic Management Agent",
-    description: "Reads frozen semantic objects, relationships, lineage, and governed definitions.",
+    description:
+      "Selects exact frozen semantic objects so the Host can publish a verified SemanticQueryContext.",
     when_to_use: [
       "Use for semantic relationships, dependencies, lineage, metric definitions, and semantic context.",
     ],
@@ -71,7 +72,7 @@ const discovery = {
       {
         request: "Explain dependencies between tables from the frozen relationship graph.",
         expected_use:
-          "Read the exact frozen Release relationship and lineage evidence without executing SQL.",
+          "Select exact frozen Release relationship and lineage IDs; the Host projects their authoritative definitions without executing SQL.",
       },
     ],
     accepted_input_artifact_types: [],
@@ -138,9 +139,9 @@ export const BUILTIN_TEAM_WORKFLOWS = {
   ],
   "semantic-management-agent": [
     "load_frozen_release",
-    "read_relationships",
-    "read_definitions",
-    "read_lineage",
+    "select_exact_ids",
+    "validate_selection",
+    "project_semantic_query_context",
     "complete",
   ],
   "governed-text2sql-agent": [
@@ -186,7 +187,7 @@ export const BUILTIN_TEAM_SKILLS: readonly BuiltinSkillDefinition[] = [
     name: "Frozen Semantic Definitions",
     profile_id: "semantic-management-agent",
     capabilities: ["semantic.catalog.read"],
-    body: "Read metric, dimension, formula, time, and quality definitions from the exact frozen published semantic release. Never write a candidate or execute SQL.",
+    body: "Select exact metric, dimension, formula, time, and quality IDs from the frozen published semantic release so the Host can project a verified SemanticQueryContext. Never author definitions, write a candidate, or execute SQL.",
   },
   {
     skill_id: "00000000-0000-4000-8000-000000002102",
@@ -194,7 +195,7 @@ export const BUILTIN_TEAM_SKILLS: readonly BuiltinSkillDefinition[] = [
     name: "Frozen Semantic Relationships",
     profile_id: "semantic-management-agent",
     capabilities: ["semantic.catalog.read"],
-    body: "Read joins, dependencies, cardinality, and relationship proof from the exact frozen published semantic release. Never infer database values.",
+    body: "Select exact join, dependency, cardinality, and relationship IDs from the frozen published semantic release so the Host can project their authoritative proof. Never infer database values.",
   },
   {
     skill_id: "00000000-0000-4000-8000-000000002103",
@@ -202,7 +203,7 @@ export const BUILTIN_TEAM_SKILLS: readonly BuiltinSkillDefinition[] = [
     name: "Frozen Semantic Lineage",
     profile_id: "semantic-management-agent",
     capabilities: ["semantic.catalog.read"],
-    body: "Read physical and semantic lineage from the exact frozen published semantic release and disclose incomplete closure. Never mutate definitions.",
+    body: "Select exact physical and semantic lineage IDs from the frozen published semantic release; the Host preserves the retrieval and inference receipts in SemanticQueryContext. Never mutate definitions.",
   },
   {
     skill_id: "00000000-0000-4000-8000-000000002201",

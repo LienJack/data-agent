@@ -1,7 +1,4 @@
-import {
-  deepFreeze,
-  sha256ContentHash,
-} from "@data-agent/contracts/common";
+import { deepFreeze, sha256ContentHash } from "@data-agent/contracts/common";
 import {
   type SemanticContextPackage,
   verifySemanticContextPackage,
@@ -9,12 +6,12 @@ import {
 import type { PortResult } from "@data-agent/contracts/ports";
 import type { PostgresSemanticExplorerReader } from "@data-agent/platform/semantic-postgres";
 import {
-  semanticExecutablePublicationProjectionSchema,
-  semanticRelationshipPublicationProjectionSchema,
-  semanticRuntimeRestrictionPublicationProjectionSchema,
   type SemanticExecutablePublicationProjection,
   type SemanticRelationshipPublicationProjection,
   type SemanticRuntimeRestrictionPublicationProjection,
+  semanticExecutablePublicationProjectionSchema,
+  semanticRelationshipPublicationProjectionSchema,
+  semanticRuntimeRestrictionPublicationProjectionSchema,
 } from "@data-agent/semantic/production";
 
 export interface FrozenSemanticReleaseCatalog {
@@ -22,6 +19,8 @@ export interface FrozenSemanticReleaseCatalog {
     readonly semantic_domain: string;
     readonly release_id: string;
     readonly release_digest: string;
+    readonly release_generation: number;
+    readonly datasource_id: string;
   };
   readonly executable: SemanticExecutablePublicationProjection;
   readonly relationships: SemanticRelationshipPublicationProjection;
@@ -125,6 +124,8 @@ export function createFrozenSemanticReleaseReadPort(
             semantic_domain: envelope.release.semantic_domain,
             release_id: envelope.release.release_id,
             release_digest: envelope.release.release_digest,
+            release_generation: envelope.release.release_generation,
+            datasource_id: envelope.relationship_projection.datasource_id,
           },
           executable: executable.data,
           relationships: relationships.data,
