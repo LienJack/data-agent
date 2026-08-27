@@ -631,3 +631,81 @@ const stopReceipt = await verifyDerivationReceipt(
   },
 );
 ```
+
+## Scenario: Semantic successor runtime closure and Falcon24 E4 activation
+
+### 1. Scope / Trigger
+
+- 当前 Published Semantic Release 的投影 payload 无法被生产读路径解释，且历史 Release/Authority Epoch 必须保持不可变时适用。
+- PostgreSQL 是 stage、receipt、formal Release、pointer、workspace defaults 与 Falcon current authority 的唯一权威。
+
+### 2. Signatures
+
+```ts
+buildStageReviewedSemanticSuccessorCommand(input: unknown);
+verifySemanticReleaseEnvelope(input: unknown): Promise<VerifiedSemanticReleaseEnvelope>;
+validateSemanticRuntimeClosure(
+  envelope: VerifiedSemanticReleaseEnvelope,
+): Promise<SemanticRuntimeClosureValidationReceipt>;
+buildFalcon24SemanticReleaseAuthorityProofV2(input: unknown);
+buildCombinedFalcon24SemanticActivationCommand(input: unknown);
+```
+
+```sql
+app_data_agent.activate_falcon24_authority_with_semantic_successor(requested jsonb) returns jsonb
+```
+
+### 3. Contracts
+
+- Stage command 只包含 ChangeSet/review/source snapshot/compiler bundle refs、expected predecessor/pointer version、target generation 与
+  idempotency key；禁止 client projection payload/digest。
+- Stage envelope 恰好包含 `EXECUTABLE | RELATIONSHIP | RUNTIME_RESTRICTION | GRAPH` 四类 typed canonical projection。
+- `projection_digest`、`release_digest`、`stage_digest`、validation/smoke/proof/activation receipt hash 使用独立 hash domain，均排除自身 hash；
+  stage digest 还排除 mutable status/timestamp。
+- `verifySemanticReleaseEnvelope` 先 inert-copy `unknown`，拒绝 Proxy、accessor、自定义 prototype、sparse/超限容器，再验证 strict schema、
+  projection digest、release digest 与 stage exact refs。其返回值使用进程内 WeakSet 品牌；结构克隆不能生成 validation receipt。
+- `validateSemanticRuntimeClosure` 是 stage validation、Worker smoke 与生产 read port 的唯一闭包实现，覆盖 metric/dimension/formula/time/
+  relationship/physical binding/runtime restriction/graph/source/datasource。Quality free-text expression 只验证现有 schema 与 identity，不声明
+  字段级证明。
+- Falcon24 proof v2 固定证明 gen1 predecessor 到 distinct gen2 candidate 的 lineage；combined command 只带 refs/CAS，在一个 PostgreSQL
+  事务内 promotion gen2 并激活 E4。W8 数据库执行需要独立用户授权。
+
+### 4. Validation & Error Matrix
+
+| Condition | Stable result |
+| --- | --- |
+| target generation 不是 predecessor + 1 | `SEMANTIC_SUCCESSOR_GENERATION_INVALID` |
+| projection 缺失/多余、unknown field 或 accessor/Proxy | `SEMANTIC_RELEASE_ENVELOPE_INVALID` |
+| projection/release/stage digest 漂移 | 对应 `*_HASH_MISMATCH` / `*_DIGEST_MISMATCH` |
+| metric/dimension/binding/formula/time/relationship/graph 引用不闭合 | deterministic validation `FAIL` receipt + canonical reason codes |
+| 结构克隆冒充 verified envelope | `SEMANTIC_RELEASE_ENVELOPE_NOT_VERIFIED` |
+| proof candidate 等于 predecessor 或 generation 不连续 | `FALCON24_SEMANTIC_SUCCESSOR_LINEAGE_INVALID` |
+| combined command 携带 projection payload | strict parse failure；数据库 I/O 为 0 |
+| activation 任一步失败 | 整笔 rollback，只观察完整 gen1/E3 |
+
+### 5. Good / Base / Bad Cases
+
+- Good：服务器锁定 reviewed ChangeSet/source，编译四类投影，重算全部 digest，共享 validator PASS 后 stage；smoke PASS 后 combined RPC 原子切换。
+- Base：candidate 闭包失败时完整 stage 与 rejection receipt 原子保存为 `REJECTED`，current 保持 gen1/E3。
+- Bad：CLI 传 projection bytes、UPDATE generation 1、Worker fallback，或先切 semantic 再激活 E4。
+
+### 6. Tests Required
+
+- Contracts：strict/unknown/tamper/hash-domain、generation lineage、proof/combined command/receipt。
+- Semantic：valid closure；metric、dimension、relationship、formula slot、time、quality identity、datasource、graph/source 负例矩阵；恶意
+  accessor/Proxy 与品牌伪造。
+- PostgreSQL 17：fresh chain、exact E3 fixture upgrade、历史 byte invariance、RLS/grants、direct DML denial、same-key replay/conflict。
+- Concurrency/failure injection：combined activation 只能观察 all-old 或 all-new，固定 Semantic -> Falcon 锁序无死锁。
+
+### 7. Wrong vs Correct
+
+```ts
+// Wrong：调用方提供 projection payload 并修补历史 generation 1。
+await repairSemanticProjection({ release_id, projection_payload, projection_digest });
+
+// Correct：调用方只提交 refs/CAS，服务器编译并使用唯一共享 validator。
+const command = await buildStageReviewedSemanticSuccessorCommand(refsAndExpectedVersions);
+const stage = await publicationAuthority.stageReviewedSuccessor(capability, command);
+const verified = await verifySemanticReleaseEnvelope(stage.value);
+const validation = await validateSemanticRuntimeClosure(verified);
+```

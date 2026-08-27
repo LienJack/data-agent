@@ -1,6 +1,6 @@
 # Falcon24 Semantic Generation 2 与 E4 原子权威恢复 — Design
 
-> Review-only。本文定义待批准的目标设计，不授权代码、migration、数据库或门禁操作。
+> Approved for W1-W7 implementation on 2026-08-27。数据库应用与 E4 activation 仍由 W8 的再次授权边界控制。
 
 ## 1. Scope / Trigger
 
@@ -481,11 +481,12 @@ await verifyAllNewThroughProductionPorts(e4, stage);
 Finalizer验证新 bytes；该模式仍是第二 publish authority，并且不能将 gen2 semantic promotion 与 E4 current/defaults 原子绑定。
 因此它不是临时方案，也不能作为 migration backfill。
 
-## 13. Open Review Questions
+## 13. Approved Review Decisions
 
-1. **Quality constraint contract：** W1 是否仅验证当前可结构化字段并明确缩小声明（建议），还是本轮先结构化 expression refs 并承担
-   额外 migration/compatibility scope？
-2. **Diagnostic storage migration：** diagnostic authority 放入 10783，还是作为 W6 的独立后续 migration（建议独立，避免核心
-   activation migration 同时承载 gate policy）？
-3. **Fresh bootstrap admission：** 由部署编排显式执行 gen2 stage/smoke/promotion，还是 bootstrap 命令内部调用相同 Port；无论选择哪种，
-   Web/Worker readiness 都必须在 gen2 current 前 fail closed，且不能出现专用 repair path。
+用户于 2026-08-27 以“执行”批准按推荐默认项推进：
+
+1. **Quality constraint contract：** W1 只验证当前可结构化字段、严格 schema、唯一 identity、severity/sensitivity；自由文本 expression
+   不声明字段级闭包。若未来需要字段引用证明，必须新增结构化合同与兼容 migration，不能回填解释旧文本。
+2. **Diagnostic storage migration：** W6 使用独立 10784，避免 10783 核心原子激活 migration 同时承载 diagnostic/gate policy。
+3. **Fresh bootstrap admission：** bootstrap 只编排同一 stage/smoke/promote Port；Web/Worker 在 gen2 current 前 fail closed。不得新增
+   专用 repair path，且 bootstrap 不修改 generation 1。

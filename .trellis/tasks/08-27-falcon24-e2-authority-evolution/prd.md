@@ -1,7 +1,7 @@
 # Falcon24 Semantic Generation 2 与 E4 原子权威恢复
 
-> Review-only 状态（2026-08-27）：本 PRD、配套 `design.md` 与 `implement.md` 仅供评审。
-> 未经用户明确批准，不得继续实现、执行 migration、修改数据库、激活 E4、运行诊断或正式门禁。
+> 执行状态（2026-08-27）：用户以“执行”明确批准 W1-W7 按本文推荐默认项实施。
+> W8 对专用 E3 数据库应用 migration 与原子激活 E4 仍需再次明确授权；诊断与正式门禁只能在 W8 成功后按 fail-closed 顺序执行。
 
 ## 1. Goal
 
@@ -13,7 +13,7 @@ PostgreSQL 事务内原子激活。原子激活后先完成一条非计分诊断
 
 ## 2. Verified Execution Evidence
 
-以下是截至暂停点已经核实的执行现场，属于本任务问题陈述，不代表后续方案已获批准：
+以下是截至暂停点已经核实并纳入实施前置条件的执行现场：
 
 - 执行 worktree 分支为 `codex/falcon24-e1-authority-reset`，暂停时 HEAD 为
   `ed40397940c389b57f15afb6beb9e80a771846a6`。
@@ -163,5 +163,6 @@ PostgreSQL 事务内原子激活。原子激活后先完成一条非计分诊断
 
 ## 8. Planning Gate
 
-本方案尚未获得实施批准。评审通过前，本任务停留在 review-only：只允许审阅/修订 PRD、design、implement；不得 start 新实施包、
-运行 migration、调用任何修复/activation RPC、创建 E4 diagnostic/gate attempt 或提交当前 dirty 实现。
+W1-W7 已获实施批准；各包必须 TDD、focused/full validation 与 scoped commit。被拒绝的 generation 1 repair dirty 文件继续保持审计
+现场，未经明确处置不得覆盖、暂存或提交。W8 仍是独立授权边界：在再次批准前不得向专用 E3 数据库应用 migration、调用 activation
+RPC、创建 E4 diagnostic/gate attempt 或运行正式门禁。

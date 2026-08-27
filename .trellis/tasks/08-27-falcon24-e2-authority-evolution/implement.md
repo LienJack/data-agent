@@ -1,6 +1,6 @@
 # Falcon24 Semantic Generation 2 与 E4 原子权威恢复 — Implementation Plan
 
-> Review-only。除 W0-R 文档冻结外，所有工作包均等待用户明确批准；当前不得执行、暂存、提交或改数据库。
+> W1-W7 已于 2026-08-27 获用户“执行”批准。W8 数据库应用与 E4 activation 仍需再次明确授权。
 
 ## 0. Current Freeze
 
@@ -19,9 +19,10 @@
 - [x] 冻结审计指纹：5 个 tracked dirty 文件的 binary diff SHA-256 为
   `b33ac56c06211c9c1421c5e332d8d93c1f7f48f44e94d6c6b450f2878d139f68`；untracked repair CLI 的 Git blob 为
   `992536063ea3414f16ea0a07500e1d765b176e19`。
-- [ ] 用户评审并明确批准方案。未批准前 hard stop。
+- [x] 用户评审并明确批准 W1-W7；W8 保持独立 hard stop。
 
-本轮不创建 commit；文档保持未提交供用户评审。Repository Task Commit Policy 不用于把未获批准的实施现场强行提交。
+W0 方案提交：`35f55d21 docs: plan Falcon24 generation 2 E4 recovery`。W1 合同与共享 validator 提交：
+`a86a9494 feat: define semantic successor runtime closure`。
 
 ## 1. Global Preconditions After Approval
 
@@ -45,10 +46,10 @@
 
 **Work**
 
-- [ ] 记录 exact E3 current、gen1 Release/projection bytes、E1/E2/E3 baseline/receipt/run/gate counts 与 hashes。
-- [ ] 固定 rejected alternative 审计指纹与处置决定。
-- [ ] 把三个 open review question 形成批准记录；无决定不得进入 W1。
-- [ ] 运行 Trellis task validation 与 Markdown/link/static consistency check。
+- [x] 记录 exact E3 current、gen1 Release/projection failure、E1/E2/E3 baseline/receipt/run/gate evidence 与 hashes。
+- [x] 固定 rejected alternative 审计指纹；当前处置为原样保留且不得覆盖/暂存/提交。
+- [x] 三个 review question 按推荐默认项批准：free-text quality 缩小声明、diagnostic 独立 10784、bootstrap 复用唯一 Port并 fail closed。
+- [x] 运行 Trellis task validation 与 Markdown/static consistency check。
 
 **Gate / commit**
 
@@ -68,10 +69,10 @@
 
 **Work**
 
-- [ ] Test-first 定义 successor stage、projection set、validation/smoke receipt、proof v2、combined activation refs/hash domains。
-- [ ] 提取 `verifySemanticReleaseEnvelope` / `validateSemanticRuntimeClosure`，保持生产 read port 可复用的纯合同边界。
-- [ ] 覆盖 metric、dimension、relationship、formula AST、time、quality structured refs、restriction、graph/source closure。
-- [ ] 明确 quality free-text 不在证明范围；若评审决定结构化，先扩展 contract/compatibility tests。
+- [x] Test-first 定义 successor stage、projection set、validation/smoke receipt、proof v2、combined activation refs/hash domains。
+- [x] 提取 `verifySemanticReleaseEnvelope` / `validateSemanticRuntimeClosure`，保持生产 read port 可复用的纯合同边界。
+- [x] 覆盖 metric、dimension、relationship、formula AST、time、quality 当前结构化字段、restriction、graph/source closure。
+- [x] 明确 quality free-text 不在字段级证明范围。
 
 **Validation**
 
@@ -362,5 +363,6 @@ W0 approval
 
 ## 5. Approval Boundary
 
-本文不是执行授权。当前终点是用户评审；未收到明确批准前，不运行任何 W1-W10 命令，不提交当前 dirty 实现，不应用 migration，
-不调用 stage/smoke/activation RPC，不创建 E4 diagnostic/Q1/C1。
+W1-W7 可按工作包边界实施并提交，但不得执行或吸收被拒绝的 dirty repair 实现。W8 前必须再次获得用户对专用 E3 数据库 migration
+应用与 E4 activation 的明确授权；此前不调用 activation RPC、不创建 E4 diagnostic/Q1/C1。W8 成功后，W9/W10 仍服从单次
+诊断、首败 HOLD、无 retry/resume 与真实 Trace UI 证据边界。
