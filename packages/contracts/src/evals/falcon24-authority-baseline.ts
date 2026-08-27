@@ -5,10 +5,13 @@ import {
   sha256ContentHash,
   versionIdentifierSchema,
 } from "../common/index.js";
+import { falcon24SuccessorAuthorityEpochSchema } from "../runs/falcon24-authority-identity.js";
 import { falcon24AnalysisCaseIdSchema } from "./falcon24-agent-analysis.js";
 
 export const FALCON24_RETAINED_ASSETS_VERSION = "falcon24-retained-assets@1.0.0" as const;
 export const FALCON24_AUTHORITY_BASELINE_VERSION = "falcon24-authority-baseline@1.0.0" as const;
+export const FALCON24_RETAINED_ASSETS_V2_VERSION = "falcon24-retained-assets@2.0.0" as const;
+export const FALCON24_AUTHORITY_BASELINE_V2_VERSION = "falcon24-authority-baseline@2.0.0" as const;
 
 export const FALCON24_RETAINED_CATEGORIES = Object.freeze([
   "ANALYSIS_RUNTIME",
@@ -204,6 +207,42 @@ const retainedLlmProjectionSchema = z
     addCanonicalLlmProfilesIssue(llm.profiles, context);
   });
 
+function addRetainedAssetsMaterialIssues(
+  material: {
+    retained_categories: readonly string[];
+    discarded_categories: readonly string[];
+    questions: { case_ids: readonly string[] };
+    analysis_runtime: {
+      production_isolation_proven: boolean;
+      production_gate: "GO" | "HOLD";
+    };
+  },
+  context: z.RefinementCtx,
+): void {
+  addCanonicalArrayIssue(material.retained_categories, FALCON24_RETAINED_CATEGORIES, context, [
+    "retained_categories",
+  ]);
+  addCanonicalArrayIssue(material.discarded_categories, FALCON24_DISCARDED_CATEGORIES, context, [
+    "discarded_categories",
+  ]);
+  addCanonicalArrayIssue(
+    material.questions.case_ids,
+    [...falcon24AnalysisCaseIdSchema.options].sort(),
+    context,
+    ["questions", "case_ids"],
+  );
+  if (
+    material.analysis_runtime.production_isolation_proven !==
+    (material.analysis_runtime.production_gate === "GO")
+  ) {
+    context.addIssue({
+      code: "custom",
+      message: "analysis_runtime production_gate 必须与 isolation 证明一致。",
+      path: ["analysis_runtime", "production_gate"],
+    });
+  }
+}
+
 const retainedAssetsMaterialSchema = z
   .strictObject({
     schema_version: z.literal(FALCON24_RETAINED_ASSETS_VERSION),
@@ -271,34 +310,28 @@ const retainedAssetsMaterialSchema = z
       production_gate: z.enum(["GO", "HOLD"]),
     }),
   })
-  .superRefine((material, context) => {
-    addCanonicalArrayIssue(material.retained_categories, FALCON24_RETAINED_CATEGORIES, context, [
-      "retained_categories",
-    ]);
-    addCanonicalArrayIssue(material.discarded_categories, FALCON24_DISCARDED_CATEGORIES, context, [
-      "discarded_categories",
-    ]);
-    addCanonicalArrayIssue(
-      material.questions.case_ids,
-      [...falcon24AnalysisCaseIdSchema.options].sort(),
-      context,
-      ["questions", "case_ids"],
-    );
-    if (
-      material.analysis_runtime.production_isolation_proven !==
-      (material.analysis_runtime.production_gate === "GO")
-    ) {
-      context.addIssue({
-        code: "custom",
-        message: "analysis_runtime production_gate 必须与 isolation 证明一致。",
-        path: ["analysis_runtime", "production_gate"],
-      });
-    }
-  });
+  .superRefine(addRetainedAssetsMaterialIssues);
 
 export const falcon24RetainedAssetsManifestSchema = retainedAssetsMaterialSchema.extend({
   manifest_hash: contentHashSchema,
 });
+
+const retainedAssetsV2MaterialSchema = z
+  .strictObject({
+    ...retainedAssetsMaterialSchema.shape,
+    schema_version: z.literal(FALCON24_RETAINED_ASSETS_V2_VERSION),
+    authority_epoch: falcon24SuccessorAuthorityEpochSchema,
+  })
+  .superRefine(addRetainedAssetsMaterialIssues);
+
+export const falcon24RetainedAssetsManifestV2Schema = retainedAssetsV2MaterialSchema.extend({
+  manifest_hash: contentHashSchema,
+});
+
+export const falcon24RetainedAssetsManifestDocumentSchema = z.union([
+  falcon24RetainedAssetsManifestSchema,
+  falcon24RetainedAssetsManifestV2Schema,
+]);
 
 function normalizeSourceFiles(input: unknown): unknown {
   if (!Array.isArray(input)) return input;
@@ -363,6 +396,23 @@ export async function verifyFalcon24RetainedAssetsManifest(input: unknown) {
   return manifest;
 }
 
+export async function buildFalcon24RetainedAssetsManifestV2(input: unknown) {
+  const material = retainedAssetsV2MaterialSchema.parse(normalizeRetainedMaterial(input));
+  return falcon24RetainedAssetsManifestV2Schema.parse({
+    ...material,
+    manifest_hash: await sha256ContentHash(material),
+  });
+}
+
+export async function verifyFalcon24RetainedAssetsManifestDocument(input: unknown) {
+  const manifest = falcon24RetainedAssetsManifestDocumentSchema.parse(input);
+  const { manifest_hash: observedHash, ...material } = manifest;
+  if ((await sha256ContentHash(material)) !== observedHash) {
+    throw new TypeError("FALCON24_RETAINED_ASSETS_HASH_INVALID");
+  }
+  return manifest;
+}
+
 const authorityBaselineMaterialSchema = z
   .strictObject({
     schema_version: z.literal(FALCON24_AUTHORITY_BASELINE_VERSION),
@@ -390,19 +440,41 @@ const authorityBaselineMaterialSchema = z
     production_isolation_proven: z.boolean(),
     production_gate: z.enum(["GO", "HOLD"]),
   })
-  .superRefine((material, context) => {
-    if (material.production_isolation_proven !== (material.production_gate === "GO")) {
-      context.addIssue({
-        code: "custom",
-        message: "production_gate 必须与 production_isolation_proven 一致。",
-        path: ["production_gate"],
-      });
-    }
-  });
+  .superRefine(addAuthorityBaselineMaterialIssues);
+
+function addAuthorityBaselineMaterialIssues(
+  material: { production_isolation_proven: boolean; production_gate: "GO" | "HOLD" },
+  context: z.RefinementCtx,
+): void {
+  if (material.production_isolation_proven !== (material.production_gate === "GO")) {
+    context.addIssue({
+      code: "custom",
+      message: "production_gate 必须与 production_isolation_proven 一致。",
+      path: ["production_gate"],
+    });
+  }
+}
 
 export const falcon24AuthorityBaselineSchema = authorityBaselineMaterialSchema.extend({
   baseline_hash: contentHashSchema,
 });
+
+const authorityBaselineV2MaterialSchema = z
+  .strictObject({
+    ...authorityBaselineMaterialSchema.shape,
+    schema_version: z.literal(FALCON24_AUTHORITY_BASELINE_V2_VERSION),
+    authority_epoch: falcon24SuccessorAuthorityEpochSchema,
+  })
+  .superRefine(addAuthorityBaselineMaterialIssues);
+
+export const falcon24AuthorityBaselineV2Schema = authorityBaselineV2MaterialSchema.extend({
+  baseline_hash: contentHashSchema,
+});
+
+export const falcon24AuthorityBaselineDocumentSchema = z.union([
+  falcon24AuthorityBaselineSchema,
+  falcon24AuthorityBaselineV2Schema,
+]);
 
 export async function buildFalcon24AuthorityBaseline(input: unknown) {
   const material = authorityBaselineMaterialSchema.parse(input);
@@ -421,5 +493,26 @@ export async function verifyFalcon24AuthorityBaseline(input: unknown) {
   return baseline;
 }
 
+export async function buildFalcon24AuthorityBaselineV2(input: unknown) {
+  const material = authorityBaselineV2MaterialSchema.parse(input);
+  return falcon24AuthorityBaselineV2Schema.parse({
+    ...material,
+    baseline_hash: await sha256ContentHash(material),
+  });
+}
+
+export async function verifyFalcon24AuthorityBaselineDocument(input: unknown) {
+  const baseline = falcon24AuthorityBaselineDocumentSchema.parse(input);
+  const { baseline_hash: observedHash, ...material } = baseline;
+  if ((await sha256ContentHash(material)) !== observedHash) {
+    throw new TypeError("FALCON24_AUTHORITY_BASELINE_HASH_INVALID");
+  }
+  return baseline;
+}
+
 export type Falcon24RetainedAssetsManifest = z.infer<typeof falcon24RetainedAssetsManifestSchema>;
 export type Falcon24AuthorityBaseline = z.infer<typeof falcon24AuthorityBaselineSchema>;
+export type Falcon24RetainedAssetsManifestV2 = z.infer<
+  typeof falcon24RetainedAssetsManifestV2Schema
+>;
+export type Falcon24AuthorityBaselineV2 = z.infer<typeof falcon24AuthorityBaselineV2Schema>;

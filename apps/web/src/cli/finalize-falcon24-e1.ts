@@ -8,10 +8,6 @@ import {
   buildBuiltinTeamMaterialization,
   materializeBuiltinTeamProfiles,
 } from "@data-agent/agent-runtime";
-import {
-  buildWorkspaceDefaultsCasUpdateCommandCandidate,
-  type VersionedResourceReference,
-} from "@data-agent/contracts";
 import { sha256ContentHash } from "@data-agent/contracts/common";
 import {
   buildFalcon24AuthorityBaseline,
@@ -20,17 +16,23 @@ import {
 import { verifyFalcon24E1StagingReceipt } from "@data-agent/contracts/runs";
 import { loadRuntimeBuildIdentity } from "@data-agent/contracts/server";
 import {
+  buildWorkspaceDefaultsCasUpdateCommandCandidate,
+  type VersionedResourceReference,
+} from "@data-agent/contracts/workspaces";
+import { createPostgresAgentProfileRegistry } from "@data-agent/platform/agents";
+import {
   adaptPgCatalogPool,
-  adaptPgPool,
-  createPostgresAgentProfileRegistry,
-  createPostgresCapabilityAuthority,
   createPostgresCatalogScanner,
-  createPostgresEffectiveConfigResolver,
   createPostgresSchemaSnapshotStore,
-  createPostgresSkillRegistry,
-} from "@data-agent/platform";
-import { createPostgresFalcon24AuthorityEpoch } from "@data-agent/platform/runs";
+} from "@data-agent/platform/catalog";
+import { createPostgresSkillRegistry } from "@data-agent/platform/extensions";
+import { adaptPgPool } from "@data-agent/platform/persistence";
+import {
+  createPostgresEffectiveConfigResolver,
+  createPostgresFalcon24AuthorityEpoch,
+} from "@data-agent/platform/runs";
 import { loadRuntimeEnvironment } from "@data-agent/platform/runtime-config";
+import { createPostgresCapabilityAuthority } from "@data-agent/platform/tenancy";
 import pg from "pg";
 import { z } from "zod";
 import { verifyOpenSandboxAnalysisAttestation } from "../../../../scripts/verify-opensandbox-analysis-attestation.js";

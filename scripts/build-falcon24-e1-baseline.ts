@@ -5,9 +5,13 @@ import { resolve } from "node:path";
 import { MODEL_PROVIDER_CATALOG } from "../apps/web/src/lib/model-provider-catalog.js";
 import {
   buildFalcon24RetainedAssetsManifest,
+  buildFalcon24RetainedAssetsManifestV2,
+  FALCON24_AUTHORITY_EPOCH,
   FALCON24_DISCARDED_CATEGORIES,
   FALCON24_RETAINED_CATEGORIES,
+  FALCON24_TARGET_AUTHORITY_EPOCH,
   falcon24RetainedLlmConfigSchema,
+  falcon24TargetAuthorityEpochSchema,
   sha256ContentHash,
 } from "../packages/contracts/src/index.js";
 import { buildFalcon24AgentAnalysisAcceptanceSuite } from "../packages/evals/src/test-center/falcon24-agent-analysis-suite.js";
@@ -33,10 +37,22 @@ async function fileReferences(root: string, paths: readonly string[]) {
 
 async function main(): Promise<void> {
   const root = resolve(process.cwd());
-  const exportPath = resolve(root, argument("export") ?? ".data/falcon24-e1-retained-export.json");
+  const authorityEpochArgument = argument("authority-epoch");
+  const parsedTargetEpoch = falcon24TargetAuthorityEpochSchema.safeParse(authorityEpochArgument);
+  if (authorityEpochArgument !== undefined && !parsedTargetEpoch.success) {
+    throw new TypeError("FALCON24_AUTHORITY_EPOCH_INVALID");
+  }
+  const authorityEpoch = parsedTargetEpoch.success
+    ? parsedTargetEpoch.data
+    : FALCON24_AUTHORITY_EPOCH;
+  const epochDirectory = authorityEpoch.toLowerCase();
+  const exportPath = resolve(
+    root,
+    argument("export") ?? `.data/falcon24-${epochDirectory}-retained-export.json`,
+  );
   const outputPath = resolve(
     root,
-    argument("output") ?? "infra/falcon/e1/retained-assets-manifest.json",
+    argument("output") ?? `infra/falcon/${epochDirectory}/retained-assets-manifest.json`,
   );
   const sourceManifest = json(resolve(root, "infra/falcon/v1/source-manifest.json")) as {
     source_commit: string;
@@ -201,9 +217,12 @@ async function main(): Promise<void> {
       required_operator_calls,
     })),
   );
-  const manifest = await buildFalcon24RetainedAssetsManifest({
-    schema_version: "falcon24-retained-assets@1.0.0",
-    authority_epoch: "E1",
+  const manifestInput = {
+    schema_version:
+      authorityEpoch === FALCON24_TARGET_AUTHORITY_EPOCH
+        ? "falcon24-retained-assets@2.0.0"
+        : "falcon24-retained-assets@1.0.0",
+    authority_epoch: authorityEpoch,
     retained_categories: FALCON24_RETAINED_CATEGORIES,
     discarded_categories: FALCON24_DISCARDED_CATEGORIES,
     upstream: {
@@ -275,7 +294,11 @@ async function main(): Promise<void> {
       production_isolation_proven: attestation.local_probe.production_isolation_proven,
       production_gate: attestation.production_gate.decision,
     },
-  });
+  };
+  const manifest =
+    authorityEpoch === FALCON24_TARGET_AUTHORITY_EPOCH
+      ? await buildFalcon24RetainedAssetsManifestV2(manifestInput)
+      : await buildFalcon24RetainedAssetsManifest(manifestInput);
   await writeFile(outputPath, `${JSON.stringify(manifest, null, 2)}\n`);
   process.stdout.write(
     `${JSON.stringify({ terminal: "READY", manifest_hash: manifest.manifest_hash, output: outputPath })}\n`,

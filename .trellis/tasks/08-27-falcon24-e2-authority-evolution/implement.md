@@ -9,11 +9,11 @@
 
 ## E2-1 — Versioned Epoch and Gate Contracts
 
-- [ ] 保留 E1 v1 decoder，新增 canonical Epoch/ordinal、derived Q1/C1 IDs和 v2 retained/baseline/staging/activation/binding schemas。
-- [ ] 新增 v2 qualification/campaign/UI receipt schemas；strict union规范化历史读取，current builder只发 v2。
-- [ ] 更新 exports、hash fixtures、malformed/cross-Epoch tests和 build-baseline CLI explicit epoch输入。
-- [ ] 验证：Contracts focused tests、typecheck、baseline determinism与 secret/legacy identity scan。
-- [ ] Commit：`feat: add versioned Falcon24 authority epochs`。
+- [x] 保留 E1 v1 decoder，新增 canonical Epoch/ordinal、derived Q1/C1 IDs和 v2 retained/baseline/staging/activation/binding schemas。
+- [x] 新增 v2 qualification/campaign/UI receipt schemas；strict union规范化历史读取，current builder只发 v2。
+- [x] 更新 exports、hash fixtures、malformed/cross-Epoch tests和 build-baseline CLI explicit epoch输入。
+- [x] 验证：Contracts focused tests、typecheck、baseline determinism与 secret/legacy identity scan。
+- [x] Commit：`feat: add versioned Falcon24 authority epochs`。
 
 ## E2-2 — Forward-only PostgreSQL Authority Migration
 

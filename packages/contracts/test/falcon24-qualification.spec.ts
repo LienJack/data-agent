@@ -3,8 +3,10 @@ import { sha256ContentHash } from "../src/common/index.js";
 import { falcon24AnalysisCaseIdSchema } from "../src/evals/falcon24-agent-analysis.js";
 import {
   buildFalcon24QualificationManifest,
+  buildFalcon24QualificationManifestV2,
   FALCON24_QUALIFICATION_EXPECTED_PATH,
   verifyFalcon24QualificationManifest,
+  verifyFalcon24QualificationManifestDocument,
 } from "../src/evals/falcon24-qualification.js";
 
 const id = (suffix: number) => `00000000-0000-4000-8000-${String(suffix).padStart(12, "0")}`;
@@ -149,5 +151,25 @@ describe("Falcon24 qualification contracts", () => {
     await expect(
       verifyFalcon24QualificationManifest({ ...manifest, web_build_hash: hash("9") }),
     ).rejects.toThrow("FALCON24_QUALIFICATION_MANIFEST_HASH_INVALID");
+  });
+
+  it("binds the v2 qualification manifest to the exact derived epoch gate", async () => {
+    const e1 = await buildFalcon24QualificationManifest(await manifestMaterial());
+    const material = {
+      ...(await manifestMaterial()),
+      schema_version: "falcon24-qualification-manifest@2.0.0",
+      authority_epoch: "E2",
+      qualification_id: "E2-Q1",
+    };
+    const e2 = await buildFalcon24QualificationManifestV2(material);
+
+    await expect(verifyFalcon24QualificationManifestDocument(e1)).resolves.toEqual(e1);
+    await expect(verifyFalcon24QualificationManifestDocument(e2)).resolves.toEqual(e2);
+    await expect(
+      buildFalcon24QualificationManifestV2({ ...material, qualification_id: "E1-Q1" }),
+    ).rejects.toThrow("authority_epoch");
+    await expect(
+      buildFalcon24QualificationManifestV2({ ...material, qualification_id: "E2-Q2" }),
+    ).rejects.toThrow();
   });
 });

@@ -2,13 +2,21 @@ import { describe, expect, it } from "vitest";
 import { artifactReferenceIdentity } from "../src/artifacts/envelope.js";
 import { sha256ContentHash } from "../src/common/index.js";
 import {
+  authorityEpochForFalcon24Gate,
   buildFalcon24AcceptanceRunManifest,
+  buildFalcon24AcceptanceRunManifestV2,
   buildFalcon24ResolutionTraceGateReceipt,
   buildFalcon24ResolutionTraceUiGateReceipt,
+  buildFalcon24ResolutionTraceUiGateReceiptV2,
   buildFalcon24SandboxReclamationReceipt,
+  campaignIdForEpoch,
+  falcon24GateIdSchema,
+  qualificationIdForEpoch,
   verifyFalcon24AcceptanceRunManifest,
+  verifyFalcon24AcceptanceRunManifestDocument,
   verifyFalcon24ResolutionTraceGateReceipt,
   verifyFalcon24ResolutionTraceUiGateReceipt,
+  verifyFalcon24ResolutionTraceUiGateReceiptDocument,
   verifyFalcon24SandboxReclamationReceipt,
 } from "../src/evals/falcon24-acceptance-campaign.js";
 import { falcon24AnalysisCaseIdSchema } from "../src/evals/falcon24-agent-analysis.js";
@@ -38,6 +46,16 @@ function artifactReference(
 }
 
 describe("Falcon24 acceptance campaign contracts", () => {
+  it("derives only Q1/C1 identities from canonical authority epochs", () => {
+    expect(qualificationIdForEpoch("E2")).toBe("E2-Q1");
+    expect(campaignIdForEpoch("E10")).toBe("E10-C1");
+    expect(authorityEpochForFalcon24Gate("E10-C1")).toBe("E10");
+    expect(falcon24GateIdSchema.parse("E2-Q1")).toBe("E2-Q1");
+    for (const invalid of ["E2-Q2", "E2-C2", "E02-Q1", "E2Q1"]) {
+      expect(() => falcon24GateIdSchema.parse(invalid)).toThrow();
+    }
+  });
+
   it("builds and verifies the exact 30-slot frozen manifest", async () => {
     const runs = falcon24AnalysisCaseIdSchema.options.flatMap((caseId, caseIndex) =>
       (["COLD", "WARM"] as const).flatMap((runVariant, variantIndex) =>
@@ -67,6 +85,40 @@ describe("Falcon24 acceptance campaign contracts", () => {
     await expect(
       verifyFalcon24AcceptanceRunManifest({ ...manifest, source_fingerprint: hash("c") }),
     ).rejects.toThrow("FALCON24_ANALYSIS_RUN_MANIFEST_HASH_INVALID");
+  });
+
+  it("binds the v2 campaign manifest to the exact derived epoch gate", async () => {
+    const runs = falcon24AnalysisCaseIdSchema.options.flatMap((caseId, caseIndex) =>
+      (["COLD", "WARM"] as const).flatMap((runVariant, variantIndex) =>
+        [1, 2, 3].map((repetition) => ({
+          run_id: id(300 + caseIndex * 10 + variantIndex * 3 + repetition),
+          case_id: caseId,
+          run_variant: runVariant,
+          repetition,
+        })),
+      ),
+    );
+    const material = {
+      schema_version: "falcon24-analysis-run-manifest@3.0.0",
+      authority_epoch: "E2",
+      campaign_id: "E2-C1",
+      attempt_id: id(200),
+      winning_qualification_attempt_id: id(201),
+      authority_baseline_hash: hash("0"),
+      source_fingerprint: hash("a"),
+      frozen_contract_hash: hash("b"),
+      runtime_attestation_hash: hash("d"),
+      runs,
+    };
+    const manifest = await buildFalcon24AcceptanceRunManifestV2(material);
+
+    await expect(verifyFalcon24AcceptanceRunManifestDocument(manifest)).resolves.toEqual(manifest);
+    await expect(
+      buildFalcon24AcceptanceRunManifestV2({ ...material, campaign_id: "E1-C1" }),
+    ).rejects.toThrow("authority_epoch");
+    await expect(
+      buildFalcon24AcceptanceRunManifestV2({ ...material, campaign_id: "E2-C2" }),
+    ).rejects.toThrow();
   });
 
   it("hashes the exact zero-residual reclamation receipt", async () => {
@@ -171,6 +223,23 @@ describe("Falcon24 acceptance campaign contracts", () => {
     });
     await expect(verifyFalcon24ResolutionTraceUiGateReceipt(receipt)).resolves.toEqual(receipt);
     const { receipt_hash: _receiptHash, ...receiptMaterial } = receipt;
+    const e2Receipt = await buildFalcon24ResolutionTraceUiGateReceiptV2({
+      ...receiptMaterial,
+      schema_version: "falcon24-resolution-trace-ui-gate-receipt@2.0.0",
+      authority_epoch: "E2",
+      campaign_id: "E2-C1",
+    });
+    await expect(verifyFalcon24ResolutionTraceUiGateReceiptDocument(e2Receipt)).resolves.toEqual(
+      e2Receipt,
+    );
+    await expect(
+      buildFalcon24ResolutionTraceUiGateReceiptV2({
+        ...receiptMaterial,
+        schema_version: "falcon24-resolution-trace-ui-gate-receipt@2.0.0",
+        authority_epoch: "E2",
+        campaign_id: "E1-C1",
+      }),
+    ).rejects.toThrow("authority_epoch");
     await expect(
       buildFalcon24ResolutionTraceUiGateReceipt({
         ...receiptMaterial,

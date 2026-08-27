@@ -32,6 +32,10 @@
       "types": "./dist/datasources/adapters/index.d.ts",
       "import": "./dist/datasources/adapters/index.js"
     },
+    "./extensions": {
+      "types": "./dist/extensions/index.d.ts",
+      "import": "./dist/extensions/index.js"
+    },
     "./jobs": {
       "types": "./dist/jobs/index.d.ts",
       "import": "./dist/jobs/index.js"

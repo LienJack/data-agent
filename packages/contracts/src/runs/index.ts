@@ -24,6 +24,7 @@ import type { AuthoritativeReleaseManifest } from "./release-manifest.js";
 
 export * from "./authority-epoch.js";
 export * from "./effective-config.js";
+export * from "./falcon24-authority-identity.js";
 export * from "./interruption.js";
 export * from "./public-events.js";
 export * from "./release-manifest.js";

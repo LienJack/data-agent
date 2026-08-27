@@ -1,9 +1,18 @@
 import { z } from "zod";
 import { artifactReferenceSchema } from "../artifacts/envelope.js";
 import { contentHashSchema, immutableIdSchema, sha256ContentHash } from "../common/index.js";
-import { falcon24AuthorityBaselineSchema } from "../evals/falcon24-authority-baseline.js";
+import {
+  falcon24AuthorityBaselineSchema,
+  falcon24AuthorityBaselineV2Schema,
+} from "../evals/falcon24-authority-baseline.js";
+import {
+  FALCON24_E1_AUTHORITY_EPOCH,
+  falcon24AuthorityEpochSchema,
+  falcon24E1AuthorityEpochSchema,
+  falcon24SuccessorAuthorityEpochSchema,
+} from "./falcon24-authority-identity.js";
 
-export const FALCON24_AUTHORITY_EPOCH = "E1" as const;
+export const FALCON24_AUTHORITY_EPOCH = FALCON24_E1_AUTHORITY_EPOCH;
 export const FALCON24_E1_STAGING_COMPONENTS = Object.freeze([
   "AGENT_PROFILES",
   "DATASET",
@@ -13,7 +22,7 @@ export const FALCON24_E1_STAGING_COMPONENTS = Object.freeze([
   "SEMANTIC_RELEASE",
 ] as const);
 
-export const falcon24AuthorityEpochSchema = z.literal(FALCON24_AUTHORITY_EPOCH);
+export { falcon24AuthorityEpochSchema } from "./falcon24-authority-identity.js";
 export const falcon24E1StagingComponentSchema = z.enum(FALCON24_E1_STAGING_COMPONENTS);
 
 const stableFailureCodeSchema = z
@@ -22,13 +31,26 @@ const stableFailureCodeSchema = z
   .max(128)
   .regex(/^[A-Z][A-Z0-9_]{2,127}$/u);
 
-export const falcon24AuthorityBindingSchema = z.strictObject({
+export const falcon24AuthorityBindingV1Schema = z.strictObject({
   schema_version: z.literal("falcon24-authority-binding@1.0.0"),
-  authority_epoch: falcon24AuthorityEpochSchema,
+  authority_epoch: falcon24E1AuthorityEpochSchema,
   baseline_id: immutableIdSchema,
   baseline_hash: contentHashSchema,
   activation_attempt_id: immutableIdSchema,
 });
+
+export const falcon24AuthorityBindingV2Schema = z.strictObject({
+  schema_version: z.literal("falcon24-authority-binding@2.0.0"),
+  authority_epoch: falcon24SuccessorAuthorityEpochSchema,
+  baseline_id: immutableIdSchema,
+  baseline_hash: contentHashSchema,
+  activation_attempt_id: immutableIdSchema,
+});
+
+export const falcon24AuthorityBindingSchema = z.union([
+  falcon24AuthorityBindingV1Schema,
+  falcon24AuthorityBindingV2Schema,
+]);
 
 export const falcon24AuthorityPersistenceBindingSchema = z.strictObject({
   authority_epoch: falcon24AuthorityEpochSchema,
@@ -42,6 +64,29 @@ export const falcon24E1StagingSessionRequestSchema = z.strictObject({
   retained_assets_hash: contentHashSchema,
 });
 
+export const falcon24StagingSessionRequestV2Schema = z.strictObject({
+  schema_version: z.literal("falcon24-staging-session@2.0.0"),
+  authority_epoch: falcon24SuccessorAuthorityEpochSchema,
+  staging_id: immutableIdSchema,
+  retained_assets_hash: contentHashSchema,
+});
+
+function addStagingReceiptIsolationIssue(
+  receipt: {
+    component: z.infer<typeof falcon24E1StagingComponentSchema>;
+    production_isolation_proven: boolean;
+  },
+  context: z.RefinementCtx,
+): void {
+  if (receipt.component !== "SANDBOX_RUNTIME" && receipt.production_isolation_proven) {
+    context.addIssue({
+      code: "custom",
+      message: "只有 SANDBOX_RUNTIME receipt 可以声明 production isolation proof。",
+      path: ["production_isolation_proven"],
+    });
+  }
+}
+
 const falcon24E1StagingReceiptMaterialSchema = z
   .strictObject({
     schema_version: z.literal("falcon24-e1-staging-receipt@1.0.0"),
@@ -51,19 +96,28 @@ const falcon24E1StagingReceiptMaterialSchema = z
     evidence_hash: contentHashSchema,
     production_isolation_proven: z.boolean(),
   })
-  .superRefine((receipt, context) => {
-    if (receipt.component !== "SANDBOX_RUNTIME" && receipt.production_isolation_proven) {
-      context.addIssue({
-        code: "custom",
-        message: "只有 SANDBOX_RUNTIME receipt 可以声明 production isolation proof。",
-        path: ["production_isolation_proven"],
-      });
-    }
-  });
+  .superRefine(addStagingReceiptIsolationIssue);
 
 export const falcon24E1StagingReceiptSchema = falcon24E1StagingReceiptMaterialSchema.extend({
   receipt_hash: contentHashSchema,
 });
+
+const falcon24StagingReceiptV2MaterialSchema = z
+  .strictObject({
+    ...falcon24E1StagingReceiptMaterialSchema.shape,
+    schema_version: z.literal("falcon24-staging-receipt@2.0.0"),
+    authority_epoch: falcon24SuccessorAuthorityEpochSchema,
+  })
+  .superRefine(addStagingReceiptIsolationIssue);
+
+export const falcon24StagingReceiptV2Schema = falcon24StagingReceiptV2MaterialSchema.extend({
+  receipt_hash: contentHashSchema,
+});
+
+export const falcon24StagingReceiptDocumentSchema = z.union([
+  falcon24E1StagingReceiptSchema,
+  falcon24StagingReceiptV2Schema,
+]);
 
 export async function buildFalcon24E1StagingReceipt(input: unknown) {
   const material = falcon24E1StagingReceiptMaterialSchema.parse(input);
@@ -82,10 +136,44 @@ export async function verifyFalcon24E1StagingReceipt(input: unknown) {
   return receipt;
 }
 
+export async function buildFalcon24StagingReceiptV2(input: unknown) {
+  const material = falcon24StagingReceiptV2MaterialSchema.parse(input);
+  return falcon24StagingReceiptV2Schema.parse({
+    ...material,
+    receipt_hash: await sha256ContentHash(material),
+  });
+}
+
+export async function verifyFalcon24StagingReceiptV2(input: unknown) {
+  const receipt = falcon24StagingReceiptV2Schema.parse(input);
+  const { receipt_hash: observedHash, ...material } = receipt;
+  if ((await sha256ContentHash(material)) !== observedHash) {
+    throw new TypeError("FALCON24_STAGING_RECEIPT_HASH_INVALID");
+  }
+  return receipt;
+}
+
 export const falcon24E1StageBaselineRequestSchema = z.strictObject({
   staging_id: immutableIdSchema,
   baseline: falcon24AuthorityBaselineSchema,
 });
+
+export const falcon24StageBaselineRequestV2Schema = z
+  .strictObject({
+    schema_version: z.literal("falcon24-stage-baseline-request@2.0.0"),
+    authority_epoch: falcon24SuccessorAuthorityEpochSchema,
+    staging_id: immutableIdSchema,
+    baseline: falcon24AuthorityBaselineV2Schema,
+  })
+  .superRefine((request, context) => {
+    if (request.authority_epoch !== request.baseline.authority_epoch) {
+      context.addIssue({
+        code: "custom",
+        message: "baseline authority_epoch 必须与 staging request 一致。",
+        path: ["baseline", "authority_epoch"],
+      });
+    }
+  });
 
 export const falcon24E1ActivationAttemptRequestSchema = z.strictObject({
   attempt_id: immutableIdSchema,
@@ -99,6 +187,21 @@ export const falcon24E1ActivationHoldRequestSchema =
   });
 
 export const falcon24E1ActivationRequestSchema = falcon24E1ActivationAttemptRequestSchema;
+
+export const falcon24ActivationAttemptRequestV2Schema = z.strictObject({
+  schema_version: z.literal("falcon24-activation-request@2.0.0"),
+  authority_epoch: falcon24SuccessorAuthorityEpochSchema,
+  attempt_id: immutableIdSchema,
+  baseline_id: immutableIdSchema,
+  expected_baseline_hash: contentHashSchema,
+});
+
+export const falcon24ActivationHoldRequestV2Schema =
+  falcon24ActivationAttemptRequestV2Schema.extend({
+    failure_code: stableFailureCodeSchema,
+  });
+
+export const falcon24ActivationRequestV2Schema = falcon24ActivationAttemptRequestV2Schema;
 
 export const falcon24E1ActivationAttemptSchema = z
   .strictObject({
@@ -119,6 +222,31 @@ export const falcon24E1ActivationAttemptSchema = z
     }
   });
 
+export const falcon24ActivationAttemptV2Schema = z
+  .strictObject({
+    schema_version: z.literal("falcon24-activation-attempt@2.0.0"),
+    authority_epoch: falcon24SuccessorAuthorityEpochSchema,
+    attempt_id: immutableIdSchema,
+    baseline_id: immutableIdSchema,
+    expected_baseline_hash: contentHashSchema,
+    status: z.enum(["OPEN", "HOLD", "ACTIVATED"]),
+    failure_code: stableFailureCodeSchema.nullable(),
+  })
+  .superRefine((attempt, context) => {
+    if ((attempt.status === "HOLD") !== (attempt.failure_code !== null)) {
+      context.addIssue({
+        code: "custom",
+        message: "只有 HOLD activation attempt 必须携带 failure_code。",
+        path: ["failure_code"],
+      });
+    }
+  });
+
+export const falcon24ActivationAttemptDocumentSchema = z.union([
+  falcon24E1ActivationAttemptSchema,
+  falcon24ActivationAttemptV2Schema,
+]);
+
 export const falcon24RunAuthorityLookupSchema = z.strictObject({
   run_id: immutableIdSchema,
 });
@@ -126,7 +254,7 @@ export const falcon24RunAuthorityLookupSchema = z.strictObject({
 const falcon24E1UiReceiptCommonSchema = z.strictObject({
   run_id: immutableIdSchema,
   conversation_id: immutableIdSchema,
-  authority: falcon24AuthorityBindingSchema,
+  authority: falcon24AuthorityBindingV1Schema,
   web_build: z.strictObject({ build_id: contentHashSchema, generation_id: contentHashSchema }),
   browser_harness_version: z.literal("falcon24-agent-browser-trace-gate@2.0.0"),
   viewport: z.strictObject({
@@ -174,6 +302,33 @@ export const falcon24E1UiReceiptSchema = z.union([
   falcon24TraceUiReceiptSchema,
 ]);
 
+const falcon24QaE2eReceiptV2MaterialSchema = z.strictObject({
+  ...falcon24QaE2eReceiptMaterialSchema.shape,
+  schema_version: z.literal("falcon24-qa-e2e-receipt@2.0.0"),
+  authority: falcon24AuthorityBindingV2Schema,
+});
+export const falcon24QaE2eReceiptV2Schema = falcon24QaE2eReceiptV2MaterialSchema.extend({
+  receipt_hash: contentHashSchema,
+});
+
+const falcon24TraceUiReceiptV2MaterialSchema = z.strictObject({
+  ...falcon24TraceUiReceiptMaterialSchema.shape,
+  schema_version: z.literal("falcon24-trace-ui-receipt@2.0.0"),
+  authority: falcon24AuthorityBindingV2Schema,
+});
+export const falcon24TraceUiReceiptV2Schema = falcon24TraceUiReceiptV2MaterialSchema.extend({
+  receipt_hash: contentHashSchema,
+});
+
+export const falcon24UiReceiptV2Schema = z.union([
+  falcon24QaE2eReceiptV2Schema,
+  falcon24TraceUiReceiptV2Schema,
+]);
+export const falcon24UiReceiptDocumentSchema = z.union([
+  falcon24E1UiReceiptSchema,
+  falcon24UiReceiptV2Schema,
+]);
+
 export async function buildFalcon24QaE2eReceipt(input: unknown) {
   const material = falcon24QaE2eReceiptMaterialSchema.parse(input);
   return falcon24QaE2eReceiptSchema.parse({
@@ -199,10 +354,38 @@ export async function verifyFalcon24E1UiReceipt(input: unknown) {
   return receipt;
 }
 
+export async function buildFalcon24QaE2eReceiptV2(input: unknown) {
+  const material = falcon24QaE2eReceiptV2MaterialSchema.parse(input);
+  return falcon24QaE2eReceiptV2Schema.parse({
+    ...material,
+    receipt_hash: await sha256ContentHash(material),
+  });
+}
+
+export async function buildFalcon24TraceUiReceiptV2(input: unknown) {
+  const material = falcon24TraceUiReceiptV2MaterialSchema.parse(input);
+  return falcon24TraceUiReceiptV2Schema.parse({
+    ...material,
+    receipt_hash: await sha256ContentHash(material),
+  });
+}
+
+export async function verifyFalcon24UiReceiptDocument(input: unknown) {
+  const receipt = falcon24UiReceiptDocumentSchema.parse(input);
+  const { receipt_hash: observedHash, ...material } = receipt;
+  if ((await sha256ContentHash(material)) !== observedHash) {
+    throw new TypeError("FALCON24_UI_RECEIPT_HASH_INVALID");
+  }
+  return receipt;
+}
+
 export type Falcon24AuthorityBinding = z.infer<typeof falcon24AuthorityBindingSchema>;
 export type Falcon24AuthorityPersistenceBinding = z.infer<
   typeof falcon24AuthorityPersistenceBindingSchema
 >;
 export type Falcon24E1StagingReceipt = z.infer<typeof falcon24E1StagingReceiptSchema>;
+export type Falcon24StagingReceiptV2 = z.infer<typeof falcon24StagingReceiptV2Schema>;
 export type Falcon24E1ActivationAttempt = z.infer<typeof falcon24E1ActivationAttemptSchema>;
 export type Falcon24E1UiReceipt = z.infer<typeof falcon24E1UiReceiptSchema>;
+export type Falcon24ActivationAttemptV2 = z.infer<typeof falcon24ActivationAttemptV2Schema>;
+export type Falcon24UiReceiptV2 = z.infer<typeof falcon24UiReceiptV2Schema>;

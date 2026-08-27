@@ -3,7 +3,7 @@
   "name": "falcon24-e2-authority-evolution",
   "title": "Falcon24 E2 Authority Evolution",
   "description": "Preserve the formal E1 HOLD history, evolve Falcon24 authority contracts and PostgreSQL state to E2, then rerun the full qualification and campaign gates.",
-  "status": "planning",
+  "status": "in_progress",
   "dev_type": null,
   "scope": "contracts, PostgreSQL authority migrations, platform, worker, web, trace/UI, E2 qualification and campaign",
   "package": null,

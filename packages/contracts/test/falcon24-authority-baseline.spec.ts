@@ -1,9 +1,13 @@
 import { describe, expect, it } from "vitest";
 import {
   buildFalcon24AuthorityBaseline,
+  buildFalcon24AuthorityBaselineV2,
   buildFalcon24RetainedAssetsManifest,
+  buildFalcon24RetainedAssetsManifestV2,
   verifyFalcon24AuthorityBaseline,
+  verifyFalcon24AuthorityBaselineDocument,
   verifyFalcon24RetainedAssetsManifest,
+  verifyFalcon24RetainedAssetsManifestDocument,
 } from "../src/evals/falcon24-authority-baseline.js";
 
 const hash = (character: string) => `sha256:${character.repeat(64)}`;
@@ -259,5 +263,71 @@ describe("Falcon24 E1 authority baseline", () => {
         production_gate: "HOLD",
       }),
     ).rejects.toThrow("production_gate");
+  });
+
+  it("preserves E1 v1 while signing E2 only under v2 document versions", async () => {
+    const e1 = await buildFalcon24RetainedAssetsManifest(retainedMaterial());
+    const e2 = await buildFalcon24RetainedAssetsManifestV2({
+      ...retainedMaterial(),
+      schema_version: "falcon24-retained-assets@2.0.0",
+      authority_epoch: "E2",
+    });
+    const e2Reordered = await buildFalcon24RetainedAssetsManifestV2({
+      ...retainedMaterial(),
+      schema_version: "falcon24-retained-assets@2.0.0",
+      authority_epoch: "E2",
+      semantics: {
+        ...retainedMaterial().semantics,
+        source_files: [...retainedMaterial().semantics.source_files].reverse(),
+      },
+    });
+
+    await expect(verifyFalcon24RetainedAssetsManifestDocument(e1)).resolves.toEqual(e1);
+    await expect(verifyFalcon24RetainedAssetsManifestDocument(e2)).resolves.toEqual(e2);
+    expect(e2Reordered).toEqual(e2);
+    await expect(
+      buildFalcon24RetainedAssetsManifestV2({
+        ...retainedMaterial(),
+        authority_epoch: "E2",
+      }),
+    ).rejects.toThrow();
+    await expect(
+      buildFalcon24RetainedAssetsManifest({
+        ...retainedMaterial(),
+        authority_epoch: "E2",
+      }),
+    ).rejects.toThrow();
+
+    const baselineMaterial = {
+      schema_version: "falcon24-authority-baseline@2.0.0" as const,
+      baseline_id: id(91),
+      authority_epoch: "E2" as const,
+      source_commit: "b".repeat(40),
+      retained_assets_hash: e2.manifest_hash,
+      web_build_hash: hash("1"),
+      staging_receipts: {
+        dataset: hash("2"),
+        semantic_release: hash("3"),
+        llm_configuration: hash("4"),
+        agent_profiles: hash("5"),
+        operator_registry: hash("6"),
+        sandbox_runtime: hash("7"),
+      },
+      acceptance_contracts: {
+        oracle: hash("8"),
+        qualification: hash("9"),
+        campaign: hash("a"),
+        qa_e2e: hash("b"),
+        trace_ui: hash("c"),
+        reclamation: hash("d"),
+      },
+      production_isolation_proven: false,
+      production_gate: "HOLD" as const,
+    };
+    const baseline = await buildFalcon24AuthorityBaselineV2(baselineMaterial);
+    await expect(verifyFalcon24AuthorityBaselineDocument(baseline)).resolves.toEqual(baseline);
+    await expect(
+      buildFalcon24AuthorityBaselineV2({ ...baselineMaterial, authority_epoch: "E1" }),
+    ).rejects.toThrow();
   });
 });
