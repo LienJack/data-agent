@@ -3,9 +3,12 @@ import { readFile } from "node:fs/promises";
 import { resolve } from "node:path";
 import { sha256ContentHash } from "@data-agent/contracts/common";
 import {
+  authorityEpochForFalcon24Gate,
   buildFalcon24SandboxReclamationReceipt,
+  buildFalcon24SandboxReclamationReceiptV2,
   FALCON24_STRICT_ACCEPTANCE_POLICY_ID,
   falcon24AcceptanceCampaignIdSchema,
+  falcon24SandboxReclamationReceiptDocumentSchema,
 } from "@data-agent/contracts/evals";
 import { adaptPgPool } from "@data-agent/platform/persistence";
 import { createPostgresFalcon24AcceptanceCampaignAuthority } from "@data-agent/platform/runs";
@@ -93,7 +96,7 @@ export async function reclaimFalcon24RunSandboxes(input: {
     | { readonly disposition: "CLAIMED"; readonly receipt: null }
     | {
         readonly disposition: "COMPLETED";
-        readonly receipt: Awaited<ReturnType<typeof buildFalcon24SandboxReclamationReceipt>>;
+        readonly receipt: z.infer<typeof falcon24SandboxReclamationReceiptDocumentSchema>;
       }
   >;
   readonly campaign_id: string;
@@ -101,6 +104,7 @@ export async function reclaimFalcon24RunSandboxes(input: {
   readonly runtime_attestation_hash: `sha256:${string}`;
 }) {
   const campaignId = falcon24AcceptanceCampaignIdSchema.parse(input.campaign_id);
+  const authorityEpoch = authorityEpochForFalcon24Gate(campaignId);
   const runId = runIdSchema.parse(input.run_id);
   const claim = await input.claim();
   if (claim.disposition === "COMPLETED") {
@@ -108,16 +112,24 @@ export async function reclaimFalcon24RunSandboxes(input: {
   }
   const cleanup = await input.runtime().cleanupRun({ run_id: runId });
   if (cleanup.residual !== 0) throw new TypeError("FALCON24_SANDBOX_RECLAMATION_INCOMPLETE");
-  return {
-    disposition: "CLAIMED" as const,
-    receipt: await buildFalcon24SandboxReclamationReceipt({
-      schema_version: "falcon24-sandbox-reclamation-receipt@2.0.0" as const,
-      campaign_id: campaignId,
-      run_id: runId,
-      runtime_attestation_hash: input.runtime_attestation_hash,
-      ...cleanup,
-    }),
+  const material = {
+    campaign_id: campaignId,
+    run_id: runId,
+    runtime_attestation_hash: input.runtime_attestation_hash,
+    ...cleanup,
   };
+  const receipt =
+    authorityEpoch === "E1"
+      ? await buildFalcon24SandboxReclamationReceipt({
+          schema_version: "falcon24-sandbox-reclamation-receipt@2.0.0" as const,
+          ...material,
+        })
+      : await buildFalcon24SandboxReclamationReceiptV2({
+          schema_version: "falcon24-sandbox-reclamation-receipt@3.0.0" as const,
+          authority_epoch: authorityEpoch,
+          ...material,
+        });
+  return { disposition: "CLAIMED" as const, receipt };
 }
 
 async function main() {

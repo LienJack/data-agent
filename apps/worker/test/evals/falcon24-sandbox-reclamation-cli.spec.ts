@@ -64,6 +64,32 @@ describe("Falcon24 sandbox reclamation", () => {
     );
   });
 
+  it("binds successor campaign reclamation to its authority epoch", async () => {
+    const observation = await managementObservation();
+    const cleanupRun = vi.fn(async () => observation);
+
+    await expect(
+      reclaimFalcon24RunSandboxes({
+        runtime: () => ({ cleanupRun }),
+        claim: vi.fn(async () => ({ disposition: "CLAIMED" as const, receipt: null })),
+        campaign_id: "E2-C1",
+        run_id: runId,
+        runtime_attestation_hash: `sha256:${"a".repeat(64)}`,
+      }),
+    ).resolves.toEqual({
+      disposition: "CLAIMED",
+      receipt: {
+        schema_version: "falcon24-sandbox-reclamation-receipt@3.0.0",
+        authority_epoch: "E2",
+        campaign_id: "E2-C1",
+        run_id: runId,
+        runtime_attestation_hash: `sha256:${"a".repeat(64)}`,
+        ...observation,
+        receipt_hash: expect.stringMatching(/^sha256:[0-9a-f]{64}$/),
+      },
+    });
+  });
+
   it("rejects invalid campaign/run identity before calling OpenSandbox", async () => {
     const cleanupRun = vi.fn(async () => managementObservation());
     const claim = vi.fn(async () => ({ disposition: "CLAIMED" as const, receipt: null }));
