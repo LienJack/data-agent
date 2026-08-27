@@ -10,10 +10,17 @@ import {
 } from "@data-agent/agent-runtime";
 import { sha256ContentHash } from "@data-agent/contracts/common";
 import {
-  buildFalcon24AuthorityBaseline,
+  buildFalcon24AuthorityBaselineV2,
+  buildFalcon24RetainedAssetsManifestV2,
   verifyFalcon24RetainedAssetsManifest,
 } from "@data-agent/contracts/evals";
-import { verifyFalcon24E1StagingReceipt } from "@data-agent/contracts/runs";
+import {
+  FALCON24_TARGET_AUTHORITY_EPOCH,
+  type Falcon24StagingReceiptV2,
+  falcon24AuthorityEpochOrdinal,
+  falcon24SuccessorAuthorityEpochSchema,
+  verifyFalcon24StagingReceiptV2,
+} from "@data-agent/contracts/runs";
 import { loadRuntimeBuildIdentity } from "@data-agent/contracts/server";
 import {
   buildWorkspaceDefaultsCasUpdateCommandCandidate,
@@ -42,18 +49,19 @@ import {
   verifyCurrentBuiltinTeamAuthority,
 } from "../lib/builtin-team-authority";
 
-const CONFIRMATION_VARIABLE = "DATA_AGENT_ALLOW_FALCON24_E1_ACTIVATION";
+const CONFIRMATION_VARIABLE = "DATA_AGENT_ALLOW_FALCON24_AUTHORITY_ACTIVATION";
 const APP_ID = "00000000-0000-4000-8000-00000000da01";
 const DEFAULT_DEPLOYMENT_ID = "00000000-0000-4000-8000-000000000001";
 const DEFAULT_WORKSPACE_ID = "00000000-0000-4000-8000-00000000e124";
 const DEFAULT_PRINCIPAL_ID = "00000000-0000-4000-8000-00000000e125";
-const DEFAULT_STAGING_ID = "00000000-0000-4000-8000-00000000e130";
+const DEFAULT_STAGING_ID = "00000000-0000-4000-8000-00000000e230";
 const DEFAULT_DATASOURCE_ID = "37653002-af62-53c9-bf21-519468aa39ab";
 const REPOSITORY_ROOT = fileURLToPath(new URL("../../../../", import.meta.url));
 const execFileAsync = promisify(execFile);
 
 const configurationSchema = z.strictObject({
   database_url: z.string().min(1),
+  authority_epoch: falcon24SuccessorAuthorityEpochSchema,
   deployment_id: z.uuid(),
   workspace_id: z.uuid(),
   principal_id: z.uuid(),
@@ -68,6 +76,7 @@ const ACCEPTANCE_CONTRACT_SOURCES = Object.freeze({
     "apps/web/src/cli/falcon24-qualification.ts",
     "infra/supabase/apps/data-agent/migrations/20260725010774_app_data_agent_falcon24_qualification_authority.sql",
     "infra/supabase/apps/data-agent/migrations/20260725010779_app_data_agent_falcon24_e1_gate_attempt_authority.sql",
+    "infra/supabase/apps/data-agent/migrations/20260725010781_app_data_agent_falcon24_e2_authority.sql",
     "packages/contracts/src/evals/falcon24-qualification.ts",
     "packages/platform/src/runs/postgres-falcon24-qualification.ts",
   ]),
@@ -75,23 +84,28 @@ const ACCEPTANCE_CONTRACT_SOURCES = Object.freeze({
     "apps/web/src/cli/falcon24-agent-acceptance.ts",
     "infra/supabase/apps/data-agent/migrations/20260725010766_app_data_agent_falcon24_acceptance_campaign_authority.sql",
     "infra/supabase/apps/data-agent/migrations/20260725010779_app_data_agent_falcon24_e1_gate_attempt_authority.sql",
+    "infra/supabase/apps/data-agent/migrations/20260725010781_app_data_agent_falcon24_e2_authority.sql",
     "packages/contracts/src/evals/falcon24-acceptance-campaign.ts",
     "packages/platform/src/runs/postgres-falcon24-acceptance-campaign.ts",
   ]),
   qa_e2e: Object.freeze([
     "apps/web/src/cli/falcon24-browser-trace-gate.ts",
     "infra/supabase/apps/data-agent/migrations/20260725010777_app_data_agent_falcon24_e1_trace.sql",
+    "infra/supabase/apps/data-agent/migrations/20260725010781_app_data_agent_falcon24_e2_authority.sql",
     "packages/contracts/src/runs/authority-epoch.ts",
   ]),
   trace_ui: Object.freeze([
     "apps/web/src/cli/falcon24-browser-trace-gate.ts",
     "apps/web/src/cli/falcon24-resolution-trace-gate.ts",
     "infra/supabase/apps/data-agent/migrations/20260725010777_app_data_agent_falcon24_e1_trace.sql",
+    "infra/supabase/apps/data-agent/migrations/20260725010781_app_data_agent_falcon24_e2_authority.sql",
+    "infra/supabase/apps/data-agent/migrations/20260725010782_app_data_agent_falcon24_analysis_publication.sql",
   ]),
   reclamation: Object.freeze([
     "apps/worker/src/evals/falcon24-qualification-reclamation-cli.ts",
     "apps/worker/src/evals/falcon24-sandbox-reclamation-cli.ts",
     "infra/supabase/apps/data-agent/migrations/20260725010779_app_data_agent_falcon24_e1_gate_attempt_authority.sql",
+    "infra/supabase/apps/data-agent/migrations/20260725010781_app_data_agent_falcon24_e2_authority.sql",
     "packages/contracts/src/evals/falcon24-acceptance-campaign.ts",
   ]),
 });
@@ -125,7 +139,14 @@ function stableFailureCode(error: unknown): string {
   const message = error instanceof Error ? error.message : "";
   return /^[A-Z][A-Z0-9_]{2,127}$/u.test(message)
     ? message
-    : "FALCON24_E1_ACTIVATION_FINALIZATION_FAILED";
+    : "FALCON24_AUTHORITY_ACTIVATION_FINALIZATION_FAILED";
+}
+
+function reportedAuthorityEpoch(environment: NodeJS.ProcessEnv): string {
+  const parsed = falcon24SuccessorAuthorityEpochSchema.safeParse(
+    environment.FALCON24_AUTHORITY_EPOCH ?? FALCON24_TARGET_AUTHORITY_EPOCH,
+  );
+  return parsed.success ? parsed.data : FALCON24_TARGET_AUTHORITY_EPOCH;
 }
 
 function sameReference(
@@ -140,12 +161,12 @@ function sameReference(
 
 async function contractHash(root: string, paths: readonly string[]) {
   return sha256ContentHash({
-    schema_version: "falcon24-acceptance-contract-source-set@1.0.0",
+    schema_version: "falcon24-acceptance-contract-source-set@2.0.0",
     source_files: [...paths].sort().map((path) => ({ path, hash: rawHash(resolve(root, path)) })),
   });
 }
 
-export async function buildFalcon24E1AcceptanceContractHashes(input: {
+export async function buildFalcon24AcceptanceContractHashes(input: {
   readonly repository_root: string;
   readonly oracle_contract_hash: string;
 }) {
@@ -172,7 +193,7 @@ async function frozenCommit(root: string): Promise<string> {
     execFileAsync("git", ["rev-parse", "HEAD"], { cwd: root }),
     execFileAsync("git", ["status", "--porcelain=v1", "--untracked-files=all"], { cwd: root }),
   ]);
-  if (status.trim().length > 0) throw new TypeError("FALCON24_E1_SOURCE_NOT_FROZEN");
+  if (status.trim().length > 0) throw new TypeError("FALCON24_AUTHORITY_SOURCE_NOT_FROZEN");
   return z
     .string()
     .regex(/^[0-9a-f]{40}$/u)
@@ -180,6 +201,7 @@ async function frozenCommit(root: string): Promise<string> {
 }
 
 async function ensureSchemaSnapshot(input: {
+  readonly authority_epoch: string;
   readonly pool: pg.Pool;
   readonly reader_pool: pg.Pool;
   readonly sql_pool: ReturnType<typeof adaptPgPool>;
@@ -203,8 +225,12 @@ async function ensureSchemaSnapshot(input: {
   );
   const existing = current.rows[0];
   if (existing) return { ...existing, created: false as const };
-  const scanRunId = stableUuid(`falcon24-e1:schema-scan:${input.datasource_fingerprint}`);
-  const snapshotId = stableUuid(`falcon24-e1:schema-snapshot:${input.datasource_fingerprint}`);
+  const scanRunId = stableUuid(
+    `falcon24:${input.authority_epoch}:schema-scan:${input.datasource_fingerprint}`,
+  );
+  const snapshotId = stableUuid(
+    `falcon24:${input.authority_epoch}:schema-snapshot:${input.datasource_fingerprint}`,
+  );
   const request = {
     schema_version: "schema-scan-request@1.0.0" as const,
     datasource_id: input.datasource_id,
@@ -233,7 +259,7 @@ async function ensureSchemaSnapshot(input: {
     !committed.snapshot_id ||
     !committed.snapshot_content_hash
   ) {
-    throw new TypeError("FALCON24_E1_SCHEMA_SNAPSHOT_COMMIT_FAILED");
+    throw new TypeError("FALCON24_AUTHORITY_SCHEMA_SNAPSHOT_COMMIT_FAILED");
   }
   return {
     snapshot_id: committed.snapshot_id,
@@ -243,6 +269,7 @@ async function ensureSchemaSnapshot(input: {
 }
 
 async function prepareWorkspaceAuthority(input: {
+  readonly authority_epoch: string;
   readonly pool: pg.Pool;
   readonly sql_pool: ReturnType<typeof adaptPgPool>;
   readonly capability: Parameters<typeof resolveBuiltinTeamMaterializationInput>[0]["capability"];
@@ -290,10 +317,10 @@ async function prepareWorkspaceAuthority(input: {
          on pointer.app_id=domain.app_id and pointer.tenant_id=domain.tenant_id
         and pointer.environment=domain.environment and pointer.semantic_domain=domain.semantic_domain
         and pointer.current_release_id is not null
-       join app_data_agent.falcon24_e1_staging_receipts receipt
+       join app_data_agent.falcon24_authority_staging_receipts receipt
          on receipt.app_id=datasource.app_id and receipt.tenant_id=datasource.tenant_id
         and receipt.environment=datasource.environment and receipt.staging_id=$4::uuid
-        and receipt.component='DATASET'
+        and receipt.authority_epoch=$6::text and receipt.component='DATASET'
       where datasource.app_id=$1::uuid and datasource.tenant_id=$2::uuid
         and datasource.environment=$3::text and datasource.datasource_id=$5::uuid
         and datasource.status='ACTIVE' and datasource.username='falcon_demo_reader'
@@ -304,14 +331,16 @@ async function prepareWorkspaceAuthority(input: {
       input.capability.scope.environment,
       input.staging_id,
       input.datasource_id,
+      input.authority_epoch,
     ],
   );
   const resource = resources.rows[0];
   if (resources.rowCount !== 1 || !resource) {
-    throw new TypeError("FALCON24_E1_WORKSPACE_RESOURCES_REQUIRED");
+    throw new TypeError("FALCON24_AUTHORITY_WORKSPACE_RESOURCES_REQUIRED");
   }
   const datasourceFingerprint = await sha256ContentHash({
-    schema_version: "falcon24-e1-datasource-fingerprint@1.0.0",
+    schema_version: "falcon24-datasource-fingerprint@2.0.0",
+    authority_epoch: input.authority_epoch,
     datasource_id: resource.datasource_id,
     datasource_revision: Number(resource.datasource_revision),
     dataset_subject_hash: resource.dataset_subject_hash,
@@ -328,13 +357,14 @@ async function prepareWorkspaceAuthority(input: {
     user: resource.username,
     password: input.reader_password,
     ssl: false,
-    application_name: "data-agent-falcon24-e1-final-schema-scan",
+    application_name: `data-agent-falcon24-${input.authority_epoch.toLowerCase()}-final-schema-scan`,
     connectionTimeoutMillis: 5_000,
     statement_timeout: 65_000,
     max: 1,
   });
   try {
     const snapshot = await ensureSchemaSnapshot({
+      authority_epoch: input.authority_epoch,
       pool: input.pool,
       reader_pool: readerPool,
       sql_pool: input.sql_pool,
@@ -362,7 +392,7 @@ async function prepareWorkspaceAuthority(input: {
       ],
     );
     const baseModel = baseModels.rows[0];
-    if (!baseModel) throw new TypeError("FALCON24_E1_AUTHENTICATED_MODEL_REQUIRED");
+    if (!baseModel) throw new TypeError("FALCON24_AUTHORITY_AUTHENTICATED_MODEL_REQUIRED");
     const defaults = createPostgresEffectiveConfigResolver({
       pool: input.sql_pool,
       authorizer: input.authorizer,
@@ -404,12 +434,12 @@ async function prepareWorkspaceAuthority(input: {
             await buildWorkspaceDefaultsCasUpdateCommandCandidate({
               schema_version: "workspace-defaults-cas-update@1.0.0",
               operation_id: stableUuid(
-                `falcon24-e1:defaults:${input.capability.scope.tenant_id}:${(existing?.revision.defaults_revision ?? 0) + 1}`,
+                `falcon24:${input.authority_epoch}:defaults:${input.capability.scope.tenant_id}:${(existing?.revision.defaults_revision ?? 0) + 1}`,
               ),
               workspace_id: input.capability.scope.tenant_id,
               expected_defaults_revision: existing?.revision.defaults_revision ?? 0,
               idempotency_key: stableUuid(
-                `falcon24-e1:defaults-request:${input.capability.scope.tenant_id}:${(existing?.revision.defaults_revision ?? 0) + 1}`,
+                `falcon24:${input.authority_epoch}:defaults-request:${input.capability.scope.tenant_id}:${(existing?.revision.defaults_revision ?? 0) + 1}`,
               ),
               defaults: {
                 model: {
@@ -459,32 +489,43 @@ async function prepareWorkspaceAuthority(input: {
   }
 }
 
-export async function runFalcon24E1Finalization(
+export async function runFalcon24AuthorityFinalization(
   environment: NodeJS.ProcessEnv = loadRuntimeEnvironment().environment,
 ) {
+  const authorityEpoch = falcon24SuccessorAuthorityEpochSchema.parse(
+    environment.FALCON24_AUTHORITY_EPOCH ?? FALCON24_TARGET_AUTHORITY_EPOCH,
+  );
   if (environment[CONFIRMATION_VARIABLE]?.trim() !== "YES") {
     return {
-      schema_version: "falcon24-e1-finalization-result@1.0.0" as const,
+      schema_version: "falcon24-authority-finalization-result@2.0.0" as const,
+      authority_epoch: authorityEpoch,
       terminal: "NOT_RUN" as const,
-      reason_code: "FALCON24_E1_ACTIVATION_CONFIRMATION_REQUIRED" as const,
+      reason_code: "FALCON24_AUTHORITY_ACTIVATION_CONFIRMATION_REQUIRED" as const,
     };
   }
   const configuration = configurationSchema.parse({
     database_url: environment.DATABASE_URL,
+    authority_epoch: authorityEpoch,
     deployment_id: environment.WORKER_DEPLOYMENT_ID ?? DEFAULT_DEPLOYMENT_ID,
     workspace_id: environment.WORKER_TENANT_ID ?? DEFAULT_WORKSPACE_ID,
     principal_id: environment.WORKER_PRINCIPAL_ID ?? DEFAULT_PRINCIPAL_ID,
-    staging_id: environment.FALCON24_E1_STAGING_ID ?? DEFAULT_STAGING_ID,
-    datasource_id: environment.FALCON24_E1_DATASOURCE_ID ?? DEFAULT_DATASOURCE_ID,
-    environment: environment.FALCON24_E1_ENVIRONMENT ?? "local",
+    staging_id: environment.FALCON24_STAGING_ID ?? DEFAULT_STAGING_ID,
+    datasource_id: environment.FALCON24_DATASOURCE_ID ?? DEFAULT_DATASOURCE_ID,
+    environment: environment.FALCON24_ENVIRONMENT ?? "local",
     reader_password: environment.FALCON_READER_PASSWORD,
   });
-  const retained = await verifyFalcon24RetainedAssetsManifest(
+  const retainedE1 = await verifyFalcon24RetainedAssetsManifest(
     json(resolve(REPOSITORY_ROOT, "infra/falcon/e1/retained-assets-manifest.json")),
   );
+  const { manifest_hash: _historicalManifestHash, ...retainedMaterial } = retainedE1;
+  const retained = await buildFalcon24RetainedAssetsManifestV2({
+    ...retainedMaterial,
+    schema_version: "falcon24-retained-assets@2.0.0",
+    authority_epoch: configuration.authority_epoch,
+  });
   const runtimeAttestation = await verifyOpenSandboxAnalysisAttestation(REPOSITORY_ROOT);
   if (configuration.environment === "prod" || configuration.environment === "production") {
-    throw new TypeError("FALCON24_E1_PRODUCTION_ISOLATION_REQUIRED");
+    throw new TypeError("FALCON24_AUTHORITY_PRODUCTION_ISOLATION_REQUIRED");
   }
   const sourceCommit = await frozenCommit(REPOSITORY_ROOT);
   const buildIdentity = loadRuntimeBuildIdentity({ expectedRole: "web", environment });
@@ -493,17 +534,23 @@ export async function runFalcon24E1Finalization(
     buildIdentity.git_commit !== sourceCommit ||
     buildIdentity.consumer_role !== "web"
   ) {
-    throw new TypeError("FALCON24_E1_WEB_BUILD_IDENTITY_MISMATCH");
+    throw new TypeError("FALCON24_AUTHORITY_WEB_BUILD_IDENTITY_MISMATCH");
   }
   const pool = new pg.Pool({
     connectionString: configuration.database_url,
-    application_name: "data-agent-falcon24-e1-finalization",
+    application_name: `data-agent-falcon24-${configuration.authority_epoch.toLowerCase()}-finalization`,
     max: 4,
     connectionTimeoutMillis: 5_000,
     statement_timeout: 120_000,
   });
   let activationAttempt:
-    | { attempt_id: string; baseline_id: string; expected_baseline_hash: string }
+    | {
+        schema_version: "falcon24-activation-request@2.0.0";
+        authority_epoch: string;
+        attempt_id: string;
+        baseline_id: string;
+        expected_baseline_hash: string;
+      }
     | undefined;
   try {
     const sqlPool = adaptPgPool(pool);
@@ -520,16 +567,30 @@ export async function runFalcon24E1Finalization(
       capability.scope.app_id !== APP_ID ||
       capability.scope.environment !== configuration.environment
     ) {
-      throw new TypeError("FALCON24_E1_FINALIZATION_SCOPE_MISMATCH");
+      throw new TypeError("FALCON24_AUTHORITY_FINALIZATION_SCOPE_MISMATCH");
     }
     const epoch = createPostgresFalcon24AuthorityEpoch({
       pool: sqlPool,
       authorizer: authority.authorizer,
     });
-    if (requireValue(await epoch.loadCurrent(capability)) !== null) {
-      throw new TypeError("FALCON24_E1_ALREADY_ACTIVE");
+    const currentAuthority = requireValue(await epoch.loadCurrent(capability));
+    if (
+      !currentAuthority ||
+      falcon24AuthorityEpochOrdinal(configuration.authority_epoch) !==
+        falcon24AuthorityEpochOrdinal(currentAuthority.authority_epoch) + 1n
+    ) {
+      throw new TypeError("FALCON24_AUTHORITY_EPOCH_NOT_SUCCESSOR");
     }
+    requireValue(
+      await epoch.beginStaging(capability, {
+        schema_version: "falcon24-staging-session@2.0.0",
+        authority_epoch: configuration.authority_epoch,
+        staging_id: configuration.staging_id,
+        retained_assets_hash: retained.manifest_hash,
+      }),
+    );
     const workspace = await prepareWorkspaceAuthority({
+      authority_epoch: configuration.authority_epoch,
       pool,
       sql_pool: sqlPool,
       capability,
@@ -553,28 +614,36 @@ export async function runFalcon24E1Finalization(
     });
     const receiptsResult = await pool.query<{ component: string; receipt_document: unknown }>(
       `select component,receipt_document
-         from app_data_agent.falcon24_e1_staging_receipts
+         from app_data_agent.falcon24_authority_staging_receipts
         where app_id=$1::uuid and tenant_id=$2::uuid and environment=$3::text
-          and staging_id=$4::uuid order by component`,
+          and staging_id=$4::uuid and authority_epoch=$5::text order by component`,
       [
         capability.scope.app_id,
         capability.scope.tenant_id,
         capability.scope.environment,
         configuration.staging_id,
+        configuration.authority_epoch,
       ],
     );
     if (receiptsResult.rows.length !== 6) {
-      throw new TypeError("FALCON24_E1_STAGING_INCOMPLETE");
+      throw new TypeError("FALCON24_AUTHORITY_STAGING_INCOMPLETE");
     }
     const receiptEntries = await Promise.all(
-      receiptsResult.rows.map(
-        async ({ component, receipt_document: document }) =>
-          [component, await verifyFalcon24E1StagingReceipt(document)] as const,
-      ),
+      receiptsResult.rows.map(async ({ component, receipt_document: document }) => {
+        const receipt = await verifyFalcon24StagingReceiptV2(document);
+        if (
+          receipt.component !== component ||
+          receipt.authority_epoch !== configuration.authority_epoch ||
+          receipt.staging_id !== configuration.staging_id
+        ) {
+          throw new TypeError("FALCON24_AUTHORITY_STAGING_RECEIPT_IDENTITY_MISMATCH");
+        }
+        return [receipt.component, receipt] as const;
+      }),
     );
     const receipts = new Map(receiptEntries);
     if (receipts.get("AGENT_PROFILES")?.subject_hash !== expectedProfileBundleHash) {
-      throw new TypeError("FALCON24_E1_AGENT_PROFILE_RECEIPT_MISMATCH");
+      throw new TypeError("FALCON24_AUTHORITY_AGENT_PROFILE_RECEIPT_MISMATCH");
     }
     const skills = createPostgresSkillRegistry({ pool: sqlPool, authorizer: authority.authorizer });
     const profiles = createPostgresAgentProfileRegistry({
@@ -588,8 +657,10 @@ export async function runFalcon24E1Finalization(
           capability_input: capability,
           actor_principal_id: capability.principal,
           create_operation_id: (material) =>
-            stableUuid(`falcon24-e1:team-materialization:${material}`),
-          idempotency_prefix: "falcon24-e1:builtin-team:v1",
+            stableUuid(
+              `falcon24:${configuration.authority_epoch}:team-materialization:${material}`,
+            ),
+          idempotency_prefix: `falcon24:${configuration.authority_epoch}:builtin-team:v2`,
         },
         { skills, profiles },
       ),
@@ -603,22 +674,22 @@ export async function runFalcon24E1Finalization(
       profile_items: profileItems,
       skill_items: skillItems,
     });
-    const receiptHash = (component: string): string => {
+    const receiptHash = (component: Falcon24StagingReceiptV2["component"]): string => {
       const receipt = receipts.get(component);
-      if (!receipt) throw new TypeError("FALCON24_E1_STAGING_INCOMPLETE");
+      if (!receipt) throw new TypeError("FALCON24_AUTHORITY_STAGING_INCOMPLETE");
       return receipt.receipt_hash;
     };
-    const acceptanceContracts = await buildFalcon24E1AcceptanceContractHashes({
+    const acceptanceContracts = await buildFalcon24AcceptanceContractHashes({
       repository_root: REPOSITORY_ROOT,
       oracle_contract_hash: retained.analysis_runtime.oracle_contract_hash,
     });
     const baselineId = stableUuid(
-      `falcon24-e1:baseline:${sourceCommit}:${buildIdentity.build_id}:${configuration.staging_id}`,
+      `falcon24:${configuration.authority_epoch}:baseline:${sourceCommit}:${buildIdentity.build_id}:${configuration.staging_id}`,
     );
-    const baseline = await buildFalcon24AuthorityBaseline({
-      schema_version: "falcon24-authority-baseline@1.0.0",
+    const baseline = await buildFalcon24AuthorityBaselineV2({
+      schema_version: "falcon24-authority-baseline@2.0.0",
       baseline_id: baselineId,
-      authority_epoch: "E1",
+      authority_epoch: configuration.authority_epoch,
       source_commit: sourceCommit,
       retained_assets_hash: retained.manifest_hash,
       web_build_hash: buildIdentity.build_id,
@@ -636,19 +707,26 @@ export async function runFalcon24E1Finalization(
     });
     requireValue(
       await epoch.stageBaseline(capability, {
+        schema_version: "falcon24-stage-baseline-request@2.0.0",
+        authority_epoch: configuration.authority_epoch,
         staging_id: configuration.staging_id,
         baseline,
       }),
     );
     activationAttempt = {
-      attempt_id: stableUuid(`falcon24-e1:activation:${baseline.baseline_hash}`),
+      schema_version: "falcon24-activation-request@2.0.0",
+      authority_epoch: configuration.authority_epoch,
+      attempt_id: stableUuid(
+        `falcon24:${configuration.authority_epoch}:activation:${baseline.baseline_hash}`,
+      ),
       baseline_id: baseline.baseline_id,
       expected_baseline_hash: baseline.baseline_hash,
     };
     requireValue(await epoch.beginActivationAttempt(capability, activationAttempt));
     const binding = requireValue(await epoch.activate(capability, activationAttempt));
     return Object.freeze({
-      schema_version: "falcon24-e1-finalization-result@1.0.0" as const,
+      schema_version: "falcon24-authority-finalization-result@2.0.0" as const,
+      authority_epoch: configuration.authority_epoch,
       terminal: "ACTIVE" as const,
       authority: binding,
       source_commit: sourceCommit,
@@ -697,19 +775,21 @@ export async function runFalcon24E1Finalization(
 }
 
 async function main(): Promise<void> {
+  let environment: NodeJS.ProcessEnv = process.env;
   try {
-    const environment = loadRuntimeEnvironment({
+    environment = loadRuntimeEnvironment({
       cwd: REPOSITORY_ROOT,
       environment: process.env,
     }).environment;
     Object.assign(process.env, environment);
-    const result = await runFalcon24E1Finalization(environment);
+    const result = await runFalcon24AuthorityFinalization(environment);
     process.stdout.write(`${JSON.stringify(result)}\n`);
     if (result.terminal === "NOT_RUN") process.exitCode = 2;
   } catch (error) {
     process.stdout.write(
       `${JSON.stringify({
-        schema_version: "falcon24-e1-finalization-result@1.0.0",
+        schema_version: "falcon24-authority-finalization-result@2.0.0",
+        authority_epoch: reportedAuthorityEpoch(environment),
         terminal: "HOLD",
         reason_code: stableFailureCode(error),
         production_readiness: "HOLD",
@@ -720,8 +800,8 @@ async function main(): Promise<void> {
 }
 
 if (
-  process.argv[1]?.endsWith("finalize-falcon24-e1.ts") ||
-  process.argv[1]?.endsWith("finalize-falcon24-e1.js")
+  process.argv[1]?.endsWith("finalize-falcon24-authority.ts") ||
+  process.argv[1]?.endsWith("finalize-falcon24-authority.js")
 ) {
   await main();
 }
