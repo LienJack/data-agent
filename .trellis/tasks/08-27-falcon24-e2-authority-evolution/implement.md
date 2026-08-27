@@ -45,10 +45,10 @@
 
 ## E2-5 — Full Static and Migration Qualification
 
-- [ ] 运行Contracts、Platform、Agent Runtime、Worker、Web相关full suites和typecheck/build。
-- [ ] 运行migration inventory、fresh PostgreSQL 17 smoke、E1->E2 upgrade smoke、production import graph/security scans。
-- [ ] 审核git diff、generated/untracked文件、migration checksum/ledger和所有E1历史digest。
-- [ ] 修复任何缺陷；若变更发生在E2 activation前，重建E2 baseline inputs；每个独立修复提交。
+- [x] 运行Contracts、Platform、Agent Runtime、Worker、Web相关full suites和typecheck/build。
+- [x] 运行migration inventory、fresh PostgreSQL 17 smoke、E1->E2 upgrade smoke、production import graph/security scans。
+- [x] 审核git diff、generated/untracked文件、migration checksum/ledger和所有E1历史digest。
+- [x] 修复任何缺陷；若变更发生在E2 activation前，重建E2 baseline inputs；每个独立修复提交。
 
 ## E2-6 — E2 Staging and Atomic Activation
 
