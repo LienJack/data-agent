@@ -238,4 +238,71 @@ describe("Mastra specialist profile composition", () => {
     ).rejects.toThrow("RUN_EVENT_WRITE_FAILED");
     expect(domainCalls).toBe(0);
   });
+
+  it("publishes only a stable domain error code for a failed Tool call", async () => {
+    const profiles = await items();
+    const displayEvents: unknown[] = [];
+    const registry = await createMastraProfileComposition({
+      profiles,
+      execution_tool_allowlists: {
+        "governed-text2sql-agent": ["semantic.release.read"],
+      },
+      tools: {
+        invoke: async () => {
+          throw Object.assign(new Error("projection details must remain private"), {
+            code: "SEMANTIC_RELEASE_PROJECTION_INVALID",
+          });
+        },
+      },
+      visibility: {
+        async emit(input) {
+          displayEvents.push(input);
+          return { ok: true, value: { sequence: displayEvents.length } };
+        },
+      },
+    });
+    const runtime = getAgentProfileRevision("governed-text2sql-agent");
+    const task = buildTeamTaskV2({
+      schema_version: "agent-team-task@2.0.0",
+      task_id: id(240),
+      parent_task_id: id(239),
+      parent_handoff_id: id(250),
+      depth: 1,
+      scope,
+      run_id: id(260),
+      profile_id: "governed-text2sql-agent",
+      profile_revision: runtime.revision,
+      profile_hash: runtime.profile_hash,
+      task_revision: 1,
+      goal_revision: 1,
+      attempt_id: id(270),
+      worker_fence: 1,
+      artifact_refs: [],
+      context_epoch_ref: null,
+      bounds: {
+        max_context_bytes: 65_536,
+        max_input_tokens: 8_192,
+        max_output_tokens: 2_048,
+        max_tool_calls: 8,
+        timeout_ms: 60_000,
+      },
+      acceptance: {
+        required_artifact_types: runtime.expected_output_artifact_types,
+        require_all_verifier_dimensions: true,
+      },
+    });
+
+    await expect(
+      registry.execute(task, { epoch_id: id(290), build_signature: hash("e") }),
+    ).rejects.toMatchObject({ code: "SEMANTIC_RELEASE_PROJECTION_INVALID" });
+    expect(displayEvents).toContainEqual(
+      expect.objectContaining({
+        kind: "tool_failed",
+        tool_name: "semantic.release.read",
+        error_code: "SEMANTIC_RELEASE_PROJECTION_INVALID",
+        output: null,
+      }),
+    );
+    expect(JSON.stringify(displayEvents)).not.toContain("projection details must remain private");
+  });
 });

@@ -70,6 +70,22 @@ function normalizeToolResult(
   });
 }
 
+function visibleToolErrorCode(error: unknown): string {
+  if (
+    typeof error === "object" &&
+    error !== null &&
+    "code" in error &&
+    typeof error.code === "string" &&
+    /^[A-Z][A-Z0-9_]*$/u.test(error.code)
+  ) {
+    return error.code;
+  }
+  if (error instanceof Error && /^[A-Z][A-Z0-9_]*$/u.test(error.message)) {
+    return error.message;
+  }
+  return "TEAM_TOOL_EXECUTION_FAILED";
+}
+
 function visibleToolPort(input: {
   readonly tools: ProductProfileToolPort;
   readonly visibility: ProductProfileToolVisibilityPort;
@@ -131,7 +147,7 @@ function visibleToolPort(input: {
           call_id: callId,
           tool_name: invocation.tool_id,
           summary: "受治理工具调用失败",
-          error_code: "TEAM_TOOL_EXECUTION_FAILED",
+          error_code: visibleToolErrorCode(error),
           profile_id: profileId,
           task_id: invocation.task.task_id,
           artifact_refs: [],
