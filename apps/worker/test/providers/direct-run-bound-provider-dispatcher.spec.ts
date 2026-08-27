@@ -135,12 +135,18 @@ describe("direct run-bound provider retry policy", () => {
 
     expect(messages).toEqual([
       { role: "system", content: "Current normal Root turn index: 2." },
-      expect.objectContaining({ role: "tool", tool_call_id: "query-1" }),
+      expect.objectContaining({
+        role: "user",
+        content: expect.stringContaining("Server-owned Tool Result"),
+      }),
       expect.objectContaining({
         role: "system",
         content: expect.stringContaining("ROOT_ANSWER_ARTIFACT_NOT_ACCEPTED"),
       }),
     ]);
+    expect(messages[1]).not.toHaveProperty("tool_call_id");
+    expect(messages[1]?.content).toContain('"tool_call_id":"query-1"');
+    expect(messages[1]?.content).toContain('"schema_version":"root-provider-tool-result@1.0.0"');
     expect(messages[1]?.content).toContain('"total_rows":12');
     expect(messages[1]?.content).not.toContain('"rows":');
     expect(() =>
