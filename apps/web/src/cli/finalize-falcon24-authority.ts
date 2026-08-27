@@ -22,8 +22,10 @@ import {
 import {
   buildFalcon24StagingReceiptV2,
   FALCON24_TARGET_AUTHORITY_EPOCH,
+  type Falcon24E1StagingReceipt,
   type Falcon24StagingReceiptV2,
   falcon24AuthorityEpochOrdinal,
+  falcon24AuthorityEpochSchema,
   falcon24SuccessorAuthorityEpochSchema,
   verifyFalcon24E1StagingReceipt,
   verifyFalcon24StagingReceiptV2,
@@ -198,7 +200,22 @@ const BASELINE_RECEIPT_COMPONENTS = Object.freeze({
   SEMANTIC_RELEASE: "semantic_release",
 } as const satisfies Readonly<Record<Falcon24StagingReceiptV2["component"], string>>);
 
-type HistoricalStagingReceipt = Awaited<ReturnType<typeof verifyFalcon24E1StagingReceipt>>;
+type HistoricalStagingReceipt = Falcon24E1StagingReceipt | Falcon24StagingReceiptV2;
+
+export async function verifyFalcon24PredecessorStagingReceipt(input: {
+  readonly authority_epoch: string;
+  readonly receipt_document: unknown;
+}): Promise<HistoricalStagingReceipt> {
+  const authorityEpoch = falcon24AuthorityEpochSchema.parse(input.authority_epoch);
+  if (authorityEpoch === "E1") {
+    return verifyFalcon24E1StagingReceipt(input.receipt_document);
+  }
+  const receipt = await verifyFalcon24StagingReceiptV2(input.receipt_document);
+  if (receipt.authority_epoch !== authorityEpoch) {
+    throw new TypeError("FALCON24_AUTHORITY_PREDECESSOR_RECEIPT_EPOCH_MISMATCH");
+  }
+  return receipt;
+}
 
 async function loadPredecessorStagingReceipts(input: {
   readonly pool: pg.Pool;
@@ -211,9 +228,6 @@ async function loadPredecessorStagingReceipts(input: {
   readonly baseline_id: string;
   readonly baseline_hash: string;
 }) {
-  if (input.authority_epoch !== "E1") {
-    throw new TypeError("FALCON24_AUTHORITY_PREDECESSOR_E1_REQUIRED");
-  }
   const baselineResult = await input.pool.query<{ readonly baseline_document: unknown }>(
     `select baseline_document
        from app_data_agent.falcon24_authority_baselines
@@ -263,7 +277,10 @@ async function loadPredecessorStagingReceipts(input: {
   }
   const receipts = new Map<Falcon24StagingReceiptV2["component"], HistoricalStagingReceipt>();
   for (const row of receiptResult.rows) {
-    const receipt = await verifyFalcon24E1StagingReceipt(row.receipt_document);
+    const receipt = await verifyFalcon24PredecessorStagingReceipt({
+      authority_epoch: input.authority_epoch,
+      receipt_document: row.receipt_document,
+    });
     const field = BASELINE_RECEIPT_COMPONENTS[receipt.component];
     if (
       receipt.receipt_hash !== baseline.staging_receipts[field] ||

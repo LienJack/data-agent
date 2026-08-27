@@ -4,6 +4,10 @@ import {
   buildBuiltinTeamMaterialization,
   DATA_AGENT_SPECIALIST_PROFILE_IDS,
 } from "@data-agent/agent-runtime";
+import {
+  buildFalcon24E1StagingReceipt,
+  buildFalcon24StagingReceiptV2,
+} from "@data-agent/contracts/runs";
 import { describe, expect, it, vi } from "vitest";
 
 vi.mock("server-only", () => ({}));
@@ -12,6 +16,7 @@ import {
   buildFalcon24AcceptanceContractHashes,
   buildFalcon24AgentProfileAuthorityProof,
   runFalcon24AuthorityFinalization,
+  verifyFalcon24PredecessorStagingReceipt,
 } from "../src/cli/finalize-falcon24-authority.js";
 
 const repositoryRoot = fileURLToPath(new URL("../../../", import.meta.url));
@@ -111,5 +116,43 @@ describe("Falcon24 versioned authority finalization", () => {
       build_id: workerBuild.build_id,
       generation_id: workerBuild.generation_id,
     });
+  });
+
+  it("verifies E1 and versioned successor receipts for the exact predecessor epoch", async () => {
+    const material = {
+      staging_id: "00000000-0000-4000-8000-000000000001",
+      component: "DATASET" as const,
+      subject_hash: `sha256:${"a".repeat(64)}` as const,
+      evidence_hash: `sha256:${"b".repeat(64)}` as const,
+      production_isolation_proven: false,
+    };
+    const e1 = await buildFalcon24E1StagingReceipt({
+      schema_version: "falcon24-e1-staging-receipt@1.0.0",
+      ...material,
+    });
+    const e2 = await buildFalcon24StagingReceiptV2({
+      schema_version: "falcon24-staging-receipt@2.0.0",
+      authority_epoch: "E2",
+      ...material,
+    });
+
+    await expect(
+      verifyFalcon24PredecessorStagingReceipt({
+        authority_epoch: "E1",
+        receipt_document: e1,
+      }),
+    ).resolves.toEqual(e1);
+    await expect(
+      verifyFalcon24PredecessorStagingReceipt({
+        authority_epoch: "E2",
+        receipt_document: e2,
+      }),
+    ).resolves.toEqual(e2);
+    await expect(
+      verifyFalcon24PredecessorStagingReceipt({
+        authority_epoch: "E3",
+        receipt_document: e2,
+      }),
+    ).rejects.toThrow("FALCON24_AUTHORITY_PREDECESSOR_RECEIPT_EPOCH_MISMATCH");
   });
 });
