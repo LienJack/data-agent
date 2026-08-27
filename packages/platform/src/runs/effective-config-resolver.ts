@@ -33,6 +33,12 @@ import {
   workspaceDefaultsUpdateResultSchema,
 } from "@data-agent/contracts";
 import { sha256ContentHash } from "@data-agent/contracts/common";
+import {
+  authorityEpochForFalcon24Gate,
+  falcon24AcceptanceCampaignIdSchema,
+  falcon24QualificationGateIdSchema,
+} from "@data-agent/contracts/evals";
+import { falcon24AuthorityEpochSchema } from "@data-agent/contracts/runs";
 import { z } from "zod";
 import {
   PersistenceBoundaryError,
@@ -88,31 +94,45 @@ const questionAcceptanceResultSchema = z.strictObject({
   resolution: z.unknown(),
   effective_config: z.unknown().nullable(),
 });
-const falcon24AcceptanceSubmitFenceSchema = z.discriminatedUnion("authority_kind", [
-  z.strictObject({
-    authority_kind: z.literal("FINAL_CAMPAIGN"),
-    campaign_id: z.literal("E1-C1"),
-    attempt_id: canonicalImmutableIdSchema,
-    run_id: canonicalImmutableIdSchema,
-    claim_fence_token: canonicalImmutableIdSchema,
-  }),
-  z.strictObject({
-    authority_kind: z.literal("QUALIFICATION"),
-    qualification_id: z.literal("E1-Q1"),
-    attempt_id: canonicalImmutableIdSchema,
-    run_id: canonicalImmutableIdSchema,
-    claim_fence_token: canonicalImmutableIdSchema,
-  }),
-]);
+const falcon24AcceptanceSubmitFenceSchema = z
+  .discriminatedUnion("authority_kind", [
+    z.strictObject({
+      authority_kind: z.literal("FINAL_CAMPAIGN"),
+      authority_epoch: falcon24AuthorityEpochSchema,
+      campaign_id: falcon24AcceptanceCampaignIdSchema,
+      attempt_id: canonicalImmutableIdSchema,
+      run_id: canonicalImmutableIdSchema,
+      claim_fence_token: canonicalImmutableIdSchema,
+    }),
+    z.strictObject({
+      authority_kind: z.literal("QUALIFICATION"),
+      authority_epoch: falcon24AuthorityEpochSchema,
+      qualification_id: falcon24QualificationGateIdSchema,
+      attempt_id: canonicalImmutableIdSchema,
+      run_id: canonicalImmutableIdSchema,
+      claim_fence_token: canonicalImmutableIdSchema,
+    }),
+  ])
+  .superRefine((fence, context) => {
+    const gateId =
+      fence.authority_kind === "FINAL_CAMPAIGN" ? fence.campaign_id : fence.qualification_id;
+    if (authorityEpochForFalcon24Gate(gateId) !== fence.authority_epoch) {
+      context.addIssue({
+        code: "custom",
+        message: "Falcon24 submit fence gate 必须由同一 authority epoch 派生。",
+        path: [fence.authority_kind === "FINAL_CAMPAIGN" ? "campaign_id" : "qualification_id"],
+      });
+    }
+  });
 const falcon24AcceptanceSubmitFenceReceiptSchema = z.union([
   z.strictObject({
-    campaign_id: z.literal("E1-C1"),
+    campaign_id: falcon24AcceptanceCampaignIdSchema,
     run_id: canonicalImmutableIdSchema,
     claim_fence_hash: z.string().regex(/^sha256:[a-f0-9]{64}$/),
     claim_fence_consumed_at: z.iso.datetime({ offset: true }),
   }),
   z.strictObject({
-    qualification_id: z.literal("E1-Q1"),
+    qualification_id: falcon24QualificationGateIdSchema,
     run_id: canonicalImmutableIdSchema,
     claim_fence_hash: z.string().regex(/^sha256:[a-f0-9]{64}$/),
     claim_fence_consumed_at: z.iso.datetime({ offset: true }),
@@ -215,12 +235,12 @@ const databaseMarkers = new Map<string, { readonly retryable: boolean; readonly 
     { retryable: false, message: "Falcon24 Run acceptance 与 submit fence 未原子提交。" },
   ],
   [
-    "FALCON24_E1_GATE_ATTEMPT_FENCE_INVALID",
-    { retryable: false, message: "Falcon24 E1 gate attempt fence 无效。" },
+    "FALCON24_GATE_ATTEMPT_FENCE_INVALID",
+    { retryable: false, message: "Falcon24 gate attempt fence 无效。" },
   ],
   [
-    "FALCON24_E1_GATE_ATTEMPT_MISMATCH",
-    { retryable: false, message: "Falcon24 E1 gate attempt 与当前权威 attempt 不一致。" },
+    "FALCON24_GATE_ATTEMPT_MISMATCH",
+    { retryable: false, message: "Falcon24 gate attempt 与当前权威 attempt 不一致。" },
   ],
   ["FALCON24_RUN_NOT_CLAIMED", { retryable: false, message: "Falcon24 Run 尚未取得有效 claim。" }],
   [
@@ -903,6 +923,7 @@ export function createPostgresEffectiveConfigResolver(
         ? await (async () => {
             const {
               authority_kind: authorityKind,
+              authority_epoch: _authorityEpoch,
               attempt_id: _attemptId,
               ...identity
             } = acceptanceFence.data;

@@ -526,7 +526,7 @@ export async function runWorkerProcess(
           pool: sqlPool,
           authorizer: capabilityAuthority.authorizer,
         });
-        const e1Authority = createPostgresFalcon24AuthorityEpoch({
+        const falcon24Authority = createPostgresFalcon24AuthorityEpoch({
           pool: sqlPool,
           authorizer: capabilityAuthority.authorizer,
         });
@@ -589,9 +589,10 @@ export async function runWorkerProcess(
             ),
         });
         const teamExecutor = createDataAgentTeamRunner({
-          e1_authority: {
-            loadCurrent: () => e1Authority.loadCurrent(capability),
-            loadRunBinding: (runId) => e1Authority.loadRunBinding(capability, { run_id: runId }),
+          authority: {
+            loadCurrent: () => falcon24Authority.loadCurrent(capability),
+            loadRunBinding: (runId) =>
+              falcon24Authority.loadRunBinding(capability, { run_id: runId }),
           },
           catalog_authority: {
             async loadFrozen(catalog) {

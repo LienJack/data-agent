@@ -1,4 +1,7 @@
-import { buildFalcon24E1StagingReceipt } from "@data-agent/contracts/runs";
+import {
+  buildFalcon24E1StagingReceipt,
+  buildFalcon24StagingReceiptV2,
+} from "@data-agent/contracts/runs";
 import { describe, expect, it } from "vitest";
 import type { SqlClient, SqlPool, SqlQueryResult } from "../../src/persistence/transaction.js";
 import { createPostgresFalcon24AuthorityEpoch } from "../../src/runs/postgres-authority-epoch.js";
@@ -51,14 +54,15 @@ function scriptedPool(handler: (text: string, values?: readonly unknown[]) => un
   return { calls, pool: { connect: async () => client } satisfies SqlPool };
 }
 
-describe("PostgreSQL Falcon24 E1 authority epoch", () => {
-  it("begins a strict staging session with a content-addressed command", async () => {
+describe("PostgreSQL Falcon24 versioned authority epoch", () => {
+  it("begins an E2 staging session with a content-addressed generic command", async () => {
     const auth = authority();
     const stagingId = id(10);
     const scripted = scriptedPool((text) =>
-      text.includes("begin_falcon24_e1_staging_session")
+      text.includes("begin_falcon24_authority_staging_session")
         ? {
-            schema_version: "falcon24-e1-staging-session@1.0.0",
+            schema_version: "falcon24-staging-session@2.0.0",
+            authority_epoch: "E2",
             staging_id: stagingId,
             retained_assets_hash: hash("a"),
             status: "STAGED",
@@ -69,31 +73,36 @@ describe("PostgreSQL Falcon24 E1 authority epoch", () => {
       pool: scripted.pool,
       authorizer: auth.authorizer,
     }).beginStaging(auth.capability, {
+      schema_version: "falcon24-staging-session@2.0.0",
+      authority_epoch: "E2",
       staging_id: stagingId,
       retained_assets_hash: hash("a"),
     });
 
     expect(result).toMatchObject({ ok: true, value: { staging_id: stagingId } });
     expect(
-      scripted.calls.find(({ text }) => text.includes("begin_falcon24_e1_staging_session"))?.values,
+      scripted.calls.find(({ text }) => text.includes("begin_falcon24_authority_staging_session"))
+        ?.values,
     ).toEqual([
       expect.objectContaining({
-        schema_version: "falcon24-e1-staging-session-begin@1.0.0",
+        schema_version: "falcon24-staging-session@2.0.0",
+        authority_epoch: "E2",
         staging_id: stagingId,
         command_hash: expect.stringMatching(/^sha256:[0-9a-f]{64}$/),
       }),
     ]);
   });
 
-  it("verifies a staging receipt before PostgreSQL I/O", async () => {
+  it("verifies an E2 staging receipt before PostgreSQL I/O", async () => {
     const auth = authority();
     const scripted = scriptedPool(() => undefined);
     const port = createPostgresFalcon24AuthorityEpoch({
       pool: scripted.pool,
       authorizer: auth.authorizer,
     });
-    const receipt = await buildFalcon24E1StagingReceipt({
-      schema_version: "falcon24-e1-staging-receipt@1.0.0",
+    const receipt = await buildFalcon24StagingReceiptV2({
+      schema_version: "falcon24-staging-receipt@2.0.0",
+      authority_epoch: "E2",
       staging_id: id(11),
       component: "DATASET",
       subject_hash: hash("b"),
@@ -103,15 +112,15 @@ describe("PostgreSQL Falcon24 E1 authority epoch", () => {
 
     await expect(
       port.recordReceipt(auth.capability, { ...receipt, subject_hash: hash("d") }),
-    ).rejects.toThrow("FALCON24_E1_STAGING_RECEIPT_HASH_INVALID");
+    ).rejects.toThrow("FALCON24_STAGING_RECEIPT_HASH_INVALID");
     expect(scripted.calls).toHaveLength(0);
   });
 
-  it("loads only the exact current E1 binding", async () => {
+  it("loads the exact current E2 binding", async () => {
     const auth = authority();
     const binding = {
-      schema_version: "falcon24-authority-binding@1.0.0",
-      authority_epoch: "E1",
+      schema_version: "falcon24-authority-binding@2.0.0",
+      authority_epoch: "E2",
       baseline_id: id(20),
       baseline_hash: hash("e"),
       activation_attempt_id: id(21),
@@ -125,5 +134,56 @@ describe("PostgreSQL Falcon24 E1 authority epoch", () => {
     }).loadCurrent(auth.capability);
 
     expect(result).toEqual({ ok: true, value: binding });
+  });
+
+  it("loads an exact historical E1 Run through the versioned read RPC", async () => {
+    const auth = authority();
+    const binding = {
+      schema_version: "falcon24-authority-binding@1.0.0",
+      authority_epoch: "E1",
+      baseline_id: id(30),
+      baseline_hash: hash("f"),
+      activation_attempt_id: id(31),
+    };
+    const scripted = scriptedPool((text) =>
+      text.includes("load_falcon24_run_authority_binding") ? binding : undefined,
+    );
+    const result = await createPostgresFalcon24AuthorityEpoch({
+      pool: scripted.pool,
+      authorizer: auth.authorizer,
+    }).loadRunBinding(auth.capability, { run_id: id(32) });
+
+    expect(result).toEqual({ ok: true, value: binding });
+    expect(
+      scripted.calls.find(({ text }) => text.includes("load_falcon24_run_authority_binding"))
+        ?.values,
+    ).toEqual([
+      expect.objectContaining({
+        schema_version: "falcon24-run-authority-load@2.0.0",
+        run_id: id(32),
+        command_hash: expect.stringMatching(/^sha256:[0-9a-f]{64}$/),
+      }),
+    ]);
+  });
+
+  it("rejects an E1 staging write before PostgreSQL I/O", async () => {
+    const auth = authority();
+    const scripted = scriptedPool(() => undefined);
+    const receipt = await buildFalcon24E1StagingReceipt({
+      schema_version: "falcon24-e1-staging-receipt@1.0.0",
+      staging_id: id(40),
+      component: "DATASET",
+      subject_hash: hash("a"),
+      evidence_hash: hash("b"),
+      production_isolation_proven: false,
+    });
+
+    await expect(
+      createPostgresFalcon24AuthorityEpoch({
+        pool: scripted.pool,
+        authorizer: auth.authorizer,
+      }).recordReceipt(auth.capability, receipt),
+    ).rejects.toThrow();
+    expect(scripted.calls).toHaveLength(0);
   });
 });

@@ -488,7 +488,7 @@ async function referenceExists(
        and artifact.revision = $7
        and artifact.content_hash = $8
        and run.principal_id = $9
-       and run.authority_epoch = 'E1'
+       and run.authority_epoch = current_epoch.authority_epoch
        and artifact.authority_epoch = run.authority_epoch
        and artifact.authority_baseline_id = run.authority_baseline_id
        and artifact.authority_baseline_hash = run.authority_baseline_hash
@@ -537,7 +537,7 @@ async function resolveArtifactDocument(
        and artifact.revision = $7
        and artifact.content_hash = $8
        and run.principal_id = $9
-       and run.authority_epoch = 'E1'
+       and run.authority_epoch = current_epoch.authority_epoch
        and artifact.authority_epoch = run.authority_epoch
        and artifact.authority_baseline_id = run.authority_baseline_id
        and artifact.authority_baseline_hash = run.authority_baseline_hash

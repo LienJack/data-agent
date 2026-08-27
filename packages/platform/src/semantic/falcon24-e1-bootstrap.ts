@@ -11,7 +11,11 @@ import {
   type ModelCertificationPublicView,
   type ModelProviderConnection,
 } from "@data-agent/contracts/models";
-import { buildFalcon24E1StagingReceipt } from "@data-agent/contracts/runs";
+import {
+  buildFalcon24E1StagingReceipt,
+  type Falcon24AuthorityBinding,
+  verifyFalcon24E1StagingReceipt,
+} from "@data-agent/contracts/runs";
 import {
   initialSemanticReleaseSetSchema,
   loadInitialSemanticReleaseResultSchema,
@@ -22,7 +26,6 @@ import {
   verifySemanticBootstrapValidationReceipt,
 } from "@data-agent/contracts/semantic";
 import { z } from "zod";
-import type { PostgresFalcon24AuthorityEpoch } from "../runs/postgres-authority-epoch.js";
 import type { PostgresGreenfieldBootstrapReleaseAuthority } from "./greenfield-bootstrap-release-authority.js";
 
 const hashSchema = z.string().regex(/^sha256:[0-9a-f]{64}$/u);
@@ -113,10 +116,11 @@ export interface Falcon24E1BootstrapDependencies {
     "publishInitial" | "loadInitial"
   >;
   readonly model_control: Falcon24E1ModelControlPort;
-  readonly epoch_authority: Pick<
-    PostgresFalcon24AuthorityEpoch,
-    "beginStaging" | "loadCurrent" | "recordReceipt"
-  >;
+  readonly epoch_authority: {
+    loadCurrent(capability: unknown): Promise<PortResult<Falcon24AuthorityBinding | null>>;
+    beginStaging(capability: unknown, candidate: unknown): Promise<PortResult<unknown>>;
+    recordReceipt(capability: unknown, candidate: unknown): Promise<PortResult<unknown>>;
+  };
   readonly authenticate_model: (input: {
     readonly model: ModelCatalogEntry;
     readonly credential_ref: GlobalModelCredentialRef;
@@ -530,8 +534,8 @@ async function recordReceipt(
     staging_id: input.staging_id,
     ...material,
   });
-  return requireBoundary(
-    await dependencies.epoch_authority.recordReceipt(input.capability, receipt),
+  return verifyFalcon24E1StagingReceipt(
+    requireBoundary(await dependencies.epoch_authority.recordReceipt(input.capability, receipt)),
   );
 }
 

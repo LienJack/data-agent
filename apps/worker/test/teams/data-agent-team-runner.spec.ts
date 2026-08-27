@@ -84,25 +84,25 @@ async function harness() {
     append_display_event: vi.fn(),
   });
   const authorityBinding = {
-    schema_version: "falcon24-authority-binding@1.0.0" as const,
-    authority_epoch: "E1" as const,
+    schema_version: "falcon24-authority-binding@2.0.0" as const,
+    authority_epoch: "E2" as const,
     baseline_id: id(40),
     baseline_hash: `sha256:${"a".repeat(64)}` as const,
     activation_attempt_id: id(41),
   };
-  const e1Authority = {
+  const authority = {
     loadCurrent: vi.fn(async () => ({ ok: true as const, value: authorityBinding })),
     loadRunBinding: vi.fn(async () => ({ ok: true as const, value: authorityBinding })),
   };
   const catalogAuthority = {
     loadFrozen: vi.fn(async () => ({ ok: true as const, value: [] })),
   };
-  return { catalog, catalogAuthority, context, e1Authority, lease };
+  return { authority, catalog, catalogAuthority, context, lease };
 }
 
 describe("Data Agent Root runner", () => {
   it("routes every V3 QUESTION_RUN through Root and its admitted runtime", async () => {
-    const { catalog, catalogAuthority, context, e1Authority, lease } = await harness();
+    const { authority, catalog, catalogAuthority, context, lease } = await harness();
     const decision = {
       schema_version: "root-agent-turn-candidate@1.0.0" as const,
       kind: "FINAL_ANSWER" as const,
@@ -125,7 +125,7 @@ describe("Data Agent Root runner", () => {
       reason_code: "ROOT_DIRECT_ANSWER_ACCEPTED",
     }));
     const runner = createDataAgentTeamRunner({
-      e1_authority: e1Authority,
+      authority,
       catalog_authority: catalogAuthority,
       root: { decide },
       root_runtime: { execute },
@@ -146,9 +146,9 @@ describe("Data Agent Root runner", () => {
   });
 
   it("fails closed when Root is not configured", async () => {
-    const { catalogAuthority, context, e1Authority, lease } = await harness();
+    const { authority, catalogAuthority, context, lease } = await harness();
     const runner = createDataAgentTeamRunner({
-      e1_authority: e1Authority,
+      authority,
       catalog_authority: catalogAuthority,
     });
     await expect(
@@ -163,10 +163,10 @@ describe("Data Agent Root runner", () => {
   });
 
   it("rejects a non-Q&A command before invoking Root", async () => {
-    const { catalogAuthority, context, e1Authority, lease } = await harness();
+    const { authority, catalogAuthority, context, lease } = await harness();
     const execute = vi.fn();
     const runner = createDataAgentTeamRunner({
-      e1_authority: e1Authority,
+      authority,
       catalog_authority: catalogAuthority,
       root: { decide: execute },
     });
@@ -183,7 +183,7 @@ describe("Data Agent Root runner", () => {
   });
 
   it("rejects old Team leases instead of entering a compatibility executor", async () => {
-    const { catalogAuthority, context, e1Authority, lease } = await harness();
+    const { authority, catalogAuthority, context, lease } = await harness();
     const decide = vi.fn();
     const legacyLease = {
       ...lease,
@@ -202,7 +202,7 @@ describe("Data Agent Root runner", () => {
       },
     } as RunWorkLease;
     const runner = createDataAgentTeamRunner({
-      e1_authority: e1Authority,
+      authority,
       catalog_authority: catalogAuthority,
       root: { decide },
     });
@@ -222,10 +222,10 @@ describe("Data Agent Root runner", () => {
     expect(decide).not.toHaveBeenCalled();
   });
 
-  it("rejects E1 current/run binding drift before invoking Root", async () => {
-    const { catalogAuthority, context, e1Authority, lease } = await harness();
+  it("rejects a historical E1 Run when the current authority is E2", async () => {
+    const { authority, catalogAuthority, context, lease } = await harness();
     const decide = vi.fn();
-    e1Authority.loadRunBinding.mockResolvedValueOnce({
+    authority.loadRunBinding.mockResolvedValueOnce({
       ok: true as const,
       value: {
         schema_version: "falcon24-authority-binding@1.0.0" as const,
@@ -234,9 +234,9 @@ describe("Data Agent Root runner", () => {
         baseline_hash: `sha256:${"b".repeat(64)}` as const,
         activation_attempt_id: id(43),
       },
-    });
+    } as never);
     const runner = createDataAgentTeamRunner({
-      e1_authority: e1Authority,
+      authority,
       catalog_authority: catalogAuthority,
       root: { decide },
     });
@@ -251,13 +251,13 @@ describe("Data Agent Root runner", () => {
       }),
     ).resolves.toEqual({
       kind: "FAILED",
-      error_code: "FALCON24_E1_RUNTIME_AUTHORITY_DRIFT",
+      error_code: "FALCON24_RUNTIME_AUTHORITY_DRIFT",
     });
     expect(decide).not.toHaveBeenCalled();
   });
 
   it("rejects frozen Profile/Card drift before invoking Root provider", async () => {
-    const { catalogAuthority, context, e1Authority, lease } = await harness();
+    const { authority, catalogAuthority, context, lease } = await harness();
     const decide = vi.fn();
     catalogAuthority.loadFrozen.mockResolvedValueOnce({
       ok: false as const,
@@ -268,7 +268,7 @@ describe("Data Agent Root runner", () => {
       },
     } as never);
     const runner = createDataAgentTeamRunner({
-      e1_authority: e1Authority,
+      authority,
       catalog_authority: catalogAuthority,
       root: { decide },
     });

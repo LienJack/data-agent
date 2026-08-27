@@ -53,7 +53,7 @@ export interface DataAgentProductTeamRuntimePort {
 }
 
 export interface DataAgentTeamRunnerDependencies {
-  readonly e1_authority?: {
+  readonly authority?: {
     loadCurrent(): Promise<PortResult<Falcon24AuthorityBinding | null>>;
     loadRunBinding(runId: string): Promise<PortResult<Falcon24AuthorityBinding>>;
   };
@@ -112,16 +112,16 @@ export function createDataAgentTeamRunner(
       ) {
         return failed("ROOT_AGENT_LEASE_VERSION_UNSUPPORTED");
       }
-      if (!dependencies.e1_authority) {
-        return failed("FALCON24_E1_RUNTIME_AUTHORITY_NOT_CONFIGURED");
+      if (!dependencies.authority) {
+        return failed("FALCON24_RUNTIME_AUTHORITY_NOT_CONFIGURED");
       }
-      const currentAuthority = await dependencies.e1_authority.loadCurrent();
+      const currentAuthority = await dependencies.authority.loadCurrent();
       if (!currentAuthority.ok) return failed(currentAuthority.error.code);
-      if (!currentAuthority.value) return failed("FALCON24_E1_NOT_ACTIVE");
-      const runAuthority = await dependencies.e1_authority.loadRunBinding(input.lease.run_id);
+      if (!currentAuthority.value) return failed("FALCON24_AUTHORITY_NOT_ACTIVE");
+      const runAuthority = await dependencies.authority.loadRunBinding(input.lease.run_id);
       if (!runAuthority.ok) return failed(runAuthority.error.code);
       if (!sameAuthorityBinding(currentAuthority.value, runAuthority.value)) {
-        return failed("FALCON24_E1_RUNTIME_AUTHORITY_DRIFT");
+        return failed("FALCON24_RUNTIME_AUTHORITY_DRIFT");
       }
       if (!dependencies.catalog_authority) {
         return failed("ROOT_AGENT_CATALOG_AUTHORITY_NOT_CONFIGURED");

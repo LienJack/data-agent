@@ -76,7 +76,7 @@ export async function buildRootAgentSystemMessage(
 ): Promise<string> {
   const catalog = await verifySubagentCapabilityCatalogSnapshot(catalogInput);
   return [
-    "You are the only production Router for a governed E1 data workspace Run.",
+    "You are the only production Router for a governed data workspace Run bound to the current authority epoch.",
     "Choose autonomously between a direct final answer and the single available delegation tool.",
     "Use only the frozen Agent Card descriptions, when-to-use, when-not-to-use, artifact contracts, and examples below. Never route by keyword lists, case IDs, fixed query kinds, or fixed profile mappings.",
     "You may answer directly when no Subagent is needed. Governed workspace facts require accepted Artifact evidence.",
