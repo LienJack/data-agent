@@ -39,6 +39,8 @@ Root turn 0..3 (AUTO)
 - Host validates only the current calls: frozen Card/Profile, scope, budget, accepted inputs, datasource/schema/release binding, SQL/Sandbox safety, idempotency and recovery. Host never selects a subsequent business capability。
 - Provider output is normalized through the strict Root Harness. Mixed text/tool output, unknown tools, unknown Profiles and catalog hash mismatch fail closed。
 - `ROOT_HARNESS@1` is the only Q&A executor. V1/V2/`LEGACY_FIXED@1` leases return `ROOT_AGENT_LEASE_VERSION_UNSUPPORTED` and never fall back。
+- Root v3 ProviderTask commit 必须消费 exact EffectiveConfig conversation receipt 与冻结的 `visible_message_refs`；历史 `START_L2_RESEARCH` lease 没有 refs 时只允许在 live Conversation version 仍等于 command version 的条件下保留无摘要 replay。两条分支共用同一个 RPC，不存在 legacy fallback writer 或第二套上下文权威。
+- Conversation summary 的确定性 UUID helper 由 `data_agent_provider_invocation_rpc_owner` 在 Security Definer 边界调用；该 owner 只获得 `extensions` schema lookup，`data_agent_backend` 不获得同类直接权限。
 
 ## 4. Frozen V2 Product Profiles
 

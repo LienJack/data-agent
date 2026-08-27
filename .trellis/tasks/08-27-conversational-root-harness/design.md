@@ -141,7 +141,9 @@ Concurrent runs in one Conversation share the admission snapshot only; each Run 
 
 ## 8. Storage and migration
 
-Root context v2 已由 10784 演进现有 lease/provider-task RPC。C6 发现不能通过修改已提交 10784 来安全加入 summary authority，因此新增且只新增后继 10785：不建表，只演进同一 commit/load RPC、私有 validator 与现有 Artifact Store RLS。10785 保留 v1 load 和 10784 已提交的无摘要 v2 replay，不 UPDATE/DELETE 历史 Artifact；摘要与新 ProviderTask 同事务提交。
+Root context v2 已由 10784 演进现有 lease/provider-task RPC。C6 发现不能通过修改已提交 10784 来安全加入 summary authority，因此新增后继 10785：不建表，只演进同一 commit/load RPC、私有 validator 与现有 Artifact Store RLS。10785 保留 v1 load 和 10784 已提交的无摘要 v2 replay，不 UPDATE/DELETE 历史 Artifact；摘要与新 ProviderTask 同事务提交。
+
+C7 的真实 PostgreSQL 回归进一步发现：历史 `START_L2_RESEARCH` lease 没有 `visible_message_refs`，也不保证存在 exact EffectiveConfig conversation receipt；若直接套用 Root v3 的 selector，会把历史 replay 错误拒绝。10786 作为只前进兼容迁移修复同一 RPC，不新增入口或第二权威：legacy branch 仅在 live Conversation version 仍等于 command version 时保留旧的无摘要行为；Root branch 仍要求 exact receipt、冻结 refs 和 summary 闭包，提交后并发追加继续被排除。10786 同时只向 `data_agent_provider_invocation_rpc_owner` 授予调用 UUID helper 所需的 `extensions` schema `USAGE`，不向 backend 扩权。
 
 ## 9. File ownership
 
@@ -150,7 +152,7 @@ Root context v2 已由 10784 演进现有 lease/provider-task RPC。C6 发现不
 - Worker: direct dispatcher, root turn/delegation/production runtimes, team tools, Text2SQL runtime, new conversation context builder.
 - Platform: workspace data repository and provider invocation store.
 - Web: validation-only unless a concrete missing current-conversation binding defect is proven.
-- Database: 10784 Root context migration + 10785 summary follow-up；均只演进同一 RPC authority，不新增表。
+- Database: 10784 Root context migration + 10785 summary follow-up + 10786 legacy/exact-Root compatibility repair；均只演进同一 RPC authority，不新增表。
 
 W2-owned dirty files, migration 10783 and the retained E3 database are excluded from this task.
 

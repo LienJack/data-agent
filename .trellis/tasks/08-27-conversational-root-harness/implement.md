@@ -129,6 +129,15 @@ Commit: `feat(agent-runtime): summarize bounded conversation history`
 
 ## C7 — End-to-end acceptance
 
+Status: in progress on 2026-08-27.
+
+Compatibility evidence completed before application-level acceptance:
+
+- 在复用现有 PostgreSQL 17 容器、但使用独立临时数据库的真实迁移链上，10785 暴露了 legacy ProviderTask replay 回归；10786 只向前修复同一 commit RPC，没有修改 10784/10785 或新增业务表。
+- Legacy `START_L2_RESEARCH` replay 与 Root v3 exact branch 均通过真实事务：Root branch 生成 48 条 covered summary + 16 条近期原文，replay 返回 exact document/hash，冻结 cut-off 后的并发消息不可见。
+- 最终 10786 checksum 为 `sha256:60f05ac027c21d28d5e4b1b7f7e7c289654a8cd9e4a55513d039057168344217`；迁移后 ledger frontier 和 Provider RPC owner 的最小 `extensions` schema 权限均经 PostgreSQL 查询确认。
+- `62-conversational-root-context-assertions.sql` 在最终 10786 数据库通过；没有启动新 Docker，也没有访问专用 Falcon E3 数据库。
+
 在同一个 Conversation 真实执行：
 
 1. 最近 12 个完整月订单收入趋势，按月并生成折线图。

@@ -2551,6 +2551,23 @@
       "postcondition": {
         "checksum_occurrences": 2
       }
+    },
+    {
+      "id": "10786",
+      "migration_name": "20260725010786_app_data_agent_conversation_context_summary_compatibility.sql",
+      "source_directory": "infra/supabase/apps/data-agent/migration-sources/10786",
+      "segments": [
+        "00-preamble.sql.inc",
+        "20-provider-task-compatibility.sql.inc",
+        "80-security.sql.inc",
+        "90-postconditions.sql.inc",
+        "99-ledger.sql.inc"
+      ],
+      "placeholder": "__CONVERSATION_CONTEXT_SUMMARY_COMPATIBILITY_MIGRATION_CHECKSUM__",
+      "checksum_header": "conversation_context_summary_compatibility_migration_checksum",
+      "postcondition": {
+        "checksum_occurrences": 2
+      }
     }
   ],
   "exceptions": [
