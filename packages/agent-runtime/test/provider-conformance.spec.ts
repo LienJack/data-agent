@@ -50,6 +50,7 @@ describe("七类 Model Provider 离线 Conformance", () => {
       expect(getModelProviderBinding(binding.provider)).toEqual(binding);
     }
     expect(getModelProviderBinding("deepseek").default_model_id).toBe("deepseek-v4-flash");
+    expect(getModelProviderBinding("deepseek").base_url).toBe("https://api.deepseek.com");
     expect(JSON.stringify(MODEL_PROVIDER_BINDINGS)).not.toContain("deepseek-v4-pro");
   });
 
