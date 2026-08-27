@@ -93,10 +93,14 @@ function budget(maxToolCalls: number) {
 
 function nativeCall(input: {
   readonly tool_call_id: string;
+  readonly delegation_key: string;
   readonly profile_id: (typeof profileIds)[number];
   readonly objective: string;
   readonly requested_artifact_types: readonly ("AnalysisReport" | "QueryEvidence")[];
-  readonly upstream?: Readonly<{ producer_tool_call_id: string; artifact_type: "QueryEvidence" }>;
+  readonly upstream?: Readonly<{
+    producer_delegation_key: string;
+    artifact_type: "QueryEvidence";
+  }>;
 }) {
   const toolCounts = {
     "governed-analysis-agent": 1,
@@ -108,6 +112,7 @@ function nativeCall(input: {
     tool_call_id: input.tool_call_id,
     tool_name: "delegate_to_subagent@2",
     arguments: {
+      delegation_key: input.delegation_key,
       profile_id: input.profile_id,
       objective: input.objective,
       requested_artifact_types: [...input.requested_artifact_types].sort(),
@@ -167,6 +172,7 @@ describe("Falcon24 E1 Root V3 routing boundary", () => {
     const { admitted } = await normalize([
       nativeCall({
         tool_call_id: "semantic-relationship",
+        delegation_key: "semantic-relationship-evidence",
         profile_id: "semantic-management-agent",
         objective: "从冻结 E1 Release 解释订单与客户的关系、Join 和血缘。",
         requested_artifact_types: ["AnalysisReport"],
@@ -183,6 +189,7 @@ describe("Falcon24 E1 Root V3 routing boundary", () => {
     const { admitted } = await normalize([
       nativeCall({
         tool_call_id: "aggregate-query",
+        delegation_key: "aggregate-query-evidence",
         profile_id: "governed-text2sql-agent",
         objective: "查询当前受治理数据库的订单总量。",
         requested_artifact_types: ["QueryEvidence"],
@@ -210,16 +217,21 @@ describe("Falcon24 E1 Root V3 routing boundary", () => {
       const { admitted } = await normalize([
         nativeCall({
           tool_call_id: queryId,
+          delegation_key: `${queryId}-evidence`,
           profile_id: "governed-text2sql-agent",
           objective: `为目标准备受治理数据：${objective}`,
           requested_artifact_types: ["QueryEvidence"],
         }),
         nativeCall({
           tool_call_id: `analysis-${index + 1}`,
+          delegation_key: `analysis-${index + 1}-report`,
           profile_id: "governed-analysis-agent",
           objective,
           requested_artifact_types: ["AnalysisReport"],
-          upstream: { producer_tool_call_id: queryId, artifact_type: "QueryEvidence" },
+          upstream: {
+            producer_delegation_key: `${queryId}-evidence`,
+            artifact_type: "QueryEvidence",
+          },
         }),
       ]);
 
@@ -238,16 +250,21 @@ describe("Falcon24 E1 Root V3 routing boundary", () => {
     const { admitted } = await normalize([
       nativeCall({
         tool_call_id: "report-query",
+        delegation_key: "formal-report-evidence",
         profile_id: "governed-text2sql-agent",
         objective: "准备正式报告需要的已执行数据证据。",
         requested_artifact_types: ["QueryEvidence"],
       }),
       nativeCall({
         tool_call_id: "formal-report",
+        delegation_key: "formal-report-draft",
         profile_id: "report-writing-agent",
         objective: "从已验收证据撰写正式报告。",
         requested_artifact_types: ["AnalysisReport"],
-        upstream: { producer_tool_call_id: "report-query", artifact_type: "QueryEvidence" },
+        upstream: {
+          producer_delegation_key: "formal-report-evidence",
+          artifact_type: "QueryEvidence",
+        },
       }),
     ]);
 
