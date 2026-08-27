@@ -11,6 +11,7 @@ describe("Falcon24 strict acceptance execution policy", () => {
     expect(classifyFalcon24RunFailureCode("FALCON24_E1_UI_RECEIPT_PAIR_REQUIRED")).toBe(
       "PUBLISHER",
     );
+    expect(classifyFalcon24RunFailureCode("FALCON24_UI_RECEIPT_PAIR_REQUIRED")).toBe("PUBLISHER");
     expect(classifyFalcon24RunFailureCode("FALCON24_SANDBOX_RECLAMATION_FAILED")).toBe(
       "SANDBOX_RECLAMATION",
     );

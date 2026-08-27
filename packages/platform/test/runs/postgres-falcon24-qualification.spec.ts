@@ -1,5 +1,6 @@
 import {
   buildFalcon24QualificationManifest,
+  buildFalcon24QualificationManifestV2,
   FALCON24_QUALIFICATION_EXPECTED_PATH,
   falcon24AnalysisCaseIdSchema,
   sha256ContentHash,
@@ -80,6 +81,7 @@ function slot(overrides: Record<string, unknown> = {}) {
     environment: "test",
     principal_id: ids.analyst,
     qualification_id: qualificationId,
+    authority_epoch: "E1",
     ordinal: 0,
     slot_id: "G1-01",
     stage: "G1",
@@ -161,6 +163,22 @@ async function manifest() {
   });
 }
 
+async function currentManifest() {
+  const historical = await manifest();
+  const {
+    manifest_hash: _manifestHash,
+    schema_version: _schemaVersion,
+    qualification_id: _qualificationId,
+    ...shared
+  } = historical;
+  return buildFalcon24QualificationManifestV2({
+    ...shared,
+    schema_version: "falcon24-qualification-manifest@2.0.0",
+    authority_epoch: "E2",
+    qualification_id: "E2-Q1",
+  });
+}
+
 function scriptedPool(handler: (text: string, values?: readonly unknown[]) => unknown) {
   const calls: { readonly text: string; readonly values?: readonly unknown[] }[] = [];
   const client: SqlClient = {
@@ -184,12 +202,16 @@ function scriptedPool(handler: (text: string, values?: readonly unknown[]) => un
 }
 
 describe("PostgreSQL Falcon24 qualification authority", () => {
-  it("begins one exact 16-slot Qualification manifest", async () => {
+  it("begins one exact current-Epoch 16-slot Qualification manifest", async () => {
     const auth = authority();
-    const candidate = await manifest();
+    const candidate = await currentManifest();
     const scripted = scriptedPool((text) =>
       text.includes("begin_falcon24_qualification")
-        ? qualification({ manifest_hash: candidate.manifest_hash })
+        ? qualification({
+            authority_epoch: "E2",
+            qualification_id: "E2-Q1",
+            manifest_hash: candidate.manifest_hash,
+          })
         : undefined,
     );
     const result = await createPostgresFalcon24QualificationAuthority({
@@ -199,17 +221,40 @@ describe("PostgreSQL Falcon24 qualification authority", () => {
 
     expect(result).toMatchObject({
       ok: true,
-      value: { qualification_id: qualificationId, attempt_id: id(22) },
+      value: { authority_epoch: "E2", qualification_id: "E2-Q1", attempt_id: id(22) },
     });
     expect(
       scripted.calls.find(({ text }) => text.includes("begin_falcon24_qualification"))?.values,
     ).toEqual([
       expect.objectContaining({
-        schema_version: "falcon24-qualification-begin@1.0.0",
+        schema_version: "falcon24-qualification-begin@2.0.0",
         manifest: candidate,
         command_hash: expect.stringMatching(/^sha256:[0-9a-f]{64}$/),
       }),
     ]);
+  });
+
+  it("loads the historical E1 qualification without treating it as current mutation input", async () => {
+    const auth = authority();
+    const scripted = scriptedPool((text) =>
+      text.includes("load_falcon24_qualification(") ? qualification() : undefined,
+    );
+    const port = createPostgresFalcon24QualificationAuthority({
+      pool: scripted.pool,
+      authorizer: auth.authorizer,
+    });
+
+    await expect(port.load(auth.capability, { qualification_id: "E1-Q1" })).resolves.toMatchObject({
+      ok: true,
+      value: { authority_epoch: "E1", qualification_id: "E1-Q1", status: "READY" },
+    });
+
+    const historicalManifest = await manifest();
+    const callsBeforeBegin = scripted.calls.length;
+    await expect(port.begin(auth.capability, historicalManifest)).rejects.toThrow(
+      "FALCON24_QUALIFICATION_HISTORICAL_MANIFEST_READ_ONLY",
+    );
+    expect(scripted.calls).toHaveLength(callsBeforeBegin);
   });
 
   it("claims only the exact next slot with a hashed one-shot submit fence", async () => {
@@ -311,12 +356,12 @@ describe("PostgreSQL Falcon24 qualification authority", () => {
     expect(scripted.calls).toHaveLength(0);
   });
 
-  it("maps an immutable E1 attempt rejection as non-retryable", async () => {
+  it("maps an immutable current-Epoch attempt rejection as non-retryable", async () => {
     const auth = authority();
-    const candidate = await manifest();
+    const candidate = await currentManifest();
     const scripted = scriptedPool((text) => {
       if (text.includes("begin_falcon24_qualification")) {
-        throw new Error("FALCON24_E1_GATE_ATTEMPT_IMMUTABLE");
+        throw new Error("FALCON24_GATE_ATTEMPT_IMMUTABLE");
       }
       return undefined;
     });
@@ -328,7 +373,7 @@ describe("PostgreSQL Falcon24 qualification authority", () => {
       }).begin(auth.capability, candidate),
     ).resolves.toMatchObject({
       ok: false,
-      error: { code: "FALCON24_E1_GATE_ATTEMPT_IMMUTABLE", retryable: false },
+      error: { code: "FALCON24_GATE_ATTEMPT_IMMUTABLE", retryable: false },
     });
   });
 });

@@ -1,6 +1,7 @@
 import {
   artifactReferenceIdentity,
   buildFalcon24AcceptanceRunManifest,
+  buildFalcon24AcceptanceRunManifestV2,
   buildFalcon24ResolutionTraceGateReceipt,
   buildFalcon24ResolutionTraceUiGateReceipt,
   buildFalcon24SandboxReclamationReceipt,
@@ -83,6 +84,7 @@ function run(overrides: Record<string, unknown> = {}) {
     environment: "test",
     principal_id: ids.analyst,
     campaign_id: "E1-C1",
+    authority_epoch: "E1",
     run_ordinal: 0,
     run_id: ids.run,
     case_id: "falcon24-q1",
@@ -321,6 +323,22 @@ async function manifest() {
   });
 }
 
+async function currentManifest() {
+  const historical = await manifest();
+  const {
+    manifest_hash: _manifestHash,
+    schema_version: _schemaVersion,
+    campaign_id: _campaignId,
+    ...shared
+  } = historical;
+  return buildFalcon24AcceptanceRunManifestV2({
+    ...shared,
+    schema_version: "falcon24-analysis-run-manifest@3.0.0",
+    authority_epoch: "E2",
+    campaign_id: "E2-C1",
+  });
+}
+
 function scriptedPool(handler: (text: string, values?: readonly unknown[]) => unknown) {
   const calls: { readonly text: string; readonly values?: readonly unknown[] }[] = [];
   const client: SqlClient = {
@@ -445,12 +463,16 @@ describe("PostgreSQL Falcon24 acceptance campaign authority", () => {
     });
   });
 
-  it("begins a frozen 30-run zero-retry campaign with a canonical command hash", async () => {
+  it("begins a frozen current-Epoch 30-run campaign with a canonical command hash", async () => {
     const auth = authority();
-    const frozenManifest = await manifest();
+    const frozenManifest = await currentManifest();
     const scripted = scriptedPool((text) =>
       text.includes("begin_falcon24_acceptance_campaign")
-        ? campaign({ manifest_hash: frozenManifest.manifest_hash })
+        ? campaign({
+            authority_epoch: "E2",
+            campaign_id: "E2-C1",
+            manifest_hash: frozenManifest.manifest_hash,
+          })
         : undefined,
     );
     const port = createPostgresFalcon24AcceptanceCampaignAuthority({
@@ -467,15 +489,30 @@ describe("PostgreSQL Falcon24 acceptance campaign authority", () => {
       text.includes("begin_falcon24_acceptance_campaign"),
     );
     expect(rpc?.values?.[0]).toMatchObject({
-      schema_version: "falcon24-acceptance-campaign-begin@1.0.0",
+      schema_version: "falcon24-acceptance-campaign-begin@2.0.0",
       policy_id: "falcon24-strict-zero-retry@1.0.0",
       manifest: expect.objectContaining({
-        schema_version: "falcon24-analysis-run-manifest@2.0.0",
-        campaign_id: "E1-C1",
+        schema_version: "falcon24-analysis-run-manifest@3.0.0",
+        authority_epoch: "E2",
+        campaign_id: "E2-C1",
         runs: expect.arrayContaining([expect.objectContaining({ case_id: expect.any(String) })]),
       }),
       command_hash: expect.stringMatching(/^sha256:[0-9a-f]{64}$/),
     });
+  });
+
+  it("rejects an E1 campaign manifest as historical before database I/O", async () => {
+    const auth = authority();
+    const scripted = scriptedPool(() => undefined);
+    const port = createPostgresFalcon24AcceptanceCampaignAuthority({
+      pool: scripted.pool,
+      authorizer: auth.authorizer,
+    });
+
+    await expect(port.begin(auth.capability, await manifest())).rejects.toThrow(
+      "FALCON24_CAMPAIGN_HISTORICAL_MANIFEST_READ_ONLY",
+    );
+    expect(scripted.calls).toHaveLength(0);
   });
 
   it("claims only the exact requested ordinal and run identity", async () => {
@@ -1184,7 +1221,7 @@ describe("PostgreSQL Falcon24 acceptance campaign authority", () => {
     expect(completeCalls).toBe(1);
   });
 
-  it.each(["FALCON24_CAMPAIGN_HOLD", "FALCON24_E1_GATE_ATTEMPT_MISMATCH"])(
+  it.each(["FALCON24_CAMPAIGN_HOLD", "FALCON24_GATE_ATTEMPT_MISMATCH"])(
     "maps the stable database error %s without making it retryable",
     async (marker) => {
       const auth = authority();

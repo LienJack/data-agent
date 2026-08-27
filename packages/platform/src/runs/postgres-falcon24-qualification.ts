@@ -2,15 +2,15 @@ import { contentHashSchema, sha256ContentHash } from "@data-agent/contracts/comm
 import {
   falcon24AcceptanceFailureLayerSchema,
   falcon24AgentAnalysisRunResultSchema,
-  falcon24QualificationIdSchema,
+  falcon24QualificationGateIdSchema,
   falcon24QualificationStageSchema,
-  falcon24ResolutionTraceGateReceiptSchema,
-  falcon24ResolutionTraceUiGateReceiptSchema,
-  falcon24SandboxReclamationReceiptSchema,
-  verifyFalcon24QualificationManifest,
-  verifyFalcon24ResolutionTraceGateReceipt,
-  verifyFalcon24ResolutionTraceUiGateReceipt,
-  verifyFalcon24SandboxReclamationReceipt,
+  falcon24ResolutionTraceGateReceiptDocumentSchema,
+  falcon24ResolutionTraceUiGateReceiptDocumentSchema,
+  falcon24SandboxReclamationReceiptDocumentSchema,
+  verifyFalcon24QualificationManifestDocument,
+  verifyFalcon24ResolutionTraceGateReceiptDocument,
+  verifyFalcon24ResolutionTraceUiGateReceiptDocument,
+  verifyFalcon24SandboxReclamationReceiptDocument,
 } from "@data-agent/contracts/evals";
 import { falcon24AuthorityPersistenceBindingSchema } from "@data-agent/contracts/runs";
 import { canonicalImmutableIdSchema } from "@data-agent/contracts/workspaces";
@@ -37,7 +37,7 @@ const qualificationRowSchema = z.strictObject({
   environment: z.string().min(1).max(64),
   principal_id: canonicalImmutableIdSchema,
   ...falcon24AuthorityPersistenceBindingSchema.shape,
-  qualification_id: falcon24QualificationIdSchema,
+  qualification_id: falcon24QualificationGateIdSchema,
   attempt_id: canonicalImmutableIdSchema,
   qualification_version: z.number().int().positive().safe(),
   source_commit: z.string().regex(/^[0-9a-f]{40}$/u),
@@ -67,7 +67,8 @@ const qualificationSlotRowSchema = z.strictObject({
   tenant_id: canonicalImmutableIdSchema,
   environment: z.string().min(1).max(64),
   principal_id: canonicalImmutableIdSchema,
-  qualification_id: falcon24QualificationIdSchema,
+  qualification_id: falcon24QualificationGateIdSchema,
+  authority_epoch: falcon24AuthorityPersistenceBindingSchema.shape.authority_epoch,
   ordinal: z.number().int().min(0).max(15),
   slot_id: z.string().regex(/^G[1-4]-0[1-5]$/u),
   stage: falcon24QualificationStageSchema,
@@ -82,20 +83,20 @@ const qualificationSlotRowSchema = z.strictObject({
   claim_fence_consumed_at: timestampSchema.nullable(),
   trace_closure_hash: contentHashSchema.nullable(),
   trace_gate_receipt_hash: contentHashSchema.nullable(),
-  trace_gate_receipt: falcon24ResolutionTraceGateReceiptSchema.nullable(),
+  trace_gate_receipt: falcon24ResolutionTraceGateReceiptDocumentSchema.nullable(),
   ui_trace_gate_receipt_hash: contentHashSchema.nullable(),
-  ui_trace_gate_receipt: falcon24ResolutionTraceUiGateReceiptSchema.nullable(),
+  ui_trace_gate_receipt: falcon24ResolutionTraceUiGateReceiptDocumentSchema.nullable(),
   result_hash: contentHashSchema.nullable(),
   result_document: falcon24AgentAnalysisRunResultSchema.nullable(),
   sandbox_reclamation_claim_hash: contentHashSchema.nullable(),
   sandbox_reclamation_claim_consumed_at: timestampSchema.nullable(),
   sandbox_reclamation_hash: contentHashSchema.nullable(),
-  sandbox_reclamation_receipt: falcon24SandboxReclamationReceiptSchema.nullable(),
+  sandbox_reclamation_receipt: falcon24SandboxReclamationReceiptDocumentSchema.nullable(),
   forced_cleanup_claim_hash: contentHashSchema.nullable(),
   forced_cleanup_claimed_at: timestampSchema.nullable(),
   forced_cleanup_resolved_at: timestampSchema.nullable(),
   forced_cleanup_receipt_hash: contentHashSchema.nullable(),
-  forced_cleanup_receipt: falcon24SandboxReclamationReceiptSchema.nullable(),
+  forced_cleanup_receipt: falcon24SandboxReclamationReceiptDocumentSchema.nullable(),
   secondary_failure_layer: z.literal("SANDBOX_RECLAMATION").nullable(),
   secondary_failure_code: failureCodeSchema.nullable(),
   claimed_at: timestampSchema.nullable(),
@@ -103,11 +104,11 @@ const qualificationSlotRowSchema = z.strictObject({
 });
 
 const identitySchema = z.strictObject({
-  qualification_id: falcon24QualificationIdSchema,
+  qualification_id: falcon24QualificationGateIdSchema,
   run_id: canonicalImmutableIdSchema,
 });
 const claimSchema = z.strictObject({
-  qualification_id: falcon24QualificationIdSchema,
+  qualification_id: falcon24QualificationGateIdSchema,
   ordinal: z.number().int().min(0).max(15),
   slot_id: z.string().regex(/^G[1-4]-0[1-5]$/u),
   stage: falcon24QualificationStageSchema,
@@ -121,9 +122,11 @@ const holdSchema = identitySchema.extend({
   failure_code: failureCodeSchema,
 });
 const submitOutcomeSchema = identitySchema.extend({ observed_failure_code: failureCodeSchema });
-const traceSchema = identitySchema.extend({ receipt: falcon24ResolutionTraceGateReceiptSchema });
+const traceSchema = identitySchema.extend({
+  receipt: falcon24ResolutionTraceGateReceiptDocumentSchema,
+});
 const uiTraceSchema = identitySchema.extend({
-  receipt: falcon24ResolutionTraceUiGateReceiptSchema,
+  receipt: falcon24ResolutionTraceUiGateReceiptDocumentSchema,
 });
 const resultSchema = identitySchema.extend({
   result_document: falcon24AgentAnalysisRunResultSchema,
@@ -132,7 +135,7 @@ const reclamationClaimSchema = identitySchema.extend({
   reclamation_claim_token: canonicalImmutableIdSchema,
 });
 const reclamationRecordSchema = reclamationClaimSchema.extend({
-  receipt: falcon24SandboxReclamationReceiptSchema,
+  receipt: falcon24SandboxReclamationReceiptDocumentSchema,
 });
 const completeSchema = identitySchema.extend({
   result_document: falcon24AgentAnalysisRunResultSchema,
@@ -142,18 +145,18 @@ const forcedCleanupClaimSchema = identitySchema.extend({
   forced_cleanup_token: canonicalImmutableIdSchema,
 });
 const forcedCleanupResolveSchema = forcedCleanupClaimSchema.extend({
-  receipt: falcon24SandboxReclamationReceiptSchema.nullable(),
+  receipt: falcon24SandboxReclamationReceiptDocumentSchema.nullable(),
   secondary_failure_code: failureCodeSchema.nullable(),
 });
 const pendingFailedRunSchema = z.strictObject({
-  qualification_id: falcon24QualificationIdSchema,
+  qualification_id: falcon24QualificationGateIdSchema,
   run_id: canonicalImmutableIdSchema,
 });
 const submitOutcomeResolutionSchema = z.discriminatedUnion("disposition", [
   z.strictObject({
     schema_version: z.literal("falcon24-qualification-submit-outcome@1.0.0"),
     disposition: z.literal("ACCEPTED"),
-    qualification_id: falcon24QualificationIdSchema,
+    qualification_id: falcon24QualificationGateIdSchema,
     run_id: canonicalImmutableIdSchema,
     claim_fence_hash: contentHashSchema,
     claim_fence_consumed_at: timestampSchema,
@@ -161,7 +164,7 @@ const submitOutcomeResolutionSchema = z.discriminatedUnion("disposition", [
   z.strictObject({
     schema_version: z.literal("falcon24-qualification-submit-outcome@1.0.0"),
     disposition: z.literal("HELD"),
-    qualification_id: falcon24QualificationIdSchema,
+    qualification_id: falcon24QualificationGateIdSchema,
     run_id: canonicalImmutableIdSchema,
     failure_code: failureCodeSchema,
   }),
@@ -177,6 +180,12 @@ const STABLE_DATABASE_ERRORS = new Set([
   "FALCON24_E1_GATE_ATTEMPT_FENCE_INVALID",
   "FALCON24_E1_GATE_ATTEMPT_MISMATCH",
   "FALCON24_E1_UI_RECEIPT_PAIR_REQUIRED",
+  "FALCON24_GATE_EPOCH_MISMATCH",
+  "FALCON24_GATE_BASELINE_MISMATCH",
+  "FALCON24_GATE_ATTEMPT_IMMUTABLE",
+  "FALCON24_GATE_ATTEMPT_FENCE_INVALID",
+  "FALCON24_GATE_ATTEMPT_MISMATCH",
+  "FALCON24_UI_RECEIPT_PAIR_REQUIRED",
   "FALCON24_QUALIFICATION_NOT_FOUND",
   "FALCON24_QUALIFICATION_SLOT_NOT_FOUND",
   "FALCON24_QUALIFICATION_VERSION_NOT_NEXT",
@@ -282,7 +291,7 @@ export function createPostgresFalcon24QualificationAuthority(input: {
   return Object.freeze({
     async load(capability: unknown, candidate: { readonly qualification_id: unknown }) {
       const request = z
-        .strictObject({ qualification_id: falcon24QualificationIdSchema })
+        .strictObject({ qualification_id: falcon24QualificationGateIdSchema })
         .parse(candidate);
       const command = await commandWithHash({
         schema_version: "falcon24-qualification-load@1.0.0" as const,
@@ -328,9 +337,12 @@ export function createPostgresFalcon24QualificationAuthority(input: {
     },
 
     async begin(capability: unknown, candidate: unknown) {
-      const manifest = await verifyFalcon24QualificationManifest(candidate);
+      const manifest = await verifyFalcon24QualificationManifestDocument(candidate);
+      if (manifest.schema_version !== "falcon24-qualification-manifest@2.0.0") {
+        throw new TypeError("FALCON24_QUALIFICATION_HISTORICAL_MANIFEST_READ_ONLY");
+      }
       const command = await commandWithHash({
-        schema_version: "falcon24-qualification-begin@1.0.0" as const,
+        schema_version: "falcon24-qualification-begin@2.0.0" as const,
         manifest,
       });
       return invoke({
@@ -478,7 +490,7 @@ export function createPostgresFalcon24QualificationAuthority(input: {
 
     async stageTrace(capability: unknown, candidate: unknown) {
       const request = traceSchema.parse(candidate);
-      const receipt = await verifyFalcon24ResolutionTraceGateReceipt(request.receipt);
+      const receipt = await verifyFalcon24ResolutionTraceGateReceiptDocument(request.receipt);
       if (receipt.campaign_id !== request.qualification_id || receipt.run_id !== request.run_id) {
         throw new TypeError("FALCON24_QUALIFICATION_TRACE_IDENTITY_INVALID");
       }
@@ -503,7 +515,7 @@ export function createPostgresFalcon24QualificationAuthority(input: {
 
     async stageUiTrace(capability: unknown, candidate: unknown) {
       const request = uiTraceSchema.parse(candidate);
-      const receipt = await verifyFalcon24ResolutionTraceUiGateReceipt(request.receipt);
+      const receipt = await verifyFalcon24ResolutionTraceUiGateReceiptDocument(request.receipt);
       if (receipt.campaign_id !== request.qualification_id || receipt.run_id !== request.run_id) {
         throw new TypeError("FALCON24_QUALIFICATION_UI_TRACE_IDENTITY_INVALID");
       }
@@ -545,7 +557,7 @@ export function createPostgresFalcon24QualificationAuthority(input: {
 
     async recordSandboxReclamation(capability: unknown, candidate: unknown) {
       const request = reclamationRecordSchema.parse(candidate);
-      const receipt = await verifyFalcon24SandboxReclamationReceipt(request.receipt);
+      const receipt = await verifyFalcon24SandboxReclamationReceiptDocument(request.receipt);
       if (receipt.campaign_id !== request.qualification_id || receipt.run_id !== request.run_id) {
         throw new TypeError("FALCON24_QUALIFICATION_SANDBOX_IDENTITY_INVALID");
       }
@@ -616,7 +628,7 @@ export function createPostgresFalcon24QualificationAuthority(input: {
       const receipt =
         request.receipt === null
           ? null
-          : await verifyFalcon24SandboxReclamationReceipt(request.receipt);
+          : await verifyFalcon24SandboxReclamationReceiptDocument(request.receipt);
       if (
         receipt !== null &&
         (receipt.campaign_id !== request.qualification_id || receipt.run_id !== request.run_id)
