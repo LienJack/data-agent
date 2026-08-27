@@ -4,7 +4,7 @@
 
 把当前一次性 Root Router 恢复为真正的持续对话 Agent Harness。在同一个 Conversation 中，一条用户消息仍对应一个可恢复、可审计的 Run；Root 能看到该 Run admission 时冻结的历史文本，并在当前 Run 内自主完成最多四轮 Tool/Subagent 调用后给出 Artifact-backed 最终回答。
 
-本任务是 `08-27-falcon24-e2-authority-evolution` 的 P0 阻断子任务。W2/10783 现场保持冻结；本任务验收后恢复父任务，不替代 generation 2/E4 工作。
+本任务是 `08-27-falcon24-e2-authority-evolution` 的 P0 阻断子任务。W2/10783 现场保持冻结，直到动态 Tool Loop 的实现与真实多轮决策得到证明。真实 C7 又证明 generation 1 runtime projection 无法被生产读路径执行，因此核心 Harness 修复后必须恢复父任务生成不可变的 generation 2；generation 2 激活后再回到本任务完成五轮 Artifact acceptance。本任务不替代 generation 2/E4 工作，也不允许修补 generation 1。
 
 ## Requirements
 
@@ -84,7 +84,7 @@
 - [ ] 精确 Run 的 Trace UI 能看到完整 Tool/Artifact 链；新窗口“只看华东呢？”必须要求澄清。
 - [ ] 没有新增关键词路由、固定业务流程、跨 Run Artifact 复用、业务表、Epoch 或发布机制。
 - [ ] 每个 C0-C7 包完成聚焦验证并形成 scoped commit；不得吸收 W2/10783 脏文件。
-- [ ] C7 通过后恢复父 Trellis 任务并继续原 Falcon24 W2。
+- [ ] 动态 Tool Loop 的真实多轮决策通过后恢复父 Trellis 任务并继续原 Falcon24 W2；generation 2 激活后回到 C7 完成五轮 Artifact acceptance。
 
 ## Out of Scope
 

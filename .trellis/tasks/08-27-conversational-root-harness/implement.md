@@ -138,6 +138,20 @@ Compatibility evidence completed before application-level acceptance:
 - 最终 10786 checksum 为 `sha256:60f05ac027c21d28d5e4b1b7f7e7c289654a8cd9e4a55513d039057168344217`；迁移后 ledger frontier 和 Provider RPC owner 的最小 `extensions` schema 权限均经 PostgreSQL 查询确认。
 - `62-conversational-root-context-assertions.sql` 在最终 10786 数据库通过；没有启动新 Docker，也没有访问专用 Falcon E3 数据库。
 
+Dynamic Tool Loop application evidence completed on 2026-08-28:
+
+- `a4506a92` 把严格 `RootToolObservation` 以 server-owned、untrusted canonical JSON 投影给不支持原生 tool-role replay 的 Provider；Root 下一轮基于真实 Tool Result 决策，没有要求一次声明完整调用链。
+- `b80fffee` 把 Run 级 Semantic Context 从 one-shot capability 改成 first-result memoization；同一 Run 的并发和后续 turn 复用 exact Promise/result，不重复读取或提交 authority。聚焦 Root/Provider 测试 10/10、Worker typecheck、Biome 和 diff check 通过。
+- 真实 Run `473be73a-65c8-89ef-86b1-549c4d2773c0` 连续执行四个普通 Root turn：`Text2SQL -> Text2SQL -> Semantic -> Semantic`。每一步均在前一个失败 Tool Result 和 checkpoint 后由 Root 再决定，最终按冻结预算以 `ROOT_AGENT_TURN_BUDGET_EXHAUSTED` 结束；这证明 Host 没有调度预编排业务链，且 `SEMANTIC_CONTEXT_ALREADY_CONSUMED` 已消失。
+- `5e4ec670` 让公开 Tool failure 只保留符合大写错误码合同的稳定 code，任意异常文本仍映射到 `TEAM_TOOL_EXECUTION_FAILED`。聚焦测试 13/13、Worker typecheck、Biome 和 diff check 通过。
+- 真实 Run `bb15390e-e4f5-8075-9721-ca66a21aa991` 再次动态选择 `Text2SQL -> Semantic -> Text2SQL -> Semantic`；四次生产 Tool failure 均在 PostgreSQL append-only events 中精确记录为 `SEMANTIC_RELEASE_PROJECTION_INVALID`，公开 payload 不含内部异常文本。
+
+Current fail-closed blocker:
+
+- exact generation 1 release `00000000-0000-4000-8000-00000000ec25` 的 executable/relationship/runtime-restriction payload 不是当前生产合同，`semantic.release.read` 正确拒绝。
+- generation 1 及其历史 projection 必须保持不可变；禁止使用被冻结的 repair-generation-1 现场代码或手工 SQL。
+- 因此 C7 的 SQL/QueryEvidence/Arrow/Analysis/Chart 和固定五轮 acceptance 尚未通过。下一步恢复父任务 W2，以唯一发布 authority 生成、校验、smoke 并原子激活 generation 2；成功后回到本节继续五轮验收。
+
 在同一个 Conversation 真实执行：
 
 1. 最近 12 个完整月订单收入趋势，按月并生成折线图。
@@ -152,6 +166,6 @@ Commit: `test(agent-runtime): prove conversational root harness`
 
 ## Completion and parent resume
 
-- 汇总 C0-C7 commit 与验证证据，确认 git status 只剩父任务原有 dirty files。
-- 完成本 Trellis 子任务并恢复 `08-27-falcon24-e2-authority-evolution`。
-- 从父任务 W2/10783 当前现场继续；不重建或丢弃既有工作。
+- 当前先汇总 C0-C6 与 C7 动态 Loop 证据，确认 git status 只剩父任务原有 dirty files 和服务生成文件。
+- 保持本任务 `in_progress`，恢复 `08-27-falcon24-e2-authority-evolution`，从父任务 W2/10783 当前现场继续；不重建或丢弃既有工作。
+- generation 2 原子激活后返回本任务完成固定五轮、Conversation isolation、exact Trace UI 与全量聚焦验证，届时才把 C7 和本任务标记 completed。

@@ -145,6 +145,8 @@ Root context v2 已由 10784 演进现有 lease/provider-task RPC。C6 发现不
 
 C7 的真实 PostgreSQL 回归进一步发现：历史 `START_L2_RESEARCH` lease 没有 `visible_message_refs`，也不保证存在 exact EffectiveConfig conversation receipt；若直接套用 Root v3 的 selector，会把历史 replay 错误拒绝。10786 作为只前进兼容迁移修复同一 RPC，不新增入口或第二权威：legacy branch 仅在 live Conversation version 仍等于 command version 时保留旧的无摘要行为；Root branch 仍要求 exact receipt、冻结 refs 和 summary 闭包，提交后并发追加继续被排除。10786 同时只向 `data_agent_provider_invocation_rpc_owner` 授予调用 UUID helper 所需的 `extensions` schema `USAGE`，不向 backend 扩权。
 
+随后 10787、10788、10789 分别补齐 SemanticQueryContext runtime Profile、默认 lease policy 兼容和 semantic context canonical aliases。它们都是对既有唯一 authority/read projection 的前向兼容修复，不修改历史 Release 或 projection payload。尤其 10789 只规范 Context 查询返回的别名集合；它不能、也不会把 generation 1 的旧 runtime projection 改写成当前可执行合同。
+
 ## 9. File ownership
 
 - Contracts: provider invocation, artifact types/new schemas, subagent harness, effective config/runtime.
@@ -152,7 +154,7 @@ C7 的真实 PostgreSQL 回归进一步发现：历史 `START_L2_RESEARCH` lease
 - Worker: direct dispatcher, root turn/delegation/production runtimes, team tools, Text2SQL runtime, new conversation context builder.
 - Platform: workspace data repository and provider invocation store.
 - Web: validation-only unless a concrete missing current-conversation binding defect is proven.
-- Database: 10784 Root context migration + 10785 summary follow-up + 10786 legacy/exact-Root compatibility repair；均只演进同一 RPC authority，不新增表。
+- Database: 10784 Root context migration + 10785 summary follow-up + 10786 legacy/exact-Root compatibility repair + 10787/10788/10789 C7 forward compatibility；均只演进既有 authority/profile/read projection，不改写 generation 1。
 
 W2-owned dirty files, migration 10783 and the retained E3 database are excluded from this task.
 
@@ -165,3 +167,4 @@ W2-owned dirty files, migration 10783 and the retained E3 database are excluded 
 - Relax all Team inputs to allow cross-Run refs: expands scope and weakens exact Run isolation.
 - New memory/vector/router/business tables: unnecessary second authority.
 - Retry the whole Run after crash: can duplicate model, SQL or Sandbox effects.
+- 原地修补 generation 1 projection：破坏已发布历史不可变性，并绕过 generation 2 发布、共享校验和原子激活权威。
