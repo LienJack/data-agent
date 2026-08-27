@@ -1,103 +1,491 @@
-# Falcon24 E2 Authority Evolution — Design
+# Falcon24 Semantic Generation 2 与 E4 原子权威恢复 — Design
 
-## 1. Design Goal
+> Review-only。本文定义待批准的目标设计，不授权代码、migration、数据库或门禁操作。
 
-在不改写 E1 事实的前提下，把“E1 是唯一合法值”的实现升级成“历史 E1 + current E2”的单一 Authority 模型。
-E2 是新的内容寻址 closure，不是 E1 的版本号更新；E1 与 E2 共享一套 generic PostgreSQL truth 和运行时传播路径，
-但各自拥有独立 baseline、activation、gate、Run、Artifact 与 UI receipts。
+## 1. Scope / Trigger
 
-## 2. Contract Boundary
+### 1.1 Trigger
 
-### 2.1 Epoch and gate identity
+E3-Q1 ordinal 0 以 `SQL_DATA_PREPARATION / SEMANTIC_RELEASE_PROJECTION_INVALID` HOLD。当前 generation 1 的
+executable、relationship、runtime restriction payload 只有 `release_set_hash`，而生产 read port 需要严格的可执行投影 schema。
+E1/E2/E3 又都复用了相同 Semantic staging proof，因此现有 Finalizer 的 predecessor-equality 检查无法证明运行时闭包。
 
-- 新增规范 Epoch value schema：`E[1-9][0-9]*`，提供 ordinal parser/comparator；禁止前导零和任意文本。
-- 提供纯函数 `qualificationIdForEpoch(epoch) -> <epoch>-Q1`、`campaignIdForEpoch(epoch) -> <epoch>-C1`，
-  以及严格相关性校验；不存在 Q2/C2。
-- `FALCON24_TARGET_AUTHORITY_EPOCH` 在本交付为 `E2`，只用于 baseline/bootstrap CLI 默认值；生产 Run/Trace/Web
-  始终读取 PostgreSQL current/Run binding，不能用 target 常量替代 authority read。
-
-### 2.2 Versioning
-
-- 保留所有 E1 v1 schema/verify 函数用于历史读取；不在原 schema version 下放宽 literal。
-- 新增 v2 material：retained assets、authority baseline、staging receipt/session、activation attempt/binding、gate manifest、
-  QA/Trace UI receipt。v2 显式携带 `authority_epoch`，builder 重算 exact hash。
-- 公共 decoder 使用 `v1 | v2` strict union；current builder 只签发 v2。未知版本、未知字段和 v1+E2 混搭失败关闭。
-- Canonical Run/Artifact persistence binding继续保存显式 epoch/baseline/activation；E2 只改变合法值集合，不改变 exact reference 原则。
-
-## 3. PostgreSQL Evolution
-
-新增一个 forward-only migration（接续当前 10780），在单一事务和 migration advisory lock 下完成：
-
-1. Preflight 当前 schema/ledger、PostgreSQL 17、E1 表/函数/约束 inventory；记录 E1 authority/gate/run/artifact/UI 行数与稳定摘要。
-2. 将 `falcon24_e1_staging_*`、activation、UI receipt、gate history 表原位 rename 为 generic `falcon24_epoch_*`；
-   PostgreSQL OID/FK 保持，禁止 copy/drop data。
-3. 给 staging/activation/history 增加并回填 `authority_epoch='E1'`，建立 exact FK；将 E1-only CHECK 替换为 canonical Epoch
-   与 derived gate identity CHECK。Runs、Effective Config、Artifact、qualification/campaign 同样改为 exact baseline FK + generic Epoch。
-4. `falcon24_authority_baselines` 允许每个 Scope/Epoch 一个 activated baseline；原 one-active index 改成 per-Epoch unique。
-   E1 baseline `ACTIVE` 状态保持不变，表示“曾原子激活”，不通过 UPDATE 改成 SUPERSEDED。
-5. `falcon24_current_authority_epoch` 仍以 Scope 为唯一键。E2 activation RPC 锁定 current E1 和 candidate E2，验证 ordinal
-   恰好 `+1`、全部 E2 receipt/hash/source/build closure 后，以一次 UPSERT 推进 pointer。异常回滚后 pointer 仍为 E1。
-6. 用 generic v2 RPC 替换写入口并撤销 E1 mutating RPC 的执行权；历史读取走 generic exact-ref RPC。RPC command/version 都显式
-   携带 Epoch，数据库不从 gate ID 猜 Epoch。
-7. Gate begin 在同一事务归档 current E1 HOLD parent/16 slots，然后创建 E2-Q1 current；Campaign begin 只接受同一 E2 baseline
-   的 winning E2 qualification。Submit/hold/status/trace/finalize 全部锁定 exact epoch/gate/attempt/run/claim fence。
-8. Postflight 重算 E1 摘要和行数必须等于 preflight，校验 RLS/grants/immutability/inventory 后写 migration ledger。
-
-不提供 down migration。迁移失败由 PostgreSQL 整事务回滚；E2 activation 失败只 HOLD 新 activation attempt，不移动 current。
-
-## 4. Runtime and Port Changes
-
-- `postgres-authority-epoch` port 返回 generic versioned binding；调用方必须比较 Run binding 与同事务 current binding。
-- Effective Config 的 qualification/campaign fence 改为 generic derived ID，并校验 `gate epoch == run epoch == baseline epoch`。
-- Repository 的 E1 SQL literal 替换为参数化 exact epoch/baseline predicate；不放宽到“任意有值”。
-- Root system message 使用“current governed authority epoch”，或从 Run context 注入 exact epoch；native delegation catalog hash仍绑定 Run。
-- Worker/Analysis/Publisher 对 E1 文案做中性化，但不改变 Operator、Oracle、fence、atomic publication 或公开数据边界。
-- Baseline CLI 增加 explicit epoch 输入并只允许 target E2；source commit、build、contract hash变化都进入 E2 baseline。
-
-## 5. Web, Trace and Browser Gate
-
-- Question Run route 接受 versioned gate fence DTO；服务端根据 current authority和数据库 gate current 校验 exact E2-Q1/E2-C1，
-  不接受客户端任意 epoch 或 hidden fallback。
-- API client、QA store、browser trace gate、qualification/campaign CLI 使用 shared gate derivation函数，不复制 literal。
-- Resolution Trace loader先从 Run解析 exact epoch/baseline，再读取同 Epoch Artifact/Publisher/UI receipt。历史 E1 Trace仍按 v1渲染；
-  E2 title显示 exact epoch，禁止固定“E1 Publisher”。
-- UI receipt v2绑定 Run epoch、baseline、activation、Web build、viewport、DOM/screenshot hash；QA/Trace pair必须同源。
-- Browser操作继续使用 snapshot/ref/re-snapshot和真实 composer submit；不得直接拼 Run URL 或用 API-only 结果计 PASS。
-
-## 6. Operational Data Flow
+### 1.2 Design outcome
 
 ```text
-immutable E1 ACTIVE baseline + E1-Q1 HOLD history
-  -> forward migration preserves every E1 fact
-  -> stage E2 receipts for db24/semantic/model/profile/operator/sandbox
-  -> build E2 baseline from exact new source + builds + contracts
-  -> atomic E1-current -> E2-current activation
-  -> archive E1-Q1 HOLD current into generic history
-  -> E2-Q1 immutable attempt: G1 1 + G2 5 + G3 5 + G4 5
-  -> winning E2 qualification certificate
-  -> E2-C1 immutable attempt: 30 serial slots
-  -> final local functional report (production isolation remains HOLD)
+immutable generation 1 + current E3
+  -> reviewed ChangeSet successor stage (server compiled)
+  -> shared runtime closure validation
+  -> deterministic Worker smoke
+  -> staged E4 baseline/proofs
+  -> one PostgreSQL transaction promotes gen2 and activates E4
+  -> post-commit production-port verification
+  -> one non-scoring diagnostic
+  -> E4-Q1 16/16
+  -> E4-C1 30/30
 ```
 
-## 7. Compatibility and Security
+### 1.3 Non-goals
 
-- E1 v1 is read-only compatibility, not a hidden write shim. Any E1 mutating RPC after E2 activation is revoked or rejects stale current.
-- No E1 bytes are rewritten to v2. Cross-version decoders return a normalized in-memory projection while preserving original identity/hash.
-- Public trace remains content-first and bounded; no provider response, prompt, SQL DSN, credentials, raw rows, sealed Oracle data or chain-of-thought。
-- Scope remains `app_id + tenant_id + environment` plus principal where applicable; every SQL statement retains explicit scope predicates and RLS revalidation。
-- E2 local functional PASS does not change `production_isolation_proven=false` or `production_gate=HOLD`。
+- 不原地修补 generation 1，不重写 E1/E2/E3。
+- 不增加接受 client projection payload/digest 的 repair RPC。
+- 不以服务暂停、人工 SQL、Worker fallback 或第二 publisher 代替 authority transaction。
 
-## 8. Test Strategy
+## 2. Signatures
 
-- Contract property/fixture tests：E1 decode、E2 build/hash、epoch ordering、gate derivation、cross-epoch rejection。
-- Migration tests：fresh chain；E1 HOLD fixture原位升级；pre/post E1 hashes/counts；all-old/all-new activation；RLS/grant/DML denylist。
-- Platform/Worker/Web focused tests：exact binding propagation、stale gate rejection、historical E1 trace、E2 trace/UI pair、no literal import boundary。
-- Full package typecheck/build与 migration inventory。
-- 正式运行：先 E2-Q1 16/16，再 E2-C1 30/30；每 slot 浏览器、Trace、Artifact、receipt、Sandbox residual全部闭合。
+### 2.1 Semantic publication Port
 
-## 9. Rollback and Next Epoch
+现有 `SemanticPublicationAuthorityPort.publishAtomically` 必须演进，仍由
+`publishReviewedSemanticChangeSet` / `createPostgresSemanticPublicationAuthority` 承担唯一 publish authority：
 
-- Code提交前：普通 Git revert另立提交；不 amend/rewrite历史。
-- Migration：事务内失败自动回滚；成功后不降级schema，E1事实仍在。
-- Activation：失败/HOLD不移动 current；成功后不能回退到 E1。
-- E2 activation后若 code/contract/build/frozen asset再变，停止gate并进入E3；不得覆盖E2或创建E2-Q2。
+```ts
+interface SemanticPublicationAuthorityPort {
+  stageReviewedSuccessor(
+    capability: Capability,
+    command: StageReviewedSemanticSuccessorCommand,
+  ): Promise<PortResult<SemanticSuccessorStage>>;
+
+  loadStagedSuccessor(
+    capability: Capability,
+    query: { readonly stage_id: string },
+  ): Promise<PortResult<SemanticSuccessorStageEnvelope>>;
+
+  promoteStagedSuccessor(
+    capability: Capability,
+    command: CombinedFalcon24SemanticActivationCommand,
+  ): Promise<PortResult<CombinedFalcon24SemanticActivationReceipt>>;
+}
+```
+
+普通 Semantic Studio publish 若不参与 Falcon combined activation，仍复用同一 compiler/validator/正式写入 kernel；不得复制
+projection 编译、hash 或 Release insert 逻辑。
+
+### 2.2 Stage command
+
+CLI/Web 只提交业务引用、expected CAS 与幂等键，不提交任何 projection payload/digest：
+
+```ts
+type StageReviewedSemanticSuccessorCommand = {
+  readonly schema_version: "stage-reviewed-semantic-successor-command@1.0.0";
+  readonly command_id: string;
+  readonly idempotency_key: string;
+  readonly scope: {
+    readonly app_id: string;
+    readonly tenant_id: string;
+    readonly environment: string;
+    readonly semantic_domain: string;
+  };
+  readonly change_set_ref: { readonly change_set_id: string; readonly change_set_hash: ContentHash };
+  readonly review_ref: { readonly review_id: string; readonly review_hash: ContentHash };
+  readonly source_snapshot_ref: {
+    readonly snapshot_id: string;
+    readonly snapshot_revision: number;
+    readonly snapshot_hash: ContentHash;
+  };
+  readonly compiler_bundle_ref: {
+    readonly compiler_version: string;
+    readonly compiler_bundle_hash: ContentHash;
+  };
+  readonly expected_predecessor: {
+    readonly release_id: string;
+    readonly generation: number;
+    readonly release_digest: ContentHash;
+  };
+  readonly expected_pointer_version: number;
+  readonly target_generation: number;
+};
+```
+
+服务器在 semantic fence 内读取并锁定 ChangeSet、review、snapshot 和 pointer，重新验证 hash/scope/status，调用
+`compileSemanticPublicationProjection`，再生成 candidate Release、四类 projection、validation receipt 与 stage digest。
+Source/ref/precondition 在 candidate identity 建立前失败时不写 stage；candidate 编译完成后若 shared closure validation 失败，则在
+一个事务内写入完整 stage header、四类 projection、VALIDATION/REJECTION receipts，并把逻辑上的 `STAGED -> REJECTED` CAS
+一并提交，外部只观察完整 `REJECTED` stage。Validation PASS 才以 `STAGED` 对外可见。
+
+### 2.3 Shared runtime validator
+
+```ts
+function verifySemanticReleaseEnvelope(
+  candidate: unknown,
+): Promise<VerifiedSemanticReleaseEnvelope>;
+
+function validateSemanticRuntimeClosure(
+  envelope: VerifiedSemanticReleaseEnvelope,
+): Promise<SemanticRuntimeClosureValidationReceipt>;
+```
+
+`VerifiedSemanticReleaseEnvelope` 必须包含 exact scope/datasource/release/source、四类 projection 与 compiler identity。生产
+`semantic-release-read-port`、stage validation 和 Worker smoke 只能调用这两个共享入口；不得各自维护近似 schema。
+
+### 2.4 Worker smoke
+
+```ts
+type RunSemanticSuccessorSmokeCommand = {
+  readonly schema_version: "run-semantic-successor-smoke-command@1.0.0";
+  readonly command_id: string;
+  readonly idempotency_key: string;
+  readonly stage_id: string;
+  readonly expected_stage_digest: ContentHash;
+  readonly expected_worker_build_id: ContentHash;
+};
+```
+
+输出 `semantic-runtime-smoke-receipt@1.0.0`，不创建正式 Q&A Run，不调用模型/provider：
+
+```ts
+type SemanticRuntimeSmokeReceipt = {
+  readonly schema_version: "semantic-runtime-smoke-receipt@1.0.0";
+  readonly receipt_id: string;
+  readonly stage_id: string;
+  readonly stage_digest: ContentHash;
+  readonly candidate_release: ReleaseReference;
+  readonly projection_digests: ProjectionDigestSet;
+  readonly resolved_metric_id: "metric.order_revenue";
+  readonly resolved_dimension_id: "dimension.order_month";
+  readonly resolved_binding_hash: ContentHash;
+  readonly plan_hash: ContentHash;
+  readonly calendar_timezone: "Asia/Shanghai";
+  readonly window_start: "2023-11-01T00:00:00.000Z";
+  readonly window_end_exclusive: "2024-11-01T00:00:00.000Z";
+  readonly validator_identity: VersionedHashReference;
+  readonly worker_build_identity: RuntimeBuildIdentity;
+  readonly outcome: "PASS" | "FAIL";
+  readonly failure_code: string | null;
+  readonly receipt_hash: ContentHash;
+};
+```
+
+### 2.5 E4 semantic proof
+
+`falcon24-semantic-release-authority-proof@2` canonical material：
+
+```ts
+type Falcon24SemanticReleaseAuthorityProofV2 = {
+  readonly schema_version: "falcon24-semantic-release-authority-proof@2.0.0";
+  readonly authority_epoch: "E4";
+  readonly predecessor_release: ReleaseReference; // exact gen1
+  readonly candidate_release: ReleaseReference;   // exact gen2
+  readonly projections: ProjectionReferenceSet;   // executable/relationship/restriction/graph
+  readonly change_set_ref: VersionedHashReference;
+  readonly review_ref: VersionedHashReference;
+  readonly source_snapshot_ref: VersionedHashReference;
+  readonly compiler_bundle_ref: VersionedHashReference;
+  readonly validation_receipt_ref: VersionedHashReference;
+  readonly smoke_receipt_ref: VersionedHashReference;
+  readonly expected_versions: {
+    readonly semantic_pointer: number;
+    readonly semantic_runtime: number;
+    readonly workspace_defaults: number;
+  };
+  readonly proof_hash: ContentHash;
+};
+```
+
+旧 generation-1 proof schema/builder 保留为 read-only history decoder，不能生成 E4 staging receipt。
+
+### 2.6 Combined activation RPC
+
+```sql
+app_data_agent.activate_falcon24_authority_with_semantic_successor(jsonb) returns jsonb
+```
+
+Command exact keys：`schema_version`、`command_id`、`idempotency_key`、`scope`、`authority_epoch=E4`、
+`expected_current_authority`、`expected_semantic_predecessor`、`stage_ref`、`smoke_receipt_ref`、`baseline_ref`、
+`activation_attempt_ref`、`expected_versions`、`command_hash`。它只携带 refs/hash/CAS，不携带 projection payload。
+
+Result 为 `combined-falcon24-semantic-activation-receipt@1.0.0`，绑定 exact E4 authority、generation 2 Release、workspace
+defaults、stage、smoke、outbox event、transaction identity 与 `activation_receipt_hash`。
+
+## 3. Storage and Contracts
+
+### 3.1 `semantic.semantic_successor_release_stage`
+
+| Field | Contract |
+| --- | --- |
+| Scope | `app_id`, `tenant_id`, `environment`, `semantic_domain` |
+| Identity | `stage_id`, `command_id`, `principal_id`, `idempotency_key`, `idempotency_digest` |
+| Predecessor | `predecessor_release_id`, `predecessor_generation`, `predecessor_release_digest`, `expected_pointer_version` |
+| Source | `change_set_id/hash`, `review_id/hash`, `source_snapshot_id/revision/hash`, `compiler_version/bundle_hash` |
+| Candidate | `target_generation`, `candidate_release_id`, `candidate_release_digest`, `datasource_id`, `stage_digest` |
+| State | `status` = `STAGED | SMOKE_PASSED | REJECTED | PROMOTED`, `created_at`, nullable terminal timestamps |
+
+约束：`target_generation=predecessor_generation+1`；同 scope/target generation 仅一个 `STAGED` 或 `SMOKE_PASSED` live row；
+identity/payload fields 禁止 UPDATE；状态只能由 security-definer CAS RPC 前进。Validation failure 可在 stage 创建事务内完成
+`STAGED -> REJECTED`，但不能暴露半写 `STAGED`。
+
+### 3.2 `semantic.semantic_successor_projection_stage`
+
+每个 stage 恰好四行：`EXECUTABLE`、`RELATIONSHIP`、`RUNTIME_RESTRICTION`、`GRAPH`。字段为 scope、`stage_id`、
+`projection_kind`、`projection_id`、canonical `projection_payload`、`projection_digest`、`created_at`；唯一键
+`(scope, stage_id, projection_kind)`。Payload/digest 插入后禁止 UPDATE/DELETE。
+
+### 3.3 `semantic.semantic_successor_stage_receipt`
+
+Append-only receipts：`VALIDATION`、`SMOKE`、`REJECTION`、`PROMOTION`。字段为 scope、`stage_id`、`receipt_kind`、
+`receipt_id`、`receipt_schema_version`、`receipt_json`、`receipt_hash`、`created_at`。同 stage/receipt kind 可有多个尝试时必须有
+独立 receipt identity，但状态机只接受与 current state/expected digest 对应的 receipt。
+
+### 3.4 Formal history immutability
+
+若既有正式 source release、runtime projections、graph binding/nodes/edges 尚无数据库级不可变保护，migration 10783 为它们增加
+拒绝 UPDATE/DELETE 的 trigger，并撤销不必要的 direct DML。Promotion owner 只经 combined activation RPC 获得最小 INSERT 权限。
+
+### 3.5 Hash domains
+
+| Hash | Canonical domain |
+| --- | --- |
+| `projection_digest` | 单个 typed canonical projection payload |
+| `release_digest` | generation 2 Release envelope，不含自身 digest |
+| `stage_digest` | predecessor + source refs + candidate Release ref + 四类 projection refs，不含 stage status/timestamps |
+| `validation_receipt_hash` | closure validation receipt，不含自身 hash |
+| `smoke_receipt_hash` | deterministic plan/result/build receipt，不含自身 hash |
+| `proof_hash` | E4 semantic authority proof，不含自身 hash |
+| `activation_receipt_hash` | combined all-new binding/outbox receipt，不含自身 hash |
+
+所有 TypeScript hash 必须由 PostgreSQL canonical hash 交叉校验。不同表中的相同字符串若属于不同域，也不得用相同字段名或比较逻辑
+暗示等价。
+
+## 4. Runtime Closure Contract
+
+共享 validator 至少验证：
+
+1. Envelope 与四类 payload 的 strict schema/version、unknown-field rejection、canonical digest。
+2. Release/source/change set/review/compiler/snapshot 的 scope、datasource、generation 与 digest closure。
+3. 所有 entity ID 唯一；所有引用存在并属于同一 datasource/Release。
+4. Metric aggregation、formula、physical table/column binding、formula dependency 闭合。
+5. Dimension physical binding、parent/child hierarchy、data type 与 filter/time semantics 闭合。
+6. Relationship endpoints、join binding、cardinality/grain 引用闭合。
+7. Formula AST slots 与声明 dependency 一一对应，无缺失/多余 slot。
+8. Metric `time_domain`、`time_column` 与可执行时间 dimension/binding 闭合。
+9. Runtime restriction 与 graph/source binding 闭合。
+10. Quality constraint 只验证当前结构化合同能够证明的 ID/ref/severity/sensitivity；自由文本表达式不宣称字段级证明。
+
+## 5. State Machine, Transaction and Lock Order
+
+### 5.1 Stage state machine
+
+```text
+compiled + validation FAIL --same transaction--> REJECTED
+compiled + validation PASS ---------------------> STAGED
+STAGED --smoke PASS CAS--> SMOKE_PASSED --combined activation--> PROMOTED
+   |
+   +--smoke semantic failure CAS--> REJECTED
+```
+
+- `REJECTED`、`PROMOTED` terminal，不可 reopen。
+- Worker crash before receipt/transition：保持 `STAGED`；相同 idempotency 可重放。
+- 同 target generation 新修订使用新 `stage_id`，历史失败 stage append-only 保留。
+
+### 5.2 Global lock order
+
+所有可能同时触碰 Semantic 与 Falcon authority 的 RPC 必须按以下顺序：
+
+1. `semantic.lock_semantic_authority_fence(scope, domain)`。
+2. Falcon scope advisory lock / current authority lock。
+3. `FOR UPDATE`：semantic active pointer。
+4. `FOR UPDATE`：semantic runtime activation/pointer。
+5. `FOR UPDATE`：workspace defaults/current version。
+6. `FOR UPDATE`：Falcon current Epoch。
+7. `FOR UPDATE`：candidate stage 与 exact smoke receipt。
+8. `FOR UPDATE`：E4 baseline、activation attempt/session。
+
+任何其他复合写入口必须复用同一顺序，避免相反锁序死锁。锁超时返回稳定 error，不做补偿写。
+
+### 5.3 Combined activation transaction
+
+`activate_falcon24_authority_with_semantic_successor` 在一个事务内：
+
+1. 建立 capability/RLS context，按固定顺序取锁。
+2. 校验 current exact=E3；semantic exact=generation 1；workspace defaults 指向 gen1；expected versions 全等。
+3. 校验 stage=`SMOKE_PASSED`、target=current+1、validation/smoke receipts 与 stage digest exact。
+4. 校验 E4 baseline/session/attempt=`STAGED` 且 semantic proof v2 exact 绑定 candidate/smoke。
+5. 拒绝任何 E4 formal Run、effective config、Artifact、gate 或 diagnostic 污染。
+6. 从 stage 插入正式 generation 2 source Release、三类 runtime projection、graph/source binding/nodes/edges，提交
+   publish attempt 与 candidate status。
+7. CAS 更新 semantic pointer/runtime pointer。
+8. 以 old-gen1 exact ref/version 为前置条件 CAS workspace defaults 到 gen2 exact ref。
+9. 激活 E4 baseline/session/current authority。
+10. 写 semantic outbox、combined activation receipt，将 stage CAS 为 `PROMOTED`。
+11. 返回 exact E4/gen2 binding。任一步失败整笔 rollback。
+
+### 5.4 Crash and recovery
+
+| Crash/failure point | Observable authority | Recovery |
+| --- | --- | --- |
+| Stage transaction before commit | 无 stage 或完整旧 stage | 同 idempotency 重放 |
+| Shared validation fails after candidate compile | gen1/E3；完整 stage REJECTED | 新 ChangeSet/review/new stage_id |
+| Smoke process exits | gen1/E3；stage STAGED | 同 smoke idempotency 重放 |
+| Smoke semantic failure | gen1/E3；stage REJECTED | 修复 frozen inputs，new stage_id |
+| Combined activation any statement fails | 完整 gen1/E3 | 修复原因后重新调用同一 idempotent activation command |
+| Combined activation commits | 完整 gen2/E4 | 不回退；任何 frozen change 进入 E5 |
+| Post-commit readback inconsistent | 数据库已提交 gen2/E4，视为严重故障 | 冻结所有执行并人工审计；禁止补写/回退 |
+
+## 6. Finalizer and Gate Flow
+
+### 6.1 Finalizer split
+
+`prepareWorkspaceAuthority` 不得再从 current generation 1 自动推导 E4 semantic ref。顺序固定为：
+
+1. `stageReviewedSuccessor` 生成并验证 gen2 stage。
+2. Worker deterministic smoke；得到 PASS receipt。
+3. 构造 proof v2 和 E4 `SEMANTIC_RELEASE` staging receipt。
+4. 暂存其余 E4 receipts、baseline、session/attempt，但不激活。
+5. 调用 combined activation RPC。
+6. 提交后用生产 Semantic read port 与 Falcon authority port 重载并核对 pointer/runtime/defaults/current。
+
+### 6.2 Diagnostic authority
+
+新增 append-only diagnostic attempt/receipt authority；每个 E4 baseline/gen2 Release 同时最多一个 active attempt。E4-Q1 begin 必须
+验证同一 E4 baseline、source/build、gen2 Release 的 PASSED diagnostic receipt。诊断固定真实业务问题，走完整模型/SQL/Python/UI
+链，但不创建计分 slot。
+
+诊断失败若需要 frozen closure 变更则进入 E5；若为已证明的外部依赖且 closure 未变，创建新 diagnostic attempt ID，不 resume Run。
+
+### 6.3 Formal gates
+
+- E4-Q1：G1=1、G2=5、G3=5、G4=5；strict zero retry，首败 HOLD。
+- E4-C1：只绑定同 baseline 的 winning Q1；5 题 × COLD/WARM × 3 = 30；首败 HOLD。
+- 每个 slot 从真实 Q&A composer 提交，经答案入口进入 exact Run Trace；禁止 API-only、直达 URL、`BLOCKED` 冒充 PASS。
+- 必须证明 `Semantic -> Text2SQL -> SQL -> QueryEvidence -> typed Arrow -> Python operator -> AnalysisReport -> Chart`、
+  QA/Trace receipt 同源与 residual=0。
+
+## 7. Validation & Error Matrix
+
+| Condition | Stable failure / terminal behavior |
+| --- | --- |
+| ChangeSet/review/snapshot/compiler ref 不存在、scope/hash 不同 | `SEMANTIC_SUCCESSOR_SOURCE_CLOSURE_INVALID`，无 stage |
+| target generation != predecessor+1 | `SEMANTIC_SUCCESSOR_GENERATION_INVALID`，无 stage |
+| expected pointer/version stale | `SEMANTIC_SUCCESSOR_POINTER_STALE`，无 stage |
+| 同 idempotency key 不同 canonical input | `SEMANTIC_SUCCESSOR_IDEMPOTENCY_CONFLICT` |
+| 四类 projection 非 exact 4 行或 digest 不闭合 | `SEMANTIC_RUNTIME_CLOSURE_INVALID`，完整 stage 原子 REJECTED |
+| Metric/dimension/formula/join/time ref 越界 | 类型化 closure failure，stage REJECTED |
+| Smoke stage/digest/build mismatch | `SEMANTIC_RUNTIME_SMOKE_FENCE_MISMATCH`，不改状态 |
+| Smoke deterministic plan 无法解析 | FAIL receipt + stage REJECTED |
+| Combined activation current 不为 exact E3/gen1 | `FALCON24_COMBINED_ACTIVATION_PREDECESSOR_MISMATCH`，全旧 |
+| Stage 不是 SMOKE_PASSED | `FALCON24_COMBINED_ACTIVATION_SMOKE_REQUIRED`，全旧 |
+| E4 baseline 未绑定 gen2/smoke | `FALCON24_COMBINED_ACTIVATION_BASELINE_MISMATCH`，全旧 |
+| E4 已有 Run/config/Artifact/gate/diagnostic 污染 | `FALCON24_E4_AUTHORITY_POLLUTED`，全旧 |
+| workspace defaults CAS stale | `FALCON24_COMBINED_ACTIVATION_DEFAULTS_STALE`，全旧 |
+| 锁超时/并发 winner 已提交 | 稳定 conflict；读取后只观察 all-old 或 all-new |
+| Post-commit readback 不一致 | severe incident + execution freeze；禁止修补 |
+
+## 8. Good / Base / Bad Cases
+
+- **Good：** fixed reviewed ChangeSet -> server compile -> exact four projections -> shared validator PASS -> smoke PASS -> E4 staged ->
+  combined transaction all-new -> production readback exact -> diagnostic PASS -> Q1/C1。
+- **Base：** stage 已完整提交但 Worker 在 smoke 前退出；gen1/E3 保持 current，相同 smoke command 安全重放。
+- **Bad：** CLI 提供 projection payload/digest，RPC UPDATE generation 1，再单独激活 E4。该路径同时违反历史不可变、单一 publisher、
+  runtime proof 与原子切换。
+- **Bad：** Combined activation 把 Semantic pointer 提交为 gen2 后再调用 Falcon activation。即使服务暂停，也存在数据库可观察的
+  split-brain，不可接受。
+
+## 9. Tests Required
+
+### 9.1 Contracts
+
+- Strict schema、unknown fields、hash-domain 混用、tamper、缺失/越界 refs。
+- Proof v2 predecessor/candidate lineage、generation+1、smoke/validation binding；拒绝 predecessor equality 替代 lineage。
+
+### 9.2 Shared validator
+
+- Metric aggregation/formula/binding/dependency 正负例。
+- Dimension binding/hierarchy/time 正负例。
+- Relationship endpoints/join/grain 正负例。
+- Formula AST slot/dependency 正负例。
+- Quality constraint 只测试结构化可证明部分，明确不声明自由文本字段闭包。
+- Runtime restriction、graph/source/datasource/release mismatch 正负例。
+
+### 9.3 Publisher and migration
+
+- Same-key replay、different-payload conflict、transaction rollback、client payload/digest injection impossible。
+- PostgreSQL 17 fresh install 与 exact E3 fixture upgrade。
+- Upgrade pre/post 比较 generation 1/E1-E3 counts、hash、documents、projection bytes 完全相同。
+- Immutability trigger、RLS、grants、capability scope 与 direct DML denial。
+
+### 9.4 Concurrency and failure injection
+
+- 每个 combined activation statement 前/后注入失败，外部连接只能读到 all-old 或 all-new。
+- 两个 concurrent activation command 只允许一个 winner；无死锁或 partial current。
+- Defaults old-gen1 precondition 与 gen2 postcondition均断言。
+
+### 9.5 Smoke, Finalizer and gates
+
+- Smoke exact stage load、零 model/provider calls、PASS/REJECT/replay/process interruption。
+- Finalizer 顺序、proof v2、staged-only before activation、post-commit readback；无 predecessor equality。
+- Diagnostic authority one-active、immutable receipts、Q1 begin dependency。
+- 真实集成证明 SQL/QueryEvidence/Arrow/Python/Chart/Trace UI 与 residual zero。
+
+## 10. Wrong vs Correct
+
+### Wrong
+
+```ts
+await repairGeneration1Projection({ payload, digest });
+await finalizeFalcon24Authority({ epoch: "E4" });
+```
+
+### Correct
+
+```ts
+const stage = await authority.stageReviewedSuccessor(capability, refsAndExpectedCasOnly);
+const smoke = await worker.runSemanticSuccessorSmoke(stage.stage_id);
+const e4 = await stageFalcon24E4Baseline({ stage, smoke });
+await authority.promoteStagedSuccessor(capability, combinedActivationRefsOnly(e4, stage, smoke));
+await verifyAllNewThroughProductionPorts(e4, stage);
+```
+
+## 11. File Boundary
+
+### Contracts
+
+- `packages/contracts/src/artifacts/semantic-lifecycle.ts`
+- `packages/contracts/src/evals/falcon24-authority-baseline.ts`
+- `packages/contracts/src/runs/authority-epoch.ts`
+- 对应 contract tests 与 public exports。
+
+### Semantic
+
+- `packages/semantic/src/production/publisher.ts`
+- `packages/semantic/src/production/publication-projection.ts`
+- 新增 `packages/semantic/src/production/runtime-closure-validator.ts`
+- `packages/semantic/test/semantic-publication-lifecycle.spec.ts` 与 validator tests。
+
+### Platform
+
+- `packages/platform/src/runs/postgres-authority-epoch.ts`
+- `packages/platform/src/semantic/falcon24-retained-authority-proof.ts`
+- Semantic PostgreSQL adapter/exports/tests；复用现有 publication kernel，不创建第二 adapter authority。
+
+### Worker
+
+- `apps/worker/src/semantic/semantic-release-read-port.ts`
+- 新增 stage smoke runtime/CLI 与 tests；package script 仅接收 stage/ref/idempotency。
+
+### Web
+
+- `apps/web/src/lib/postgres-semantic-publication.ts`
+- `apps/web/src/cli/finalize-falcon24-authority.ts`
+- Diagnostic/qualification controls 与 tests。
+- `bootstrap-falcon24-e1.ts` 只能阻止未来环境暴露无效 current；不得用于修补既有 generation 1。若 fresh bootstrap 仍生成历史
+  gen1，服务 admission 必须保持关闭，随后通过同一 successor stage/smoke/combined promotion 建立 gen2 后才开放 Web/Worker。
+
+### Database/spec/runbook
+
+- 10783：successor stage storage、immutability、stage/smoke CAS、combined activation RPC、renderer/registry/support。
+- Diagnostic authority 若评审选择独立边界，则使用后续 forward migration，不回写 10783。
+- 更新 Falcon gate、Agent runtime、E4 runbook 与本 Trellis 任务文档。
+
+## 12. Rejected Alternative
+
+未提交的 generation 1 repair 实现保留审计但不执行。它允许 CLI 传 projection bytes、由窄 RPC UPDATE 历史 payload，再让
+Finalizer验证新 bytes；该模式仍是第二 publish authority，并且不能将 gen2 semantic promotion 与 E4 current/defaults 原子绑定。
+因此它不是临时方案，也不能作为 migration backfill。
+
+## 13. Open Review Questions
+
+1. **Quality constraint contract：** W1 是否仅验证当前可结构化字段并明确缩小声明（建议），还是本轮先结构化 expression refs 并承担
+   额外 migration/compatibility scope？
+2. **Diagnostic storage migration：** diagnostic authority 放入 10783，还是作为 W6 的独立后续 migration（建议独立，避免核心
+   activation migration 同时承载 gate policy）？
+3. **Fresh bootstrap admission：** 由部署编排显式执行 gen2 stage/smoke/promotion，还是 bootstrap 命令内部调用相同 Port；无论选择哪种，
+   Web/Worker readiness 都必须在 gen2 current 前 fail closed，且不能出现专用 repair path。
