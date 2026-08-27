@@ -2600,6 +2600,22 @@
       "postcondition": {
         "checksum_occurrences": 2
       }
+    },
+    {
+      "id": "10789",
+      "migration_name": "20260725010789_app_data_agent_semantic_context_canonical_aliases.sql",
+      "source_directory": "infra/supabase/apps/data-agent/migration-sources/10789",
+      "segments": [
+        "00-preamble.sql.inc",
+        "20-canonical-aliases.sql.inc",
+        "90-postconditions.sql.inc",
+        "99-ledger.sql.inc"
+      ],
+      "placeholder": "__SEMANTIC_CONTEXT_CANONICAL_ALIASES_MIGRATION_CHECKSUM__",
+      "checksum_header": "semantic_context_canonical_aliases_migration_checksum",
+      "postcondition": {
+        "checksum_occurrences": 2
+      }
     }
   ],
   "exceptions": [
