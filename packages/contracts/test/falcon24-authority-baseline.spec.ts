@@ -4,10 +4,12 @@ import {
   buildFalcon24AuthorityBaselineV2,
   buildFalcon24RetainedAssetsManifest,
   buildFalcon24RetainedAssetsManifestV2,
+  buildFalcon24SemanticReleaseAuthorityProofV2,
   verifyFalcon24AuthorityBaseline,
   verifyFalcon24AuthorityBaselineDocument,
   verifyFalcon24RetainedAssetsManifest,
   verifyFalcon24RetainedAssetsManifestDocument,
+  verifyFalcon24SemanticReleaseAuthorityProofV2,
 } from "../src/evals/falcon24-authority-baseline.js";
 
 const hash = (character: string) => `sha256:${character.repeat(64)}`;
@@ -328,6 +330,93 @@ describe("Falcon24 E1 authority baseline", () => {
     await expect(verifyFalcon24AuthorityBaselineDocument(baseline)).resolves.toEqual(baseline);
     await expect(
       buildFalcon24AuthorityBaselineV2({ ...baselineMaterial, authority_epoch: "E1" }),
+    ).rejects.toThrow();
+  });
+});
+
+describe("Falcon24 E4 semantic successor proof", () => {
+  function proofMaterial() {
+    return {
+      schema_version: "falcon24-semantic-release-authority-proof@2.0.0" as const,
+      authority_epoch: "E4" as const,
+      predecessor_release: {
+        release_id: id(100),
+        generation: 1,
+        release_digest: hash("1"),
+        datasource_id: id(101),
+      },
+      candidate_release: {
+        release_id: id(102),
+        generation: 2,
+        release_digest: hash("2"),
+        datasource_id: id(101),
+      },
+      projections: {
+        executable: { projection_id: id(103), projection_digest: hash("3") },
+        relationship: { projection_id: id(104), projection_digest: hash("4") },
+        runtime_restriction: { projection_id: id(105), projection_digest: hash("5") },
+        graph: { projection_id: id(106), projection_digest: hash("6") },
+      },
+      change_set_ref: { change_set_id: id(107), change_set_hash: hash("7") },
+      review_ref: { review_id: id(108), review_hash: hash("8") },
+      source_snapshot_ref: {
+        snapshot_id: id(109),
+        snapshot_revision: 7,
+        snapshot_hash: hash("9"),
+      },
+      compiler_bundle_ref: {
+        compiler_version: "semantic-change-set-publication@2",
+        compiler_bundle_hash: hash("a"),
+      },
+      validation_receipt_ref: {
+        schema_version: "semantic-runtime-closure-validation-receipt@1.0.0" as const,
+        receipt_id: id(110),
+        validation_receipt_hash: hash("b"),
+      },
+      smoke_receipt_ref: {
+        schema_version: "semantic-runtime-smoke-receipt@1.0.0" as const,
+        receipt_id: id(111),
+        smoke_receipt_hash: hash("c"),
+      },
+      expected_versions: {
+        semantic_pointer: 3,
+        semantic_runtime: 3,
+        workspace_defaults: 9,
+      },
+    };
+  }
+
+  it("binds a distinct generation 2 successor and exact validation/smoke hash domains", async () => {
+    const proof = await buildFalcon24SemanticReleaseAuthorityProofV2(proofMaterial());
+    await expect(verifyFalcon24SemanticReleaseAuthorityProofV2(proof)).resolves.toEqual(proof);
+    expect(proof.candidate_release.release_id).not.toBe(proof.predecessor_release.release_id);
+    await expect(
+      buildFalcon24SemanticReleaseAuthorityProofV2({
+        ...proofMaterial(),
+        candidate_release: {
+          ...proofMaterial().candidate_release,
+          generation: 1,
+        },
+      }),
+    ).rejects.toThrow("FALCON24_SEMANTIC_SUCCESSOR_LINEAGE_INVALID");
+    await expect(
+      verifyFalcon24SemanticReleaseAuthorityProofV2({
+        ...proof,
+        proof_hash: hash("f"),
+      }),
+    ).rejects.toThrow("FALCON24_SEMANTIC_SUCCESSOR_PROOF_HASH_INVALID");
+  });
+
+  it("rejects a smoke hash masquerading as a validation receipt field", async () => {
+    await expect(
+      buildFalcon24SemanticReleaseAuthorityProofV2({
+        ...proofMaterial(),
+        validation_receipt_ref: {
+          schema_version: "semantic-runtime-smoke-receipt@1.0.0",
+          receipt_id: id(110),
+          smoke_receipt_hash: hash("b"),
+        },
+      }),
     ).rejects.toThrow();
   });
 });

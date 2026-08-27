@@ -1,5 +1,11 @@
 import { z } from "zod";
 import {
+  semanticRuntimeClosureValidationReceiptReferenceSchema,
+  semanticRuntimeSmokeReceiptReferenceSchema,
+  semanticSuccessorCandidateReleaseReferenceSchema,
+  semanticSuccessorProjectionReferenceSetSchema,
+} from "../artifacts/semantic-lifecycle.js";
+import {
   contentHashSchema,
   immutableIdSchema,
   sha256ContentHash,
@@ -476,6 +482,89 @@ export const falcon24AuthorityBaselineDocumentSchema = z.union([
   falcon24AuthorityBaselineV2Schema,
 ]);
 
+const falcon24SemanticReleaseAuthorityProofV2MaterialSchema = z
+  .strictObject({
+    schema_version: z.literal("falcon24-semantic-release-authority-proof@2.0.0"),
+    authority_epoch: z.literal("E4"),
+    predecessor_release: semanticSuccessorCandidateReleaseReferenceSchema,
+    candidate_release: semanticSuccessorCandidateReleaseReferenceSchema,
+    projections: semanticSuccessorProjectionReferenceSetSchema,
+    change_set_ref: z.strictObject({
+      change_set_id: immutableIdSchema,
+      change_set_hash: contentHashSchema,
+    }),
+    review_ref: z.strictObject({
+      review_id: immutableIdSchema,
+      review_hash: contentHashSchema,
+    }),
+    source_snapshot_ref: z.strictObject({
+      snapshot_id: immutableIdSchema,
+      snapshot_revision: z.number().int().min(1).max(Number.MAX_SAFE_INTEGER),
+      snapshot_hash: contentHashSchema,
+    }),
+    compiler_bundle_ref: z.strictObject({
+      compiler_version: versionIdentifierSchema,
+      compiler_bundle_hash: contentHashSchema,
+    }),
+    validation_receipt_ref: semanticRuntimeClosureValidationReceiptReferenceSchema,
+    smoke_receipt_ref: semanticRuntimeSmokeReceiptReferenceSchema,
+    expected_versions: z.strictObject({
+      semantic_pointer: z.number().int().min(1).max(Number.MAX_SAFE_INTEGER),
+      semantic_runtime: z.number().int().min(1).max(Number.MAX_SAFE_INTEGER),
+      workspace_defaults: z.number().int().min(1).max(Number.MAX_SAFE_INTEGER),
+    }),
+  })
+  .superRefine((proof, context) => {
+    if (
+      proof.predecessor_release.generation !== 1 ||
+      proof.candidate_release.generation !== proof.predecessor_release.generation + 1 ||
+      proof.candidate_release.release_id === proof.predecessor_release.release_id ||
+      proof.candidate_release.release_digest === proof.predecessor_release.release_digest ||
+      proof.candidate_release.datasource_id !== proof.predecessor_release.datasource_id
+    ) {
+      context.addIssue({
+        code: "custom",
+        message: "FALCON24_SEMANTIC_SUCCESSOR_LINEAGE_INVALID",
+        path: ["candidate_release"],
+      });
+    }
+  });
+
+export const falcon24SemanticReleaseAuthorityProofV2Schema =
+  falcon24SemanticReleaseAuthorityProofV2MaterialSchema.extend({
+    proof_hash: contentHashSchema,
+  });
+
+function falcon24SemanticReleaseAuthorityProofV2Material(input: unknown) {
+  const full = falcon24SemanticReleaseAuthorityProofV2Schema.safeParse(input);
+  if (!full.success) return falcon24SemanticReleaseAuthorityProofV2MaterialSchema.parse(input);
+  const { proof_hash: _proofHash, ...material } = full.data;
+  return falcon24SemanticReleaseAuthorityProofV2MaterialSchema.parse(material);
+}
+
+export async function computeFalcon24SemanticReleaseAuthorityProofV2Hash(input: unknown) {
+  return sha256ContentHash({
+    hash_domain: "falcon24-semantic-release-authority-proof@2.0.0",
+    proof: falcon24SemanticReleaseAuthorityProofV2Material(input),
+  });
+}
+
+export async function buildFalcon24SemanticReleaseAuthorityProofV2(input: unknown) {
+  const material = falcon24SemanticReleaseAuthorityProofV2Material(input);
+  return falcon24SemanticReleaseAuthorityProofV2Schema.parse({
+    ...material,
+    proof_hash: await computeFalcon24SemanticReleaseAuthorityProofV2Hash(material),
+  });
+}
+
+export async function verifyFalcon24SemanticReleaseAuthorityProofV2(input: unknown) {
+  const proof = falcon24SemanticReleaseAuthorityProofV2Schema.parse(input);
+  if ((await computeFalcon24SemanticReleaseAuthorityProofV2Hash(proof)) !== proof.proof_hash) {
+    throw new TypeError("FALCON24_SEMANTIC_SUCCESSOR_PROOF_HASH_INVALID");
+  }
+  return proof;
+}
+
 export async function buildFalcon24AuthorityBaseline(input: unknown) {
   const material = authorityBaselineMaterialSchema.parse(input);
   return falcon24AuthorityBaselineSchema.parse({
@@ -516,3 +605,6 @@ export type Falcon24RetainedAssetsManifestV2 = z.infer<
   typeof falcon24RetainedAssetsManifestV2Schema
 >;
 export type Falcon24AuthorityBaselineV2 = z.infer<typeof falcon24AuthorityBaselineV2Schema>;
+export type Falcon24SemanticReleaseAuthorityProofV2 = z.infer<
+  typeof falcon24SemanticReleaseAuthorityProofV2Schema
+>;

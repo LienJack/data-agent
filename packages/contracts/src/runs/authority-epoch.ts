@@ -1,5 +1,11 @@
 import { z } from "zod";
 import { artifactReferenceSchema } from "../artifacts/envelope.js";
+import { semanticScopeSchema } from "../artifacts/semantic-control-plane.js";
+import {
+  semanticRuntimeSmokeReceiptReferenceSchema,
+  semanticSuccessorCandidateReleaseReferenceSchema,
+  semanticSuccessorStageReferenceSchema,
+} from "../artifacts/semantic-lifecycle.js";
 import { contentHashSchema, immutableIdSchema, sha256ContentHash } from "../common/index.js";
 import {
   falcon24AuthorityBaselineSchema,
@@ -203,6 +209,156 @@ export const falcon24ActivationHoldRequestV2Schema =
 
 export const falcon24ActivationRequestV2Schema = falcon24ActivationAttemptRequestV2Schema;
 
+const combinedFalcon24SemanticActivationExpectedVersionsSchema = z.strictObject({
+  semantic_pointer: z.number().int().min(1).max(Number.MAX_SAFE_INTEGER),
+  semantic_runtime: z.number().int().min(1).max(Number.MAX_SAFE_INTEGER),
+  workspace_defaults: z.number().int().min(1).max(Number.MAX_SAFE_INTEGER),
+});
+
+const combinedFalcon24SemanticActivationCommandMaterialSchema = z
+  .strictObject({
+    schema_version: z.literal("combined-falcon24-semantic-activation-command@1.0.0"),
+    command_id: immutableIdSchema,
+    idempotency_key: z.string().trim().min(1).max(256),
+    scope: semanticScopeSchema,
+    authority_epoch: z.literal("E4"),
+    expected_current_authority: falcon24AuthorityBindingV2Schema,
+    expected_semantic_predecessor: semanticSuccessorCandidateReleaseReferenceSchema,
+    stage_ref: semanticSuccessorStageReferenceSchema,
+    smoke_receipt_ref: semanticRuntimeSmokeReceiptReferenceSchema,
+    baseline_ref: z.strictObject({
+      baseline_id: immutableIdSchema,
+      baseline_hash: contentHashSchema,
+    }),
+    activation_attempt_ref: z.strictObject({
+      activation_attempt_id: immutableIdSchema,
+    }),
+    expected_versions: combinedFalcon24SemanticActivationExpectedVersionsSchema,
+  })
+  .superRefine((command, context) => {
+    if (
+      command.expected_current_authority.authority_epoch !== "E3" ||
+      command.expected_semantic_predecessor.generation !== 1
+    ) {
+      context.addIssue({
+        code: "custom",
+        message: "COMBINED_FALCON24_SEMANTIC_ACTIVATION_PREDECESSOR_INVALID",
+        path: ["expected_current_authority"],
+      });
+    }
+  });
+
+export const combinedFalcon24SemanticActivationCommandSchema =
+  combinedFalcon24SemanticActivationCommandMaterialSchema.extend({
+    command_hash: contentHashSchema,
+  });
+
+function combinedFalcon24SemanticActivationCommandMaterial(input: unknown) {
+  const full = combinedFalcon24SemanticActivationCommandSchema.safeParse(input);
+  if (!full.success) return combinedFalcon24SemanticActivationCommandMaterialSchema.parse(input);
+  const { command_hash: _commandHash, ...material } = full.data;
+  return combinedFalcon24SemanticActivationCommandMaterialSchema.parse(material);
+}
+
+export async function computeCombinedFalcon24SemanticActivationCommandHash(input: unknown) {
+  return sha256ContentHash({
+    hash_domain: "combined-falcon24-semantic-activation-command@1.0.0",
+    command: combinedFalcon24SemanticActivationCommandMaterial(input),
+  });
+}
+
+export async function buildCombinedFalcon24SemanticActivationCommand(input: unknown) {
+  const material = combinedFalcon24SemanticActivationCommandMaterial(input);
+  return combinedFalcon24SemanticActivationCommandSchema.parse({
+    ...material,
+    command_hash: await computeCombinedFalcon24SemanticActivationCommandHash(material),
+  });
+}
+
+export async function verifyCombinedFalcon24SemanticActivationCommand(input: unknown) {
+  const command = combinedFalcon24SemanticActivationCommandSchema.parse(input);
+  if (
+    (await computeCombinedFalcon24SemanticActivationCommandHash(command)) !== command.command_hash
+  ) {
+    throw new TypeError("COMBINED_FALCON24_SEMANTIC_ACTIVATION_COMMAND_HASH_INVALID");
+  }
+  return command;
+}
+
+const combinedFalcon24SemanticActivationReceiptMaterialSchema = z
+  .strictObject({
+    schema_version: z.literal("combined-falcon24-semantic-activation-receipt@1.0.0"),
+    command_id: immutableIdSchema,
+    command_hash: contentHashSchema,
+    scope: semanticScopeSchema,
+    authority: falcon24AuthorityBindingV2Schema,
+    semantic_release: semanticSuccessorCandidateReleaseReferenceSchema,
+    workspace_defaults: z.strictObject({
+      version: z.number().int().min(1).max(Number.MAX_SAFE_INTEGER),
+      semantic_release: semanticSuccessorCandidateReleaseReferenceSchema,
+    }),
+    stage_ref: semanticSuccessorStageReferenceSchema,
+    smoke_receipt_ref: semanticRuntimeSmokeReceiptReferenceSchema,
+    outbox_event_id: immutableIdSchema,
+    transaction_id: z.string().trim().min(1).max(256),
+  })
+  .superRefine((receipt, context) => {
+    const release = receipt.semantic_release;
+    const defaultsRelease = receipt.workspace_defaults.semantic_release;
+    if (
+      receipt.authority.authority_epoch !== "E4" ||
+      release.generation !== 2 ||
+      release.release_id !== defaultsRelease.release_id ||
+      release.generation !== defaultsRelease.generation ||
+      release.release_digest !== defaultsRelease.release_digest ||
+      release.datasource_id !== defaultsRelease.datasource_id
+    ) {
+      context.addIssue({
+        code: "custom",
+        message: "COMBINED_FALCON24_SEMANTIC_ACTIVATION_RECEIPT_CLOSURE_INVALID",
+        path: ["workspace_defaults", "semantic_release"],
+      });
+    }
+  });
+
+export const combinedFalcon24SemanticActivationReceiptSchema =
+  combinedFalcon24SemanticActivationReceiptMaterialSchema.extend({
+    activation_receipt_hash: contentHashSchema,
+  });
+
+function combinedFalcon24SemanticActivationReceiptMaterial(input: unknown) {
+  const full = combinedFalcon24SemanticActivationReceiptSchema.safeParse(input);
+  if (!full.success) return combinedFalcon24SemanticActivationReceiptMaterialSchema.parse(input);
+  const { activation_receipt_hash: _receiptHash, ...material } = full.data;
+  return combinedFalcon24SemanticActivationReceiptMaterialSchema.parse(material);
+}
+
+export async function computeCombinedFalcon24SemanticActivationReceiptHash(input: unknown) {
+  return sha256ContentHash({
+    hash_domain: "combined-falcon24-semantic-activation-receipt@1.0.0",
+    receipt: combinedFalcon24SemanticActivationReceiptMaterial(input),
+  });
+}
+
+export async function buildCombinedFalcon24SemanticActivationReceipt(input: unknown) {
+  const material = combinedFalcon24SemanticActivationReceiptMaterial(input);
+  return combinedFalcon24SemanticActivationReceiptSchema.parse({
+    ...material,
+    activation_receipt_hash: await computeCombinedFalcon24SemanticActivationReceiptHash(material),
+  });
+}
+
+export async function verifyCombinedFalcon24SemanticActivationReceipt(input: unknown) {
+  const receipt = combinedFalcon24SemanticActivationReceiptSchema.parse(input);
+  if (
+    (await computeCombinedFalcon24SemanticActivationReceiptHash(receipt)) !==
+    receipt.activation_receipt_hash
+  ) {
+    throw new TypeError("COMBINED_FALCON24_SEMANTIC_ACTIVATION_RECEIPT_HASH_INVALID");
+  }
+  return receipt;
+}
+
 export const falcon24E1ActivationAttemptSchema = z
   .strictObject({
     schema_version: z.literal("falcon24-e1-activation-attempt@1.0.0"),
@@ -390,3 +546,9 @@ export type Falcon24E1ActivationAttempt = z.infer<typeof falcon24E1ActivationAtt
 export type Falcon24E1UiReceipt = z.infer<typeof falcon24E1UiReceiptSchema>;
 export type Falcon24ActivationAttemptV2 = z.infer<typeof falcon24ActivationAttemptV2Schema>;
 export type Falcon24UiReceiptV2 = z.infer<typeof falcon24UiReceiptV2Schema>;
+export type CombinedFalcon24SemanticActivationCommand = z.infer<
+  typeof combinedFalcon24SemanticActivationCommandSchema
+>;
+export type CombinedFalcon24SemanticActivationReceipt = z.infer<
+  typeof combinedFalcon24SemanticActivationReceiptSchema
+>;

@@ -1,5 +1,7 @@
 import { describe, expect, it } from "vitest";
 import {
+  buildCombinedFalcon24SemanticActivationCommand,
+  buildCombinedFalcon24SemanticActivationReceipt,
   buildFalcon24E1StagingReceipt,
   buildFalcon24QaE2eReceiptV2,
   buildFalcon24StagingReceiptV2,
@@ -10,6 +12,8 @@ import {
   falcon24AuthorityPersistenceBindingSchema,
   falcon24E1ActivationAttemptSchema,
   falcon24StagingSessionRequestV2Schema,
+  verifyCombinedFalcon24SemanticActivationCommand,
+  verifyCombinedFalcon24SemanticActivationReceipt,
   verifyFalcon24E1StagingReceipt,
   verifyFalcon24StagingReceiptV2,
   verifyFalcon24UiReceiptDocument,
@@ -206,5 +210,98 @@ describe("Falcon24 E1 authority epoch contracts", () => {
         failure_code: "FALCON24_E1_STAGING_INCOMPLETE",
       }),
     ).toThrow("failure_code");
+  });
+
+  it("content-addresses refs-only combined E4 activation commands and receipts", async () => {
+    const scope = {
+      app_id: id(20),
+      tenant_id: id(21),
+      environment: "test" as const,
+      semantic_domain: "falcon24",
+    };
+    const command = await buildCombinedFalcon24SemanticActivationCommand({
+      schema_version: "combined-falcon24-semantic-activation-command@1.0.0",
+      command_id: id(22),
+      idempotency_key: "falcon24-e4-activate-gen2",
+      scope,
+      authority_epoch: "E4",
+      expected_current_authority: {
+        schema_version: "falcon24-authority-binding@2.0.0",
+        authority_epoch: "E3",
+        baseline_id: id(23),
+        baseline_hash: hash("1"),
+        activation_attempt_id: id(24),
+      },
+      expected_semantic_predecessor: {
+        release_id: id(25),
+        generation: 1,
+        release_digest: hash("2"),
+        datasource_id: id(26),
+      },
+      stage_ref: { stage_id: id(27), stage_digest: hash("3") },
+      smoke_receipt_ref: {
+        schema_version: "semantic-runtime-smoke-receipt@1.0.0",
+        receipt_id: id(28),
+        smoke_receipt_hash: hash("4"),
+      },
+      baseline_ref: { baseline_id: id(29), baseline_hash: hash("5") },
+      activation_attempt_ref: { activation_attempt_id: id(30) },
+      expected_versions: {
+        semantic_pointer: 3,
+        semantic_runtime: 3,
+        workspace_defaults: 9,
+      },
+    });
+    await expect(verifyCombinedFalcon24SemanticActivationCommand(command)).resolves.toEqual(
+      command,
+    );
+    await expect(
+      buildCombinedFalcon24SemanticActivationCommand({
+        ...command,
+        projection_payload: { executable: {} },
+      }),
+    ).rejects.toThrow();
+
+    const receipt = await buildCombinedFalcon24SemanticActivationReceipt({
+      schema_version: "combined-falcon24-semantic-activation-receipt@1.0.0",
+      command_id: command.command_id,
+      command_hash: command.command_hash,
+      scope,
+      authority: {
+        schema_version: "falcon24-authority-binding@2.0.0",
+        authority_epoch: "E4",
+        baseline_id: id(29),
+        baseline_hash: hash("5"),
+        activation_attempt_id: id(30),
+      },
+      semantic_release: {
+        release_id: id(31),
+        generation: 2,
+        release_digest: hash("6"),
+        datasource_id: id(26),
+      },
+      workspace_defaults: {
+        version: 10,
+        semantic_release: {
+          release_id: id(31),
+          generation: 2,
+          release_digest: hash("6"),
+          datasource_id: id(26),
+        },
+      },
+      stage_ref: command.stage_ref,
+      smoke_receipt_ref: command.smoke_receipt_ref,
+      outbox_event_id: id(32),
+      transaction_id: "pg:xid:12345",
+    });
+    await expect(verifyCombinedFalcon24SemanticActivationReceipt(receipt)).resolves.toEqual(
+      receipt,
+    );
+    await expect(
+      verifyCombinedFalcon24SemanticActivationReceipt({
+        ...receipt,
+        outbox_event_id: id(33),
+      }),
+    ).rejects.toThrow("COMBINED_FALCON24_SEMANTIC_ACTIVATION_RECEIPT_HASH_INVALID");
   });
 });
