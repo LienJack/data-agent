@@ -14,7 +14,7 @@ import type { PortResult } from "@data-agent/contracts/ports";
 import {
   buildCombinedFalcon24SemanticActivationCommand,
   type CombinedFalcon24SemanticActivationReceipt,
-  type Falcon24AuthorityBindingV2,
+  type Falcon24SemanticAuthorityClosure,
   verifyCombinedFalcon24SemanticActivationReceipt,
 } from "@data-agent/contracts/runs";
 import type { RuntimeBuildIdentity } from "@data-agent/contracts/server";
@@ -25,25 +25,7 @@ import {
   verifySemanticReleaseEnvelope,
 } from "@data-agent/semantic/production";
 
-type SemanticScope = SemanticSuccessorStage["scope"];
 type SemanticRelease = SemanticSuccessorStage["candidate_release"];
-
-export interface Falcon24SemanticAuthorityClosure {
-  readonly scope: SemanticScope;
-  readonly authority: Falcon24AuthorityBindingV2;
-  readonly semantic_pointer: {
-    readonly version: number;
-    readonly release: SemanticRelease;
-  };
-  readonly semantic_runtime: {
-    readonly version: number;
-    readonly release: SemanticRelease;
-  };
-  readonly workspace_defaults: {
-    readonly version: number;
-    readonly release: SemanticRelease;
-  };
-}
 
 export interface Falcon24SuccessorFinalizationReadback {
   loadCurrentClosure(): Promise<Falcon24SemanticAuthorityClosure>;
