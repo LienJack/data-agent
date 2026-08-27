@@ -2568,6 +2568,22 @@
       "postcondition": {
         "checksum_occurrences": 2
       }
+    },
+    {
+      "id": "10787",
+      "migration_name": "20260725010787_app_data_agent_semantic_query_context_runtime_profile.sql",
+      "source_directory": "infra/supabase/apps/data-agent/migration-sources/10787",
+      "segments": [
+        "00-preamble.sql.inc",
+        "10-semantic-runtime-profile.sql.inc",
+        "90-postconditions.sql.inc",
+        "99-ledger.sql.inc"
+      ],
+      "placeholder": "__SEMANTIC_QUERY_CONTEXT_RUNTIME_PROFILE_MIGRATION_CHECKSUM__",
+      "checksum_header": "semantic_query_context_runtime_profile_migration_checksum",
+      "postcondition": {
+        "checksum_occurrences": 2
+      }
     }
   ],
   "exceptions": [
