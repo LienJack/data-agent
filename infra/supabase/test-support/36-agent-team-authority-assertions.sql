@@ -15,7 +15,7 @@ begin
       and ledger.migration_version='20260725010658_app_data_agent_agent_team_authority'
   ) then raise exception 'AGENT_TEAM_LEDGER_ASSERTION_FAILED'; end if;
 
-  if (select pg_catalog.count(*) from app_data_agent.agent_profile_revisions)<>8
+  if (select pg_catalog.count(*) from app_data_agent.agent_profile_revisions)<>9
     or not exists (
       select 1 from app_data_agent.agent_profile_revisions
       where profile_id='data-agent-orchestrator' and profile_revision=1
@@ -46,6 +46,11 @@ begin
       select 1 from app_data_agent.agent_profile_revisions
       where profile_id='semantic-management-agent' and profile_revision=2
         and profile_hash='sha256:bae4ec47ca7c23a0ac046c0086051d3696752586f09534572440fb1af1edf3f3'
+    )
+    or not exists (
+      select 1 from app_data_agent.agent_profile_revisions
+      where profile_id='semantic-management-agent' and profile_revision=3
+        and profile_hash='sha256:4deee7bace7d3b58dc5ea17849bd1ef965a8a417452dcae7cfd06b6fb5ab5ba9'
     )
     or not exists (
       select 1 from app_data_agent.agent_profile_revisions

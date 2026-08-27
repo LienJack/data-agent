@@ -232,6 +232,30 @@ select test_support.assert_true(
   'Finalize/Fail 必须锁内按 Attempt/Lease/Fence/Grant/Epoch 决策；Mark/Cancel 保留 Branch CAS'
 );
 
+begin;
+select pg_catalog.set_config(
+  'data_agent.app_id',
+  '00000000-0000-4000-8000-00000000da01',
+  true
+);
+select pg_catalog.set_config(
+  'data_agent.tenant_id',
+  '00000000-0000-4000-8000-00000000aa11',
+  true
+);
+select pg_catalog.set_config('data_agent.environment', 'prod', true);
+select pg_catalog.set_config(
+  'data_agent.principal_id',
+  '00000000-0000-4000-8000-000000001005',
+  true
+);
+select pg_catalog.set_config('data_agent.role', 'owner', true);
+select pg_catalog.set_config(
+  'data_agent.deployment_id',
+  '00000000-0000-4000-8000-00000000de02',
+  true
+);
+
 insert into app_data_agent.memberships (
   app_id,
   tenant_id,
@@ -267,6 +291,8 @@ values (
   'U5 system store PostgreSQL smoke'
 )
 on conflict do nothing;
+
+commit;
 
 do $assertions$
 #variable_conflict use_variable

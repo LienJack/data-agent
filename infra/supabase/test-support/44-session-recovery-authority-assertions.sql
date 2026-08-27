@@ -21,6 +21,28 @@ end
 $catalog$;
 
 begin;
+select pg_catalog.set_config(
+  'data_agent.app_id',
+  '00000000-0000-4000-8000-00000000da01',
+  true
+);
+select pg_catalog.set_config(
+  'data_agent.tenant_id',
+  '00000000-0000-4000-8000-00000000aa22',
+  true
+);
+select pg_catalog.set_config('data_agent.environment', 'test', true);
+select pg_catalog.set_config(
+  'data_agent.principal_id',
+  '00000000-0000-4000-8000-000000001003',
+  true
+);
+select pg_catalog.set_config('data_agent.role', 'owner', true);
+select pg_catalog.set_config(
+  'data_agent.deployment_id',
+  '00000000-0000-4000-8000-00000000de01',
+  true
+);
 insert into app_data_agent.runs(app_id,tenant_id,environment,run_id,principal_id,status,
   active_fence,question,next_queue_sequence,created_at,updated_at)
 values('00000000-0000-4000-8000-00000000da01','00000000-0000-4000-8000-00000000aa22',

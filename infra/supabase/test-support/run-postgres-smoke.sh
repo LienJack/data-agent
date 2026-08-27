@@ -1186,6 +1186,13 @@ run_locked_fifo_probe() {
   docker exec "$container_name" \
     psql -X -v ON_ERROR_STOP=1 -U postgres -d "$database_name" \
     -c "
+      begin;
+      select pg_catalog.set_config('data_agent.app_id', '$fifo_app', true);
+      select pg_catalog.set_config('data_agent.tenant_id', '$fifo_tenant', true);
+      select pg_catalog.set_config('data_agent.environment', 'test', true);
+      select pg_catalog.set_config('data_agent.principal_id', '$fifo_principal', true);
+      select pg_catalog.set_config('data_agent.role', 'owner', true);
+      select pg_catalog.set_config('data_agent.deployment_id', '$fifo_deployment', true);
       insert into app_data_agent.runs (
         app_id,
         tenant_id,
@@ -1306,6 +1313,7 @@ run_locked_fifo_probe() {
           '2000-01-01T00:00:02Z',
           1
         );
+      commit;
     " \
     >/dev/null
 
@@ -1830,14 +1838,26 @@ for sql_file in $(find "$infra_dir/apps/data-agent/migrations" -type f -name '*.
       run_falcon24_e1_legacy_state_guard_probe "$sql_file"
       apply_sql "$sql_file"
       ;;
+    20260725010780_app_data_agent_falcon24_e1_runtime_profile.sql)
+      apply_sql "$sql_file"
+      run_falcon24_e1_unactivated_probe
+      run_falcon24_e1_activation_run_race_probe
+      apply_sql "$script_dir/10-fixtures.sql"
+      for e1_assertion_file in \
+        "$script_dir/56-falcon24-e1-authority-assertions.sql" \
+        "$script_dir/57-e1-analysis-publication-assertions.sql" \
+        "$script_dir/58-falcon24-e1-trace-assertions.sql" \
+        "$script_dir/59-falcon24-e1-qualification-campaign-assertions.sql" \
+        "$script_dir/60-e1-legacy-runtime-retirement-assertions.sql"; do
+        apply_sql "$e1_assertion_file"
+      done
+      ;;
     *)
       apply_sql "$sql_file"
       ;;
   esac
 done
-run_falcon24_e1_unactivated_probe
-run_falcon24_e1_activation_run_race_probe
-apply_sql "$script_dir/10-fixtures.sql"
+apply_sql "$script_dir/11-falcon24-e2-fixtures.sql"
 apply_sql "$script_dir/28-schema-discovery-authority-assertions.sql"
 
 lifecycle_app="00000000-0000-4000-8000-00000000da01"
@@ -1895,6 +1915,11 @@ for assertion_file in $(find "$script_dir" -type f -name '*-assertions.sql' | so
       # The E1 reset deliberately makes the former versioned campaign and
       # qualification identities unrepresentable. Assertion 59 exercises the
       # replacement exact E1-Q1/E1-C1 authority and immutable-attempt contract.
+      continue
+      ;;
+    56-falcon24-e1-authority-assertions.sql|57-e1-analysis-publication-assertions.sql|58-falcon24-e1-trace-assertions.sql|59-falcon24-e1-qualification-campaign-assertions.sql|60-e1-legacy-runtime-retirement-assertions.sql)
+      # These run immediately before 10781 so the successor migration must
+      # preserve a fully exercised E1 fixture rather than an empty schema.
       continue
       ;;
   esac
