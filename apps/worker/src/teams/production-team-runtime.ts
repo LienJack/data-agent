@@ -23,9 +23,9 @@ import {
 import {
   type AgentProductProfileRegistryItemV2,
   type ArtifactReference,
-  type Falcon24AuthorityBindingV2,
   artifactReferenceIdentity,
   canonicalizeJson,
+  type Falcon24AuthorityBindingV2,
   type PortResult,
   type ProductTeamArtifactDocument,
   type SideEffectReceipt,

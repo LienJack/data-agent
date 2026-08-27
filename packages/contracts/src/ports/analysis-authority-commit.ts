@@ -24,6 +24,7 @@ import {
   immutableIdSchema,
   sha256ContentHash,
 } from "../common/index.js";
+import { falcon24AuthorityBindingV2Schema } from "../runs/authority-epoch.js";
 import {
   analysisContextJournalAppendCommandSchema,
   verifyAnalysisContextJournalAppend,
@@ -31,7 +32,6 @@ import {
 import { analysisOracleReceiptSchema, verifyAnalysisOracleReceipt } from "./analysis-oracle.js";
 import { analysisResultStageArtifactSchema } from "./analysis-result-stage.js";
 import { analysisAgentFinalResponseSchema } from "./analysis-tools.js";
-import { falcon24AuthorityBindingV2Schema } from "../runs/authority-epoch.js";
 
 export const analysisAuthorityOutputBindingSchema = z.strictObject({
   stage_artifact: analysisResultStageArtifactSchema,

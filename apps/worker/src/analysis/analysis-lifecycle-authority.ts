@@ -9,6 +9,8 @@ import {
   type AnalysisAuthorityCommit,
   type AnalysisAuthorityCommitReceipt,
   type AnalysisContextJournalEntry,
+  type AnalysisPublicationV2Command,
+  type AnalysisPublicationV2Receipt,
   type AnalysisResultStage,
   type AnalysisResultStageCommand,
   type AnalysisResultStageExecutionSnapshot,
@@ -16,8 +18,6 @@ import {
   assertAnalysisContextJournalTransition,
   buildAnalysisContextJournalAppend,
   buildAnalysisResultStageCommand,
-  type AnalysisPublicationV2Command,
-  type AnalysisPublicationV2Receipt,
   verifyAnalysisContextJournalEntry,
   verifyAnalysisResultStageCommand,
 } from "@data-agent/contracts/ports";

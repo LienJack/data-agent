@@ -51,9 +51,9 @@ import {
   successfulSandboxExecutionReceiptSchema,
   timestampSchema,
   toPublicRunEvent,
+  verifyAnalysisPublicationV2Command,
   verifyArtifactWorkspaceChartDocumentV2,
   verifyArtifactWorkspaceChartDocumentV3,
-  verifyAnalysisPublicationV2Command,
   verifyE1AnalysisPublicationCommand,
   verifyEffectiveRunConfigReceiptCandidate,
   verifyProductTeamArtifactDocument,
@@ -323,9 +323,7 @@ interface VerifiedRunAuthority {
 }
 
 interface VerifiedAnalysisPublication {
-  readonly schema_version:
-    | "e1-analysis-publication@1.0.0"
-    | "falcon24-analysis-publication@2.0.0";
+  readonly schema_version: "e1-analysis-publication@1.0.0" | "falcon24-analysis-publication@2.0.0";
   readonly publication_hash: string;
   readonly public_event_id: string;
   readonly committed_at: string;
@@ -969,7 +967,7 @@ async function loadVerifiedArtifacts(
       (row.authority_epoch !== authority.authority.epoch ||
         row.authority_baseline_id !== authority.authority.baseline_id ||
         row.authority_baseline_hash !== authority.authority.baseline_hash ||
-      row.authority_activation_attempt_id !== authority.authority.activation_attempt_id)
+        row.authority_activation_attempt_id !== authority.authority.activation_attempt_id)
     ) {
       throw new PersistenceBoundaryError(
         "RESOLUTION_TRACE_ARTIFACT_AUTHORITY_MISMATCH",
@@ -2096,12 +2094,7 @@ async function projectDetail(
         ? "e1-analysis-publication"
         : "falcon24-analysis-publication",
       publication.schema_version,
-      [
-      "publication_hash",
-      "public_event_id",
-      "analysis_program_ref",
-      "references",
-      ],
+      ["publication_hash", "public_event_id", "analysis_program_ref", "references"],
     );
   } else if (node.artifact_refs.length > 0) {
     const verifiedReferences = node.artifact_refs.filter((reference) =>

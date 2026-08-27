@@ -3,7 +3,6 @@ import {
   FALCON24_STRICT_ACCEPTANCE_POLICY_ID,
   falcon24AcceptanceCampaignIdSchema,
   falcon24AcceptanceFailureLayerSchema,
-  falcon24AcceptanceRunManifestDocumentSchema,
   falcon24AgentAnalysisRunResultSchema,
   falcon24ResolutionTraceGateReceiptDocumentSchema,
   falcon24ResolutionTraceUiGateReceiptDocumentSchema,

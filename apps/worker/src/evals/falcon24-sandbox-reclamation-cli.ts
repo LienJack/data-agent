@@ -8,7 +8,7 @@ import {
   buildFalcon24SandboxReclamationReceiptV2,
   FALCON24_STRICT_ACCEPTANCE_POLICY_ID,
   falcon24AcceptanceCampaignIdSchema,
-  falcon24SandboxReclamationReceiptDocumentSchema,
+  type falcon24SandboxReclamationReceiptDocumentSchema,
 } from "@data-agent/contracts/evals";
 import { adaptPgPool } from "@data-agent/platform/persistence";
 import { createPostgresFalcon24AcceptanceCampaignAuthority } from "@data-agent/platform/runs";

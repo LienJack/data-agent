@@ -62,8 +62,7 @@ type ProductionAnalysisResearchAuthority = ResearchArtifactAuthorityPort &
   AnalysisLifecyclePersistenceAuthority &
   AnalysisPythonSourceAuthorityPort;
 
-export const FALCON24_SINGLE_SERIES_TREND_METHOD_ID =
-  "published-single-series-trend@1" as const;
+export const FALCON24_SINGLE_SERIES_TREND_METHOD_ID = "published-single-series-trend@1" as const;
 
 function referenceFactory() {
   return Object.freeze({
