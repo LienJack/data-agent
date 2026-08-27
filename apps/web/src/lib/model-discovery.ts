@@ -85,10 +85,12 @@ function assertSafeDiscoveryUrl(rawBaseUrl: string): URL {
   return url;
 }
 
-function resolveModelsUrl(baseUrl: string): URL {
+function resolveModelsUrl(baseUrl: string, vendorId: DiscoverProviderModelsInput["vendorId"]): URL {
   const url = assertSafeDiscoveryUrl(baseUrl);
   const pathname = url.pathname.replace(/\/+$/, "");
-  if (/\/models$/i.test(pathname)) {
+  if (vendorId === "deepseek" && url.hostname.toLowerCase() === "api.deepseek.com") {
+    url.pathname = "/models";
+  } else if (/\/models$/i.test(pathname)) {
     url.pathname = pathname;
   } else if (/\/v\d+(?:beta\d*)?$/i.test(pathname)) {
     url.pathname = `${pathname}/models`;
@@ -176,7 +178,7 @@ export async function fetchProviderModelCatalog(
   fetchImpl: typeof fetch = fetch,
 ): Promise<DiscoveredProviderModel[]> {
   const vendor = getModelProviderCatalogItem(input.vendorId);
-  const modelsUrl = resolveModelsUrl(input.baseUrl);
+  const modelsUrl = resolveModelsUrl(input.baseUrl, input.vendorId);
   const headers = new Headers({ Accept: "application/json" });
 
   if (vendor.id === "gemini") {

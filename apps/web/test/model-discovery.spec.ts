@@ -102,6 +102,26 @@ describe("provider model discovery", () => {
     expect(headers.has("authorization")).toBe(false);
   });
 
+  it("uses the official DeepSeek model-list endpoint", async () => {
+    const fetchImpl = vi
+      .fn<typeof fetch>()
+      .mockResolvedValue(
+        jsonResponse({ data: [{ id: "deepseek-v4-flash", owned_by: "deepseek" }] }),
+      );
+
+    await fetchProviderModelCatalog(
+      {
+        vendorId: "deepseek",
+        apiKey: "deepseek-secret",
+        baseUrl: "https://api.deepseek.com",
+      },
+      fetchImpl,
+    );
+
+    const [rawUrl] = fetchImpl.mock.calls[0] ?? [];
+    expect(String(rawUrl)).toBe("https://api.deepseek.com/models");
+  });
+
   it("blocks local and private discovery targets before making a request", async () => {
     const fetchImpl = vi.fn<typeof fetch>();
 
