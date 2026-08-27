@@ -114,7 +114,9 @@ describe("single execution NDJSON sandbox process", () => {
           }) + "\\n";
           let offset = 0;
           const writeNext = () => {
-            if (offset >= encoded.length) return process.exit(0);
+            if (offset >= encoded.length) {
+              return process.stdout.end(() => process.exit(0));
+            }
             const next = encoded.slice(offset, offset + 4096);
             offset += next.length;
             if (process.stdout.write(next)) setImmediate(writeNext);
