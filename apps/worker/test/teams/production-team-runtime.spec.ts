@@ -804,6 +804,91 @@ describe("Production Team runtime", () => {
     expect(events).not.toContainEqual(expect.objectContaining({ status: "SKIPPED" }));
   });
 
+  it("passes an accepted SemanticQueryContext to a later Text2SQL tool invocation", async () => {
+    const profileMap = await profiles();
+    const text2sql = profileMap.get("governed-text2sql-agent");
+    if (!text2sql) throw new TypeError("missing Text2SQL fixture");
+    const acceptedContext = reference("SemanticQueryContext", id(95));
+    const delegations = await admittedDelegations([text2sql], {
+      root_turn_index: 1,
+      input_artifact_refs: new Map([["governed-text2sql-agent", [acceptedContext]]]),
+    });
+    const calls: Array<{ operation: string; document: unknown }> = [];
+    const documents = new Map<string, ProductTeamArtifactDocument>();
+    let observedContext: ArtifactReference | null = null;
+    const runtime = createProductionTeamRuntime({
+      store: store(calls),
+      capability: {},
+      create_tools(factoryInput) {
+        observedContext = factoryInput.accepted_semantic_query_context_ref;
+        return {
+          async invoke({ task, tool_id }) {
+            if (tool_id === "sql.compiler.compile") return reference("SqlArtifact", id(96));
+            if (tool_id === "sql.sandbox.execute") {
+              const output = reference("QueryEvidence", id(97));
+              const document = await buildProductTeamArtifactDocument({
+                schema_version: "product-team-artifact@2.0.0",
+                artifact_ref: output,
+                profile_id: "governed-text2sql-agent",
+                task_id: task.task_id,
+                source_refs: [reference("SqlArtifact", id(96))],
+                provenance: await queryProvenance("value"),
+                projection: {
+                  kind: "TABLE",
+                  columns: [{ key: "value", label: "value", data_type: "NUMBER" }],
+                  rows: [{ value: 1 }],
+                  total_rows: 1,
+                },
+                committed_at: "2026-08-18T12:00:00.000Z",
+              });
+              documents.set(output.artifact_id, document);
+              return document.artifact_ref;
+            }
+            return null;
+          },
+        };
+      },
+      artifacts: {
+        verifyCommitted: async () => ({ ok: true, value: true }),
+        resolveCommitted: async (artifactReference) => ({
+          ok: true,
+          value: documents.get(artifactReference.artifact_id) ?? null,
+        }),
+      },
+      now: () => new Date("2026-08-18T12:00:01.000Z"),
+    });
+
+    await expect(
+      runtime.execute({
+        lease: await lease(),
+        root_turn_index: 1,
+        authority,
+        profiles: new Map([["governed-text2sql-agent", text2sql]]),
+        admitted_delegations: delegations,
+        semantic_context_package: {} as never,
+        semantic_context: {} as never,
+        semantic_context_ref: {
+          package_id: id(60),
+          package_hash: hash("p"),
+          receipt_id: id(61),
+          receipt_hash: hash("r"),
+          semantic_domain: "commerce",
+          semantic_release_id: id(41),
+          semantic_release_hash: hash("s"),
+        },
+        restored_snapshot: null,
+        execution_context: executionContext([]),
+        signal: new AbortController().signal,
+        deadline_at: "2026-08-18T12:01:00.000Z",
+      }),
+    ).resolves.toMatchObject({ status: "COMPLETED", reason_code: "TEAM_ACCEPTED" });
+    expect(observedContext).toEqual(acceptedContext);
+    const handoff = calls.find(({ operation }) => operation === "PREPARE_HANDOFF")?.document as
+      | { child_task?: { artifact_refs?: readonly ArtifactReference[] } }
+      | undefined;
+    expect(handoff?.child_task?.artifact_refs).toEqual([acceptedContext]);
+  });
+
   it("executes an admitted semantic delegation read-only instead of skipping it", async () => {
     const profileMap = await profiles();
     const semantic = profileMap.get("semantic-management-agent");

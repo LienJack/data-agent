@@ -2,6 +2,7 @@ import {
   type ArtifactReference,
   type ArtifactWorkspaceChartDocumentV2,
   artifactReferenceFor,
+  artifactReferenceIdentity,
   buildProductTeamArtifactDocument,
   canonicalizeJson,
   type PortResult,
@@ -10,6 +11,7 @@ import {
   sha256ContentHash,
   type Text2SqlQueryCandidate,
   text2sqlQueryCandidateSchema,
+  verifyProductTeamArtifactDocument,
 } from "@data-agent/contracts";
 import {
   buildSemanticQueryContext,
@@ -553,6 +555,74 @@ async function projectSemanticQueryContext(input: {
   });
 }
 
+async function resolveAcceptedSemanticQueryContext(
+  dependencies: ProductionTeamToolsDependencies,
+  factoryInput: ProductionTeamToolFactoryInput,
+): Promise<SemanticQueryContext | null> {
+  const reference = factoryInput.accepted_semantic_query_context_ref;
+  if (!reference) return null;
+  const parsedReference = artifactReferenceFor("SemanticQueryContext").safeParse(reference);
+  if (!parsedReference.success) {
+    throw new ProductionTeamToolError("TEAM_ACCEPTED_SEMANTIC_CONTEXT_REF_INVALID");
+  }
+  const resolved = portValue(
+    await dependencies.artifacts.resolveCommitted(dependencies.capability, parsedReference.data),
+  );
+  if (!resolved) {
+    throw new ProductionTeamToolError("TEAM_ACCEPTED_SEMANTIC_CONTEXT_NOT_COMMITTED");
+  }
+  let document: ProductTeamArtifactDocument;
+  try {
+    document = await verifyProductTeamArtifactDocument(resolved);
+  } catch {
+    throw new ProductionTeamToolError("TEAM_ACCEPTED_SEMANTIC_CONTEXT_INVALID");
+  }
+  if (
+    artifactReferenceIdentity(document.artifact_ref) !==
+      artifactReferenceIdentity(parsedReference.data) ||
+    document.artifact_ref.artifact_type !== "SemanticQueryContext" ||
+    document.profile_id !== "semantic-management-agent" ||
+    document.projection.kind !== "SEMANTIC_CONTEXT"
+  ) {
+    throw new ProductionTeamToolError("TEAM_ACCEPTED_SEMANTIC_CONTEXT_CORRELATION_INVALID");
+  }
+  const context = document.projection.context;
+  const config = factoryInput.execution_context.getEffectiveConfig();
+  const packageDocument = factoryInput.semantic_context_package;
+  if (
+    context.run_id !== factoryInput.lease.run_id ||
+    context.scope.app_id !== factoryInput.lease.scope.app_id ||
+    context.scope.tenant_id !== factoryInput.lease.scope.tenant_id ||
+    context.scope.environment !== factoryInput.lease.scope.environment ||
+    context.semantic_domain !== packageDocument.semantic_domain ||
+    context.semantic_release.resource_id !== config.semantic_release.resource_id ||
+    context.semantic_release.resource_revision !== config.semantic_release.resource_revision ||
+    context.semantic_release.resource_hash !== config.semantic_release.resource_hash ||
+    context.semantic_release.datasource_id !== config.semantic_release.datasource_id ||
+    context.semantic_release.semantic_generation !== config.semantic_release.semantic_generation ||
+    context.datasource.resource_id !== config.datasource.resource_id ||
+    context.datasource.resource_revision !== config.datasource.resource_revision ||
+    context.datasource.resource_hash !== config.datasource.resource_hash ||
+    context.schema_snapshot.resource_id !== config.schema_snapshot.resource_id ||
+    context.schema_snapshot.resource_revision !== config.schema_snapshot.resource_revision ||
+    context.schema_snapshot.resource_hash !== config.schema_snapshot.resource_hash ||
+    context.schema_snapshot.datasource_id !== config.schema_snapshot.datasource_id ||
+    context.schema_snapshot.semantic_release_id !== config.schema_snapshot.semantic_release_id ||
+    context.schema_snapshot.semantic_generation !== config.schema_snapshot.semantic_generation ||
+    context.semantic_context_ref.package_id !== factoryInput.semantic_context_ref.package_id ||
+    context.semantic_context_ref.package_hash !== factoryInput.semantic_context_ref.package_hash ||
+    context.semantic_context_ref.receipt_id !== factoryInput.semantic_context_ref.receipt_id ||
+    context.semantic_context_ref.receipt_hash !== factoryInput.semantic_context_ref.receipt_hash ||
+    context.semantic_context_ref.retrieval_receipt_hash !==
+      packageDocument.retrieval_receipt.receipt_hash ||
+    context.semantic_context_ref.inference_receipt_hash !==
+      packageDocument.inference_receipt.receipt_hash
+  ) {
+    throw new ProductionTeamToolError("TEAM_ACCEPTED_SEMANTIC_CONTEXT_BINDING_STALE");
+  }
+  return context;
+}
+
 export function createProductionTeamTools(
   dependencies: ProductionTeamToolsDependencies,
   factoryInput: ProductionTeamToolFactoryInput,
@@ -755,6 +825,10 @@ export function createProductionTeamTools(
 
       if (input.task.profile_id === "governed-text2sql-agent") {
         if (input.tool_id === "semantic.release.read") {
+          const semanticQueryContext = await resolveAcceptedSemanticQueryContext(
+            dependencies,
+            factoryInput,
+          );
           const semanticCatalog = portValue(
             await dependencies.semantic_release.read({
               capability: dependencies.capability,
@@ -765,6 +839,7 @@ export function createProductionTeamTools(
             effective_config: factoryInput.execution_context.getEffectiveConfig(),
             semantic_context: factoryInput.semantic_context,
             semantic_catalog: semanticCatalog,
+            semantic_query_context: semanticQueryContext,
             max_context_bytes: input.task.bounds.max_context_bytes,
           });
           return toolResult(null);
@@ -838,6 +913,13 @@ export function createProductionTeamTools(
                 package_id: factoryInput.semantic_context_ref.package_id,
                 package_hash: factoryInput.semantic_context_ref.package_hash,
               },
+              semantic_query_context_ref:
+                factoryInput.accepted_semantic_query_context_ref === null
+                  ? null
+                  : artifactReferenceFor("SemanticQueryContext").parse(
+                      factoryInput.accepted_semantic_query_context_ref,
+                    ),
+              semantic_query_context_hash: state.prepared.semantic_query_context_hash,
               target_binding_hash: state.prepared.target_capability_hash,
             },
             projection: { kind: "SQL", dialect: "postgresql", sql: state.candidate.sql },
@@ -966,6 +1048,7 @@ export function createProductionTeamTools(
 export const productionTeamToolsInternals = Object.freeze({
   normalizedQueryEvidenceRows,
   repairableQueryExecutionFailure,
+  resolveAcceptedSemanticQueryContext,
   safeErrorCode,
   visualizationIntent,
 });

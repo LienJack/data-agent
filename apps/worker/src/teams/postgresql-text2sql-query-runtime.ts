@@ -2,7 +2,11 @@ import {
   type Text2SqlQueryCandidate,
   text2sqlQueryCandidateSchema,
 } from "@data-agent/contracts/agents";
-import type { QueryEvidenceSemanticBinding } from "@data-agent/contracts/artifacts";
+import {
+  type QueryEvidenceSemanticBinding,
+  type SemanticQueryContext,
+  verifySemanticQueryContext,
+} from "@data-agent/contracts/artifacts";
 import type { PhysicalSchemaSnapshot } from "@data-agent/contracts/catalog";
 import { canonicalizeJson, sha256ContentHash } from "@data-agent/contracts/common";
 import type { SemanticContextCommitResult } from "@data-agent/contracts/context";
@@ -48,6 +52,11 @@ export interface PreparedText2SqlContext {
   readonly allowed_relations: readonly string[];
   readonly target_capability_hash: string;
   readonly reader_role: string;
+  readonly semantic_query_context_hash: string | null;
+  readonly semantic_query_context_binding?: {
+    readonly metric_ids: readonly string[];
+    readonly dimension_ids: readonly string[];
+  };
   readonly binding_authority?: {
     readonly physical_snapshot: PhysicalSchemaSnapshot;
     readonly semantic_context: SemanticContextCommitResult;
@@ -61,6 +70,7 @@ export interface Text2SqlQueryRuntimePort {
     readonly effective_config: EffectiveConfig;
     readonly semantic_context: SemanticContextCommitResult;
     readonly semantic_catalog: FrozenSemanticReleaseCatalog;
+    readonly semantic_query_context?: SemanticQueryContext | null;
     readonly max_context_bytes: number;
   }): Promise<PreparedText2SqlContext>;
   compileCandidate(input: {
@@ -92,6 +102,21 @@ async function validateCandidate(
   prepared: PreparedText2SqlContext,
   candidate: Text2SqlQueryCandidate,
 ): Promise<void> {
+  const contextBinding = prepared.semantic_query_context_binding;
+  if (contextBinding) {
+    const metricIds = new Set(contextBinding.metric_ids);
+    const dimensionIds = new Set(contextBinding.dimension_ids);
+    if (
+      candidate.result_columns.some(({ semantic_binding: binding }) =>
+        binding.object_kind === "METRIC"
+          ? !metricIds.has(binding.object_id)
+          : !dimensionIds.has(binding.object_id),
+      ) ||
+      (candidate.time_window && !dimensionIds.has(candidate.time_window.dimension_id))
+    ) {
+      throw new Text2SqlQueryRuntimeError("TEXT2SQL_SEMANTIC_BINDING_OUT_OF_RANGE");
+    }
+  }
   await assertPostgresqlText2SqlCandidatePolicy({
     sql: candidate.sql,
     parameter_count: candidate.parameters.length,
@@ -138,41 +163,95 @@ function datasourceHash(datasource: WorkspaceDatasource) {
   });
 }
 
-function relations(snapshot: PhysicalSchemaSnapshot): readonly string[] {
-  const result = snapshot.content.relations
+function contextRelationIds(context: SemanticQueryContext): readonly string[] {
+  const result = [
+    ...new Set(
+      context.physical_bindings.map(
+        ({ schema_name: schemaName, table_name: tableName }) => `${schemaName}.${tableName}`,
+      ),
+    ),
+  ].sort();
+  if (result.length === 0) {
+    throw new Text2SqlQueryRuntimeError("TEXT2SQL_SEMANTIC_CONTEXT_PHYSICAL_CLOSURE_EMPTY");
+  }
+  return result;
+}
+
+function relations(
+  snapshot: PhysicalSchemaSnapshot,
+  semanticQueryContext: SemanticQueryContext | null = null,
+): readonly string[] {
+  const available = snapshot.content.relations
     .map(({ identity }) => `${identity.schema_name}.${identity.relation_name}`)
     .sort();
+  const selected = semanticQueryContext ? contextRelationIds(semanticQueryContext) : available;
+  const availableSet = new Set(available);
+  if (selected.some((relation) => !availableSet.has(relation))) {
+    throw new Text2SqlQueryRuntimeError("TEXT2SQL_SEMANTIC_CONTEXT_SCHEMA_OUT_OF_RANGE");
+  }
+  const result = selected;
   if (result.length === 0 || result.length > 256 || new Set(result).size !== result.length) {
     throw new Text2SqlQueryRuntimeError("TEXT2SQL_SCHEMA_RELATION_SET_INVALID");
   }
   return Object.freeze(result);
 }
 
-function schemaProjection(snapshot: PhysicalSchemaSnapshot) {
-  return snapshot.content.relations.map((relation) => ({
-    relation: `${relation.identity.schema_name}.${relation.identity.relation_name}`,
-    description: relation.comment,
-    columns: relation.columns.map((column) => ({
-      name: column.column_name,
-      type: column.formatted_type,
-      nullable: column.nullable,
-      description: column.comment,
-    })),
-    primary_key: relation.primary_key?.columns ?? [],
-    foreign_keys: relation.foreign_keys.map((foreignKey) => ({
-      columns: foreignKey.column_pairs.map(({ column_name: columnName }) => columnName),
-      references: `${foreignKey.referenced_relation.schema_name}.${foreignKey.referenced_relation.relation_name}`,
-      referenced_columns: foreignKey.column_pairs.map(
-        ({ referenced_column_name: columnName }) => columnName,
-      ),
-    })),
-  }));
+function schemaProjection(snapshot: PhysicalSchemaSnapshot, allowedRelations: readonly string[]) {
+  const allowed = new Set(allowedRelations);
+  return snapshot.content.relations
+    .filter((relation) =>
+      allowed.has(`${relation.identity.schema_name}.${relation.identity.relation_name}`),
+    )
+    .map((relation) => ({
+      relation: `${relation.identity.schema_name}.${relation.identity.relation_name}`,
+      description: relation.comment,
+      columns: relation.columns.map((column) => ({
+        name: column.column_name,
+        type: column.formatted_type,
+        nullable: column.nullable,
+        description: column.comment,
+      })),
+      primary_key: relation.primary_key?.columns ?? [],
+      foreign_keys: relation.foreign_keys
+        .filter((foreignKey) =>
+          allowed.has(
+            `${foreignKey.referenced_relation.schema_name}.${foreignKey.referenced_relation.relation_name}`,
+          ),
+        )
+        .map((foreignKey) => ({
+          columns: foreignKey.column_pairs.map(({ column_name: columnName }) => columnName),
+          references: `${foreignKey.referenced_relation.schema_name}.${foreignKey.referenced_relation.relation_name}`,
+          referenced_columns: foreignKey.column_pairs.map(
+            ({ referenced_column_name: columnName }) => columnName,
+          ),
+        })),
+    }));
 }
 
 function semanticProjection(
   packageDocument: SemanticContextPackage,
   catalog: FrozenSemanticReleaseCatalog,
+  semanticQueryContext: SemanticQueryContext | null = null,
 ) {
+  if (semanticQueryContext) {
+    return {
+      package_id: packageDocument.package_id,
+      package_hash: packageDocument.package_hash,
+      semantic_release: packageDocument.semantic_release,
+      semantic_query_context_hash: semanticQueryContext.context_hash,
+      requested_object_ids: semanticQueryContext.requested_object_ids,
+      unresolved_ambiguities: semanticQueryContext.unresolved_ambiguities,
+      executable: {
+        metrics: semanticQueryContext.metrics,
+        dimensions: semanticQueryContext.dimensions,
+        formulas: semanticQueryContext.formulas,
+        relationships: semanticQueryContext.relationships,
+        physical_bindings: semanticQueryContext.physical_bindings,
+        time_semantics: semanticQueryContext.time_semantics,
+        quality_constraints: semanticQueryContext.quality_constraints,
+      },
+    };
+  }
   const selectedIds = new Set([
     ...packageDocument.retrieval_receipt.selected_object_ids,
     ...packageDocument.mandatory_closure.object_ids,
@@ -239,6 +318,8 @@ function text2sqlContext(input: {
   readonly snapshot: PhysicalSchemaSnapshot;
   readonly semantic_context_package: SemanticContextPackage;
   readonly semantic_catalog: FrozenSemanticReleaseCatalog;
+  readonly semantic_query_context?: SemanticQueryContext | null;
+  readonly allowed_relations: readonly string[];
   readonly max_context_bytes: number;
 }): string {
   const context = canonicalizeJson({
@@ -247,13 +328,281 @@ function text2sqlContext(input: {
       snapshot_content_hash: input.snapshot.snapshot_content_hash,
       datasource_id: input.snapshot.content.datasource_id,
       included_schemas: input.snapshot.content.included_schemas,
-      relations: schemaProjection(input.snapshot),
+      relations: schemaProjection(input.snapshot, input.allowed_relations),
     },
-    semantic_context: semanticProjection(input.semantic_context_package, input.semantic_catalog),
+    semantic_context: semanticProjection(
+      input.semantic_context_package,
+      input.semantic_catalog,
+      input.semantic_query_context ?? null,
+    ),
   });
   if (new TextEncoder().encode(context).byteLength > input.max_context_bytes) {
     throw new Text2SqlQueryRuntimeError("TEXT2SQL_CONTEXT_BUDGET_EXCEEDED");
   }
+  return context;
+}
+
+function sameVersionedResource(
+  left: Readonly<{ resource_id: string; resource_revision: number; resource_hash: string }>,
+  right: Readonly<{ resource_id: string; resource_revision: number; resource_hash: string }>,
+): boolean {
+  return (
+    left.resource_id === right.resource_id &&
+    left.resource_revision === right.resource_revision &&
+    left.resource_hash === right.resource_hash
+  );
+}
+
+function exactProjectionObjects<T>(input: {
+  readonly projected: readonly T[];
+  readonly available: readonly T[];
+  readonly identity: (value: T) => string;
+  readonly expected_ids: ReadonlySet<string>;
+  readonly error_code: string;
+}): void {
+  const available = new Map(
+    input.available.map((value) => [input.identity(value), canonicalizeJson(value)] as const),
+  );
+  const projectedIds = new Set<string>();
+  for (const value of input.projected) {
+    const identity = input.identity(value);
+    if (projectedIds.has(identity) || available.get(identity) !== canonicalizeJson(value)) {
+      throw new Text2SqlQueryRuntimeError(input.error_code);
+    }
+    projectedIds.add(identity);
+  }
+  if (
+    projectedIds.size !== input.expected_ids.size ||
+    [...input.expected_ids].some((identity) => !projectedIds.has(identity))
+  ) {
+    throw new Text2SqlQueryRuntimeError(input.error_code);
+  }
+}
+
+async function validateSemanticQueryContextBinding(input: {
+  readonly context: SemanticQueryContext;
+  readonly effective_config: EffectiveConfig;
+  readonly semantic_context_package: SemanticContextPackage;
+  readonly semantic_catalog?: FrozenSemanticReleaseCatalog;
+}): Promise<SemanticQueryContext> {
+  let context: SemanticQueryContext;
+  try {
+    context = await verifySemanticQueryContext(input.context);
+  } catch {
+    throw new Text2SqlQueryRuntimeError("TEXT2SQL_SEMANTIC_CONTEXT_INVALID");
+  }
+  const config = input.effective_config;
+  const packageDocument = input.semantic_context_package;
+  if (
+    context.scope.app_id !== config.scope.app_id ||
+    context.scope.tenant_id !== config.scope.tenant_id ||
+    context.scope.environment !== config.scope.environment ||
+    context.run_id !== config.run_id ||
+    context.semantic_domain !== packageDocument.semantic_domain ||
+    !sameVersionedResource(context.semantic_release, config.semantic_release) ||
+    context.semantic_release.datasource_id !== config.semantic_release.datasource_id ||
+    context.semantic_release.semantic_generation !== config.semantic_release.semantic_generation ||
+    !sameVersionedResource(context.datasource, config.datasource) ||
+    !sameVersionedResource(context.schema_snapshot, config.schema_snapshot) ||
+    context.schema_snapshot.datasource_id !== config.schema_snapshot.datasource_id ||
+    context.schema_snapshot.semantic_release_id !== config.schema_snapshot.semantic_release_id ||
+    context.schema_snapshot.semantic_generation !== config.schema_snapshot.semantic_generation ||
+    context.semantic_context_ref.package_id !== packageDocument.package_id ||
+    context.semantic_context_ref.package_hash !== packageDocument.package_hash ||
+    context.semantic_context_ref.retrieval_receipt_hash !==
+      packageDocument.retrieval_receipt.receipt_hash ||
+    context.semantic_context_ref.inference_receipt_hash !==
+      packageDocument.inference_receipt.receipt_hash
+  ) {
+    throw new Text2SqlQueryRuntimeError("TEXT2SQL_SEMANTIC_CONTEXT_BINDING_STALE");
+  }
+  if (context.unresolved_ambiguities.length > 0) {
+    throw new Text2SqlQueryRuntimeError("TEXT2SQL_SEMANTIC_CONTEXT_AMBIGUOUS");
+  }
+  const catalog = input.semantic_catalog;
+  if (!catalog) return context;
+  if (
+    catalog.release_identity.semantic_domain !== context.semantic_domain ||
+    catalog.release_identity.release_id !== context.semantic_release.resource_id ||
+    catalog.release_identity.release_digest !== context.semantic_release.resource_hash ||
+    catalog.release_identity.release_generation !== context.semantic_release.semantic_generation ||
+    catalog.release_identity.datasource_id !== context.datasource.resource_id
+  ) {
+    throw new Text2SqlQueryRuntimeError("TEXT2SQL_SEMANTIC_CONTEXT_RELEASE_STALE");
+  }
+
+  const requestedIds = new Set(context.requested_object_ids);
+  const ambiguousIds = new Set(
+    context.unresolved_ambiguities.flatMap(({ candidate_ids: candidateIds }) => candidateIds),
+  );
+  const selectedIds = new Set([...requestedIds].filter((id) => !ambiguousIds.has(id)));
+  const allowedIds = new Set([
+    ...packageDocument.retrieval_receipt.selected_object_ids,
+    ...packageDocument.inference_receipt.mandatory_object_ids,
+    ...packageDocument.inference_receipt.mandatory_relationship_ids,
+  ]);
+  if ([...requestedIds].some((id) => !allowedIds.has(id))) {
+    throw new Text2SqlQueryRuntimeError("TEXT2SQL_SEMANTIC_CONTEXT_OUT_OF_RANGE");
+  }
+
+  const metricById = new Map(
+    catalog.executable.metrics.map((metric) => [metric.metric_id, metric] as const),
+  );
+  const dimensionById = new Map(
+    catalog.executable.dimensions.map((dimension) => [dimension.dimension_id, dimension] as const),
+  );
+  const formulaById = new Map(
+    catalog.executable.formulas.map((formula) => [formula.node_id, formula] as const),
+  );
+  const relationshipById = new Map(
+    catalog.relationships.relationships.map(
+      (relationship) => [relationship.relationship_id, relationship] as const,
+    ),
+  );
+  const timeById = new Map(
+    catalog.restrictions.time_semantics.map(
+      (timeDomain) => [timeDomain.time_domain_id, timeDomain] as const,
+    ),
+  );
+  const qualityById = new Map(
+    catalog.restrictions.quality_constraints.map(
+      (constraint) => [constraint.constraint_id, constraint] as const,
+    ),
+  );
+  const allKnownIds = new Set([
+    ...metricById.keys(),
+    ...dimensionById.keys(),
+    ...formulaById.keys(),
+    ...relationshipById.keys(),
+    ...timeById.keys(),
+    ...qualityById.keys(),
+  ]);
+  if ([...requestedIds].some((id) => !allKnownIds.has(id))) {
+    throw new Text2SqlQueryRuntimeError("TEXT2SQL_SEMANTIC_CONTEXT_OUT_OF_RANGE");
+  }
+
+  const expectedMetricIds = new Set([...selectedIds].filter((id) => metricById.has(id)));
+  const expectedDimensionIds = new Set([...selectedIds].filter((id) => dimensionById.has(id)));
+  for (let changed = true; changed; ) {
+    changed = false;
+    for (const dimensionId of [...expectedDimensionIds]) {
+      const parentId = dimensionById.get(dimensionId)?.parent_dimension_id;
+      if (parentId && !expectedDimensionIds.has(parentId)) {
+        if (!dimensionById.has(parentId)) {
+          throw new Text2SqlQueryRuntimeError("TEXT2SQL_SEMANTIC_CONTEXT_OUT_OF_RANGE");
+        }
+        expectedDimensionIds.add(parentId);
+        changed = true;
+      }
+    }
+  }
+  const expectedFormulaIds = new Set([...selectedIds].filter((id) => formulaById.has(id)));
+  const expectedTimeIds = new Set([...selectedIds].filter((id) => timeById.has(id)));
+  for (const metricId of expectedMetricIds) {
+    const metric = metricById.get(metricId);
+    if (metric?.formula) expectedFormulaIds.add(metric.formula.formula_id);
+    if (metric?.time_domain) expectedTimeIds.add(metric.time_domain.time_domain_id);
+  }
+  const expectedRelationshipIds = new Set([
+    ...[...selectedIds].filter((id) => relationshipById.has(id)),
+    ...packageDocument.inference_receipt.mandatory_relationship_ids.filter((id) =>
+      relationshipById.has(id),
+    ),
+  ]);
+  const expectedQualityIds = new Set([...selectedIds].filter((id) => qualityById.has(id)));
+
+  exactProjectionObjects({
+    projected: context.metrics,
+    available: catalog.executable.metrics,
+    identity: (metric) => metric.metric_id,
+    expected_ids: expectedMetricIds,
+    error_code: "TEXT2SQL_SEMANTIC_CONTEXT_METRIC_CLOSURE_INVALID",
+  });
+  exactProjectionObjects({
+    projected: context.dimensions,
+    available: catalog.executable.dimensions,
+    identity: (dimension) => dimension.dimension_id,
+    expected_ids: expectedDimensionIds,
+    error_code: "TEXT2SQL_SEMANTIC_CONTEXT_DIMENSION_CLOSURE_INVALID",
+  });
+  exactProjectionObjects({
+    projected: context.formulas,
+    available: catalog.executable.formulas,
+    identity: (formula) => formula.node_id,
+    expected_ids: expectedFormulaIds,
+    error_code: "TEXT2SQL_SEMANTIC_CONTEXT_FORMULA_CLOSURE_INVALID",
+  });
+  exactProjectionObjects({
+    projected: context.relationships,
+    available: catalog.relationships.relationships,
+    identity: (relationship) => relationship.relationship_id,
+    expected_ids: expectedRelationshipIds,
+    error_code: "TEXT2SQL_SEMANTIC_CONTEXT_RELATIONSHIP_CLOSURE_INVALID",
+  });
+  exactProjectionObjects({
+    projected: context.time_semantics,
+    available: catalog.restrictions.time_semantics,
+    identity: (timeDomain) => timeDomain.time_domain_id,
+    expected_ids: expectedTimeIds,
+    error_code: "TEXT2SQL_SEMANTIC_CONTEXT_TIME_CLOSURE_INVALID",
+  });
+  exactProjectionObjects({
+    projected: context.quality_constraints,
+    available: catalog.restrictions.quality_constraints,
+    identity: (constraint) => constraint.constraint_id,
+    expected_ids: expectedQualityIds,
+    error_code: "TEXT2SQL_SEMANTIC_CONTEXT_QUALITY_CLOSURE_INVALID",
+  });
+
+  const relevantBindingIds = new Set<string>([
+    ...context.metrics.flatMap((metric) => [
+      metric.metric_id,
+      metric.table_id,
+      metric.column_id,
+      ...metric.dependency_column_ids,
+      ...(metric.time_column_id ? [metric.time_column_id] : []),
+    ]),
+    ...context.dimensions.flatMap((dimension) => [
+      dimension.dimension_id,
+      dimension.table_id,
+      dimension.column_id,
+    ]),
+    ...context.formulas.map(({ node_id: id }) => id),
+    ...context.relationships.flatMap((relationship) => [
+      relationship.relationship_id,
+      relationship.left_table_id,
+      relationship.right_table_id,
+      ...relationship.left_column_ids,
+      ...relationship.right_column_ids,
+    ]),
+  ]);
+  const expectedBindings = catalog.executable.physical_bindings.filter((binding) =>
+    relevantBindingIds.has(binding.logical_object_id),
+  );
+  exactProjectionObjects({
+    projected: context.physical_bindings,
+    available: catalog.executable.physical_bindings,
+    identity: (binding) =>
+      [
+        binding.logical_object_id,
+        binding.logical_object_type,
+        binding.schema_name,
+        binding.table_name,
+        binding.column_name ?? "",
+      ].join("\0"),
+    expected_ids: new Set(
+      expectedBindings.map((binding) =>
+        [
+          binding.logical_object_id,
+          binding.logical_object_type,
+          binding.schema_name,
+          binding.table_name,
+          binding.column_name ?? "",
+        ].join("\0"),
+      ),
+    ),
+    error_code: "TEXT2SQL_SEMANTIC_CONTEXT_PHYSICAL_CLOSURE_INVALID",
+  });
   return context;
 }
 
@@ -405,9 +754,27 @@ export function createPostgresqlText2SqlQueryRuntime(
         effective_config: config,
         semantic_context,
         semantic_catalog,
+        semantic_query_context: semanticQueryContextInput = null,
         max_context_bytes,
       } = input;
       const semantic_context_package = semantic_context.package;
+      const semanticQueryContext = semanticQueryContextInput
+        ? await validateSemanticQueryContextBinding({
+            context: semanticQueryContextInput,
+            effective_config: config,
+            semantic_context_package,
+            semantic_catalog,
+          })
+        : null;
+      if (
+        semanticQueryContext &&
+        (semanticQueryContext.semantic_context_ref.receipt_id !==
+          semantic_context.receipt.receipt_id ||
+          semanticQueryContext.semantic_context_ref.receipt_hash !==
+            semantic_context.receipt.receipt_hash)
+      ) {
+        throw new Text2SqlQueryRuntimeError("TEXT2SQL_SEMANTIC_CONTEXT_RECEIPT_STALE");
+      }
       const snapshot = value(
         await dependencies.schema_snapshots.getSnapshot(
           dependencies.capability,
@@ -457,10 +824,11 @@ export function createPostgresqlText2SqlQueryRuntime(
       if (!datasource.username || !POSTGRES_IDENTIFIER.test(datasource.username)) {
         throw new Text2SqlQueryRuntimeError("TEXT2SQL_READER_ROLE_INVALID");
       }
-      const allowedRelations = relations(snapshot);
+      const allowedRelations = relations(snapshot, semanticQueryContext);
       const targetCapabilityHash = await sha256ContentHash({
         datasource: config.datasource,
         schema_snapshot: config.schema_snapshot,
+        semantic_query_context_hash: semanticQueryContext?.context_hash ?? null,
         credential_ref: credential,
         secret_ref: { ref: secret.ref, version: secret.version, status: secret.status },
         reader_role: datasource.username,
@@ -470,6 +838,8 @@ export function createPostgresqlText2SqlQueryRuntime(
           snapshot,
           semantic_context_package,
           semantic_catalog,
+          semantic_query_context: semanticQueryContext,
+          allowed_relations: allowedRelations,
           max_context_bytes,
         }),
         datasource_id: datasource.datasource_id,
@@ -478,6 +848,15 @@ export function createPostgresqlText2SqlQueryRuntime(
         allowed_relations: allowedRelations,
         target_capability_hash: targetCapabilityHash,
         reader_role: datasource.username,
+        semantic_query_context_hash: semanticQueryContext?.context_hash ?? null,
+        ...(semanticQueryContext
+          ? {
+              semantic_query_context_binding: {
+                metric_ids: semanticQueryContext.metrics.map(({ metric_id: id }) => id),
+                dimension_ids: semanticQueryContext.dimensions.map(({ dimension_id: id }) => id),
+              },
+            }
+          : {}),
         binding_authority: {
           physical_snapshot: snapshot,
           semantic_context,
@@ -604,4 +983,5 @@ export const postgresqlText2SqlQueryRuntimeInternals = Object.freeze({
   schemaProjection,
   semanticProjection,
   text2sqlContext,
+  validateSemanticQueryContextBinding,
 });

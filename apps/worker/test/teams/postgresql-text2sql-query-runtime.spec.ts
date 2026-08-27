@@ -1,4 +1,8 @@
-import type { Text2SqlQueryCandidate, WorkspaceDatasource } from "@data-agent/contracts";
+import {
+  buildSemanticQueryContext,
+  type Text2SqlQueryCandidate,
+  type WorkspaceDatasource,
+} from "@data-agent/contracts";
 import { createPhysicalSchemaSnapshot } from "@data-agent/platform/catalog";
 import { describe, expect, it, vi } from "vitest";
 import {
@@ -108,9 +112,19 @@ async function fixture() {
   const semanticContextPackage = {
     package_id: id(8),
     package_hash: hash("b"),
+    scope,
+    semantic_domain: "falcon24",
     schema_snapshot: config.schema_snapshot,
     semantic_release: config.semantic_release,
-    retrieval_receipt: { selected_object_ids: ["dimension.customer-id", "metric.order-count"] },
+    retrieval_receipt: {
+      selected_object_ids: ["dimension.customer-id", "metric.order-count"],
+      receipt_hash: hash("c"),
+    },
+    inference_receipt: {
+      mandatory_object_ids: [],
+      mandatory_relationship_ids: [],
+      receipt_hash: hash("d"),
+    },
     route_decision: {
       state: "READY",
       route: "METRIC",
@@ -123,20 +137,81 @@ async function fixture() {
     },
     evidence: [],
   } as never;
+  const selectedMetric = {
+    metric_id: "metric.order-count",
+    name: "Order count",
+    aliases: ["orders"],
+    table_id: "orders",
+    column_id: "orders.amount",
+    aggregation: "count" as const,
+    formula: {
+      formula_id: "formula.order-count",
+      expression: "COUNT(orders.amount)",
+      dialect: "text2sql" as const,
+    },
+    grain: { grain_id: "grain.order", granularity: "atomic" as const },
+    unit: null,
+    time_domain: null,
+    time_column_id: null,
+    additivity: "additive" as const,
+    null_policy: "preserve" as const,
+    fanout_policy: "reject" as const,
+    dependency_column_ids: ["orders.amount"],
+    tags: [],
+    analysis: {
+      primary: true,
+      priority: 1,
+      missing_period_policy: "NULL" as const,
+      seasonality: null,
+      allowed_dimension_ids: ["dimension.customer-id"],
+      capabilities: ["DATA_PROFILE" as const],
+      causal_role: "OUTCOME" as const,
+    },
+  };
+  const selectedFormula = {
+    node_id: "formula.order-count",
+    node_version: 1,
+    node_type: "FORMULA" as const,
+    name: "Order count formula",
+    aliases: [],
+    owner_ref: "semantic.owner",
+    lifecycle: "ACTIVE" as const,
+    evidence_refs: [],
+    tags: [],
+    formula_type: "non_additive_aggregate" as const,
+    return_type: "numeric" as const,
+    language: "semantic-ast" as const,
+    language_version: "semantic-formula-ast@1" as const,
+    expression: {
+      kind: "AGGREGATE" as const,
+      function: "COUNT" as const,
+      input: { kind: "SLOT" as const, slot_id: "orders.amount" },
+      distinct: false,
+      filter: null,
+    },
+  };
+  const selectedBinding = {
+    logical_object_id: "metric.order-count",
+    logical_object_type: "metric" as const,
+    datasource_id: config.datasource.resource_id,
+    schema_name: "falcon_db_24",
+    table_name: "orders",
+    column_name: "amount",
+    binding_lifecycle: "active" as const,
+    valid_from: null,
+    valid_until: null,
+  };
   const semanticCatalog = {
     release_identity: {
       semantic_domain: "falcon24",
       release_id: config.semantic_release.resource_id,
       release_digest: config.semantic_release.resource_hash,
+      release_generation: config.semantic_release.semantic_generation,
+      datasource_id: config.datasource.resource_id,
     },
     executable: {
       metrics: [
-        {
-          metric_id: "metric.order-count",
-          table_id: "orders",
-          dependency_column_ids: ["orders.amount"],
-          formula: { formula_id: "formula.order-count" },
-        },
+        selectedMetric,
         {
           metric_id: "metric.hidden",
           table_id: "orders",
@@ -156,8 +231,9 @@ async function fixture() {
           column_id: "secret",
         },
       ],
-      formulas: [{ node_id: "formula.order-count" }, { node_id: "formula.hidden" }],
+      formulas: [selectedFormula, { node_id: "formula.hidden" }],
       physical_bindings: [
+        selectedBinding,
         { logical_object_id: "column.orders.amount" },
         { logical_object_id: "column.orders.customer_id" },
         { logical_object_id: "column.orders.secret" },
@@ -170,8 +246,45 @@ async function fixture() {
       time_semantics: [],
     },
   } as never;
-  const semanticContext = { package: semanticContextPackage } as never;
-  return { config, datasource, semanticCatalog, semanticContext, semanticContextPackage, snapshot };
+  const semanticContext = {
+    package: semanticContextPackage,
+    receipt: { receipt_id: id(9), receipt_hash: hash("e") },
+  } as never;
+  const semanticQueryContext = await buildSemanticQueryContext({
+    schema_version: "semantic-query-context@1.0.0",
+    scope,
+    run_id: config.run_id,
+    semantic_domain: "falcon24",
+    semantic_release: config.semantic_release,
+    schema_snapshot: config.schema_snapshot,
+    datasource: config.datasource,
+    semantic_context_ref: {
+      package_id: id(8),
+      package_hash: hash("b"),
+      receipt_id: id(9),
+      receipt_hash: hash("e"),
+      retrieval_receipt_hash: hash("c"),
+      inference_receipt_hash: hash("d"),
+    },
+    requested_object_ids: ["metric.order-count"],
+    metrics: [selectedMetric],
+    dimensions: [],
+    formulas: [selectedFormula],
+    relationships: [],
+    physical_bindings: [selectedBinding],
+    time_semantics: [],
+    quality_constraints: [],
+    unresolved_ambiguities: [],
+  });
+  return {
+    config,
+    datasource,
+    semanticCatalog,
+    semanticContext,
+    semanticContextPackage,
+    semanticQueryContext,
+    snapshot,
+  };
 }
 
 const candidate = (sql: string): Text2SqlQueryCandidate => ({
@@ -234,6 +347,7 @@ describe("PostgreSQL Text2SQL query runtime", () => {
       allowed_relations: ["falcon_db_24.orders"],
       target_capability_hash: hash("e"),
       reader_role: "falcon_demo_reader",
+      semantic_query_context_hash: null,
     };
     const compiled = await runtime.compileCandidate({
       prepared,
@@ -290,6 +404,7 @@ describe("PostgreSQL Text2SQL query runtime", () => {
           dimensions: [{ dimension_id: "dimension.customer-id" }],
           formulas: [{ node_id: "formula.order-count" }],
           physical_bindings: [
+            { logical_object_id: "metric.order-count" },
             { logical_object_id: "column.orders.amount" },
             { logical_object_id: "column.orders.customer_id" },
           ],
@@ -302,6 +417,140 @@ describe("PostgreSQL Text2SQL query runtime", () => {
     expect(prepared.context_text).not.toContain("secretref:");
     expect(connect).not.toHaveBeenCalled();
   });
+
+  it("narrows compiler and firewall context to an accepted SemanticQueryContext", async () => {
+    const { config, datasource, semanticCatalog, semanticContext, semanticQueryContext, snapshot } =
+      await fixture();
+    const runtime = createPostgresqlText2SqlQueryRuntime({
+      pool: { connect: vi.fn() } as never,
+      capability: {},
+      schema_snapshots: {
+        getSnapshot: vi.fn(async () => ({ ok: true as const, value: snapshot })),
+      },
+      datasources: {
+        getDatasource: vi.fn(async () => ({ ok: true as const, value: datasource })),
+      },
+      secrets: {
+        get: vi.fn(async () => ({
+          ok: true as const,
+          value: {
+            ref: `secretref:${id(7)}` as const,
+            name: "falcon-reader",
+            version: 1,
+            status: "ACTIVE" as const,
+          },
+        })),
+      },
+    });
+
+    const prepared = await runtime.prepare({
+      effective_config: config as never,
+      semantic_context: semanticContext,
+      semantic_catalog: semanticCatalog,
+      semantic_query_context: semanticQueryContext,
+      max_context_bytes: 32_000,
+    });
+
+    const projected = JSON.parse(prepared.context_text) as {
+      semantic_context: { executable: { metrics: unknown[]; dimensions: unknown[] } };
+    };
+    expect(prepared.semantic_query_context_hash).toBe(semanticQueryContext.context_hash);
+    expect(prepared.allowed_relations).toEqual(["falcon_db_24.orders"]);
+    expect(projected.semantic_context.executable.metrics).toEqual([
+      expect.objectContaining({ metric_id: "metric.order-count" }),
+    ]);
+    expect(projected.semantic_context.executable.dimensions).toEqual([]);
+    expect(prepared.context_text).not.toContain("metric.hidden");
+
+    const narrowedCandidate = {
+      ...candidate("select count(o.amount) as order_count from falcon_db_24.orders as o"),
+      result_columns: [
+        {
+          name: "order_count",
+          semantic_type: "NUMBER" as const,
+          label: "订单数",
+          semantic_binding: {
+            object_kind: "METRIC" as const,
+            object_id: "metric.order-count",
+          },
+        },
+      ],
+    };
+    await expect(
+      runtime.compileCandidate({ prepared, candidate: narrowedCandidate }),
+    ).resolves.toMatchObject({
+      result_columns: [
+        { semantic_binding: { object_kind: "METRIC", object_id: "metric.order-count" } },
+      ],
+    });
+    await expect(
+      runtime.compileCandidate({
+        prepared,
+        candidate: {
+          ...narrowedCandidate,
+          result_columns: [
+            {
+              name: "order_count",
+              semantic_type: "NUMBER",
+              label: "订单数",
+              semantic_binding: { object_kind: "METRIC", object_id: "metric.hidden" },
+            },
+          ],
+        },
+      }),
+    ).rejects.toMatchObject({ code: "TEXT2SQL_SEMANTIC_BINDING_OUT_OF_RANGE" });
+  });
+
+  it.each(["run", "release", "schema", "datasource", "out-of-range"] as const)(
+    "rejects %s SemanticQueryContext drift before schema/datasource or target I/O",
+    async (variant) => {
+      const { config, semanticCatalog, semanticContext, semanticQueryContext } = await fixture();
+      const { context_hash: _contextHash, ...draft } = semanticQueryContext;
+      const invalidContext = await buildSemanticQueryContext({
+        ...draft,
+        ...(variant === "run" ? { run_id: id(90) } : {}),
+        semantic_release: {
+          ...draft.semantic_release,
+          ...(variant === "release" ? { resource_hash: hash("9") } : {}),
+        },
+        schema_snapshot: {
+          ...draft.schema_snapshot,
+          ...(variant === "schema" ? { resource_hash: hash("8") } : {}),
+        },
+        datasource: {
+          ...draft.datasource,
+          ...(variant === "datasource" ? { resource_hash: hash("7") } : {}),
+        },
+        requested_object_ids:
+          variant === "out-of-range"
+            ? ["formula.order-count", "metric.order-count"]
+            : draft.requested_object_ids,
+      });
+      const getSnapshot = vi.fn();
+      const getDatasource = vi.fn();
+      const getSecret = vi.fn();
+      const runtime = createPostgresqlText2SqlQueryRuntime({
+        pool: { connect: vi.fn() } as never,
+        capability: {},
+        schema_snapshots: { getSnapshot } as never,
+        datasources: { getDatasource } as never,
+        secrets: { get: getSecret } as never,
+      });
+
+      await expect(
+        runtime.prepare({
+          effective_config: config as never,
+          semantic_context: semanticContext,
+          semantic_catalog: semanticCatalog,
+          semantic_query_context: invalidContext,
+          max_context_bytes: 32_000,
+        }),
+      ).rejects.toBeDefined();
+      expect(getSnapshot).not.toHaveBeenCalled();
+      expect(getDatasource).not.toHaveBeenCalled();
+      expect(getSecret).not.toHaveBeenCalled();
+    },
+  );
 
   it("rejects a stale SecretRef before opening a database connection", async () => {
     const { config, datasource, semanticCatalog, semanticContext, snapshot } = await fixture();
@@ -361,6 +610,7 @@ describe("PostgreSQL Text2SQL query runtime", () => {
           allowed_relations: ["falcon_db_24.orders"],
           target_capability_hash: hash("c"),
           reader_role: "falcon_demo_reader",
+          semantic_query_context_hash: null,
         },
         candidate: candidate(sql),
         timeout_ms: 5_000,
@@ -412,6 +662,7 @@ describe("PostgreSQL Text2SQL query runtime", () => {
         allowed_relations: ["falcon_db_24.orders"],
         target_capability_hash: hash("c"),
         reader_role: "falcon_demo_reader",
+        semantic_query_context_hash: null,
         binding_authority: {
           physical_snapshot: snapshot,
           semantic_context: semanticContext,

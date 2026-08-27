@@ -28,7 +28,7 @@ function references(offset: number) {
 }
 
 describe("Conversational Root Harness specialist handoff gap", () => {
-  it.fails("allows Text2SQL to optionally consume SemanticQueryContext", async () => {
+  it("allows Text2SQL to optionally consume SemanticQueryContext", async () => {
     const materialized = await buildBuiltinTeamMaterialization({
       scope,
       model_profile_refs: references(10),

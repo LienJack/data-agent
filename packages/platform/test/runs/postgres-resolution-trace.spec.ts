@@ -316,6 +316,8 @@ async function productTeamSqlArtifactRow() {
       },
       schema_snapshot_ref: { resource_id: id(21), resource_hash: hash("4") },
       semantic_context_ref: { package_id: id(22), package_hash: hash("5") },
+      semantic_query_context_ref: null,
+      semantic_query_context_hash: null,
       target_binding_hash: hash("6"),
     },
     projection: {

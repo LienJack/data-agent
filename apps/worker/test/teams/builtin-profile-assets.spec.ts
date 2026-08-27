@@ -43,7 +43,7 @@ describe("built-in Team product assets", () => {
       )?.revision,
     ).toBe(2);
     expect(materialized.profile_revisions.map(({ profile_id }) => profile_id)).toEqual(profiles);
-    expect(materialized.profile_revisions.map(({ revision }) => revision)).toEqual([4, 4, 4, 6]);
+    expect(materialized.profile_revisions.map(({ revision }) => revision)).toEqual([4, 5, 4, 6]);
     expect(
       materialized.profile_revisions.find(
         ({ profile_id: profileId }) => profileId === "governed-analysis-agent",
@@ -57,6 +57,14 @@ describe("built-in Team product assets", () => {
       runtime_profile_ref: { revision: 4 },
       direct_tool_allowlist: ["semantic.catalog.read"],
       discovery: { produced_artifact_types: ["SemanticQueryContext"] },
+    });
+    expect(
+      materialized.profile_revisions.find(
+        ({ profile_id: profileId }) => profileId === "governed-text2sql-agent",
+      ),
+    ).toMatchObject({
+      revision: 5,
+      discovery: { accepted_input_artifact_types: ["SemanticQueryContext"] },
     });
     expect(
       new Set(materialized.skill_revisions.map(({ revision_hash }) => revision_hash)),

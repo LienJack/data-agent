@@ -74,6 +74,16 @@ Commit: `feat(semantic): publish root semantic query context`
 
 Text2SQL Card 接受可选 SemanticQueryContext；delegation admission 与 prepare 重验 exact bindings，并限制 compiler context。覆盖 direct Text2SQL、with-context、out-of-range object、stale release、schema/datasource/run mismatch 和 pre-I/O rejection。
 
+Status: completed on 2026-08-27.
+
+Evidence:
+
+- Text2SQL Product Profile r5 accepts only optional `SemanticQueryContext`; normal `input_artifact_refs` admission and child-task bindings preserve the exact accepted reference, while direct Text2SQL remains valid.
+- Production Team resolves and verifies the committed same-Run Semantic Artifact before semantic release loading; prepare then revalidates catalog membership, selected closure and physical bindings before schema/datasource lookup or target I/O.
+- Compiler schema/semantic projections and the SQL relation firewall are narrowed to the accepted closure; target binding and `SqlArtifact` provenance bind its exact reference/hash.
+- Contracts: 96 files / 939 tests; Agent Runtime: 27 files / 168 tests; Worker Team + Analysis: 38 files / 182 tests; Platform focused resolution trace: 1 file / 28 tests.
+- Contracts, Agent Runtime, Worker and Platform typechecks passed; 14 scoped files passed Biome and `git diff --check`.
+
 Commit: `feat(text2sql): consume semantic query context`
 
 ## C5 — Analysis and final projection

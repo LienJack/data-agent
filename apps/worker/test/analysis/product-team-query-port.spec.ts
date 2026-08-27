@@ -102,6 +102,8 @@ async function documents(input?: {
       },
       schema_snapshot_ref: { resource_id: id(31), resource_hash: hash("4") },
       semantic_context_ref: { package_id: id(32), package_hash: hash("5") },
+      semantic_query_context_ref: null,
+      semantic_query_context_hash: null,
       target_binding_hash: hash("6"),
     },
     projection: { kind: "SQL", dialect: "postgresql", sql: "select month, revenue" },

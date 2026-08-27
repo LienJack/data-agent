@@ -130,4 +130,74 @@ describe("Product Team Artifact", () => {
       }),
     ).rejects.toThrow();
   });
+
+  it("binds optional SemanticQueryContext provenance to the same Run", async () => {
+    const semanticContextRef = {
+      artifact_id: id(13),
+      artifact_type: "SemanticQueryContext" as const,
+      app_id: id(2),
+      tenant_id: id(3),
+      environment: "test" as const,
+      run_id: id(4),
+      revision: 1,
+      content_hash: hash("f"),
+    };
+    const input = {
+      schema_version: "product-team-artifact@2.0.0" as const,
+      artifact_ref: {
+        artifact_id: id(1),
+        artifact_type: "SqlArtifact" as const,
+        app_id: id(2),
+        tenant_id: id(3),
+        environment: "test" as const,
+        run_id: id(4),
+        revision: 1,
+        content_hash: hash("0"),
+      },
+      profile_id: "governed-text2sql-agent",
+      task_id: id(5),
+      source_refs: [],
+      provenance: {
+        kind: "TEXT2SQL_CANDIDATE" as const,
+        candidate_hash: hash("1"),
+        parameters_hash: hash("2"),
+        parameter_count: 0,
+        datasource_ref: { resource_id: id(9), resource_revision: 1, resource_hash: hash("9") },
+        schema_snapshot_ref: { resource_id: id(12), resource_hash: hash("c") },
+        semantic_context_ref: { package_id: id(10), package_hash: hash("a") },
+        semantic_query_context_ref: semanticContextRef,
+        semantic_query_context_hash: hash("f"),
+        target_binding_hash: hash("d"),
+      },
+      projection: { kind: "SQL" as const, dialect: "postgresql" as const, sql: "select 1" },
+      committed_at: "2026-08-18T12:00:00.000Z",
+    };
+
+    await expect(buildProductTeamArtifactDocument(input)).resolves.toMatchObject({
+      provenance: { semantic_query_context_ref: semanticContextRef },
+    });
+    const {
+      semantic_query_context_ref: _legacyReference,
+      semantic_query_context_hash: _legacyHash,
+      ...legacyProvenance
+    } = input.provenance;
+    await expect(
+      buildProductTeamArtifactDocument({ ...input, provenance: legacyProvenance }),
+    ).resolves.toMatchObject({ provenance: { kind: "TEXT2SQL_CANDIDATE" } });
+    await expect(
+      buildProductTeamArtifactDocument({
+        ...input,
+        provenance: { ...input.provenance, semantic_query_context_hash: null },
+      }),
+    ).rejects.toThrow();
+    await expect(
+      buildProductTeamArtifactDocument({
+        ...input,
+        provenance: {
+          ...input.provenance,
+          semantic_query_context_ref: { ...semanticContextRef, run_id: id(99) },
+        },
+      }),
+    ).rejects.toThrow();
+  });
 });

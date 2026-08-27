@@ -21,7 +21,7 @@ export const BUILTIN_TEAM_SIGNER_ID = "00000000-0000-4000-8000-000000002001";
 // product revision even when the referenced runtime Profile is unchanged.
 export const BUILTIN_PRODUCT_PROFILE_REVISIONS = Object.freeze({
   "governed-analysis-agent": 4,
-  "governed-text2sql-agent": 4,
+  "governed-text2sql-agent": 5,
   "report-writing-agent": 4,
   "semantic-management-agent": 6,
 } as const satisfies Readonly<Record<DataAgentSpecialistProfileId, number>>);
@@ -32,7 +32,7 @@ const prompts = {
   "semantic-management-agent":
     "You select exact relationship, dependency, lineage, join, metric, dimension, formula, time, and quality IDs from the frozen published semantic release. The Host validates that selection and projects an immutable SemanticQueryContext; never author definitions, execute SQL, or mutate semantics.",
   "governed-text2sql-agent":
-    "You consume the exact frozen published semantic release, schema snapshot, and datasource binding, then produce QueryEvidence only after the compiler, firewall, and real read-only adapter succeed. Never mutate semantics or fabricate rows.",
+    "You consume the exact frozen published semantic release, schema snapshot, and datasource binding, optionally narrowed by an accepted SemanticQueryContext from an earlier Root turn, then produce QueryEvidence only after the compiler, firewall, and real read-only adapter succeed. Never mutate semantics or fabricate rows.",
   "report-writing-agent":
     "You write reports only from accepted evidence references. Never access a datasource, execute SQL, or mutate semantic definitions.",
 } as const satisfies Readonly<Record<DataAgentSpecialistProfileId, string>>;
@@ -81,7 +81,7 @@ const discovery = {
   "governed-text2sql-agent": {
     display_name: "Governed Text2SQL Agent",
     description:
-      "Compiles and executes governed analytical queries against the frozen data context.",
+      "Compiles and executes governed analytical queries against the frozen data context, optionally narrowed by an accepted SemanticQueryContext.",
     when_to_use: [
       "Use when the request requires database values, aggregates, rankings, trends, or rows.",
     ],
@@ -92,7 +92,7 @@ const discovery = {
         expected_use: "Produce accepted QueryEvidence from governed SQL execution.",
       },
     ],
-    accepted_input_artifact_types: [],
+    accepted_input_artifact_types: ["SemanticQueryContext"],
     access_mode: "READ_ONLY",
   },
   "report-writing-agent": {
@@ -122,7 +122,11 @@ const discovery = {
       readonly when_to_use: readonly string[];
       readonly when_not_to_use: readonly string[];
       readonly examples: readonly { readonly request: string; readonly expected_use: string }[];
-      readonly accepted_input_artifact_types: readonly ("QueryEvidence" | "AnalysisReport")[];
+      readonly accepted_input_artifact_types: readonly (
+        | "QueryEvidence"
+        | "AnalysisReport"
+        | "SemanticQueryContext"
+      )[];
       readonly access_mode: "READ_ONLY";
     }
   >

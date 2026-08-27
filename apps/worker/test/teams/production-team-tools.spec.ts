@@ -2,7 +2,9 @@ import {
   type AgentProductProfileRegistryItemV2,
   type ArtifactWorkspaceChartDocumentV2,
   buildFalcon24RunExecutionPolicy,
+  buildProductTeamArtifactDocument,
   buildQueryEvidenceSemanticBinding,
+  buildSemanticQueryContext,
   DEFAULT_RUN_EXECUTION_POLICY,
   type ProductTeamArtifactDocument,
   type RunWorkLease,
@@ -317,6 +319,7 @@ describe("Production Team governed chart publication", () => {
           },
         } as never,
         accepted_evidence_ref: null,
+        accepted_semantic_query_context_ref: null,
         delegation: {
           profile: { revision: { profile_id: "semantic-management-agent" } },
           call: { objective: "订单与客户实体如何关联" },
@@ -358,6 +361,306 @@ describe("Production Team governed chart publication", () => {
         }),
       },
     });
+  });
+
+  it("resolves an exact accepted SemanticQueryContext before Text2SQL prepare", async () => {
+    const scope = { app_id: id(1), tenant_id: id(2), environment: "test" } as const;
+    const lease = {
+      scope,
+      principal_id: id(3),
+      outbox_id: id(4),
+      run_id: id(5),
+      command_id: id(6),
+      command_kind: "START_DATA_AGENT_TEAM",
+      attempt_id: id(7),
+      attempt_no: 1,
+      delivery_attempt_no: 1,
+      lease_duration_ms: 30_000,
+      worker_id: "worker-text2sql-context",
+      lease_token: 1,
+      worker_fence: 1,
+      expires_at: "2026-08-27T01:00:30.000Z",
+      execution_policy: DEFAULT_RUN_EXECUTION_POLICY,
+      payload: { kind: "START_DATA_AGENT_TEAM" },
+    } as unknown as RunWorkLease;
+    const config = await buildWorkerEffectiveConfigFixture({
+      scope,
+      workspace_id: scope.tenant_id,
+      principal_id: lease.principal_id,
+      run_id: lease.run_id,
+    });
+    const contextReceipt = {
+      package_id: id(20),
+      package_hash: hash("a"),
+      receipt_id: id(21),
+      receipt_hash: hash("b"),
+    } as const;
+    const semanticPackage = {
+      package_id: contextReceipt.package_id,
+      package_hash: contextReceipt.package_hash,
+      scope,
+      semantic_domain: "commerce",
+      semantic_release: config.semantic_release,
+      schema_snapshot: config.schema_snapshot,
+      retrieval_receipt: { selected_object_ids: [], receipt_hash: hash("c") },
+      inference_receipt: {
+        mandatory_object_ids: [],
+        mandatory_relationship_ids: [],
+        receipt_hash: hash("d"),
+      },
+    } as never;
+    const semanticContext = await buildSemanticQueryContext({
+      schema_version: "semantic-query-context@1.0.0",
+      scope,
+      run_id: lease.run_id,
+      semantic_domain: "commerce",
+      semantic_release: config.semantic_release,
+      schema_snapshot: config.schema_snapshot,
+      datasource: config.datasource,
+      semantic_context_ref: {
+        ...contextReceipt,
+        retrieval_receipt_hash: hash("c"),
+        inference_receipt_hash: hash("d"),
+      },
+      requested_object_ids: [],
+      metrics: [],
+      dimensions: [],
+      formulas: [],
+      relationships: [],
+      physical_bindings: [],
+      time_semantics: [],
+      quality_constraints: [],
+      unresolved_ambiguities: [],
+    });
+    const contextDocument = await buildProductTeamArtifactDocument({
+      schema_version: "product-team-artifact@2.0.0",
+      artifact_ref: {
+        artifact_id: id(22),
+        artifact_type: "SemanticQueryContext",
+        ...scope,
+        run_id: lease.run_id,
+        revision: 1,
+        content_hash: hash("0"),
+      },
+      profile_id: "semantic-management-agent",
+      task_id: id(23),
+      source_refs: [],
+      provenance: null,
+      projection: { kind: "SEMANTIC_CONTEXT", context: semanticContext },
+      committed_at: "2026-08-27T01:00:00.000Z",
+    });
+    const executionContext = createRunExecutionContext({
+      lease,
+      effective_config: config,
+      context_receipt: contextReceipt as never,
+      run_signal: new AbortController().signal,
+      event_store: {} as never,
+      now: () => new Date("2026-08-27T01:00:00.000Z"),
+      create_id: () => id(24),
+      side_effect_timeout_ms: 1_000,
+      provider_dispatch: { invoke: vi.fn() as never },
+      heartbeat: vi.fn(),
+      guard_running_lease: vi.fn(),
+      append_checkpoint_event: vi.fn(),
+      append_side_effect_event: vi.fn(),
+      append_display_event: vi.fn(),
+    });
+    const releaseRead = vi.fn(async () => ({
+      ok: true as const,
+      value: {
+        release_identity: {
+          semantic_domain: "commerce",
+          release_id: config.semantic_release.resource_id,
+          release_digest: config.semantic_release.resource_hash,
+          release_generation: config.semantic_release.semantic_generation,
+          datasource_id: config.datasource.resource_id,
+        },
+        executable: {
+          schema_version: "semantic-executable-projection@1.0.0" as const,
+          metrics: [],
+          dimensions: [],
+          formulas: [],
+          physical_bindings: [],
+        },
+        relationships: {
+          schema_version: "semantic-relationship-projection@1.0.0" as const,
+          relationships: [],
+        },
+        restrictions: {
+          schema_version: "semantic-runtime-restriction-projection@1.0.0" as const,
+          quality_constraints: [],
+          time_semantics: [],
+        },
+      },
+    }));
+    const prepare = vi.fn(async () => ({
+      context_text: "{}",
+      datasource_id: config.datasource.resource_id,
+      schema_snapshot_id: config.schema_snapshot.resource_id,
+      schema_snapshot_hash: config.schema_snapshot.resource_hash,
+      allowed_relations: ["falcon_db_24.orders"],
+      target_capability_hash: hash("e"),
+      reader_role: "falcon_demo_reader",
+      semantic_query_context_hash: semanticContext.context_hash,
+    }));
+    const tools = createProductionTeamTools(
+      {
+        capability: {},
+        artifacts: {
+          commit: vi.fn(),
+          commitWorkspaceChart: vi.fn(),
+          resolveCommitted: vi.fn(async () => ({ ok: true as const, value: contextDocument })),
+        },
+        text2sql: { prepare, compileCandidate: vi.fn(), execute: vi.fn() } as never,
+        semantic_release: { read: releaseRead },
+      },
+      {
+        lease: lease as ProductionTeamToolFactoryInput["lease"],
+        authority: {
+          schema_version: "falcon24-authority-binding@2.0.0",
+          authority_epoch: "E3",
+          baseline_id: id(25),
+          baseline_hash: hash("f"),
+          activation_attempt_id: id(26),
+        },
+        execution_context: executionContext,
+        semantic_context_ref: {
+          ...contextReceipt,
+          semantic_domain: "commerce",
+          semantic_release_id: config.semantic_release.resource_id,
+          semantic_release_hash: config.semantic_release.resource_hash,
+        },
+        semantic_context_package: semanticPackage,
+        semantic_context: { package: semanticPackage } as never,
+        accepted_evidence_ref: null,
+        accepted_semantic_query_context_ref: contextDocument.artifact_ref,
+        delegation: {
+          profile: { revision: { profile_id: "governed-text2sql-agent" } },
+          call: { objective: "查询订单数据" },
+        } as ProductionTeamToolFactoryInput["delegation"],
+      },
+    );
+
+    await expect(
+      tools.invoke({
+        task: {
+          task_id: id(27),
+          run_id: lease.run_id,
+          profile_id: "governed-text2sql-agent",
+          scope,
+          bounds: { max_context_bytes: 16_384 },
+        } as Parameters<ProductProfileToolPort["invoke"]>[0]["task"],
+        profile: {
+          revision: { profile_id: "governed-text2sql-agent" },
+        } as unknown as AgentProductProfileRegistryItemV2,
+        tool_id: "semantic.release.read",
+        context_epoch: { epoch_id: id(28), build_signature: hash("1") },
+      }),
+    ).resolves.toMatchObject({ output_ref: null });
+    expect(releaseRead).toHaveBeenCalledOnce();
+    expect(prepare).toHaveBeenCalledWith(
+      expect.objectContaining({ semantic_query_context: semanticContext }),
+    );
+  });
+
+  it("rejects a stale accepted SemanticQueryContext before semantic release I/O", async () => {
+    const resolveAccepted = productionTeamToolsInternals.resolveAcceptedSemanticQueryContext;
+    const scope = { app_id: id(1), tenant_id: id(2), environment: "test" } as const;
+    const lease = {
+      scope,
+      run_id: id(5),
+      lease_duration_ms: 30_000,
+      expires_at: "2026-08-27T01:00:30.000Z",
+    } as ProductionTeamToolFactoryInput["lease"];
+    const config = await buildWorkerEffectiveConfigFixture({
+      scope,
+      workspace_id: scope.tenant_id,
+      principal_id: id(3),
+      run_id: lease.run_id,
+    });
+    const staleContext = await buildSemanticQueryContext({
+      schema_version: "semantic-query-context@1.0.0",
+      scope,
+      run_id: lease.run_id,
+      semantic_domain: "commerce",
+      semantic_release: { ...config.semantic_release, resource_hash: hash("9") },
+      schema_snapshot: config.schema_snapshot,
+      datasource: config.datasource,
+      semantic_context_ref: {
+        package_id: id(20),
+        package_hash: hash("a"),
+        receipt_id: id(21),
+        receipt_hash: hash("b"),
+        retrieval_receipt_hash: hash("c"),
+        inference_receipt_hash: hash("d"),
+      },
+      requested_object_ids: [],
+      metrics: [],
+      dimensions: [],
+      formulas: [],
+      relationships: [],
+      physical_bindings: [],
+      time_semantics: [],
+      quality_constraints: [],
+      unresolved_ambiguities: [],
+    });
+    const staleDocument = await buildProductTeamArtifactDocument({
+      schema_version: "product-team-artifact@2.0.0",
+      artifact_ref: {
+        artifact_id: id(22),
+        artifact_type: "SemanticQueryContext",
+        ...scope,
+        run_id: lease.run_id,
+        revision: 1,
+        content_hash: hash("0"),
+      },
+      profile_id: "semantic-management-agent",
+      task_id: id(23),
+      source_refs: [],
+      provenance: null,
+      projection: { kind: "SEMANTIC_CONTEXT", context: staleContext },
+      committed_at: "2026-08-27T01:00:00.000Z",
+    });
+    const resolveCommitted = vi.fn(async () => ({
+      ok: true as const,
+      value: staleDocument,
+    }));
+
+    await expect(
+      resolveAccepted(
+        {
+          capability: {},
+          artifacts: {
+            commit: vi.fn(),
+            commitWorkspaceChart: vi.fn(),
+            resolveCommitted,
+          },
+          text2sql: {} as never,
+          semantic_release: {} as never,
+        },
+        {
+          lease,
+          authority: {} as never,
+          execution_context: { getEffectiveConfig: () => config } as never,
+          semantic_context_ref: {
+            package_id: id(20),
+            package_hash: hash("a"),
+            receipt_id: id(21),
+            receipt_hash: hash("b"),
+          } as never,
+          semantic_context_package: {
+            semantic_domain: "commerce",
+            retrieval_receipt: { receipt_hash: hash("c") },
+            inference_receipt: { receipt_hash: hash("d") },
+          } as never,
+          semantic_context: {} as never,
+          accepted_evidence_ref: null,
+          accepted_semantic_query_context_ref: staleDocument.artifact_ref,
+          delegation: null,
+        },
+      ),
+    ).rejects.toMatchObject({ code: "TEAM_ACCEPTED_SEMANTIC_CONTEXT_BINDING_STALE" });
+    expect(resolveCommitted).toHaveBeenCalledOnce();
   });
 
   it("executes the semantic-selected governed AnalysisProgram and binds its chart evidence", async () => {
@@ -528,6 +831,7 @@ describe("Production Team governed chart publication", () => {
           revision: 1,
           content_hash: hash("9"),
         },
+        accepted_semantic_query_context_ref: null,
         delegation: {
           profile: { revision: { profile_id: "governed-analysis-agent" } },
           call: { objective: "复盘经营表现并解释收入变化驱动" },
@@ -657,6 +961,7 @@ describe("Production Team governed chart publication", () => {
       allowed_relations: ["falcon_db_24.orders"],
       target_capability_hash: hash("5"),
       reader_role: "falcon_demo_reader",
+      semantic_query_context_hash: null,
     }));
     const semanticBinding = await buildQueryEvidenceSemanticBinding({
       protocol_version: "query-evidence-semantic-binding@1.0.0",
@@ -816,6 +1121,7 @@ describe("Production Team governed chart publication", () => {
         semantic_context_package: {} as never,
         semantic_context: {} as never,
         accepted_evidence_ref: null,
+        accepted_semantic_query_context_ref: null,
         delegation: {
           profile: { revision: { profile_id: "governed-text2sql-agent" } },
           call: { objective: "查询每月订单趋势" },

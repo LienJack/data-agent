@@ -113,6 +113,8 @@ async function queryEvidence(input?: {
       datasource_ref: { resource_id: id(32), resource_revision: 1, resource_hash: hash("3") },
       schema_snapshot_ref: { resource_id: id(33), resource_hash: hash("4") },
       semantic_context_ref: { package_id: id(20), package_hash: hash("a") },
+      semantic_query_context_ref: null,
+      semantic_query_context_hash: null,
       target_binding_hash: hash("5"),
     },
     projection: { kind: "SQL", dialect: "postgresql", sql: "select period, metric_value" },

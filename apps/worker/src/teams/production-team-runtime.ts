@@ -80,6 +80,7 @@ export interface ProductionTeamToolFactoryInput {
     DataAgentProductTeamRuntimePort["execute"]
   >[0]["semantic_context"];
   readonly accepted_evidence_ref: ArtifactReference | null;
+  readonly accepted_semantic_query_context_ref: ArtifactReference | null;
   readonly delegation: AdmittedSubagentDelegation | null;
 }
 
@@ -605,6 +606,18 @@ function acceptedEvidenceInput(delegation: AdmittedSubagentDelegation): Artifact
   return candidates[0] ?? null;
 }
 
+function acceptedSemanticQueryContextInput(
+  delegation: AdmittedSubagentDelegation,
+): ArtifactReference | null {
+  const candidates = delegation.receipt.input_artifact_refs.filter(
+    ({ artifact_type: artifactType }) => artifactType === "SemanticQueryContext",
+  );
+  if (candidates.length > 1) {
+    throw new ProductionTeamRuntimeError("TEAM_ACCEPTED_SEMANTIC_CONTEXT_INPUT_AMBIGUOUS");
+  }
+  return candidates[0] ?? null;
+}
+
 export function createProductionTeamRuntime(
   dependencies: ProductionTeamRuntimeDependencies,
 ): DataAgentProductTeamRuntimePort {
@@ -753,6 +766,8 @@ export function createProductionTeamRuntime(
             throw new ProductionTeamRuntimeError("AGENT_PROFILE_NOT_ALLOWED");
           }
           const acceptedInputRef = acceptedEvidenceInput(admittedDelegation);
+          const acceptedSemanticQueryContextRef =
+            acceptedSemanticQueryContextInput(admittedDelegation);
           const artifactRefs = [
             ...new Map(
               admittedDelegation.receipt.input_artifact_refs.map(
@@ -821,6 +836,7 @@ export function createProductionTeamRuntime(
               semantic_context_package: input.semantic_context_package,
               semantic_context: input.semantic_context,
               accepted_evidence_ref: acceptedInputRef,
+              accepted_semantic_query_context_ref: acceptedSemanticQueryContextRef,
               delegation: admittedDelegation,
             }) ?? dependencies.tools;
           if (!tools) throw new ProductionTeamRuntimeError("TEAM_TOOL_COMPOSITION_REQUIRED");

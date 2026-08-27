@@ -67,7 +67,10 @@ The Text2SQL context contains only:
 - exact datasource id/revision/hash;
 - exact physical schema snapshot id/hash and safe relation/column/type/PK/FK/comment projection;
 - exact Semantic Context Package and frozen release references;
+- optional accepted `SemanticQueryContext` from an earlier Root turn. When present, Host revalidates its exact current-Run Artifact identity, Context Package receipt, release id/generation/digest, datasource and schema snapshot before loading the exact semantic release; it then checks catalog membership and closure before schema/datasource lookup or target I/O. The compiler projection and SQL relation firewall are both narrowed to that verified closure;
 - Root objective and bounded execution limits。
+
+The optional context travels only through ordinary `input_artifact_refs`; it does not create a Host-scheduled Semantic-to-Text2SQL edge. Direct Text2SQL without this Artifact remains valid. `SqlArtifact` provenance records the exact optional Context reference/hash together with the resulting target binding hash。
 
 Host/port/database/credential values, SecretRef payloads, raw rows and private prompts are never projected to the model or public trace。
 

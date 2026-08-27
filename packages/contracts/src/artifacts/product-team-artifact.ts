@@ -180,26 +180,46 @@ export function computePublishedMetricFormulaHash(input: {
 }
 
 const productTeamArtifactProvenanceSchema = z.discriminatedUnion("kind", [
-  z.strictObject({
-    kind: z.literal("TEXT2SQL_CANDIDATE"),
-    candidate_hash: contentHashSchema,
-    parameters_hash: contentHashSchema,
-    parameter_count: z.number().int().nonnegative().max(256),
-    datasource_ref: z.strictObject({
-      resource_id: immutableIdSchema,
-      resource_revision: z.number().int().positive().safe(),
-      resource_hash: contentHashSchema,
+  z
+    .strictObject({
+      kind: z.literal("TEXT2SQL_CANDIDATE"),
+      candidate_hash: contentHashSchema,
+      parameters_hash: contentHashSchema,
+      parameter_count: z.number().int().nonnegative().max(256),
+      datasource_ref: z.strictObject({
+        resource_id: immutableIdSchema,
+        resource_revision: z.number().int().positive().safe(),
+        resource_hash: contentHashSchema,
+      }),
+      schema_snapshot_ref: z.strictObject({
+        resource_id: immutableIdSchema,
+        resource_hash: contentHashSchema,
+      }),
+      semantic_context_ref: z.strictObject({
+        package_id: immutableIdSchema,
+        package_hash: contentHashSchema,
+      }),
+      semantic_query_context_ref: artifactReferenceFor("SemanticQueryContext")
+        .nullable()
+        .optional(),
+      semantic_query_context_hash: contentHashSchema.nullable().optional(),
+      target_binding_hash: contentHashSchema,
+    })
+    .superRefine((provenance, ctx) => {
+      const hasReference = Object.hasOwn(provenance, "semantic_query_context_ref");
+      const hasHash = Object.hasOwn(provenance, "semantic_query_context_hash");
+      if (
+        hasReference !== hasHash ||
+        (hasReference &&
+          (provenance.semantic_query_context_ref === null) !==
+            (provenance.semantic_query_context_hash === null))
+      ) {
+        ctx.addIssue({
+          code: "custom",
+          message: "Text2SQL semantic query context reference and hash must be bound together.",
+        });
+      }
     }),
-    schema_snapshot_ref: z.strictObject({
-      resource_id: immutableIdSchema,
-      resource_hash: contentHashSchema,
-    }),
-    semantic_context_ref: z.strictObject({
-      package_id: immutableIdSchema,
-      package_hash: contentHashSchema,
-    }),
-    target_binding_hash: contentHashSchema,
-  }),
   z.strictObject({
     kind: z.literal("GOVERNED_QUERY_RESULT"),
     query_id: immutableIdSchema,
@@ -248,6 +268,23 @@ const productTeamArtifactDraftSchema = z
         code: "custom",
         message: "SqlArtifact 必须封存 Text2SQL candidate provenance 且不得伪造上游来源。",
         path: ["provenance"],
+      });
+    }
+    if (
+      document.artifact_ref.artifact_type === "SqlArtifact" &&
+      document.provenance?.kind === "TEXT2SQL_CANDIDATE" &&
+      document.provenance.semantic_query_context_ref &&
+      (document.provenance.semantic_query_context_ref.app_id !== document.artifact_ref.app_id ||
+        document.provenance.semantic_query_context_ref.tenant_id !==
+          document.artifact_ref.tenant_id ||
+        document.provenance.semantic_query_context_ref.environment !==
+          document.artifact_ref.environment ||
+        document.provenance.semantic_query_context_ref.run_id !== document.artifact_ref.run_id)
+    ) {
+      ctx.addIssue({
+        code: "custom",
+        message: "Text2SQL semantic query context must belong to the same Scope and Run.",
+        path: ["provenance", "semantic_query_context_ref"],
       });
     }
     if (
