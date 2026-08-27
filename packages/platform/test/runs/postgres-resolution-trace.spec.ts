@@ -1255,30 +1255,66 @@ async function researchQueryEvidenceRow() {
 }
 
 describe("PostgreSQL Resolution Trace projector", () => {
-  it("fails closed when the Run is not bound to the exact current E1 baseline", async () => {
-    for (const staleAuthority of [
-      { ...authorityRow(), current_authority_epoch: null },
-      { ...authorityRow(), current_baseline_id: id(92) },
-      { ...authorityRow(), current_baseline_hash: hash("f") },
-      { ...authorityRow(), current_activation_attempt_id: id(93) },
-    ]) {
-      const { capability, authorizer } = issueCapability();
-      const { pool } = scriptedPool((text) => {
-        if (text.includes("from runs as run")) {
-          return { rows: [staleAuthority], rowCount: 1 };
-        }
-        return undefined;
-      });
+  it("reads historical E1 from the Run binding without consulting current authority", async () => {
+    const { capability, authorizer } = issueCapability();
+    const { pool, calls } = scriptedPool((text) => {
+      if (text.includes("from runs as run")) {
+        return {
+          rows: [
+            {
+              ...authorityRow(),
+              current_authority_epoch: "E2",
+              current_baseline_id: id(92),
+              current_baseline_hash: hash("f"),
+              current_activation_attempt_id: id(93),
+            },
+          ],
+          rowCount: 1,
+        };
+      }
+      return undefined;
+    });
 
-      const result = await createPostgresResolutionTraceProjector({ pool, authorizer }).loadTrace(
+    await expect(
+      createPostgresResolutionTraceProjector({ pool, authorizer }).loadTrace(capability, {
+        scope,
+        run_id: ids.run,
+      }),
+    ).resolves.toMatchObject({ ok: true });
+    const authorityQuery = calls.find(({ text }) => text.includes("from runs as run"))?.text;
+    expect(authorityQuery).not.toContain("falcon24_current_authority_epoch");
+  });
+
+  it("accepts E2 Run authority and rejects a non-canonical Run epoch", async () => {
+    const { capability, authorizer } = issueCapability();
+    const current = scriptedPool((text) => {
+      if (text.includes("from runs as run")) {
+        return { rows: [{ ...authorityRow(), authority_epoch: "E2" }], rowCount: 1 };
+      }
+      return undefined;
+    });
+    await expect(
+      createPostgresResolutionTraceProjector({ pool: current.pool, authorizer }).loadTrace(
         capability,
         { scope, run_id: ids.run },
-      );
-      expect(result).toMatchObject({
-        ok: false,
-        error: { code: "RESOLUTION_TRACE_E1_AUTHORITY_MISMATCH" },
-      });
-    }
+      ),
+    ).resolves.toMatchObject({ ok: true });
+
+    const corrupt = scriptedPool((text) => {
+      if (text.includes("from runs as run")) {
+        return { rows: [{ ...authorityRow(), authority_epoch: "E02" }], rowCount: 1 };
+      }
+      return undefined;
+    });
+    await expect(
+      createPostgresResolutionTraceProjector({ pool: corrupt.pool, authorizer }).loadTrace(
+        capability,
+        { scope, run_id: ids.run },
+      ),
+    ).resolves.toMatchObject({
+      ok: false,
+      error: { code: "RESOLUTION_TRACE_AUTHORITY_BINDING_INVALID" },
+    });
   });
 
   it("resolves the current attempt from ACTIVE run_attempts authority", async () => {
@@ -2067,14 +2103,14 @@ describe("PostgreSQL Resolution Trace projector", () => {
     }
   });
 
-  it("fails closed when a READY completion has no unique current E1 publication", async () => {
+  it("fails closed when a READY completion has no unique current Falcon24 publication", async () => {
     const row = await eventRow();
     const sql = await productTeamSqlArtifactRow();
     const evidence = await productTeamQueryEvidenceRow(sql);
     const analysis = await falcon24DerivedAuthorityRows(evidence);
     const completion = await falcon24AnalysisCompletionRow(analysis);
     const { capability, authorizer } = issueCapability();
-    const { pool } = scriptedPool((text) => {
+    const { pool, calls } = scriptedPool((text) => {
       if (text.includes("from runs as run")) return { rows: [authorityRow()], rowCount: 1 };
       if (text.includes("from run_events")) return { rows: [row], rowCount: 1 };
       if (text.includes("from artifacts")) {
@@ -2098,8 +2134,13 @@ describe("PostgreSQL Resolution Trace projector", () => {
     );
     expect(result).toMatchObject({
       ok: false,
-      error: { code: "RESOLUTION_TRACE_E1_PUBLICATION_MISSING" },
+      error: { code: "RESOLUTION_TRACE_PUBLICATION_MISSING" },
     });
+    const publicationQuery = calls.find(({ text }) =>
+      text.includes("from falcon24_analysis_publication_current"),
+    )?.text;
+    expect(publicationQuery).toContain("join falcon24_analysis_publications");
+    expect(publicationQuery).not.toContain("from e1_analysis_publication_current");
   });
 
   it("rejects an ordinary SandboxResult substituted into DerivedAnalysisEvidence", async () => {
