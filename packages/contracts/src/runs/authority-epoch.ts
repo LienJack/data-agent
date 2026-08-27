@@ -359,6 +359,91 @@ export async function verifyCombinedFalcon24SemanticActivationReceipt(input: unk
   return receipt;
 }
 
+const falcon24SemanticAuthorityClosureVersionedReleaseSchema = z.strictObject({
+  version: z.number().int().min(1).max(Number.MAX_SAFE_INTEGER),
+  release: semanticSuccessorCandidateReleaseReferenceSchema,
+});
+
+function sameSemanticRelease(
+  left: z.infer<typeof semanticSuccessorCandidateReleaseReferenceSchema>,
+  right: z.infer<typeof semanticSuccessorCandidateReleaseReferenceSchema>,
+): boolean {
+  return (
+    left.release_id === right.release_id &&
+    left.generation === right.generation &&
+    left.release_digest === right.release_digest &&
+    left.datasource_id === right.datasource_id
+  );
+}
+
+export const falcon24SemanticAuthorityClosureSchema = z
+  .strictObject({
+    schema_version: z.literal("falcon24-semantic-authority-closure@1.0.0"),
+    scope: semanticScopeSchema,
+    authority: falcon24AuthorityBindingV2Schema,
+    semantic_pointer: falcon24SemanticAuthorityClosureVersionedReleaseSchema,
+    semantic_runtime: falcon24SemanticAuthorityClosureVersionedReleaseSchema,
+    workspace_defaults: falcon24SemanticAuthorityClosureVersionedReleaseSchema,
+  })
+  .superRefine((closure, context) => {
+    const current = closure.semantic_pointer.release;
+    if (
+      !sameSemanticRelease(current, closure.semantic_runtime.release) ||
+      !sameSemanticRelease(current, closure.workspace_defaults.release)
+    ) {
+      context.addIssue({
+        code: "custom",
+        message: "FALCON24_SEMANTIC_AUTHORITY_CLOSURE_MIXED",
+        path: ["semantic_runtime", "release"],
+      });
+    }
+  });
+
+const falcon24SemanticAuthorityClosureLoadCommandMaterialSchema = z.strictObject({
+  schema_version: z.literal("falcon24-semantic-authority-closure-load@1.0.0"),
+  semantic_domain: z
+    .string()
+    .min(1)
+    .max(64)
+    .regex(/^[A-Za-z_][A-Za-z0-9_]{0,63}$/u),
+});
+
+export const falcon24SemanticAuthorityClosureLoadCommandSchema =
+  falcon24SemanticAuthorityClosureLoadCommandMaterialSchema.extend({
+    command_hash: contentHashSchema,
+  });
+
+function falcon24SemanticAuthorityClosureLoadCommandMaterial(input: unknown) {
+  const full = falcon24SemanticAuthorityClosureLoadCommandSchema.safeParse(input);
+  if (!full.success) {
+    return falcon24SemanticAuthorityClosureLoadCommandMaterialSchema.parse(input);
+  }
+  const { command_hash: _commandHash, ...material } = full.data;
+  return falcon24SemanticAuthorityClosureLoadCommandMaterialSchema.parse(material);
+}
+
+export async function computeFalcon24SemanticAuthorityClosureLoadCommandHash(input: unknown) {
+  return sha256ContentHash(falcon24SemanticAuthorityClosureLoadCommandMaterial(input));
+}
+
+export async function buildFalcon24SemanticAuthorityClosureLoadCommand(input: unknown) {
+  const material = falcon24SemanticAuthorityClosureLoadCommandMaterial(input);
+  return falcon24SemanticAuthorityClosureLoadCommandSchema.parse({
+    ...material,
+    command_hash: await computeFalcon24SemanticAuthorityClosureLoadCommandHash(material),
+  });
+}
+
+export async function verifyFalcon24SemanticAuthorityClosureLoadCommand(input: unknown) {
+  const command = falcon24SemanticAuthorityClosureLoadCommandSchema.parse(input);
+  if (
+    (await computeFalcon24SemanticAuthorityClosureLoadCommandHash(command)) !== command.command_hash
+  ) {
+    throw new TypeError("FALCON24_SEMANTIC_AUTHORITY_CLOSURE_LOAD_HASH_INVALID");
+  }
+  return command;
+}
+
 export const falcon24E1ActivationAttemptSchema = z
   .strictObject({
     schema_version: z.literal("falcon24-e1-activation-attempt@1.0.0"),
@@ -551,4 +636,10 @@ export type CombinedFalcon24SemanticActivationCommand = z.infer<
 >;
 export type CombinedFalcon24SemanticActivationReceipt = z.infer<
   typeof combinedFalcon24SemanticActivationReceiptSchema
+>;
+export type Falcon24SemanticAuthorityClosure = z.infer<
+  typeof falcon24SemanticAuthorityClosureSchema
+>;
+export type Falcon24SemanticAuthorityClosureLoadCommand = z.infer<
+  typeof falcon24SemanticAuthorityClosureLoadCommandSchema
 >;

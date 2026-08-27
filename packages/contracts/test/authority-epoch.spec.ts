@@ -4,6 +4,7 @@ import {
   buildCombinedFalcon24SemanticActivationReceipt,
   buildFalcon24E1StagingReceipt,
   buildFalcon24QaE2eReceiptV2,
+  buildFalcon24SemanticAuthorityClosureLoadCommand,
   buildFalcon24StagingReceiptV2,
   falcon24ActivationAttemptV2Schema,
   falcon24AuthorityBindingSchema,
@@ -11,10 +12,12 @@ import {
   falcon24AuthorityEpochSchema,
   falcon24AuthorityPersistenceBindingSchema,
   falcon24E1ActivationAttemptSchema,
+  falcon24SemanticAuthorityClosureSchema,
   falcon24StagingSessionRequestV2Schema,
   verifyCombinedFalcon24SemanticActivationCommand,
   verifyCombinedFalcon24SemanticActivationReceipt,
   verifyFalcon24E1StagingReceipt,
+  verifyFalcon24SemanticAuthorityClosureLoadCommand,
   verifyFalcon24StagingReceiptV2,
   verifyFalcon24UiReceiptDocument,
 } from "../src/runs/authority-epoch.js";
@@ -303,5 +306,58 @@ describe("Falcon24 E1 authority epoch contracts", () => {
         outbox_event_id: id(33),
       }),
     ).rejects.toThrow("COMBINED_FALCON24_SEMANTIC_ACTIVATION_RECEIPT_HASH_INVALID");
+  });
+
+  it("defines one exact production readback closure for E3/gen1 and E4/gen2", async () => {
+    const scope = {
+      app_id: id(40),
+      tenant_id: id(41),
+      environment: "test" as const,
+      semantic_domain: "falcon24",
+    };
+    const release = {
+      release_id: id(42),
+      generation: 2,
+      release_digest: hash("7"),
+      datasource_id: id(43),
+    };
+    const closure = {
+      schema_version: "falcon24-semantic-authority-closure@1.0.0",
+      scope,
+      authority: {
+        schema_version: "falcon24-authority-binding@2.0.0",
+        authority_epoch: "E4",
+        baseline_id: id(44),
+        baseline_hash: hash("8"),
+        activation_attempt_id: id(45),
+      },
+      semantic_pointer: { version: 8, release },
+      semantic_runtime: { version: 10, release },
+      workspace_defaults: { version: 12, release },
+    } as const;
+    expect(falcon24SemanticAuthorityClosureSchema.parse(closure)).toEqual(closure);
+    expect(() =>
+      falcon24SemanticAuthorityClosureSchema.parse({
+        ...closure,
+        semantic_runtime: {
+          ...closure.semantic_runtime,
+          release: { ...release, release_id: id(46) },
+        },
+      }),
+    ).toThrow("FALCON24_SEMANTIC_AUTHORITY_CLOSURE_MIXED");
+
+    const command = await buildFalcon24SemanticAuthorityClosureLoadCommand({
+      schema_version: "falcon24-semantic-authority-closure-load@1.0.0",
+      semantic_domain: scope.semantic_domain,
+    });
+    await expect(verifyFalcon24SemanticAuthorityClosureLoadCommand(command)).resolves.toEqual(
+      command,
+    );
+    await expect(
+      verifyFalcon24SemanticAuthorityClosureLoadCommand({
+        ...command,
+        semantic_domain: "other_domain",
+      }),
+    ).rejects.toThrow("FALCON24_SEMANTIC_AUTHORITY_CLOSURE_LOAD_HASH_INVALID");
   });
 });
