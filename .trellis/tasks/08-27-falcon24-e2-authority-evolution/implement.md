@@ -1,12 +1,12 @@
 # Falcon24 Semantic Generation 2 与 E4 原子权威恢复 — Implementation Plan
 
-> W1-W7 已于 2026-08-27 获用户“执行”批准。W8 数据库应用与 E4 activation 仍需再次明确授权。
+> W1-W7 已于 2026-08-28 实施并全量验证。W8 数据库应用与 E4 activation 仍需再次明确授权。
 
 ## 0. Current Freeze
 
-### W0-R — Review-only planning freeze（本轮）
+### W0-R — Review-only planning freeze（审计现场已封存）
 
-- [x] 保留以下未提交实现文件原样供审计，不 reset、删除、覆盖、暂存、提交或执行：
+- [x] 以下未提交实现文件已按用户 2026-08-28 的明确授权原样封存到可恢复审计 stash；不得 restore 到执行路径、drop、提交或执行：
   - `apps/web/package.json`
   - `apps/web/src/cli/bootstrap-falcon24-e1.ts`
   - `apps/web/src/cli/finalize-falcon24-authority.ts`
@@ -19,6 +19,8 @@
 - [x] 冻结审计指纹：5 个 tracked dirty 文件的 binary diff SHA-256 为
   `b33ac56c06211c9c1421c5e332d8d93c1f7f48f44e94d6c6b450f2878d139f68`；untracked repair CLI 的 Git blob 为
   `992536063ea3414f16ea0a07500e1d765b176e19`。
+- [x] 审计 stash 为 `audit/rejected-generation1-repair-2026-08-28`；`git stash show` 的六文件集合与上述 tracked diff/blob 指纹均已
+  从 stash 对象重新计算并精确匹配。stash 不属于可执行实现，也不进入任何 build/database 命令。
 - [x] 用户评审并明确批准 W1-W7；W8 保持独立 hard stop。
 
 W0 方案提交：`35f55d21 docs: plan Falcon24 generation 2 E4 recovery`。W1 合同与共享 validator 提交：
@@ -27,8 +29,7 @@ W0 方案提交：`35f55d21 docs: plan Falcon24 generation 2 E4 recovery`。W1 �
 ## 1. Global Preconditions After Approval
 
 - 只在 `codex/falcon24-e1-authority-reset` worktree 工作，root checkout 保持不动。
-- 先由用户决定如何处置 rejected dirty 实现；未经授权仍不得 reset/delete/overwrite。若其与批准后的文件 ownership 重叠，
-  必须先获得明确处置指令，不能静默覆盖。
+- Rejected dirty 实现已经用户授权移入命名审计 stash；后续实现只能修改 clean HEAD，禁止 restore/drop/执行该 stash。
 - PostgreSQL 17 migration frontier 必须仍是 10782；专用 E3 数据库与 E1/E2/E3 历史只读快照先导出审计摘要。
 - 每个工作包先写失败测试/characterization，再实现；focused validation通过后只 stage 该包 owned files，创建一个 scoped commit。
 - 不 stage `apps/web/next-env.d.ts`、`apps/web/tsconfig.tsbuildinfo`、qualification manifests、截图、日志、凭据或生成的本地证据。
@@ -157,7 +158,8 @@ Status: completed on 2026-08-28.
 - [x] Validation PASS 时 stage header、exact four projections、validation receipt 同事务写入并以 STAGED 可见；candidate 编译后
   validation FAIL 时同事务写完整 stage/projections、validation/rejection receipts并终结为 REJECTED；前置 ref/CAS 无效则不写 stage。
   Client payload/digest 无可达参数面。
-- [ ] Fresh bootstrap admission 复用同一 Port；gen2 current 前 Web/Worker readiness fail closed。
+- [x] 历史 E1 bootstrap 已退役为纯 fail-closed admission guard；它不读数据库、不写 generation 1、不提供 projection/publisher 面，
+  并明确要求现有 exact E3 环境从唯一 `finalize:falcon24-authority` 入口建立 gen2/E4。
 
 **W3 evidence（2026-08-28）**
 
@@ -175,8 +177,9 @@ Status: completed on 2026-08-28.
   dependency definitions，shared validator 会稳定返回 `SEMANTIC_RUNTIME_FORMULA_DEPENDENCY_INVALID`；该 blocker 已在 W5 以
   `GROUP_COUNT` + `cohort_customers` / `retained_customers` / `repeat_customers` 结构化定义解决，未放宽 validator。
 - 聚焦验证：Semantic/Worker typecheck PASS；5 个测试文件 27 tests PASS；10 个 owned files Biome 与 `git diff --check` PASS。
-- Fresh bootstrap wiring 仍与冻结审计文件 `apps/web/src/cli/bootstrap-falcon24-e1.ts` 重叠，本包不覆盖该文件；在用户明确处置
-  rejected implementation 前保持 admission fail closed，并在 W5 composition 一并接入唯一 Port。
+- 用户授权封存审计现场后，`72ff3bc0` 将历史 bootstrap 缩减为 40 行纯 admission guard：无确认时 `NOT_RUN`；确认后稳定
+  `HOLD / FALCON24_E1_BOOTSTRAP_RETIRED_SEMANTIC_SUCCESSOR_REQUIRED / NO_GENERATION_1_WRITES`。该入口不连接数据库，不能创建
+  新 gen1；现有 exact E3 恢复只走唯一 successor publisher 与 E4 combined activation Finalizer。
 
 **Validation**
 
@@ -254,8 +257,9 @@ Status: completed on 2026-08-28.
 
 - [x] 新 proof v2 绑定 gen1 predecessor、gen2 candidate、四类 projection、source/compiler、validation/smoke、expected versions。
 - [x] 删除 successor=predecessor proof requirement；保留旧 builder only for history verification。
-- [ ] 拆分 `prepareWorkspaceAuthority`，禁止从 gen1 current 自动推导 E4 semantic ref。
-- [ ] Finalizer固定 stage -> smoke -> proof -> stage E4 receipts/baseline/session -> combined RPC -> production-port readback。
+- [x] 删除 CLI 对 `prepareWorkspaceAuthority` 的调用；E4 supporting authority 只读加载 exact E3 defaults，不从 gen1 current 推导或写入
+  successor ref。
+- [x] Finalizer固定 stage -> smoke -> proof -> stage E4 receipts/baseline/session -> combined RPC -> production-port readback。
 - [x] Readback mismatch 只报告 severe incident并冻结，不执行补写/rollback。
 
 **Validation**
@@ -289,8 +293,7 @@ Status: completed on 2026-08-28.
 - 复用现有 PostgreSQL 17 容器，将任务 scratch DB `data_agent_semantic_successor_w2_52de40d0` 从 C7 frozen template 重建后
   应用 10783，并重跑 `61-semantic-successor-e4-activation-assertions.sql`，返回
   `SEMANTIC_SUCCESSOR_E4_ACTIVATION_ASSERTIONS_READY`；专用 E3 database/container 未连接、未修改。
-- Finalizer orchestration 尚未勾选：其现有文件属于 rejected generation-1 repair 的冻结审计现场，本包不覆盖、不暂存；后续仅在
-  clean 新模块能完整接管或用户明确解除该文件边界时完成 stage -> smoke -> proof -> combined RPC -> readback wiring。
+- 先前因冻结审计现场而未接线的 Finalizer 条目已在用户授权封存后完成；审计 stash 保持独立且未被 restore、执行或吸收。
 - 新增 server-only `falcon24-successor-finalization` 协调器，已经把正确顺序固定为生产读口 exact E3/gen1/CAS preflight ->
   唯一 publication authority stage -> Worker deterministic smoke -> 重载 `SMOKE_PASSED` stage -> proof v2 -> E4 staging callback ->
   refs-only combined RPC -> production closure/promoted Release readback。协调器没有 projection payload/digest 参数，也没有 post-commit
@@ -317,18 +320,24 @@ Status: completed on 2026-08-28.
   semantic pointer、workspace defaults、current authority 或 `activate` 写方法，combined RPC 仍是唯一切换点。
 - E4 stager 7/7、与 Finalizer/readback/Worker smoke 合并聚焦 21/21 PASS；覆盖严格调用顺序、幂等 replay、stage/proof 换绑、
   supporting receipt 缺失、sandbox isolation 冒充、semantic receipt 替换和非 exact OPEN attempt。scoped Biome、`git diff --check`
-  PASS；Web typecheck 对 clean modules 零错误，仍只报告冻结 bootstrap/repair 的 8 个既有错误。
+  PASS；当时 Web typecheck 的剩余错误仅来自尚未获准封存的审计现场，后续已由 `713181b5` / `72ff3bc0` 的 clean 接线消除。
 - `bcc89692` 新增 read-only workspace supporting-authority preflight，替代旧 `prepareWorkspaceAuthority` 中危险的 defaults CAS：
   只从生产 Effective Config read port 加载现有 E3 defaults，验证 exact scope/defaults revision、generation-1 predecessor
   id/generation/digest、datasource/model/schema snapshot/policies 和空 extension collections，再返回冻结 refs。模块没有 defaults writer；
   stale/missing/cross-scope/malformed closure 均在 supporting receipt staging 前拒绝。
-- Supporting preflight 5/5、W5 clean Web modules 合并聚焦 26/26 PASS；scoped Biome 与 `git diff --check` PASS，Web typecheck 仍仅有
-  冻结 bootstrap/repair 的 8 个既有错误。旧 CLI 尚未删除对 `prepareWorkspaceAuthority` 的调用，因此该 checklist 项在接线前仍不勾选。
-- 因冻结 CLI 尚未接入该协调器，W5 的 Finalizer 工作项仍不勾选，W7 production import graph 也仍不得标绿。
+- Supporting preflight 5/5、W5 clean Web modules 合并聚焦 26/26 PASS；scoped Biome 与 `git diff --check` PASS。
+- `713181b5` 完成实际 Finalizer 接线：仅接受 E4，读取 exact E3/gen1/defaults，要求 reviewed ChangeSet/review refs，调用唯一
+  `createPostgresSemanticPublicationAuthority`，执行 deterministic Worker smoke、proof v2、E4 supporting staging、combined activation
+  与生产端口 readback；删除旧 defaults CAS、generation-1 equality receipt、普通 `epoch.activate` 及失败后补写路径。6 个聚焦文件
+  32/32 tests、Web typecheck PASS。
+- `72ff3bc0` 退役 generation-1 bootstrap；2 个文件 10/10 tests、Web typecheck PASS。`571d1cd8` 随后将两个 Web root contract imports
+  收窄到 domain subpaths，Contracts dependency boundary 15/15、相关 Web tests 5/5、Web typecheck PASS。
 
-**Commit**
+**Commits**
 
-- `feat: activate E4 with semantic generation 2 atomically`。
+- `713181b5 feat(web): activate Falcon semantic successor atomically`。
+- `72ff3bc0 fix(web): retire invalid Falcon generation-one bootstrap`。
+- `571d1cd8 fix(web): use scoped contract imports`。
 
 ### W6 — Diagnostic authority and gate prerequisite
 
@@ -361,14 +370,29 @@ Status: completed on 2026-08-28.
   Contracts/Platform typecheck/build 与 focused Biome 均通过。
 - `observed_execution_path` 仅是完成后的验收证据；动态 Tool Loop 仍由 Root 逐轮决定当前下一次 Tool Call，Host 不据此选择
   后续业务能力。
+- `d6ddff86` 补齐真实 W9/W10 接线：Web `falcon24:diagnostic:control` 支持 manifest/submit/status/trace/complete/fail；浏览器从真实
+  composer 使用 deterministic non-scoring claim 创建 exact Run，Trace UI 提交同源 QA/Trace receipts；Worker
+  `falcon24:diagnostic:reclaim` 独立证明 residual=0，不 claim Qualification/Campaign slot。E4-Q1 manifest 改用
+  `falcon24-qualification-manifest@3.0.0` 并强制绑定同一 PASSED diagnostic receipt。相关 Web 5 files / 20 tests、Worker reclamation
+  9/9、Web/Worker typecheck 与 scoped Biome PASS。
+- `1b1c48f8` 修复真实 PostgreSQL begin 边界：Platform diagnostic adapter 在 begin 的同一事务设置
+  `app.semantic_domain=falcon24`，否则 10790 RPC 会稳定拒绝；失败测试转绿，Platform/Web typecheck PASS。Diagnostic CLI 同时确保
+  screenshot 目录在浏览器取证前存在。
+- `e5525cfc` 将共享 sandbox reclamation helper 的 identity 收窄为 canonical Falcon gate（Q1/C1），使 non-scoring E4-Q1 diagnostic
+  receipt 可生成，同时保留正式 campaign CLI 的 C1 输入边界；10/10 聚焦测试、Worker typecheck/build PASS。`4664e969` 证明 diagnostic
+  browser claim 在客户端到服务器的请求中只投影 idempotency key，不泄漏 attempt/run identity，也不伪造 acceptance fence。
 
 **Stop conditions**
 
 - Diagnostic被计入Q1/C1分数，或API-only receipt可使Q1 begin通过，立即停止。
 
-**Commit**
+**Commits**
 
 - `feat: require an E4 diagnostic proof before qualification`。
+- `d6ddff86 feat(evals): wire Falcon E4 diagnostic gate`。
+- `1b1c48f8 fix(evals): bind Falcon diagnostic semantic scope`。
+- `e5525cfc fix(evals): allow diagnostic sandbox reclamation`。
+- `4664e969 test(web): constrain diagnostic browser claims`。
 
 ### W7 — Full static, migration, concurrency and security qualification
 
@@ -378,20 +402,20 @@ Status: completed on 2026-08-28.
 
 **Work / Validation**
 
-- [ ] Contracts、Semantic、Platform、Worker、Web focused/full suites、typecheck/build。
+- [x] Contracts、Semantic、Platform、Worker、Web focused/full suites、typecheck/build。
 - [x] 10783 fresh PG17 + exact E3 fixture upgrade；10790 同样验证。
 - [x] 历史 immutability pre/post digest、RLS/grants/capability scope、direct DML denial。
 - [x] Combined activation failure-injection/concurrency all-old/all-new。
-- [ ] Production import graph：无 repair RPC、第二 publisher、Worker fallback、client projection payload面。
+- [x] Production import graph：无 repair RPC、第二 publisher、Worker fallback、client projection payload面。
 - [x] Docker inventory保持单一专用数据库；不创建新的数据库容器。
 
-**W7 evidence（未全绿）**
+**W7 evidence（2026-08-28 全绿；不包含 W8 专用数据库执行）**
 
-- Final W1-W6 commit 上的全量结果：Contracts 99 files / 949 tests、Semantic 29 / 182、Platform 109 / 679、Worker
-  86 passed + 2 skipped files / 405 passed + 9 skipped tests；四个 package 的 typecheck/build 全部通过。Web 在明确排除两个冻结审计
-  test 后为 121 passed + 1 skipped files / 493 passed + 1 skipped tests。
-- Web full/typecheck/build 未勾选：`bootstrap-falcon24-e1.ts`、`finalize-falcon24-authority.ts` 及对应 tests 是用户要求原样保留、不得
-  执行/覆盖的 rejected generation-1 repair 审计现场；W7 不以运行这些 dirty 文件伪造全量通过。
+- Final clean HEAD 全量结果：Contracts 99 files / 950 tests、Semantic 29 / 182、Platform 111 / 684、Worker
+  86 passed + 2 skipped files / 406 passed + 9 skipped tests；四个 package 的 typecheck/build 全部通过。
+- Web 未排除任何 Falcon 审计测试：130 passed + 1 skipped files / 537 passed + 1 skipped tests；full lint（512 files）、typecheck 与
+  Next production build 全部通过。build 仅报告两个既有 Evals installer 动态 `fs.stat` 警告，exit 0；格式基线修复独立提交为
+  `b688af7c`。
 - `infra/supabase/test-support/static-check.sh` 全绿；10783 checksum
   `sha256:bbbec227c257178bc6c92654ab4a7ec0a4cc2520cb303d16c909914b97703930`，10790 checksum
   `sha256:1fa18ed845d99c4964b11bd92169119b42a7eb040e5cf5918761675d1c5f1294`，10791 checksum
@@ -406,9 +430,9 @@ Status: completed on 2026-08-28.
   direct-DML denial 与旧 qualification mutator 隐藏，输出 `FALCON24_DIAGNOSTIC_AUTHORITY_ASSERTIONS_READY`。
 - Docker 仍只有 `data-agent-postgres`、`data-agent-clamav`、`data-agent-neo4j` 与唯一专用
   `data-agent-falcon24-e1-e81a29c6`；W7 未连接、未修改专用 E3 数据库。
-- Production graph 扫描未发现 repair RPC 被提交，也未发现 Worker 对无效 runtime release 的 fallback；唯一 successor publisher 仍为
-  `publishReviewedSemanticChangeSet` + `createPostgresSemanticPublicationAuthority`。但 HEAD 的历史 bootstrap 仍直接写
-  `projection_payload`，Finalizer 仍走 generation-1 proof/普通 activation。该冻结接线使本项和 W7 保持未勾选，禁止进入 W8。
+- Production graph 扫描未发现 repair RPC/CLI、第二 publisher、Worker fallback、client projection payload 面或 bootstrap semantic SQL。
+  唯一 successor publisher 为 `publishReviewedSemanticChangeSet` + 单一 `createPostgresSemanticPublicationAuthority`；实际 Finalizer 只调用
+  该 authority 与 combined activation，历史 bootstrap 只返回 fail-closed 结果。Docker 复核仍只有既有四个容器，审计 stash 未变化。
 
 **Stop conditions**
 

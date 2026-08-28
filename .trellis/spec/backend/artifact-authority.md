@@ -649,6 +649,10 @@ validateSemanticRuntimeClosure(
 ): Promise<SemanticRuntimeClosureValidationReceipt>;
 buildFalcon24SemanticReleaseAuthorityProofV2(input: unknown);
 buildCombinedFalcon24SemanticActivationCommand(input: unknown);
+runFalcon24AuthorityFinalization(environment?: NodeJS.ProcessEnv);
+runFalcon24E1Bootstrap(environment?: NodeJS.ProcessEnv);
+createPostgresFalcon24DiagnosticAuthority({ pool, authorizer });
+buildFalcon24QualificationManifestV3(input: unknown);
 ```
 
 ```sql
@@ -669,6 +673,21 @@ app_data_agent.activate_falcon24_authority_with_semantic_successor(requested jso
   字段级证明。
 - Falcon24 proof v2 固定证明 gen1 predecessor 到 distinct gen2 candidate 的 lineage；combined command 只带 refs/CAS，在一个 PostgreSQL
   事务内 promotion gen2 并激活 E4。W8 数据库执行需要独立用户授权。
+- Finalizer 只接受 `FALCON24_AUTHORITY_EPOCH=E4`，且确认变量必须为
+  `DATA_AGENT_ALLOW_FALCON24_AUTHORITY_ACTIVATION=YES`。必需业务 refs 为
+  `FALCON24_SUCCESSOR_CHANGE_SET_ID/HASH` 与 `FALCON24_SUCCESSOR_REVIEW_ID/HASH`；build closure 由绝对路径的 Web/Worker identity 与
+  attestation 文件证明。`DATABASE_URL` 与 deployment/workspace/principal 只用于服务器 capability，不进入 Tool Result/Artifact。
+- 历史 `bootstrap:falcon24-e1` 永久 fail closed：无确认返回 `NOT_RUN`；有确认返回
+  `HOLD / FALCON24_E1_BOOTSTRAP_RETIRED_SEMANTIC_SUCCESSOR_REQUIRED / NO_GENERATION_1_WRITES`。该函数不得读取数据库、创建 gen1 或
+  调用任何 publisher；现有 exact E3 的唯一执行入口是 `finalize:falcon24-authority`。
+- Diagnostic attempt 只绑定 exact E4 baseline/activation、promoted generation 2、source/build/attestation 与固定问题。其 Run ID 由
+  attempt/scoped idempotency 确定；浏览器从真实 composer 提交，但不 claim 正式 Qualification/Campaign slot。
+- Diagnostic browser claim 只向普通 Q&A start 传递确定性 idempotency key，不携带 acceptance fence 或扩权字段。完成后的
+  `observed_execution_path` 是实际观察证据；Root 仍逐轮决定当前调用，Host 不把该字段用于后续能力调度。
+- `begin_falcon24_diagnostic` 的 adapter 必须在同一 transaction 设置 `app.semantic_domain=falcon24`。Worker diagnostic reclamation 只加载
+  active attempt、核对 runtime attestation、执行 exact Run cleanup 并生成 residual=0 receipt；不得调用 formal gate authority。
+- E4-Q1 只能构建 `falcon24-qualification-manifest@3.0.0`，并绑定同一 PASSED diagnostic 的 attempt/run/receipt hash；v2 manifest 在 E4
+  必须被 Port 和 PostgreSQL 双重拒绝。
 
 ### 4. Validation & Error Matrix
 
@@ -682,12 +701,20 @@ app_data_agent.activate_falcon24_authority_with_semantic_successor(requested jso
 | proof candidate 等于 predecessor 或 generation 不连续 | `FALCON24_SEMANTIC_SUCCESSOR_LINEAGE_INVALID` |
 | combined command 携带 projection payload | strict parse failure；数据库 I/O 为 0 |
 | activation 任一步失败 | 整笔 rollback，只观察完整 gen1/E3 |
+| Finalizer 缺少确认 | `NOT_RUN / FALCON24_AUTHORITY_ACTIVATION_CONFIRMATION_REQUIRED`，数据库 I/O 为 0 |
+| Finalizer 不是 E4、current 不是 exact E3 或 build/ref/CAS 漂移 | stable `HOLD` reason，combined activation 不发生 |
+| 调用历史 E1 bootstrap | 永不成功；确认后仍为 retired `HOLD`，且数据库 I/O 为 0 |
+| diagnostic begin 未设置 semantic domain 或 current 不是 exact E4/gen2 | `FALCON24_DIAGNOSTIC_AUTHORITY_MISMATCH`，不创建 attempt |
+| diagnostic UI/Artifact/Run/build/reclamation 任一不闭合 | 对应 `FALCON24_DIAGNOSTIC_*`，attempt 不得伪造 PASS |
+| E4-Q1 缺 PASSED diagnostic receipt 或仍使用 manifest v2 | `FALCON24_QUALIFICATION_DIAGNOSTIC_REQUIRED` / `...PASSED_REQUIRED` |
 
 ### 5. Good / Base / Bad Cases
 
 - Good：服务器锁定 reviewed ChangeSet/source，编译四类投影，重算全部 digest，共享 validator PASS 后 stage；smoke PASS 后 combined RPC 原子切换。
 - Base：candidate 闭包失败时完整 stage 与 rejection receipt 原子保存为 `REJECTED`，current 保持 gen1/E3。
-- Bad：CLI 传 projection bytes、UPDATE generation 1、Worker fallback，或先切 semantic 再激活 E4。
+- Good diagnostic：active attempt → 真实 composer exact Run → 答案页 Trace UI → 五 Artifact → Worker residual=0 → PASS receipt → E4-Q1 v3。
+- Bad：CLI 传 projection bytes、UPDATE generation 1、Worker fallback、用 retired bootstrap 创建新 gen1、API-only diagnostic、让
+  diagnostic claim 正式 gate slot，或先切 semantic 再激活 E4。
 
 ### 6. Tests Required
 
@@ -696,6 +723,12 @@ app_data_agent.activate_falcon24_authority_with_semantic_successor(requested jso
   accessor/Proxy 与品牌伪造。
 - PostgreSQL 17：fresh chain、exact E3 fixture upgrade、历史 byte invariance、RLS/grants、direct DML denial、same-key replay/conflict。
 - Concurrency/failure injection：combined activation 只能观察 all-old 或 all-new，固定 Semantic -> Falcon 锁序无死锁。
+- Web Finalizer：E4-only、四个 reviewed successor refs 必需、stage -> smoke -> proof -> E4 staging -> combined RPC -> production readback
+  严格顺序；断言没有 `prepareWorkspaceAuthority` defaults writer、generation-1 equality receipt、普通 `epoch.activate` 或失败后补写。
+- Bootstrap：确认/未确认都不得连接数据库或导入 publication/SQL authority；确认路径稳定 `HOLD` 并指向 Finalizer。
+- Diagnostic：begin transaction semantic domain、one-active/replay、deterministic non-scoring browser claim、真实 composer/Trace UI、同源
+  QA/Trace receipt、五 Artifact、Worker no-formal-gate reclamation、residual=0、PASS/FAIL immutability。
+- E4-Q1：CLI/Port/PostgreSQL 三层拒绝 v2 或 missing/stale/mismatched diagnostic receipt；v3 exact ref 才能 begin。
 
 ### 7. Wrong vs Correct
 
@@ -708,4 +741,26 @@ const command = await buildStageReviewedSemanticSuccessorCommand(refsAndExpected
 const stage = await publicationAuthority.stageReviewedSuccessor(capability, command);
 const verified = await verifySemanticReleaseEnvelope(stage.value);
 const validation = await validateSemanticRuntimeClosure(verified);
+
+// Wrong：为 fresh 环境恢复已经失效的 generation-1 bootstrap writer。
+await bootstrapFalcon24GenerationOne({ projection_payload });
+
+// Correct：bootstrap 保持 fail closed；经独立 W8 授权后只对 exact E3 执行 E4 Finalizer。
+const retired = await runFalcon24E1Bootstrap({ DATA_AGENT_ALLOW_FALCON24_E1_BOOTSTRAP: "YES" });
+if (retired.terminal !== "HOLD") throw new TypeError("FALCON24_E1_BOOTSTRAP_MUST_HOLD");
+
+// Wrong：把 diagnostic 当成正式 gate slot，或让 Host 根据观察路径调度下一步。
+await qualificationAuthority.claim({ run_id: diagnosticRunId });
+
+// Correct：普通 Q&A 使用确定性 idempotency；完成后才把实际路径封成不可变 diagnostic 证据。
+const attempt = await diagnosticAuthority.begin(capability, exactE4DiagnosticManifest);
+const receipt = await diagnosticAuthority.complete(capability, exactObservedClosure);
+await buildFalcon24QualificationManifestV3({
+  ...frozenQualificationRefs,
+  diagnostic_receipt_ref: {
+    attempt_id: receipt.attempt_id,
+    run_id: receipt.run_id,
+    receipt_hash: receipt.receipt_hash,
+  },
+});
 ```

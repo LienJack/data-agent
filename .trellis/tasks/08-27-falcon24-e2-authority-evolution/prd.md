@@ -1,6 +1,6 @@
 # Falcon24 Semantic Generation 2 与 E4 原子权威恢复
 
-> 执行状态（2026-08-27）：用户以“执行”明确批准 W1-W7 按本文推荐默认项实施。
+> 执行状态（2026-08-28）：W1-W7 已实施并通过全量验证；被拒绝的 generation-1 repair 现场已按用户授权封存到可恢复审计 stash。
 > W8 对专用 E3 数据库应用 migration 与原子激活 E4 仍需再次明确授权；诊断与正式门禁只能在 W8 成功后按 fail-closed 顺序执行。
 
 ## 1. Goal
@@ -117,32 +117,33 @@ PostgreSQL 事务内原子激活。原子激活后先完成一条非计分诊断
 
 ## 5. Acceptance Criteria
 
-- [ ] **AC-G2-01** Exact E3 fixture 升级前后，generation 1 与 E1/E2/E3 的行数、identity、hash、document 和 projection bytes
+- [x] **AC-G2-01** Exact E3 fixture 升级前后，generation 1 与 E1/E2/E3 的行数、identity、hash、document 和 projection bytes
   完全不变；正式表具有数据库级 UPDATE/DELETE 防护与最小 grants。
-- [ ] **AC-G2-02** generation 2 由唯一 Semantic publication authority 基于 fixed refs 在服务器端编译；客户端不能伪造
+- [x] **AC-G2-02** generation 2 由唯一 Semantic publication authority 基于 fixed refs 在服务器端编译；客户端不能伪造
   payload/digest；stage header、四类 projection 与 validation receipt 原子写入。
-- [ ] **AC-G2-03** Shared validator 被 publisher stage、Worker smoke 和生产 read port 共用，负例矩阵覆盖 metric、dimension、
+- [x] **AC-G2-03** Shared validator 被 publisher stage、Worker smoke 和生产 read port 共用，负例矩阵覆盖 metric、dimension、
   relationship、formula、time、quality 与 runtime restriction。
-- [ ] **AC-G2-04** Deterministic smoke 精确加载 stage、零模型/provider 调用，PASS/REJECT/replay/crash 行为符合状态机并产生
+- [x] **AC-G2-04** Deterministic smoke 精确加载 stage、零模型/provider 调用，PASS/REJECT/replay/crash 行为符合状态机并产生
   可复核 receipt。
-- [ ] **AC-G2-05** Combined activation 的失败注入和并发测试只观察 all-old 或 all-new；workspace defaults、semantic
+- [x] **AC-G2-05** Combined activation 的失败注入和并发测试只观察 all-old 或 all-new；workspace defaults、semantic
   pointer/runtime 与 Falcon current 永远不存在跨代混合。
-- [ ] **AC-G2-06** `falcon24-semantic-release-authority-proof@2` 证明 predecessor->candidate lineage、generation+1、四类
+- [x] **AC-G2-06** `falcon24-semantic-release-authority-proof@2` 证明 predecessor->candidate lineage、generation+1、四类
   projection 与 validation/smoke receipts，不再要求 successor 等于 predecessor。
 - [ ] **AC-G2-07** 原子激活后 exact current 为 generation 2/E4，生产端口重载核对全部 exact refs；combined activation
   receipt、outbox 与 stage PROMOTED 完整。
 - [ ] **AC-G2-08** 单一诊断 attempt 通过真实 Q&A 与 Trace UI 证明完整链、Artifact 可用和 residual=0；其结果不计分。
 - [ ] **AC-G2-09** E4-Q1 达到 16/16，随后 E4-C1 达到 30/30；每个正式 slot 均有同源 QA/Trace UI receipts 与 exact
   Run/baseline/build/gen2 release 绑定。
-- [ ] **AC-G2-10** Contracts、Semantic、Platform、Worker、Web、PostgreSQL 17 fresh/upgrade、concurrency、RLS/security、
+- [x] **AC-G2-10** Contracts、Semantic、Platform、Worker、Web、PostgreSQL 17 fresh/upgrade、concurrency、RLS/security、
   build/typecheck 和 public-data scans 全部通过；每个批准后的实施包有 focused validation 与独立 scoped commit。
 - [ ] **AC-G2-11** 最终报告明确 generation 1/E1-E3 未变、gen2/E4 identities、diagnostic、16/16、30/30、residual=0，
   并如实保留 `production_isolation_proven=false` / `production_gate=HOLD`。
 
 ## 6. Rejected Alternative: Repair Generation 1 Projections In Place
 
-当前 worktree 中未提交的 `repair_falcon24_bootstrap_projections` 方向被明确否决，文件保留为审计现场，不得执行、暂存、提交、
-删除、reset 或用于修改数据库。否决原因：
+原 worktree 中未提交的 `repair_falcon24_bootstrap_projections` 方向被明确否决。六文件现场已按用户明确授权封存到
+`audit/rejected-generation1-repair-2026-08-28` 命名 stash，且 tracked diff/untracked blob 指纹复核一致；不得 restore 到执行路径、
+drop、提交、执行或用于修改数据库。否决原因：
 
 1. **违反不可变性。** 原地 UPDATE generation 1 projection payload 会改变 E1/E2/E3 已经引用的历史 Release bytes。
 2. **形成第二发布权威。** 允许 CLI 传入 projection payload/digest 并由修复 RPC 接受，绕过现有 reviewed ChangeSet publisher。
@@ -163,6 +164,6 @@ PostgreSQL 事务内原子激活。原子激活后先完成一条非计分诊断
 
 ## 8. Planning Gate
 
-W1-W7 已获实施批准；各包必须 TDD、focused/full validation 与 scoped commit。被拒绝的 generation 1 repair dirty 文件继续保持审计
-现场，未经明确处置不得覆盖、暂存或提交。W8 仍是独立授权边界：在再次批准前不得向专用 E3 数据库应用 migration、调用 activation
-RPC、创建 E4 diagnostic/gate attempt 或运行正式门禁。
+W1-W7 已完成并通过 focused/full validation 与 scoped commits。被拒绝的 generation 1 repair 只保留在命名审计 stash 中，不得恢复
+或执行。W8 仍是独立授权边界：在再次批准前不得向专用 E3 数据库应用 migration、调用 activation RPC、创建 E4 diagnostic/gate
+attempt 或运行正式门禁。

@@ -1,6 +1,6 @@
 # Falcon24 Semantic Generation 2 与 E4 原子权威恢复 — Design
 
-> Approved for W1-W7 implementation on 2026-08-27。数据库应用与 E4 activation 仍由 W8 的再次授权边界控制。
+> W1-W7 已于 2026-08-28 实施并全量验证。数据库应用与 E4 activation 仍由 W8 的再次授权边界控制。
 
 ## 1. Scope / Trigger
 
@@ -353,7 +353,7 @@ semantic runtime 和 workspace defaults。四者任一缺失、跨 scope、Relea
 - `falcon24_diagnostic_receipts` 为 append-only terminal receipt；attempt 仅允许 `ACTIVE -> PASSED|FAILED`，任何终态都不能 resume
   原 Run。失败只允许 `FROZEN_CLOSURE_CHANGE_REQUIRED` 或 `EXTERNAL_DEPENDENCY`。
 - `begin_falcon24_diagnostic` 在写入前同时核对 current E4、PROMOTED generation 2 stage、semantic pointer/runtime 和 workspace
-  defaults；若 E4-Q1 已开始则拒绝，防止诊断后补。
+  defaults；Platform adapter 必须在同一 transaction 设置 `app.semantic_domain=falcon24`。若 E4-Q1 已开始则拒绝，防止诊断后补。
 - `complete_falcon24_diagnostic` 的 PASS 必须从同一 exact Run 读取已持久化 `QA_E2E` + `TRACE_UI` browser receipts，核对五个 exact
   Artifact、完整页面路径和 `falcon24-sandbox-reclamation-receipt@3` 的 residual=0。命令中的
   `observed_execution_path` 仅记录执行完成后实际发生的 Tool/Artifact 顺序；Root 仍逐轮只决定当前下一次 Tool Call，Host 不据此
@@ -361,6 +361,10 @@ semantic runtime 和 workspace defaults。四者任一缺失、跨 scope、Relea
 - `falcon24-qualification-manifest@3` 增加 exact diagnostic receipt ref。E4-Q1 只接受 v3；原 v2 仍只用于非 E4 历史/后继入口。
   PostgreSQL wrapper 在同一事务中验证 PASSED receipt 后调用既有唯一 qualification authority，旧 pre-diagnostic mutator 不向
   backend 授权。
+- Web `falcon24:diagnostic:control` 以 manifest/submit/status/trace/complete/fail 命令控制一个非计分 attempt。浏览器 claim 只传递
+  deterministic idempotency，不携带 formal acceptance fence；实际 Q&A 仍从真实 composer 创建并进入答案页 Trace UI。
+- Worker `falcon24:diagnostic:reclaim` 只加载同一 active attempt、核对 runtime attestation、回收 exact Run 并输出 residual=0 receipt；
+  不调用 Qualification/Campaign authority。Web complete 再由 PostgreSQL 原子核对 Run、UI receipt、五 Artifact 与 reclamation closure。
 
 诊断失败若需要 frozen closure 变更则进入 E5；若为已证明的外部依赖且 closure 未变，创建新 diagnostic attempt ID，不 resume Run。
 
@@ -484,14 +488,16 @@ await verifyAllNewThroughProductionPorts(e4, stage);
 
 - `apps/worker/src/semantic/semantic-release-read-port.ts`
 - 新增 stage smoke runtime/CLI 与 tests；package script 仅接收 stage/ref/idempotency。
+- `apps/worker/src/evals/falcon24-diagnostic-reclamation-cli.ts`；只消费 diagnostic attempt，不 claim formal gate。
 
 ### Web
 
 - `apps/web/src/lib/postgres-semantic-publication.ts`
 - `apps/web/src/cli/finalize-falcon24-authority.ts`
-- Diagnostic/qualification controls 与 tests。
-- `bootstrap-falcon24-e1.ts` 只能阻止未来环境暴露无效 current；不得用于修补既有 generation 1。若 fresh bootstrap 仍生成历史
-  gen1，服务 admission 必须保持关闭，随后通过同一 successor stage/smoke/combined promotion 建立 gen2 后才开放 Web/Worker。
+- `apps/web/src/cli/falcon24-diagnostic.ts`、E4 qualification v3 receipt binding 与 browser deterministic diagnostic claim tests。
+- `bootstrap-falcon24-e1.ts` 已退役为纯 fail-closed admission guard：无确认返回 `NOT_RUN`，有确认也只返回
+  `FALCON24_E1_BOOTSTRAP_RETIRED_SEMANTIC_SUCCESSOR_REQUIRED` 与 `NO_GENERATION_1_WRITES`。它不连接数据库、不创建 gen1、也不编排
+  publisher。现有 exact E3 环境只通过 `finalize:falcon24-authority` 使用唯一 successor Port 与 combined E4 activation。
 
 ### Database/spec/runbook
 
@@ -502,9 +508,9 @@ await verifyAllNewThroughProductionPorts(e4, stage);
 
 ## 12. Rejected Alternative
 
-未提交的 generation 1 repair 实现保留审计但不执行。它允许 CLI 传 projection bytes、由窄 RPC UPDATE 历史 payload，再让
-Finalizer验证新 bytes；该模式仍是第二 publish authority，并且不能将 gen2 semantic promotion 与 E4 current/defaults 原子绑定。
-因此它不是临时方案，也不能作为 migration backfill。
+Generation 1 repair 实现只保存在 `audit/rejected-generation1-repair-2026-08-28` 命名审计 stash 中，不进入工作树或执行路径。它允许
+CLI 传 projection bytes、由窄 RPC UPDATE 历史 payload，再让 Finalizer 验证新 bytes；该模式仍是第二 publish authority，并且不能将
+gen2 semantic promotion 与 E4 current/defaults 原子绑定。因此它不是临时方案，也不能作为 migration backfill；禁止 restore/drop/执行。
 
 ## 13. Approved Review Decisions
 
@@ -514,5 +520,5 @@ Finalizer验证新 bytes；该模式仍是第二 publish authority，并且不�
    不声明字段级闭包。若未来需要字段引用证明，必须新增结构化合同与兼容 migration，不能回填解释旧文本。
 2. **Diagnostic storage migration：** W6 使用独立 migration；实施时因 10784-10789 已被 Root Harness 合法占用，实际编号前进为
    10790，避免修改历史 migration，也避免让 10783 核心原子激活 migration 同时承载 diagnostic/gate policy。
-3. **Fresh bootstrap admission：** bootstrap 只编排同一 stage/smoke/promote Port；Web/Worker 在 gen2 current 前 fail closed。不得新增
-   专用 repair path，且 bootstrap 不修改 generation 1。
+3. **Fresh bootstrap admission：** 因 combined activation 合同要求 exact E3 predecessor，旧 E1 bootstrap 不得伪造 E3 或建立另一套
+   promotion authority；它被退役为纯 fail-closed guard。现有 E3 恢复只走唯一 Finalizer/Port，gen2 current 前 Web/Worker 保持关闭。
