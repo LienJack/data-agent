@@ -42,6 +42,17 @@ describe("built-in Team product assets", () => {
         ({ skill_id: skillId }) => skillId === "00000000-0000-4000-8000-000000002401",
       )?.revision,
     ).toBe(2);
+    expect(
+      materialized.skill_revisions
+        .filter(({ skill_id: skillId }) =>
+          [
+            "00000000-0000-4000-8000-000000002101",
+            "00000000-0000-4000-8000-000000002102",
+            "00000000-0000-4000-8000-000000002103",
+          ].includes(skillId),
+        )
+        .map(({ revision }) => revision),
+    ).toEqual([3, 3, 3]);
     expect(materialized.profile_revisions.map(({ profile_id }) => profile_id)).toEqual(profiles);
     expect(materialized.profile_revisions.map(({ revision }) => revision)).toEqual([4, 5, 4, 6]);
     expect(

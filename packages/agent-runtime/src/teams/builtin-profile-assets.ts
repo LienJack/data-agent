@@ -187,7 +187,7 @@ export const BUILTIN_TEAM_SKILLS: readonly BuiltinSkillDefinition[] = [
   },
   {
     skill_id: "00000000-0000-4000-8000-000000002101",
-    revision: 2,
+    revision: 3,
     name: "Frozen Semantic Definitions",
     profile_id: "semantic-management-agent",
     capabilities: ["semantic.catalog.read"],
@@ -195,7 +195,7 @@ export const BUILTIN_TEAM_SKILLS: readonly BuiltinSkillDefinition[] = [
   },
   {
     skill_id: "00000000-0000-4000-8000-000000002102",
-    revision: 2,
+    revision: 3,
     name: "Frozen Semantic Relationships",
     profile_id: "semantic-management-agent",
     capabilities: ["semantic.catalog.read"],
@@ -203,7 +203,7 @@ export const BUILTIN_TEAM_SKILLS: readonly BuiltinSkillDefinition[] = [
   },
   {
     skill_id: "00000000-0000-4000-8000-000000002103",
-    revision: 2,
+    revision: 3,
     name: "Frozen Semantic Lineage",
     profile_id: "semantic-management-agent",
     capabilities: ["semantic.catalog.read"],

@@ -286,6 +286,77 @@ describe("built-in Team materialization", () => {
     );
   });
 
+  it("appends Semantic Skill r3 over immutable historical r2 bodies", async () => {
+    const request = input();
+    const materialized = await buildBuiltinTeamMaterialization(request);
+    const semanticSkillIds = new Set([
+      "00000000-0000-4000-8000-000000002101",
+      "00000000-0000-4000-8000-000000002102",
+      "00000000-0000-4000-8000-000000002103",
+    ]);
+    const historical = materialized.skill_revisions
+      .filter(({ skill_id: skillId }) => semanticSkillIds.has(skillId))
+      .map((revision, index) => ({
+        schema_version: "skill-registry-item@1.0.0" as const,
+        revision: { ...revision, revision: 2, revision_hash: hash(String(index + 4)) },
+        head: {
+          schema_version: "skill-head@1.0.0" as const,
+          scope: request.scope,
+          skill_id: revision.skill_id,
+          active_revision: 2,
+          active_revision_hash: hash(String(index + 4)),
+          lifecycle: "ENABLED" as const,
+          signer_revocation_version: 0,
+          version: index + 20,
+          updated_at: "2026-08-26T00:00:00.000Z",
+        },
+      }));
+    const skillCommands: unknown[] = [];
+
+    const result = await materializeBuiltinTeamProfiles(request, {
+      skills: {
+        list: vi.fn(async () => ({ ok: true as const, value: historical as never })),
+        commit: vi.fn(async (_capability, command) => {
+          skillCommands.push(command);
+          return { ok: true as const, value: {} as never };
+        }),
+      },
+      profiles: {
+        listManagedV2: vi.fn(async () => ({ ok: true as const, value: [] })),
+        commitV2: vi.fn(async (_capability, command) => ({
+          ok: true as const,
+          value: {
+            schema_version: "agent-product-profile-registry-item@2.0.0" as const,
+            revision: command.revision,
+            head: {
+              schema_version: "agent-product-profile-head@2.0.0" as const,
+              scope: command.revision.scope,
+              profile_id: command.revision.profile_id,
+              active_revision: command.revision.revision,
+              active_revision_hash: command.revision.revision_hash,
+              lifecycle: "ENABLED" as const,
+              version: 1,
+              updated_at: "2026-08-28T00:00:00.000Z",
+            },
+          },
+        })),
+      },
+    });
+
+    expect(result.ok).toBe(true);
+    for (const historicalItem of historical) {
+      expect(skillCommands).toContainEqual(
+        expect.objectContaining({
+          expected_head_version: historicalItem.head.version,
+          revision: expect.objectContaining({
+            skill_id: historicalItem.revision.skill_id,
+            revision: 3,
+          }),
+        }),
+      );
+    }
+  });
+
   it("CAS-reactivates exact disabled Skill and Product Profile heads", async () => {
     const request = input();
     const materialized = await buildBuiltinTeamMaterialization(request);
