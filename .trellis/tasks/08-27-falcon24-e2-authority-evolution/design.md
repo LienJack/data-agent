@@ -850,3 +850,38 @@ exact diagnostic receipt 验证 E5。Acceptance campaign 已使用 epoch-derived
 
 负例必须覆盖 excludedOutputs 丢失/伪造、cache/non-cache mutation、stale E4/ref/version、gen3 injection、proof hash-domain 混用、E5 污染、RLS 越权、
 事务失败注入、并发双激活、诊断/资格跨 epoch receipt 和 campaign 未绑定 winning Q1。
+
+## 18. E6 diagnostic first-failure audit
+
+### 18.1 Observed state
+
+E6 retained activation 已提交，且 semantic Release 仍为 exact generation 2。唯一正式 diagnostic 的事件序列只到：
+
+```text
+1 run.accepted
+2 run.leased
+3 run.tool_started  model.request@1.0.0
+4 run.tool_failed   PROVIDER_PROFILE_NOT_AVAILABLE
+5 run.failed        PROVIDER_PROFILE_NOT_AVAILABLE, retryable=false
+```
+
+没有 Semantic/Text2SQL/SQL/Analysis Artifact，也没有 Provider dispatch。`PROVIDER_PROFILE_NOT_AVAILABLE` 表示 Effective Model 没有 exact
+`AVAILABLE` execution profile；由于 `AGENT_PROFILES` 是 Falcon baseline 的 frozen supporting proof，修复属于
+`FROZEN_CLOSURE_CHANGE_REQUIRED`。不能创建第二 diagnostic attempt，不能开始 Q1/C1，也不能在 E6 内补 profile。
+
+### 18.2 Terminal receipt persistence defect
+
+现有 authority 的 `begin` 调用在事务内设置 `app.semantic_domain=falcon24`，但 `complete` 调用遗漏该参数。10798 的
+`complete_falcon24_diagnostic(jsonb)` 在完成 FAIL 前读取 semantic pointer/runtime；pointer 另有 scope-only SELECT policy，而 runtime
+只有要求 `app.semantic_domain` 的 policy。因此 forced RLS 下 runtime row 不可见，合法 FAIL command 被稳定拒绝为
+`FALCON24_DIAGNOSTIC_SEMANTIC_RELEASE_MISMATCH`。数据库只读核对的 pointer/runtime/attempt release id、generation 和 digest 没有漂移。
+
+不得以 superuser SQL、直接 DML、临时第二 adapter 或未绑定 E6 的源码执行来制造 receipt。现场保持：Run=`FAILED`、diagnostic
+attempt=`ACTIVE`、terminal receipt count=0、E6-Q1/E6-C1=0、production gate=`HOLD`。若未来获批继续，必须先把
+`semantic_domain` 事务上下文和 exact AVAILABLE provider profile 纳入新的前向 epoch 方案，同时设计如何在不改写 E6 历史的条件下终结该
+orphan ACTIVE attempt；不能 resume 原 Run。
+
+### 18.3 Stop and cleanup
+
+首次正式诊断失败触发 hard stop。Web、Worker 与本任务 OpenSandbox server 已停止；OpenSandbox list 和 Worker sweep 均为 residual=0；
+轮换 auth profile、临时 secret、OpenSandbox DB/config 和本地 build 备份已删除。Docker 只保留既有四个长期容器。

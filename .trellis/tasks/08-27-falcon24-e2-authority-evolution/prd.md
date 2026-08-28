@@ -292,3 +292,22 @@ idempotency key 与新 Worker receipt command hash 冲突而返回 `FALCON24_SEM
   semantic pointer/runtime/defaults exact 未变，E4 immutable facts 未变。
 - [ ] **AC-E5-05** 唯一 E5 diagnostic PASS；随后 E5-Q1 16/16、E5-C1 30/30、exact Run Trace UI 与 residual=0 全部可复核。
 - [ ] **AC-E5-06** 最终仍如实报告 `production_isolation_proven=false` / `production_gate=HOLD`，瞬态容器和轮换凭据完成回收。
+
+## 13. 2026-08-29 audited terminal status
+
+E5 已成功激活，但其唯一 exact Web build bytes 随后的本地 Next build 被覆盖且不可由 clean build 重现。按照 epoch 冻结边界，没有伪造或
+回签 E5；实现以已提交的 retained-authority 通用化前进到 E6。E6 在 commit
+`86ce7f1d1ae50ef74df5d935a5199470503b4890` 上原子激活，current baseline 为
+`a3a275b5-7584-57e3-afcf-37cd229de675`，semantic pointer/runtime/defaults 仍是 exact generation 2，受保护的 generation 1、
+E1-E5 历史没有被修改。
+
+唯一 E6 非计分 diagnostic attempt `133460e8-0d5e-5ae5-ba20-1709f08b1796` 的 exact Run
+`f0e98c36-18dd-8f12-bd9b-df7c05212f37` 在第一次 Root model preflight 以
+`PROVIDER_PROFILE_NOT_AVAILABLE`、`retryable=false` 失败。修复需要改变 baseline 已冻结的 `AGENT_PROFILES` closure，因此失败分类为
+`FROZEN_CLOSURE_CHANGE_REQUIRED`；禁止将其解释为可重试外部依赖。E6-Q1/E6-C1 均未创建。
+
+失败 receipt 的唯一 CLI 调用被 `FALCON24_DIAGNOSTIC_SEMANTIC_RELEASE_MISMATCH` 拒绝。只读代码/数据库审计证明
+`createPostgresFalcon24DiagnosticAuthority.complete` 没有像 `begin` 一样向事务传入 `semantic_domain`；在 forced RLS 下
+`semantic_runtime_activation` 对 RPC owner 不可见，而数据库中 pointer/runtime/attempt 的 exact generation 2 值实际一致。当前 attempt
+因而仍为 `ACTIVE` 且 receipt count=0。不得用手工 SQL、临时调用面或非 E6 build 绕过；这是新的 frozen-closure 缺陷。根据首次正式诊断失败
+stop condition，本轮在此停止，不能声称 AC-E5-05 或总任务完成。

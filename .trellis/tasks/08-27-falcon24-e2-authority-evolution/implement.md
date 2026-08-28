@@ -847,3 +847,44 @@ Preconditions：前三包已提交、worktree clean、专用容器仍唯一、E4
 - 任何 mixed E4/E5 或 semantic/defaults drift：严重事故，停止；不得补偿 DML。
 - 任何受保护历史修改、生产/外部发布、长期基础设施或不可恢复广泛删除：停止并汇报。
 - 其余计划内本地失败在 owning package 修复、重新验证并形成新 commit；尚未激活 E5 时可生成新的 candidate build identity。
+
+## 7. E6 forward execution and terminal HOLD
+
+### E6-W0 — Forward authority implementation
+
+- [x] E5 build bytes不可恢复后，保留 E5 immutable history并按设计前进 E6；没有重签 E5、回退 E4 或制造 semantic generation 3。
+- [x] Finalizer/retained authority 从 hard-coded E5 泛化为 canonical E5+、exact predecessor ordinal；focused 26 tests、Web typecheck、
+  Web full 568 tests与 owned Biome/diff check PASS。
+- [x] scoped commit：`86ce7f1d fix(falcon24): advance retained build authority`。
+- [x] exact commit clean build attestation：generation
+  `sha256:908dfc900ceca88454ac9179b9fea1718154456da509bf861c708e020ce01cd3`，Web build
+  `sha256:831f0b611d64b450d845824fd7150c4ee5613cbb0439f26d0fd482e9c24aadcf`，Worker build
+  `sha256:5bc93b50c9b707c95d036a8c35add67047a60dbfb0140a2f7d9a3bafb30c798c`；两侧 guard PASS。
+- [x] Finalizer只执行一次并激活 E6：baseline `a3a275b5-7584-57e3-afcf-37cd229de675` /
+  `sha256:d40f1b97d753e0de2dd9158fe744221cfef093c954735a3784e94f54aa98186a`，activation attempt
+  `9f730577-c230-5e98-ab31-448b8183fc36`，retained proof
+  `sha256:ab7f5433dbf04db00ee389f363a34dee028ed7ad3fed640b1a442900a78b1ad1`。
+- [x] post-readback current=E6；semantic release仍为 gen2 `18472091-59b1-5d86-b399-9605ca627040` /
+  `sha256:9c53ca74db82181ff46a591ee4e2b88d63e5c9b4e6e3fa157f10fa085ca74dd6`，pointer/runtime/defaults versions仍为
+  `3/3/4`；E6 diagnostic/Q1/C1 pre-count=0。
+
+### E6-W1 — One diagnostic and mandatory stop
+
+- [x] 专用账号 credential轮换；exact E6 Web/Worker和瞬态 OpenSandbox启动；提交前 residual=0。
+- [x] 只创建一个 attempt `133460e8-0d5e-5ae5-ba20-1709f08b1796`，manifest
+  `sha256:1fc8cf6e26330b497484114376772f0c63adf7cbe9ac9512493b3a89d1ae2118`；真实 authenticated composer只提交一次，
+  exact Run=`f0e98c36-18dd-8f12-bd9b-df7c05212f37`。
+- [x] Run 首次 Root model preflight 在 sequence 4 失败：`PROVIDER_PROFILE_NOT_AVAILABLE`，sequence 5 terminal FAILED，
+  `retryable=false`；未调用 Provider，未产生下游业务链。
+- [x] 失败按 frozen `AGENT_PROFILES` closure分类为 `FROZEN_CLOSURE_CHANGE_REQUIRED`；没有重试/新 attempt，也未开始 E6-Q1/C1。
+- [ ] immutable FAIL receipt：唯一 CLI fail 调用被 `FALCON24_DIAGNOSTIC_SEMANTIC_RELEASE_MISMATCH` 拒绝。根因是 Platform
+  diagnostic `complete` 漏传 `semantic_domain`，forced RLS 下 runtime pointer不可见；attempt仍 ACTIVE、receipt count=0。按不可变性边界不以
+  SQL、第二权威或未绑定 build 绕过。
+- [x] cleanup：Web/Worker/OpenSandbox server停止；sandbox residual=0；轮换 auth profile与精确临时目录已删除；scratch DB=0；
+  Docker只保留 `data-agent-falcon24-e1-e81a29c6`、`data-agent-postgres`、`data-agent-clamav`、`data-agent-neo4j`。
+- [x] 审计 stash `audit/rejected-generation1-repair-2026-08-28` 未恢复、未执行、未改写。
+
+### Terminal decision
+
+正式诊断第一次失败已触发 hard stop。E6-Q1/E6-C1保持 0；`production_isolation_proven=false`、production gate=`HOLD`。由于终态
+receipt persistence 本身需要新的 frozen-closure 修复，本任务不满足完成判定，不能继续门禁或声称完成。

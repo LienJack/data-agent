@@ -224,3 +224,19 @@ pnpm --filter @data-agent/web falcon24:analysis:control manifest \
 - `production_isolation_proven` 与 `production_gate` 的真实状态。
 
 缺少任一证据不得声称完成；缺少环境级 isolation receipt 时 production 仍为 HOLD。
+
+## 7. 2026-08-29 E6 diagnostic terminal record
+
+E5 build bytes不可恢复后，执行按 epoch 冻结规则前进 E6；E6 已在 commit
+`86ce7f1d1ae50ef74df5d935a5199470503b4890` 上原子激活。唯一 diagnostic attempt
+`133460e8-0d5e-5ae5-ba20-1709f08b1796` / Run `f0e98c36-18dd-8f12-bd9b-df7c05212f37` 从真实 composer只提交一次，
+随后在 `model.request@1.0.0` preflight 以 `PROVIDER_PROFILE_NOT_AVAILABLE`、`retryable=false` 失败。该错误需要改变 frozen
+`AGENT_PROFILES`，分类为 `FROZEN_CLOSURE_CHANGE_REQUIRED`；不得重试或创建新 attempt。
+
+FAIL completion RPC 又因 Platform adapter 的 `complete` 漏设 `app.semantic_domain` 被
+`FALCON24_DIAGNOSTIC_SEMANTIC_RELEASE_MISMATCH` 拒绝。禁止手工 SQL 或临时 authority 绕过。当前权威现场固定为：current=E6、Run=FAILED、
+diagnostic attempt=ACTIVE、terminal receipt count=0、E6-Q1=0、E6-C1=0、production=HOLD。继续工作前必须单独评审新的前向 epoch方案，既修复
+transaction semantic-domain context与 exact provider profile，又保持 E6 Run/attempt历史不可变；绝不能 resume该 Run。
+
+本次任务启动的 Web、Worker、OpenSandbox server均已停止；sandbox residual=0；轮换 credential/auth profile、临时 secret/config/DB与 build
+备份已删除。长期 Docker只保留既有四个容器。
