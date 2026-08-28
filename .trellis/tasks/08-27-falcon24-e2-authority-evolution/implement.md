@@ -2,7 +2,8 @@
 
 > W1-W7 已于 2026-08-28 实施并全量验证。用户已批准 exact review packet 与 W8；10795 已应用，旧 `e430` 已封存为 HOLD。
 > clean build 上唯一一次 `e431` Finalizer 因 smoke 幂等键未绑定 Worker build 而失败关闭，current 仍为 E3/gen1 且无 E4 污染。
-> 用户已批准 W8-R3；build-bound key 与 10796 append-only revalidation 已在 exact clone 验证，尚未应用到专用 `data_agent`。
+> W8-R3 与 10796 已应用；随后只运行一次 `e432` Finalizer，新 smoke PASS 已 append，但 combined activation 因错误混用 ChangeSet/snapshot
+> digest 而 HOLD。current 仍为 E3/gen1；`e432` 保留 STAGED baseline/session 与 OPEN attempt，等待 W8-R4 明确批准。
 
 ## 0. Current Freeze
 
@@ -580,10 +581,21 @@ Status: completed on 2026-08-28.
 - [x] 聚焦验证：Web typecheck；Web 2 files / 11 tests；migration/inventory 2 files / 8 tests；Biome、renderer verify、diff check PASS。
 - [x] 既有专用容器的 exact `data_agent` clone 已完成 PostgreSQL 17 apply、new-build PASS append、same-key replay、
   same-key/different-build conflict、`SMOKE_PASSED + FAIL` rollback；旧 receipt/stage timestamp 未变，scratch 已删除，未新建 Docker。
-- [ ] 将 scoped code/migration 与 spec commits 固定后，在专用 `data_agent` 应用 exact 10796 checksum
+- [x] 将 scoped code/migration 与 spec commits 固定后，在专用 `data_agent` 应用 exact 10796 checksum
   `sha256:4b3541be45d3e117510a497910de45f918b7a12111c338348b7bbd1de8217286`，再次核对 all-old E3/gen1 与历史 bytes。
-- [ ] 基于新 commit 生成 clean Web/Worker build identity，只用全新 staging id `e432` 执行一次 Finalizer；若 HOLD，立即只读审计并停止；
-  若 ACTIVE，完成 production-port readback 后才进入 W9。
+- [x] 基于 commit `58aa8c4beff99688dda20762db7a6fb839d21003` 生成 clean Web/Worker build identity，只用全新 staging id `e432`
+  执行一次 Finalizer；结果为 `FALCON24_COMBINED_ACTIVATION_BASELINE_MISMATCH`，未重跑。
+- [x] 只读审计：新 build smoke receipt append PASS；e432 session/baseline=`STAGED`、attempt=`OPEN`；Falcon current E3、semantic/runtime gen1、
+  promotion/diagnostic/formal gates=0。唯一失败 fence 为 source revision digest 被错误同 schema snapshot digest 比较。
+
+**W8-R4 review-only recovery package**
+
+- [ ] 用户明确批准 W8-R4 后，TDD 演进 Finalizer post-baseline failure closure，并新增 confirmation-gated activation HOLD recovery CLI。
+- [ ] 新增 forward migration 10797：source revision digest 对 `stage.change_set_hash`；candidate revision source/digest/head closure exact；其余 combined
+  activation fence、锁序、atomic writes不变。
+- [ ] 聚焦 Contract/Platform/Web/migration/PG17 populated-clone、failure injection/concurrency/security 验证，并分别 scoped commit/spec commit。
+- [ ] 先通过既有 `holdActivationAttempt` authority 将 exact e432 attempt/baseline/session 终结 HOLD；禁止直接 DML。
+- [ ] 应用 10797、生成新 clean build，仅用 `e433` 运行一次 Finalizer。ACTIVE 才进入 production readback/W9；HOLD 则再次停止审计。
 
 **Stop conditions**
 

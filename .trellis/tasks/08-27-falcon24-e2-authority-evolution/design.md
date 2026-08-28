@@ -2,7 +2,8 @@
 
 > W1-W7 已于 2026-08-28 实施并全量验证，用户已批准 exact review packet 与 W8。10795 已应用，`e430` 已封存为 HOLD；clean build
 > 上唯一一次 `e431` Finalizer 因旧 smoke 幂等键未绑定 Worker build 而失败关闭，current 仍为 E3/gen1，且没有 `e431`/E4 污染。
-> 用户已批准 W8-R3；build-bound key 与 10796 append-only smoke revalidation 已在 exact clone 验证，尚未应用到专用权威数据库。
+> W8-R3 与 10796 已应用；随后只运行一次 `e432` Finalizer，新 build smoke PASS 已 append，但 combined RPC 因错误比较两个哈希域而
+> HOLD。current 仍为 E3/gen1；`e432` 保留 STAGED baseline/session 与 OPEN attempt，等待 W8-R4 评审。
 
 ## 1. Scope / Trigger
 
@@ -647,3 +648,65 @@ REJECTED/PROMOTED + new key                  -> FENCE_MISMATCH
 - Database：10796 source/rendered SQL/manifest 只演进 `semantic.commit_semantic_successor_smoke(jsonb)` 的受控状态机与 grants。
 - Tests：helper 覆盖同 build replay/不同 build divergence；migration 测试覆盖 exact 10795 baseline、无 receipt UPDATE/DELETE、ACL 与历史快照；
   PostgreSQL 17 exact clone 覆盖 append PASS、replay、conflict、FAIL rollback 和 scratch cleanup。
+
+## 16. W8-R4 Activation Hash-domain and Attempt-closure Design
+
+### 16.1 Verified root cause
+
+10783 combined RPC 当前要求：
+
+```sql
+semantic_source_revision.source_digest = stage.source_snapshot_hash
+```
+
+实际 authority contract 是：
+
+```text
+source_revision.source_digest = stage.change_set_hash
+  = sha256:5dbd303d8ecd34b1e98ae936314d7a90e18b8832594049678c9ed3aec996ee72
+
+stage.source_snapshot_hash
+  = sha256:2f7c897391912725829b6751c29d1374ab06b2c02ab94953f0b47a09cd1f2bb2
+```
+
+前者绑定 reviewed ChangeSet，后者绑定 physical schema snapshot；不相等是正确状态。只读重算证明 DB-side expected proof hash 与
+SEMANTIC_RELEASE staging receipt evidence 均为
+`sha256:4af0f2980ed0bd14b0fbeb5b7d76377c2bb8c2390418fd1c8a54fd06ea83ddeb`；baseline/ref/attempt/session、6 receipts、review、dependency、
+publish attempt、candidate head 与 4 projections 的其余 fence 全部通过。
+
+### 16.2 Forward RPC correction
+
+10797 只演进现有 `activate_falcon24_authority_with_semantic_successor(jsonb)`：
+
+```sql
+exists semantic_source_revision(
+  revision_id = stage.source_revision_id,
+  source_digest = stage.change_set_hash)
+
+exists semantic_candidate_revision(
+  revision_id = stage.candidate_revision_id,
+  source_revision_id = stage.source_revision_id,
+  revision_digest = stage.change_set_hash)
+```
+
+保留所有既有 command/proof/smoke/default/lock/atomic promotion fence；禁止用删除 source-revision 检查、比较任意 digest 或修改 stage 行来绕过。
+
+### 16.3 Post-baseline failure state machine
+
+```text
+STAGED baseline + OPEN attempt
+  combined activation PASS -> one transaction ACTIVE/PROMOTED/E4/gen2
+  combined activation FAIL -> same call returns error; Finalizer immediately calls holdActivationAttempt
+                            -> attempt/baseline/session become HOLD in existing authority transaction
+  process crash before HOLD -> explicit confirmation-gated recovery CLI calls the same Port with exact refs/reason
+```
+
+`e432` 必须先按后一条 recovery path 终结为 HOLD。HOLD 后新 Finalizer 使用 `e433`；不得复用/清空 `e432` receipts、baseline 或 attempt。
+
+### 16.4 Tests and crash windows
+
+- Migration static/PG17：exact 10796 baseline，function owner/ACL/lock order不变，错误 hash-domain 条件消失，source+candidate revision closure完整。
+- Populated clone：迁移前后 successor receipt/stage 与 Falcon e430/e432 session/baseline/attempt ordered canonical bytes不变。
+- Finalizer：promote failure 调用 exact hold once；hold failure 返回专用 stable code；success path不调用 hold。
+- Recovery CLI：confirmation、exact attempt/baseline/hash/reason、same-reason replay、different-reason conflict；CLI 禁止直接 query/DML。
+- Concurrency/failure injection：combined RPC 仍只观察 all-old/all-new；failure 后 closure 最终为 HOLD，不留下可被下一 attempt 误用的 OPEN。

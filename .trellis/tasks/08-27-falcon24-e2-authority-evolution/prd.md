@@ -3,8 +3,9 @@
 > 执行状态（2026-08-28）：W1-W7 已实施并通过全量验证；被拒绝的 generation-1 repair 现场已按用户授权封存到可恢复审计 stash。
 > 用户已批准 exact review packet 与 W8。10795 已应用，旧 `e430` 已通过 capability-gated authority 封存为 `HOLD`；随后 clean build
 > 上唯一一次 `e431` Finalizer 因既有 smoke 幂等键未绑定 Worker build 而失败关闭，且未留下 `e431` session、E4 baseline 或 activation。
-> 当前仍为 E3/gen1，generation 2 candidate 保持 `SMOKE_PASSED`。W8-R3 的 build-bound idempotency 与 10796 append-only smoke
-> revalidation 已在 exact clone 验证，尚未应用到专用权威库；诊断与正式门禁只能在 W8 成功后按 fail-closed 顺序执行。
+> 当前仍为 E3/gen1，generation 2 candidate 保持 `SMOKE_PASSED`。W8-R3 与 10796 已提交并应用；其后只运行一次 `e432`
+> Finalizer，新 build smoke PASS 已 append，但 combined activation 因把 ChangeSet digest 与 schema snapshot digest 混为同一哈希域而 HOLD。
+> `e432` 当前为 STAGED session/baseline + OPEN attempt，E4/current 未移动；诊断与正式门禁只能在 W8 成功后按 fail-closed 顺序执行。
 
 ## 1. Goal
 
@@ -216,4 +217,28 @@ idempotency key 与新 Worker receipt command hash 冲突而返回 `FALCON24_SEM
   `sha256:4b3541be45d3e117510a497910de45f918b7a12111c338348b7bbd1de8217286`。
 - exact `data_agent` clone 上已验证：新 Worker build 追加 PASS、same-key replay 返回同一 receipt、same-key/different-build conflict、
   `SMOKE_PASSED + FAIL` 返回 `40001` 且零状态/历史变化。scratch database 已删除，未创建新 Docker container。
-- 专用权威库尚未应用 10796，也未运行 `e432`；当前完成事实仍是 all-old E3/gen1。
+- 10796 已应用到专用权威库，frontier/checksum exact；迁移本身未改变 stage/receipt bytes、E3 或 gen1 current。
+- clean build 绑定 commit `58aa8c4beff99688dda20762db7a6fb839d21003`，generation
+  `sha256:301255df49d96d59c9b25ebe72b33c824d904b55b7be62ee7a33a8e794dd87c9`，`git_dirty=false`。
+- `e432` Finalizer 只执行一次并返回 `FALCON24_COMBINED_ACTIVATION_BASELINE_MISMATCH`。新 smoke receipt
+  `sha256:4537769aa592b9b931991b93cab7761e7d26c66474071572792a2faaa97d6524` 已 append；stage 仍 `SMOKE_PASSED`。
+- `e432` baseline `8f38ab8f-5325-512a-b082-6ed0ad99b50f` / `sha256:f5bfc0673721900c679814cd530a46f1706ec8b2a2d271db77d0c179c1d68ead`
+  为 `STAGED`，attempt `b7f671ea-3e0b-5ed0-afdc-638eca529037` 为 `OPEN`；semantic/Falcon current、defaults、E4 diagnostic/formal counts
+  仍为 all-old E3/gen1/zero。
+
+## 11. W8-R4 Review Gate: Activation Hash Domain and Attempt Closure
+
+- **R-G2-40 Source revision hash domain。** `semantic_source_revision.source_digest` 是 fixed ChangeSet digest，必须与
+  `stage.change_set_hash` 比较；`stage.source_snapshot_hash` 是 physical schema snapshot digest，只能同 exact snapshot evidence 比较。
+  两者不得要求相等。
+- **R-G2-41 Candidate revision closure。** Combined activation 必须同时验证 source revision、candidate revision 与 stage authority IDs：
+  source revision digest=ChangeSet hash；candidate revision 的 `source_revision_id` 与 `revision_digest` 分别等于 stage source revision 与
+  ChangeSet hash；candidate head 仍为 `PUBLISHING` 且指向 exact candidate revision。
+- **R-G2-42 Post-baseline failure closure。** Combined promotion 失败后，Finalizer 必须用既有
+  `holdActivationAttempt` Port 将 exact OPEN attempt、STAGED baseline/session 原子终结为 HOLD，并保留原稳定 failure code。进程若在错误与
+  HOLD 之间崩溃，只能通过 confirmation-gated capability CLI 对 exact refs 恢复；禁止直接 DML。
+- **R-G2-43 Fresh attempt identity。** `e432` 终结 HOLD 后不得重开、复用 baseline 或 attempt。10797 与自动 HOLD 逻辑经审查、测试、提交、
+  应用后，必须用新 clean build 和全新 `e433` 只执行一次 Finalizer。
+- 计划中的 10797 只前向 `CREATE OR REPLACE` combined activation RPC，迁移前后 snapshot 全部既有 successor/Falcon staging/baseline/attempt
+  history；不修改 10783、不更新 e432、不创建第二 activation authority。
+- 本节当前是 review gate。未经用户明确批准 W8-R4，不实现 10797、不调用 HOLD Port、不运行 `e433`。
