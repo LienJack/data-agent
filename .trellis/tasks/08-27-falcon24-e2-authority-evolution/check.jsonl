@@ -1,5 +1,6 @@
 {"file":".trellis/spec/backend/falcon-agent-release-gate.md","reason":"Audit gate identity, attempt archival, winning qualification, browser proof, and recovery rules."}
 {"file":".trellis/spec/backend/database-guidelines.md","reason":"Audit migration safety, single PostgreSQL truth, RLS, transactional activation, and explicit scope predicates."}
+{"file":".trellis/spec/backend/legacy-authority-forward-migrations.md","reason":"Audit exact-scope legacy authority closure provisioning, human review separation, and populated-upgrade hash invariants."}
 {"file":".trellis/spec/backend/artifact-authority.md","reason":"Audit immutable E1 history and exact E2 Artifact publication and resolution."}
 {"file":".trellis/spec/backend/resolution-trace.md","reason":"Audit historical E1 and current E2 trace correctness without latest or raw fallback."}
 {"file":".trellis/spec/backend/provider-invocation-authority.md","reason":"Audit credential secrecy, provider outcomes, and strict retry behavior."}

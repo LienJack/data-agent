@@ -386,6 +386,10 @@ projection_payload ->> 'source_digest' is distinct from source_revision.source_d
 projection_payload ->> 'source_digest' is distinct from graph_projection.source_digest
 ```
 
+旧权威范围缺失后继发布评审闭包时的 exact-scope 前向 Migration、人工审批边界、
+populated-upgrade hash Oracle 与 NUL/`bytea` 规则见
+[旧权威后继评审闭包](./legacy-authority-forward-migrations.md)。
+
 - Platform Migration 位于 `infra/supabase/platform/migrations/`；唯一例外是 U6
   `10590` 内由 Database Surface 冻结的 `platform.lock_u6_authority_binding`、
   `platform.lock_u6_cleanup_platform_evidence` 与 Lifecycle identity guard，禁止拆出

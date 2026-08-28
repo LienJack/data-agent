@@ -497,11 +497,33 @@ Status: completed on 2026-08-28.
 
 **Work**
 
-- [ ] 只应用已验证的 forward migrations；先后核对 ledger/checksum与E1-E3/gen1审计摘要。
+- [x] 只应用已验证的 forward migrations；先后核对 ledger/checksum与E1-E3/gen1审计摘要。
 - [ ] 通过唯一 publisher stage generation 2；运行 deterministic smoke PASS。
 - [ ] 构建 E4 proof/receipts/baseline/session，combined transaction原子激活。
 - [ ] 使用生产端口核对 semantic pointer/runtime/defaults=current gen2，Falcon current=E4，receipt/outbox/stage PROMOTED exact。
 - [ ] 再次证明 generation 1/E1-E3 bytes未变与 `production_gate=HOLD`。
+
+**2026-08-28 execution evidence**
+
+- 专用 `data_agent` 只读审计确认迁移前 frontier 为 10782、Falcon current=E3、semantic current=generation 1；
+  三类 generation-1 runtime projection payload 仍只有历史 `release_set_hash`，E3-Q1 仍为
+  `SQL_DATA_PREPARATION / SEMANTIC_RELEASE_PROJECTION_INVALID` HOLD。
+- 10783-10792 应用后，E1-E3/gen1/current/defaults 的保护行 count/hash 保持不变；10790 只为既有
+  qualification 行增加三个全 NULL diagnostic reference 列，投影排除新列后的 canonical hash 与迁移前 exact match。
+- 旧环境缺少 successor review policy closure。前向 Migration 10793 只为 exact
+  `E3 + falcon24 + generation 1` scope 插入一个 policy revision、一个 current-owner assignment 与一个 policy pointer；
+  checksum=`sha256:f6370a0956fb3e4a96abdc539543324db4bd6d0c558134f55b650048177c2c25`，
+  scoped commit=`6a512f6e`。
+- 10793 先在专用库 exact clone 验证，再应用于专用库。除 ledger 和三张允许变更表外，379 张用户表的
+  ordered canonical count/hash 前后全部一致；E3、generation 1、runtime/defaults exact refs 均未移动。
+- clean build attestation 绑定 commit `6a512f6e297e8f4d9606671812ed6ff07f4c61e3`，generation
+  `sha256:f2c7a7ed1aa3586916e5c68c1a275ed35dd3a3447966430b2beadacd3bfb71d1`，`git_dirty=false`。
+- 正常 governance preparation 已创建 `WAITING_REVIEW` packet
+  `801bfa69-2ea6-49d9-9a6a-676b0e3facd6`，packet digest
+  `sha256:4593fc62603fc23386d07320bc08f35b7642de6142116bd2bafb0715f79fea84`；frozen ChangeSet
+  `159121ff-0a5a-53d2-8734-f46d98f1775b` / `sha256:5dbd303d8ecd34b1e98ae936314d7a90e18b8832594049678c9ed3aec996ee72`
+  含 158 assertions、0 conflicts、5/5 competency PASS。当前 quorum=0/1、decision=0、stage=0，
+  authority 仍为 E3/gen1；必须等待该 exact packet 的人工 APPROVE，通用 W8 授权不冒充 review decision。
 
 **Stop conditions**
 
