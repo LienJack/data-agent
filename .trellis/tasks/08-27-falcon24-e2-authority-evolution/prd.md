@@ -5,7 +5,9 @@
 > 上唯一一次 `e431` Finalizer 因既有 smoke 幂等键未绑定 Worker build 而失败关闭，且未留下 `e431` session、E4 baseline 或 activation。
 > 当前仍为 E3/gen1，generation 2 candidate 保持 `SMOKE_PASSED`。W8-R3 与 10796 已提交并应用；其后只运行一次 `e432`
 > Finalizer，新 build smoke PASS 已 append，但 combined activation 因把 ChangeSet digest 与 schema snapshot digest 混为同一哈希域而 HOLD。
-> `e432` 当前为 STAGED session/baseline + OPEN attempt，E4/current 未移动；诊断与正式门禁只能在 W8 成功后按 fail-closed 顺序执行。
+> 用户已批准 W8-R4；10797、Finalizer post-baseline HOLD closure 与恢复 CLI 已在 scoped commit `04d5db4e` 完成并通过验证。
+> 权威库尚未应用 10797，`e432` 仍为 STAGED session/baseline + OPEN attempt，E4/current 未移动；下一步严格为 capability HOLD e432、
+> 应用 exact 10797、生成新 clean build 并只运行一次 `e433`。诊断与正式门禁只能在 W8 成功后按 fail-closed 顺序执行。
 
 ## 1. Goal
 
@@ -241,4 +243,6 @@ idempotency key 与新 Worker receipt command hash 冲突而返回 `FALCON24_SEM
   应用后，必须用新 clean build 和全新 `e433` 只执行一次 Finalizer。
 - 计划中的 10797 只前向 `CREATE OR REPLACE` combined activation RPC，迁移前后 snapshot 全部既有 successor/Falcon staging/baseline/attempt
   history；不修改 10783、不更新 e432、不创建第二 activation authority。
-- 本节当前是 review gate。未经用户明确批准 W8-R4，不实现 10797、不调用 HOLD Port、不运行 `e433`。
+- 用户已明确批准 W8-R4。实现 commit `04d5db4e` 固定 10797 checksum
+  `sha256:c5afa3d4b8babc91b61b2bd3d6f3edc18324502254270d08e8d63049dc18e984`，并完成 Web/Platform/Contracts 全量、三层 typecheck、
+  renderer/inventory/Biome 与 PostgreSQL 17 populated-clone 验证。权威执行仍按独立 gate：先用 Port 封存 e432，再应用 10797，最后只运行一次 e433。

@@ -3,7 +3,8 @@
 > W1-W7 已于 2026-08-28 实施并全量验证。用户已批准 exact review packet 与 W8；10795 已应用，旧 `e430` 已封存为 HOLD。
 > clean build 上唯一一次 `e431` Finalizer 因 smoke 幂等键未绑定 Worker build 而失败关闭，current 仍为 E3/gen1 且无 E4 污染。
 > W8-R3 与 10796 已应用；随后只运行一次 `e432` Finalizer，新 smoke PASS 已 append，但 combined activation 因错误混用 ChangeSet/snapshot
-> digest 而 HOLD。current 仍为 E3/gen1；`e432` 保留 STAGED baseline/session 与 OPEN attempt，等待 W8-R4 明确批准。
+> digest 而 HOLD。用户已批准 W8-R4；代码/迁移/测试已提交为 `04d5db4e`，权威库尚未执行 e432 HOLD、10797 或 e433。
+> current 仍为 E3/gen1；`e432` 保留 STAGED baseline/session 与 OPEN attempt，等待受控权威执行。
 
 ## 0. Current Freeze
 
@@ -590,12 +591,28 @@ Status: completed on 2026-08-28.
 
 **W8-R4 review-only recovery package**
 
-- [ ] 用户明确批准 W8-R4 后，TDD 演进 Finalizer post-baseline failure closure，并新增 confirmation-gated activation HOLD recovery CLI。
-- [ ] 新增 forward migration 10797：source revision digest 对 `stage.change_set_hash`；candidate revision source/digest/head closure exact；其余 combined
+- [x] 用户明确批准 W8-R4 后，TDD 演进 Finalizer post-baseline failure closure，并新增 confirmation-gated activation HOLD recovery CLI。
+- [x] 新增 forward migration 10797：source revision digest 对 `stage.change_set_hash`；candidate revision source/digest/head closure exact；其余 combined
   activation fence、锁序、atomic writes不变。
-- [ ] 聚焦 Contract/Platform/Web/migration/PG17 populated-clone、failure injection/concurrency/security 验证，并分别 scoped commit/spec commit。
+- [x] 聚焦 Contract/Platform/Web/migration/PG17 populated-clone、failure injection/concurrency/security 验证；implementation scoped commit=`04d5db4e`。
 - [ ] 先通过既有 `holdActivationAttempt` authority 将 exact e432 attempt/baseline/session 终结 HOLD；禁止直接 DML。
 - [ ] 应用 10797、生成新 clean build，仅用 `e433` 运行一次 Finalizer。ACTIVE 才进入 production readback/W9；HOLD 则再次停止审计。
+
+**W8-R4 implementation evidence**
+
+- 10797 checksum=`sha256:c5afa3d4b8babc91b61b2bd3d6f3edc18324502254270d08e8d63049dc18e984`；前置 exact 10796 checksum，
+  migration 对 14 类 authority/source/review 表做 ordered canonical snapshot，保持既有锁序、单事务 atomic writes、owner 与 narrow ACL。
+- Finalizer unit 覆盖 promote failure exact HOLD once + original error rethrow、HOLD dual-failure stable error、success/receipt/readback 不误 HOLD；
+  activation recovery CLI 覆盖 confirmation 与 Port-only 边界。
+- PostgreSQL 17 scratch：apply 前后 all-old；first HOLD、same-reason replay、different-reason conflict；invalid CAS rollback；两个 concurrent valid
+  activation 返回同一 receipt，最终 E4/gen2/runtime/defaults/stage 全部 all-new。三个 scratch database 均已删除，未创建新 Docker container。
+- 全量证据：Web 135 files / 556 passed + 1 skipped；Platform 111 files / 685；Contracts 99 files / 951；三层 typecheck PASS。
+  第一次 Contracts 与 Web/Platform 并行时 15 个 15s fixture timeout；无并发负载下失败 5 files 134/134、随后 Contracts full 951/951，判定为资源争用。
+- 聚焦证据：Web 2 files / 12；migration/static 4 files / 18；10797 renderer、全部 migration renderer、workspace migration inventory、Biome、
+  `git diff --check` PASS。旧 `61` fixture 在 live-shaped clone 因缺少 fresh-harness deployment mapping 于业务断言前触发 `DA_SCOPE_FORBIDDEN`；
+  事务回滚，另用同一 production Port 的 live-shaped rollback/concurrency/activation 测试覆盖本迁移行为，不把 fixture 环境缺口冒充通过。
+- 文档提交前权威库未变化：frontier 10796、Falcon E3、semantic/runtime/defaults generation 1、stage `SMOKE_PASSED`、e432 attempt `OPEN`；
+  audit stash `audit/rejected-generation1-repair-2026-08-28` 保持不变。
 
 **Stop conditions**
 

@@ -3,7 +3,8 @@
 > W1-W7 已于 2026-08-28 实施并全量验证，用户已批准 exact review packet 与 W8。10795 已应用，`e430` 已封存为 HOLD；clean build
 > 上唯一一次 `e431` Finalizer 因旧 smoke 幂等键未绑定 Worker build 而失败关闭，current 仍为 E3/gen1，且没有 `e431`/E4 污染。
 > W8-R3 与 10796 已应用；随后只运行一次 `e432` Finalizer，新 build smoke PASS 已 append，但 combined RPC 因错误比较两个哈希域而
-> HOLD。current 仍为 E3/gen1；`e432` 保留 STAGED baseline/session 与 OPEN attempt，等待 W8-R4 评审。
+> HOLD。用户已批准 W8-R4；修复已提交为 `04d5db4e`，但权威库尚未执行 e432 HOLD/10797/e433。current 仍为 E3/gen1；
+> `e432` 保留 STAGED baseline/session 与 OPEN attempt，等待受控执行。
 
 ## 1. Scope / Trigger
 
@@ -710,3 +711,17 @@ STAGED baseline + OPEN attempt
 - Finalizer：promote failure 调用 exact hold once；hold failure 返回专用 stable code；success path不调用 hold。
 - Recovery CLI：confirmation、exact attempt/baseline/hash/reason、same-reason replay、different-reason conflict；CLI 禁止直接 query/DML。
 - Concurrency/failure injection：combined RPC 仍只观察 all-old/all-new；failure 后 closure 最终为 HOLD，不留下可被下一 attempt 误用的 OPEN。
+
+### 16.5 Implemented evidence
+
+- Scoped implementation commit：`04d5db4e`；10797 rendered checksum：
+  `sha256:c5afa3d4b8babc91b61b2bd3d6f3edc18324502254270d08e8d63049dc18e984`。
+- Finalizer 的 catch 只包围 `promoteStagedSuccessor`。成功、receipt mismatch、post-commit readback mismatch/failure 均不调用 HOLD；
+  promote failure 调用 exact HOLD once，HOLD failure 以 `FALCON24_E4_ACTIVATION_HOLD_FAILED` 保留双 cause。
+- 新 `hold:falcon24-authority-activation` CLI 要求显式 confirmation 与 exact attempt/baseline/hash/reason，只调用 capability authority 和
+  `holdActivationAttempt` Port。
+- PostgreSQL 17 exact clone：10797 apply 后 E3/gen1/Open 仍 all-old；HOLD first/replay/conflict 通过；无效 CAS 完整 rollback；两个并发
+  valid command 返回同一 receipt，最终只观察 E4/gen2/defaults gen2/stage PROMOTED。
+- Web full 135 files / 556 passed + 1 skipped；Platform full 111 files / 685 passed；Contracts full 99 files / 951 passed；
+  Web/Platform/Contracts typecheck、10797 renderer、workspace migration inventory、Biome、diff check 全部 PASS。
+- 临时 scratch databases 已删除，未创建 Docker container，权威 `data_agent` 在文档提交时仍为 frontier 10796、E3/gen1、e432 OPEN。

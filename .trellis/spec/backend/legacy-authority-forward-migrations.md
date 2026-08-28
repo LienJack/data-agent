@@ -333,3 +333,99 @@ await buildFalcon24SuccessorSmokeIdempotencyKey({
   worker_build_identity: workerBuildIdentity,
 });
 ```
+
+## 17. Scenario: Post-baseline Activation Failure Closure
+
+### 17.1 Scope / Trigger
+
+- Trigger：E4 baseline/session 已 `STAGED`、activation attempt 已 `OPEN`，但
+  `activate_falcon24_authority_with_semantic_successor(jsonb)` 在事务提交前失败并保持完整 E3/gen1。
+- 该路径只终结失败 attempt；它不能重开旧 baseline、修改 successor stage/receipt、修补 generation 1，或创建第二 activation authority。
+- Combined activation 已提交后的 receipt/readback failure 属于严重 post-commit incident，禁止调用 HOLD，因为数据库可能已经是 E4/gen2。
+
+### 17.2 Signatures
+
+```text
+Falcon24ActivationAttemptHoldRequest {
+  schema_version: "falcon24-activation-request@2.0.0"
+  authority_epoch: "E4"
+  attempt_id: uuid
+  baseline_id: uuid
+  expected_baseline_hash: sha256
+  failure_code: STABLE_UPPER_SNAKE_CASE
+}
+
+finalizeFalcon24SemanticSuccessor({ hold_activation_attempt(request), ... })
+PostgresFalcon24AuthorityEpoch.holdActivationAttempt(capability, request)
+pnpm --dir apps/web hold:falcon24-authority-activation
+app_data_agent.activate_falcon24_authority_with_semantic_successor(jsonb) -> jsonb
+```
+
+10797 `CREATE OR REPLACE` 现有 combined activation RPC；不新增并行 RPC。锁序保持
+`semantic fence -> Falcon advisory/current -> semantic pointer/runtime/defaults -> stage -> baseline/attempt/session`。
+
+### 17.3 Contracts
+
+- Source revision 和 physical snapshot 是不同哈希域：
+  `semantic_source_revision.source_digest = stage.change_set_hash`；不得与
+  `stage.source_snapshot_hash` 比较。
+- Candidate closure 必须同时满足 `revision_id=stage.candidate_revision_id`、
+  `source_revision_id=stage.source_revision_id`、`revision_digest=stage.change_set_hash`，且 candidate head 为
+  `PUBLISHING` 并指向同一 revision。
+- Finalizer 只捕获 `promoteStagedSuccessor` 的提交前异常，随后对 exact baseline/attempt/hash 调用一次
+  `hold_activation_attempt`；HOLD 成功后原错误原样抛回。未知错误文本归一为
+  `FALCON24_COMBINED_ACTIVATION_FAILED`。
+- HOLD 自身失败返回 `FALCON24_E4_ACTIVATION_HOLD_FAILED`，内部 cause 同时保留 activation 与 HOLD 两个异常；不得继续 readback、诊断或门禁。
+- 独立恢复 CLI 必须要求 `DATA_AGENT_ALLOW_FALCON24_ACTIVATION_HOLD=YES`、`DATABASE_URL`、
+  `FALCON24_ACTIVATION_ATTEMPT_ID`、`FALCON24_ACTIVATION_BASELINE_ID`、
+  `FALCON24_ACTIVATION_EXPECTED_BASELINE_HASH`、`FALCON24_ACTIVATION_FAILURE_CODE`。CLI 只经 capability authority 和既有 Port；禁止 raw query/DML。
+- 10797 以前沿 10796 exact checksum 为前置，迁移前后 snapshot 既有 successor stage/projection/receipt、Falcon staging/baseline/attempt、
+  source/review/candidate/publish authority rows。除 ledger/function definition/ACL 外，历史 bytes 不得变化。
+
+### 17.4 Validation & Error Matrix
+
+| 条件 | 结果 |
+| --- | --- |
+| promote 提交前失败，exact attempt 仍 OPEN | exact attempt/baseline/session `-> HOLD`，再抛回原 failure code |
+| same baseline/hash/reason HOLD 重放 | idempotent 返回同一 HOLD authority |
+| same refs 但 reason 不同 | `FALCON24_AUTHORITY_ACTIVATION_HOLD_CONFLICT` |
+| baseline/hash/scope/current E3 不匹配 | fail closed；零直接 DML |
+| activation 失败且 HOLD 也失败 | `FALCON24_E4_ACTIVATION_HOLD_FAILED`，停止 |
+| activation receipt 校验或 post-commit readback 失败 | 不 HOLD；报告 severe incident 并冻结执行 |
+| source revision 对 snapshot hash、candidate revision closure 缺失 | combined activation rollback，保持 all-old |
+| 10796 frontier/checksum、RPC owner/ACL/body 或历史 snapshot 漂移 | 10797 整笔回滚 |
+
+### 17.5 Good / Base / Bad Cases
+
+- Good：combined activation 在提交前失败，Finalizer 经 Port 把 exact OPEN attempt 封存为 HOLD；修复并提交新代码后，以新 staging id 和新 clean build 再尝试。
+- Base：进程在 HOLD commit 后丢失响应；confirmation-gated CLI 用同一 exact request 重放并读回同一 HOLD。
+- Bad：捕获整个 Finalizer 并在 post-commit readback mismatch 时 HOLD，或直接 UPDATE attempt/baseline/session；前者可能把已激活 E4 标成失败，后者绕过 capability、CAS 与审计。
+
+### 17.6 Tests Required
+
+- Finalizer unit：成功不 HOLD；promote failure exact HOLD once 且重抛原异常；HOLD failure 保留双 cause；receipt/readback failure 不 HOLD。
+- CLI：无 confirmation 返回 `NOT_RUN`；严格解析 exact env；源码断言只用 capability/Port，无 `pool.query`/`client.query`。
+- Migration static：10796 checksum、source/candidate hash-domain、锁序、原子写、owner/search path/ACL、source/rendered checksum。
+- PostgreSQL 17 populated clone：apply 前后历史 snapshot 不变；first HOLD、same-reason replay、different-reason conflict；失败 CAS 只观察 all-old。
+- Concurrency：两个相同有效 activation 命令返回同 receipt；无效 CAS rollback 后仍 all-old；成功后 pointer/runtime/defaults/E4/stage 只能 all-new。
+
+### 17.7 Wrong vs Correct
+
+```typescript
+// Wrong: receipt/readback 也在同一个 catch 内，可能对已提交的 E4 调用 HOLD
+try {
+  return await verifyAndReadback(await promote(command));
+} catch (error) {
+  await holdAttempt(error);
+}
+
+// Correct: 只包围提交前 promote；receipt 与 readback 在 catch 外 fail-severe
+let activationResult;
+try {
+  activationResult = await promote(command);
+} catch (error) {
+  await holdExactAttempt(error);
+  throw error;
+}
+return verifyAndReadback(activationResult);
+```
