@@ -1,3 +1,4 @@
+import { readFileSync } from "node:fs";
 import { fileURLToPath } from "node:url";
 import {
   type BuiltinTeamMaterializationInput,
@@ -42,19 +43,37 @@ describe("Falcon24 versioned authority finalization", () => {
   it("refuses activation without the destructive confirmation", async () => {
     await expect(runFalcon24AuthorityFinalization({ NODE_ENV: "test" })).resolves.toEqual({
       schema_version: "falcon24-authority-finalization-result@2.0.0",
-      authority_epoch: "E2",
+      authority_epoch: "E4",
       terminal: "NOT_RUN",
       reason_code: "FALCON24_AUTHORITY_ACTIVATION_CONFIRMATION_REQUIRED",
     });
   });
 
-  it("rejects E1 as a v2 activation target before confirmation", async () => {
+  it("rejects every non-E4 activation target before confirmation", async () => {
     await expect(
       runFalcon24AuthorityFinalization({
         NODE_ENV: "test",
-        FALCON24_AUTHORITY_EPOCH: "E1",
+        FALCON24_AUTHORITY_EPOCH: "E3",
       }),
     ).rejects.toThrow();
+  });
+
+  it("imports only the generation-2 combined activation path", () => {
+    const source = readFileSync(
+      fileURLToPath(new URL("../src/cli/finalize-falcon24-authority.ts", import.meta.url)),
+      "utf8",
+    );
+
+    expect(source).toContain("finalizeFalcon24SemanticSuccessor");
+    expect(source).toContain("stageFalcon24E4SuccessorAuthority");
+    expect(source).toContain("createPostgresSemanticPublicationAuthority");
+    expect(source).toContain("createFalcon24SuccessorSmokeProcess");
+    expect(source).not.toContain("prepareWorkspaceAuthority");
+    expect(source).not.toContain("stageSemanticReleaseReceipt");
+    expect(source).not.toContain("createPostgresGreenfieldBootstrapReleaseAuthority");
+    expect(source).not.toContain("buildFalcon24SemanticReleaseAuthorityProof");
+    expect(source).not.toMatch(/\.activate\s*\(/u);
+    expect(source).not.toContain("updateWorkspaceDefaults");
   });
 
   it("content-addresses every final acceptance contract from its frozen source closure", async () => {
