@@ -2739,6 +2739,23 @@
       "postcondition": {
         "checksum_occurrences": 2
       }
+    },
+    {
+      "id": "10796",
+      "migration_name": "20260725010796_app_data_agent_semantic_successor_smoke_revalidation.sql",
+      "source_directory": "infra/supabase/apps/data-agent/migration-sources/10796",
+      "segments": [
+        "00-preamble.sql.inc",
+        "20-smoke-revalidation-rpc.sql.inc",
+        "80-security.sql.inc",
+        "90-postconditions.sql.inc",
+        "99-ledger.sql.inc"
+      ],
+      "placeholder": "__SEMANTIC_SUCCESSOR_SMOKE_REVALIDATION_MIGRATION_CHECKSUM__",
+      "checksum_header": "semantic_successor_smoke_revalidation_migration_checksum",
+      "postcondition": {
+        "checksum_occurrences": 2
+      }
     }
   ],
   "exceptions": [

@@ -16,6 +16,7 @@ vi.mock("server-only", () => ({}));
 import {
   buildFalcon24AcceptanceContractHashes,
   buildFalcon24AgentProfileAuthorityProof,
+  buildFalcon24SuccessorSmokeIdempotencyKey,
   resolveFalcon24PredecessorDatasetSubjectHash,
   runFalcon24AuthorityFinalization,
   verifyFalcon24PredecessorStagingReceipt,
@@ -161,6 +162,42 @@ describe("Falcon24 versioned authority finalization", () => {
       build_id: workerBuild.build_id,
       generation_id: workerBuild.generation_id,
     });
+  });
+
+  it("uses a build-bound idempotency key for successor smoke revalidation", async () => {
+    const workerBuild = {
+      schema_version: "runtime-build-identity@1.0.0" as const,
+      consumer_role: "worker" as const,
+      generation_id: `sha256:${"a".repeat(64)}` as const,
+      build_id: `sha256:${"b".repeat(64)}` as const,
+      built_at: "2026-08-28T00:00:00.000Z",
+      git_commit: "1".repeat(40),
+      git_dirty: false,
+    };
+    const stageIdentity = `sha256:${"c".repeat(64)}` as const;
+
+    const original = await buildFalcon24SuccessorSmokeIdempotencyKey({
+      stage_identity: stageIdentity,
+      worker_build_identity: workerBuild,
+    });
+    const replay = await buildFalcon24SuccessorSmokeIdempotencyKey({
+      stage_identity: stageIdentity,
+      worker_build_identity: workerBuild,
+    });
+    const successorBuild = await buildFalcon24SuccessorSmokeIdempotencyKey({
+      stage_identity: stageIdentity,
+      worker_build_identity: {
+        ...workerBuild,
+        generation_id: `sha256:${"d".repeat(64)}`,
+        build_id: `sha256:${"e".repeat(64)}`,
+        git_commit: "2".repeat(40),
+      },
+    });
+
+    expect(replay).toBe(original);
+    expect(successorBuild).not.toBe(original);
+    expect(original).toMatch(/^[0-9a-f-]{36}$/u);
+    expect(successorBuild).toMatch(/^[0-9a-f-]{36}$/u);
   });
 
   it("verifies E1 and versioned successor receipts for the exact predecessor epoch", async () => {

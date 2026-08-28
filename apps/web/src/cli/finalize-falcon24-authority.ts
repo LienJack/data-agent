@@ -27,7 +27,7 @@ import {
   verifyFalcon24E1StagingReceipt,
   verifyFalcon24StagingReceiptV2,
 } from "@data-agent/contracts/runs";
-import { loadRuntimeBuildIdentity } from "@data-agent/contracts/server";
+import { loadRuntimeBuildIdentity, type RuntimeBuildIdentity } from "@data-agent/contracts/server";
 import { createPostgresAgentProfileRegistry } from "@data-agent/platform/agents";
 import { adaptPgCatalogPool, verifyFalcon24CatalogInventory } from "@data-agent/platform/catalog";
 import { createPostgresSkillRegistry } from "@data-agent/platform/extensions";
@@ -155,6 +155,18 @@ function json(path: string): unknown {
 
 function exactContentHash(value: string): `sha256:${string}` {
   return contentHashSchema.parse(value) as `sha256:${string}`;
+}
+
+export async function buildFalcon24SuccessorSmokeIdempotencyKey(input: {
+  readonly stage_identity: `sha256:${string}`;
+  readonly worker_build_identity: RuntimeBuildIdentity;
+}): Promise<string> {
+  const smokeIdentity = await sha256ContentHash({
+    schema_version: "falcon24-e4-successor-smoke-identity@2.0.0",
+    stage_identity: exactContentHash(input.stage_identity),
+    worker_build_identity: input.worker_build_identity,
+  });
+  return stableUuid(`falcon24:E4:semantic-smoke-idempotency:${smokeIdentity}`);
 }
 
 function requireValue<T>(
@@ -1098,7 +1110,10 @@ export async function runFalcon24AuthorityFinalization(
         expected_pointer_version: before.semantic_pointer.version,
         target_generation: 2,
       },
-      smoke_idempotency_key: stableUuid(`falcon24:E4:semantic-smoke-idempotency:${stageIdentity}`),
+      smoke_idempotency_key: await buildFalcon24SuccessorSmokeIdempotencyKey({
+        stage_identity: stageIdentity,
+        worker_build_identity: workerBuildIdentity,
+      }),
       worker_build_identity: workerBuildIdentity,
       smoke_capability: capability,
       activation: {
