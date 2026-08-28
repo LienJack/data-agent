@@ -1,6 +1,7 @@
 # Falcon24 Semantic Generation 2 与 E4 原子权威恢复 — Implementation Plan
 
-> W1-W7 已于 2026-08-28 实施并全量验证。W8 数据库应用与 E4 activation 仍需再次明确授权。
+> W1-W7 已于 2026-08-28 实施并全量验证。用户已批准 exact review packet 与 W8；第一次 Finalizer 在 stage 前全旧 HOLD。
+> 10794 已完成实现与 exact-clone 验证，待应用到专用 `data_agent` 后继续单次修正执行。
 
 ## 0. Current Freeze
 
@@ -21,7 +22,7 @@
   `992536063ea3414f16ea0a07500e1d765b176e19`。
 - [x] 审计 stash 为 `audit/rejected-generation1-repair-2026-08-28`；`git stash show` 的六文件集合与上述 tracked diff/blob 指纹均已
   从 stash 对象重新计算并精确匹配。stash 不属于可执行实现，也不进入任何 build/database 命令。
-- [x] 用户评审并明确批准 W1-W7；W8 保持独立 hard stop。
+- [x] 用户评审并明确批准 W1-W7；随后已明确批准 exact review packet 与 W8。
 
 W0 方案提交：`35f55d21 docs: plan Falcon24 generation 2 E4 recovery`。W1 合同与共享 validator 提交：
 `a86a9494 feat: define semantic successor runtime closure`。
@@ -497,7 +498,8 @@ Status: completed on 2026-08-28.
 
 **Work**
 
-- [x] 只应用已验证的 forward migrations；先后核对 ledger/checksum与E1-E3/gen1审计摘要。
+- [x] 应用并核对 10783-10793 forward migrations 与 E1-E3/gen1 审计摘要。
+- [ ] 将已通过 exact-clone Oracle 的 10794 应用于专用数据库并再次核对 protected history。
 - [ ] 通过唯一 publisher stage generation 2；运行 deterministic smoke PASS。
 - [ ] 构建 E4 proof/receipts/baseline/session，combined transaction原子激活。
 - [ ] 使用生产端口核对 semantic pointer/runtime/defaults=current gen2，Falcon current=E4，receipt/outbox/stage PROMOTED exact。
@@ -522,8 +524,26 @@ Status: completed on 2026-08-28.
   `801bfa69-2ea6-49d9-9a6a-676b0e3facd6`，packet digest
   `sha256:4593fc62603fc23386d07320bc08f35b7642de6142116bd2bafb0715f79fea84`；frozen ChangeSet
   `159121ff-0a5a-53d2-8734-f46d98f1775b` / `sha256:5dbd303d8ecd34b1e98ae936314d7a90e18b8832594049678c9ed3aec996ee72`
-  含 158 assertions、0 conflicts、5/5 competency PASS。当前 quorum=0/1、decision=0、stage=0，
-  authority 仍为 E3/gen1；必须等待该 exact packet 的人工 APPROVE，通用 W8 授权不冒充 review decision。
+  含 158 assertions、0 conflicts、5/5 competency PASS。用户已对该 exact packet 提交真人 APPROVE：decision
+  `d71e9f3f-65fb-4eeb-ba15-49d89a44c202`，decision digest
+  `sha256:dc5a40d9defe677d3c9c4d58882242b2058daed8bf72f9a0d2e11c228d3b895e`，decision-set digest
+  `sha256:37344c680121fbcda9a4972a4920500efed85156811c131d3196bb355d11a157`；packet 保持 `CLOSED/APPROVED`。
+- exact approval 后第一次 Finalizer 只执行一次，以 `SEMANTIC_SUCCESSOR_DEPENDENCY_POINTER_REQUIRED` HOLD。只读核对证明 Falcon
+  current=E3、semantic/runtime pointer=gen1/version 2、candidate 仍 `APPROVED`、successor stage=0、E4 baseline/activation/session=0、
+  diagnostic=0；没有 partial activation 或被拒绝 stage。
+- 根因是旧 greenfield bootstrap 虽已写 immutable generation-1 Release、三类 projection、validation、COMMITTED attempt 与 pointer，
+  但早于通用 publisher 的 catalog/dependency fence 合同，缺少 `semantic_catalog_fence` 与
+  `semantic_dependency_pointer`。历史 attempt 的 catalog epoch/dependency generation 为 0/0，不能由 Finalizer 猜测或手工补写。
+- 前向 Migration 10794 仅为 exact E3/gen1/零 successor-E4 污染 scope，从 immutable bootstrap evidence 重算并 INSERT catalog fence
+  与 dependency pointer；checksum=`sha256:052c07b894b5ce6468e2b368122f67d1a9d983fcb99d1e57c16fe92901f85219`，
+  scoped commit=`45d1c94e`。期望值为 catalog epoch 0、dependency generation 1、schema digest
+  `sha256:12f028d95464af08d4311a56168381d1c99dcb5ecfe8f2f11779e348db5a76e0`、compiler digest
+  `sha256:ca65d92516a3e1027487918fdd838c81affd40f687ebaecb16260d02e1c1cd17`、closure policy digest
+  `sha256:11fae155322246aaf3e8a3219378063dd21b440bd02311b6a56205a4a825dd7b`。
+- 10794 已在同一既有专用 PostgreSQL 容器内、由 exact `data_agent` 克隆出的 scratch database
+  `data_agent_falcon24_w8_dependency_10794` 验证：应用前 frontier=10793 且 fence/pointer=0/0；应用与 replay 后 ledger/fence/pointer
+  始终=1/1/1，380 张非允许用户表 ordered canonical count/hash drift=0，E3/gen1/review exact 不变，stage/E4/diagnostic=0。
+  该 migration 尚未应用到权威 `data_agent`，因此 stage/smoke/E4 checklist 保持未完成。
 
 **Stop conditions**
 
@@ -611,6 +631,7 @@ W0 approval
 
 ## 5. Approval Boundary
 
-W1-W7 可按工作包边界实施并提交，但不得执行或吸收被拒绝的 dirty repair 实现。W8 前必须再次获得用户对专用 E3 数据库 migration
-应用与 E4 activation 的明确授权；此前不调用 activation RPC、不创建 E4 diagnostic/Q1/C1。W8 成功后，W9/W10 仍服从单次
-诊断、首败 HOLD、无 retry/resume 与真实 Trace UI 证据边界。
+W1-W7 已按工作包边界实施并提交，被拒绝的 dirty repair 实现继续只保留在审计 stash。用户已明确批准专用 E3 数据库 migration、
+exact review packet 与 E4 activation；该授权允许应用已审查的 10794 和一次修正后的 Finalizer，但不允许手工 SQL、连续重跑或放宽
+stop condition。W8 成功前不创建 E4 diagnostic/Q1/C1；成功后 W9/W10 仍服从单次诊断、首败 HOLD、无 retry/resume 与真实 Trace UI
+证据边界。

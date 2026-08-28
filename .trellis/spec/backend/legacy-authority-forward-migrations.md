@@ -1,6 +1,6 @@
-# 旧权威后继评审闭包
+# 旧权威后继发布闭包
 
-> 本文记录旧环境缺失后继发布治理闭包时的前向 Migration 与人工审批合同。
+> 本文记录旧环境缺失后继发布治理或运行时依赖闭包时的前向 Migration 合同。
 
 ## 1. Scope / Trigger
 
@@ -84,4 +84,97 @@ convert_to(domain || chr(0) || environment, 'UTF8')
 convert_to(domain, 'UTF8')
   || decode('00', 'hex')
   || convert_to(environment, 'UTF8')
+```
+
+## 8. Legacy Runtime Dependency Closure Scope / Trigger
+
+- 旧 greenfield bootstrap 已不可变发布 exact `E3 + falcon24 + generation 1`，但早于通用 publisher
+  的 catalog/dependency fence 合同，因而没有 `semantic_catalog_fence` 与
+  `semantic_dependency_pointer` 时适用。
+- 该缺口只能由 checksum-bound 前向 Migration 补齐。Migration 必须先证明 successor stage、target-generation-2
+  publish attempt、E4 baseline/session/diagnostic/formal gate 全部为零；第一次 Finalizer 若已失败关闭，也必须证明它
+  没有留下上述 partial state。
+- 只允许 INSERT 缺失的 fence/pointer 与 ledger。禁止 UPDATE/DELETE generation 1、E1-E3、current pointer、
+  workspace defaults 或 review packet，禁止手工 SQL 伪造依赖值。
+
+## 9. Runtime Dependency Signatures
+
+```text
+semantic.semantic_catalog_fence
+semantic.semantic_dependency_pointer
+semantic.semantic_source_release
+semantic.semantic_publish_attempt
+semantic.semantic_publication_validation_receipt
+semantic.semantic_runtime_restriction_projection
+app_data_agent.u2_canonical_sha256(jsonb) -> text
+```
+
+Migration 10794 从 immutable generation-1 bootstrap evidence 重算并插入：
+
+```text
+catalog_fence_epoch = 0
+catalog_schema_digest = sha256:12f028d95464af08d4311a56168381d1c99dcb5ecfe8f2f11779e348db5a76e0
+dependency_generation = 1
+compiler_bundle_digest = sha256:ca65d92516a3e1027487918fdd838c81affd40f687ebaecb16260d02e1c1cd17
+closure_policy_digest = sha256:11fae155322246aaf3e8a3219378063dd21b440bd02311b6a56205a4a825dd7b
+```
+
+这些常量是 exact fixture 的预期 postcondition，不是可由 CLI 提交的 payload。SQL 必须从 validation receipt、
+bootstrap policy、historical COMMITTED attempt、source release 与 runtime restriction 的 canonical bytes 重新推导并比较。
+
+## 10. Runtime Dependency Contracts
+
+- 先验证 PostgreSQL 17、10793 exact frontier/checksum、当前 E3、active/runtime generation 1 exact closure；任何 scope
+  或 bytes 漂移都整笔回滚。
+- fence 与 pointer 必须同时缺失或同时完整。只缺一张表的 partial state 不是可修复基线，稳定失败关闭。
+- bootstrap validation receipt 的 schema snapshot 重算 `catalog_schema_digest`；source release/attempt/restriction/
+  validation candidate-set evidence 必须闭合为同一 `compiler_bundle_digest`；bootstrap policy、pointer、revision、
+  release-set、validation 与 restriction 必须闭合为同一 `closure_policy_digest`。
+- 已存在 exact fence/pointer 时只验证、不重写，重复应用保持一行 ledger、一行 fence、一行 pointer。
+- populated upgrade 对除 ledger、catalog fence、dependency pointer 外的全部用户表做有序 canonical count/hash
+  比较；generation 1/E1-E3/review bytes 必须完全不变。
+- 10794 只补齐既有唯一 publisher 的前置 closure，不创建第二 publisher，不 stage generation 2，也不改变 current。
+
+## 11. Runtime Dependency Validation & Error Matrix
+
+| 条件 | 结果 |
+| --- | --- |
+| 10793 frontier/checksum、PostgreSQL 版本或 exact E3/gen1 scope 漂移 | baseline/inventory drift，整笔回滚 |
+| E4、successor stage 或 target-generation-2 publish attempt 已存在 | polluted target，禁止 provisioning |
+| fence/pointer 仅一者存在 | `FALCON24_SEMANTIC_DEPENDENCY_PARTIAL_STATE` |
+| validation receipt、attempt、policy 或 restriction 证据缺失/不唯一 | bootstrap evidence invalid，整笔回滚 |
+| 任一 canonical digest 重算不等于 exact generation-1 evidence | dependency provisioning mismatch，整笔回滚 |
+| 两行均已存在且 exact | idempotent verify；不新增、不改写 |
+| 非允许用户表 count/hash 变化 | populated-upgrade verification 失败，禁止 Finalizer |
+
+## 12. Runtime Dependency Good / Base / Bad Cases
+
+- Good：从专用 E3 数据库 exact clone 应用 10794，证明 380 张非允许用户表 count/hash drift=0，再将同一
+  rendered checksum 应用于专用数据库；Finalizer 之后才可重新进入正常 stage preparation。
+- Base：fence/pointer 已由通用 publisher 完整建立且值与 generation-1 bootstrap evidence exact match；Migration
+  只校验 postcondition。
+- Bad：看到 `SEMANTIC_SUCCESSOR_DEPENDENCY_POINTER_REQUIRED` 后直接手工 INSERT 任意 digest，或再次运行
+  Finalizer 期待偶然通过。这绕过 canonical derivation、ledger checksum 与 all-old 恢复证明。
+
+## 13. Runtime Dependency Tests Required
+
+- 静态测试断言 exact 10793 checksum、E3/gen1 scope、零 E4/零 successor 污染、partial-state 失败与只 INSERT
+  三张允许表。
+- renderer/manifest/inventory 测试固定 source segments、rendered SQL、header/body checksum、frontier=10794、next=10795。
+- PostgreSQL 17 exact populated clone：应用前 fence/pointer=0/0，应用后=1/1，replay 后仍=1/1。
+- 对 380 张非允许用户表比较 row count/canonical hash；另行复核 E3 baseline、generation 1 release/projections、
+  review packet/decision 与 stage/E4/diagnostic counts。
+- 负例覆盖 partial fence、错误 receipt digest、错误 attempt generation、错误 policy hash 与已污染 target generation。
+
+## 14. Runtime Dependency Wrong vs Correct
+
+```sql
+-- Wrong: 手工选择一个看似合理的 digest，绕过 immutable evidence
+insert into semantic.semantic_dependency_pointer (..., compiler_bundle_digest)
+values (..., 'sha256:guessed');
+
+-- Correct: checksum-bound migration 内重算并比较 exact bootstrap evidence；
+-- 只有所有 precondition 成立时，才在同一事务 INSERT fence、pointer、ledger。
+select app_data_agent.u2_canonical_sha256(validation_receipt_json)
+  into derived_validation_hash;
 ```

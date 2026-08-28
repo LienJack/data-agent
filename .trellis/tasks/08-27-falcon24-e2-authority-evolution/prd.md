@@ -1,7 +1,8 @@
 # Falcon24 Semantic Generation 2 与 E4 原子权威恢复
 
 > 执行状态（2026-08-28）：W1-W7 已实施并通过全量验证；被拒绝的 generation-1 repair 现场已按用户授权封存到可恢复审计 stash。
-> W8 对专用 E3 数据库应用 migration 与原子激活 E4 仍需再次明确授权；诊断与正式门禁只能在 W8 成功后按 fail-closed 顺序执行。
+> 用户已批准 exact review packet 与 W8。第一次 Finalizer 因旧 bootstrap 缺失 dependency pointer 稳定 HOLD，数据库保持完整 E3/gen1；
+> 10794 前向恢复已在专用库 exact clone 验证，尚未应用到权威 `data_agent`。诊断与正式门禁只能在 W8 成功后按 fail-closed 顺序执行。
 
 ## 1. Goal
 
@@ -170,5 +171,7 @@ drop、提交、执行或用于修改数据库。否决原因：
 ## 8. Planning Gate
 
 W1-W7 已完成并通过 focused/full validation 与 scoped commits。被拒绝的 generation 1 repair 只保留在命名审计 stash 中，不得恢复
-或执行。W8 仍是独立授权边界：在再次批准前不得向专用 E3 数据库应用 migration、调用 activation RPC、创建 E4 diagnostic/gate
-attempt 或运行正式门禁。
+或执行。用户已对 packet `801bfa69-2ea6-49d9-9a6a-676b0e3facd6` 作出 exact APPROVE，并明确批准 W8。第一次 Finalizer 只执行一次，
+以 `SEMANTIC_SUCCESSOR_DEPENDENCY_POINTER_REQUIRED` HOLD；只读核对证明 stage/E4/diagnostic 均为零、current 仍为 E3/gen1。
+下一步仅允许先应用已审查的 10794 并核对 all-old 历史不变，再在新 clean build 上执行一次修正后的 Finalizer。若再次 HOLD，停止并审计，
+不得连续重跑。E4 成功前不得创建 diagnostic/gate attempt 或运行正式门禁。

@@ -16,7 +16,7 @@ This directory contains guidelines for backend development. Fill in each file wi
 |-------|-------------|--------|
 | [目录与依赖结构](./directory-structure.md) | Monorepo 模块所有权与依赖方向 | 已建立 |
 | [数据库与共享 Supabase](./database-guidelines.md) | Authority、RLS、事务、Migration、Lifecycle | 已建立 |
-| [旧权威后继评审闭包](./legacy-authority-forward-migrations.md) | exact-scope 前向 Migration、人工审批与 populated-upgrade hash Oracle | 已建立，10793 验证 |
+| [旧权威后继发布闭包](./legacy-authority-forward-migrations.md) | exact-scope 前向 Migration、人工审批、依赖 fence 与 populated-upgrade hash Oracle | 已建立，10793-10794 验证 |
 | [错误与终态](./error-handling.md) | Reason Code、公开终态与失败关闭 | 已建立 |
 | [Artifact 权威与内容寻址](./artifact-authority.md) | Candidate、Hash、Reference 与成功态授权 | 已建立 |
 | [Port Conformance](./port-conformance.md) | Scope、幂等、Lease/Fence 与非权威 Cache | 已建立 |

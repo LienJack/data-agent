@@ -1,6 +1,7 @@
 # Falcon24 Semantic Generation 2 与 E4 原子权威恢复 — Design
 
-> W1-W7 已于 2026-08-28 实施并全量验证。数据库应用与 E4 activation 仍由 W8 的再次授权边界控制。
+> W1-W7 已于 2026-08-28 实施并全量验证，用户已批准 exact review packet 与 W8。第一次 Finalizer 在 stage 前因旧 bootstrap
+> dependency closure 缺失而全旧 HOLD；10794 exact-scope 前向恢复已通过 populated-clone 验证，待应用到专用权威数据库。
 
 ## 1. Scope / Trigger
 
@@ -86,6 +87,22 @@ Web 的 `buildFalcon24SuccessorChangeSet` 只能执行固定仓库脚本并再�
 projection 或 release digest；专门的 review-preparation CLI 只打开 packet。普通治理 API 必须先向真人展示上述 exact evidence；若部署
 存在消费该 API 的治理 UI，可由 UI 完成同一流程，但没有可用 UI 时不得声称已产生 UI 审核证据。真人批准后，Finalizer 重新构建同一
 ChangeSet、重放 preparation、读取批准文档并准备 attempt，随后才进入唯一 `stageReviewedSuccessor`。
+
+### 2.1B Legacy bootstrap dependency closure
+
+旧 generation 1 由早于通用 publisher fence 合同的 greenfield bootstrap 发布：正式 Release、三类 projection、validation、
+COMMITTED publish attempt 与 active/runtime pointer 完整，但 `semantic_catalog_fence` 和 `semantic_dependency_pointer` 缺失。
+Finalizer 因此在创建 successor stage 之前返回 `SEMANTIC_SUCCESSOR_DEPENDENCY_POINTER_REQUIRED`。该 HOLD 不是 stage failure；
+只读 postcondition 必须证明 successor stage、E4 baseline/session/diagnostic 全为零，current 仍为 exact E3/gen1。
+
+Migration 10794 是唯一允许的恢复路径：它要求 10793 exact frontier、PostgreSQL 17、E3/gen1 exact closure 与零 successor/E4
+污染，只从 immutable generation-1 bootstrap receipt/policy/attempt/release/restriction 重新推导 catalog epoch/schema digest、
+dependency generation、compiler bundle digest 与 closure policy digest。它只 INSERT 缺失的 catalog fence、dependency pointer 和
+ledger；不 UPDATE/DELETE 历史，不 stage candidate，不移动任何 pointer。两行必须同时缺失或同时 exact，partial state 稳定失败。
+
+全局锁/执行顺序不变：10794 在 Finalizer 之外先独立提交并完成 populated-upgrade hash Oracle；之后新的 clean build 才可重新进入
+`semantic fence -> active/runtime pointer -> candidate/review/attempt -> stage -> smoke -> Falcon locks/current`。因此 provisioning
+不与 combined activation 争夺或倒置锁，也不把维护窗口当作事务正确性。
 
 ### 2.2 Stage command
 
