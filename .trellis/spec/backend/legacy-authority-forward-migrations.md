@@ -161,7 +161,7 @@ bootstrap policy、historical COMMITTED attempt、source release 与 runtime res
 - 静态测试断言 exact 10793 checksum、E3/gen1 scope、零 E4/零 successor 污染、partial-state 失败与只 INSERT
   三张允许表。
 - 10794 renderer/manifest 测试固定其 source segments、rendered SQL 与 header/body checksum；加入 pre-baseline HOLD 后，workspace
-  migration inventory 的当前 frontier=10795、next=10796。
+  migration inventory 的当前 frontier=10796、next=10797。
 - PostgreSQL 17 exact populated clone：应用前 fence/pointer=0/0，应用后=1/1，replay 后仍=1/1。
 - 对 380 张非允许用户表比较 row count/canonical hash；另行复核 E3 baseline、generation 1 release/projections、
   review packet/decision 与 stage/E4/diagnostic counts。
@@ -263,3 +263,73 @@ select app_data_agent.hold_falcon24_authority_staging_session(:server_built_comm
 
 当 source-owned Skill body 改变时，同样禁止复用已发布 revision：必须提高 revision，通过 Skill Registry append + CAS 推进 head；
 数据库中的旧 revision bytes 即使来自重构前也属于已引用权威历史，不能按“可丢弃旧数据”处理。
+
+## 16. Scenario: Build-bound Successor Smoke Revalidation
+
+### 16.1 Scope / Trigger
+
+- Trigger：同一 immutable successor stage 已 `SMOKE_PASSED`，但新的 clean Worker build 必须重新执行 deterministic smoke 并让 E4 proof
+  绑定新 build receipt。
+- 原因：stage identity 不随 Worker build 变化；receipt/command hash 包含完整 Worker build。复用 stage-only idempotency key 会将合法新
+  receipt 错判为 same-key/different-command conflict。
+
+### 16.2 Signatures
+
+```text
+buildFalcon24SuccessorSmokeIdempotencyKey({
+  stage_identity: sha256,
+  worker_build_identity: RuntimeBuildIdentity
+}) -> Promise<uuid>
+
+semantic.commit_semantic_successor_smoke(jsonb) -> jsonb
+```
+
+数据库 RPC 名称和命令 schema `semantic-successor-smoke-commit@1.0.0` 不变；10796 是 forward behavior evolution，不修改 10783。
+
+### 16.3 Contracts
+
+- idempotency material schema 固定为 `falcon24-e4-successor-smoke-identity@2.0.0`，字段仅为 exact stage identity 与完整
+  `runtime-build-identity@1.0.0`。
+- `SMOKE_PASSED` 仅接受 outcome `PASS` 的新 key。新 SMOKE receipt append-only；stage payload/status/`smoke_passed_at` 与旧 receipts
+  均不变。
+- same key/same command 在状态 fence 前返回旧 receipt，支持 commit-response crash recovery。
+- Finalizer 只使用当前 Worker 调用返回并重新验证的 receipt hash，不查询“最新 PASS”或覆盖旧 hash。
+
+### 16.4 Validation & Error Matrix
+
+| 条件 | 结果 |
+| --- | --- |
+| 同 stage、同 Worker build、同命令重放 | 返回 exact 既有 receipt；receipt count 不变 |
+| 同 key、不同 receipt/command hash | `SEMANTIC_SUCCESSOR_IDEMPOTENCY_CONFLICT` |
+| `STAGED + PASS` | append SMOKE，CAS 为 `SMOKE_PASSED` |
+| `STAGED + FAIL` | append SMOKE/REJECTION，CAS 为 `REJECTED` |
+| `SMOKE_PASSED + PASS + new build-bound key` | append SMOKE；stage/timestamp 不变 |
+| `SMOKE_PASSED + FAIL` | `SEMANTIC_RUNTIME_SMOKE_FENCE_MISMATCH`；零写入 |
+| `REJECTED/PROMOTED + new key`、错误 digest/closure 或重复 receipt hash | fail closed；零写入 |
+
+### 16.5 Good / Base / Bad Cases
+
+- Good：固定 stage + 新 clean Worker build 派生新 key，Worker 重新验证并 append PASS；proof v2 绑定本轮返回 receipt。
+- Base：进程在 commit 后丢失响应；同 build 派生同 key，RPC 返回同一 receipt，不追加重复历史。
+- Bad：把 key 只绑定 stage、UPDATE 旧 receipt 的 build identity/hash，或从多条 PASS 中任意选择一条构造 proof。
+
+### 16.6 Tests Required
+
+- Unit：同 exact build key 稳定、build identity 任一变化导致 key 不同。
+- Static migration：exact 10795 checksum、RPC 状态分支、无 receipt UPDATE/DELETE、owner/search path/ACL、source/rendered checksum。
+- PostgreSQL 17 exact populated clone：应用 10796 前后 stage/receipt ordered canonical count/hash不变；随后验证 PASS append、replay、
+  conflict、FAIL rollback、旧 receipt bytes 与 `smoke_passed_at` 不变。
+- Finalizer：新 build receipt 进入 proof/baseline；失败时 `e432`/E4 零污染并保持 E3/gen1。
+
+### 16.7 Wrong vs Correct
+
+```typescript
+// Wrong: stage 相同就复用 smoke key；新 Worker receipt 必然与旧 command hash 冲突
+stableUuid(`smoke:${stageIdentity}`);
+
+// Correct: build 是 receipt identity 的一部分，因此也必须进入 operation idempotency identity
+await buildFalcon24SuccessorSmokeIdempotencyKey({
+  stage_identity: stageIdentity,
+  worker_build_identity: workerBuildIdentity,
+});
+```

@@ -1,10 +1,10 @@
 # Falcon24 Semantic Generation 2 与 E4 原子权威恢复
 
 > 执行状态（2026-08-28）：W1-W7 已实施并通过全量验证；被拒绝的 generation-1 repair 现场已按用户授权封存到可恢复审计 stash。
-> 用户已批准 exact review packet 与 W8。10794 已应用到专用权威库且未改变受保护历史；随后唯一一次 Finalizer 已生成并 smoke PASS
-> generation 2 candidate，但在 Falcon supporting Team materialization 阶段因三个 Semantic Skill 的源码变更仍错误复用 revision 2 而 HOLD。
-> 当前仍为 E3/gen1，candidate 保持 `SMOKE_PASSED`，E4 baseline/activation 为零；旧 E4 staging session `e430` 仍为 `STAGED`。
-> W8-R2 代码与 10795 已验证并提交，但尚未应用到专用库。诊断与正式门禁只能在 W8 成功后按 fail-closed 顺序执行。
+> 用户已批准 exact review packet 与 W8。10795 已应用，旧 `e430` 已通过 capability-gated authority 封存为 `HOLD`；随后 clean build
+> 上唯一一次 `e431` Finalizer 因既有 smoke 幂等键未绑定 Worker build 而失败关闭，且未留下 `e431` session、E4 baseline 或 activation。
+> 当前仍为 E3/gen1，generation 2 candidate 保持 `SMOKE_PASSED`。W8-R3 的 build-bound idempotency 与 10796 append-only smoke
+> revalidation 已在 exact clone 验证，尚未应用到专用权威库；诊断与正式门禁只能在 W8 成功后按 fail-closed 顺序执行。
 
 ## 1. Goal
 
@@ -175,10 +175,12 @@ drop、提交、执行或用于修改数据库。否决原因：
 W1-W7 已完成并通过 focused/full validation 与 scoped commits。被拒绝的 generation 1 repair 只保留在命名审计 stash 中，不得恢复
 或执行。用户已对 packet `801bfa69-2ea6-49d9-9a6a-676b0e3facd6` 作出 exact APPROVE，并明确批准 W8。第一次 Finalizer 只执行一次，
 以 `SEMANTIC_SUCCESSOR_DEPENDENCY_POINTER_REQUIRED` HOLD；只读核对证明 stage/E4/diagnostic 均为零、current 仍为 E3/gen1。
-10794 已应用并通过 all-old 历史核对；第二次、也是 10794 后唯一一次 Finalizer 生成了 generation 2 stage 并完成 deterministic smoke，
-随后以 `BUILTIN_TEAM_SKILL_REVISION_CONFLICT` 停止。下一步必须先应用 10795，通过 capability-gated CLI 将旧 `e430` 会话从
-`STAGED` 封存为 `HOLD`，再以包含 Semantic Skill rev3 的新 clean build 和新 staging id 执行一次 Finalizer。不得重用 `e430`、
-不得直接 UPDATE session、不得连续重跑。E4 成功前不得创建 diagnostic/gate attempt 或运行正式门禁。
+10794 已应用并通过 all-old 历史核对；10794 后第一次 Finalizer 生成 generation 2 stage、完成 deterministic smoke，随后以
+`BUILTIN_TEAM_SKILL_REVISION_CONFLICT` 停止。10795 已应用，`e430` 已以原 failure code 封存为 `HOLD`。commit
+`eedf64cfdcb213ae66669ce4299df8ebe3ff9d17` 的 clean build 上，使用新 staging id `e431` 的 Finalizer 只执行一次，并因旧 smoke
+idempotency key 与新 Worker receipt command hash 冲突而返回 `FALCON24_SEMANTIC_SUCCESSOR_SMOKE_PROCESS_FAILED`；只读审计证明
+`e431` 未落库且 current 仍为 E3/gen1。用户已批准 W8-R3；10796 应用后只允许使用全新 `e432` 执行一次 Finalizer，不得重用
+`e431`、直接 UPDATE receipt/stage 或连续重跑。E4 成功前不得创建 diagnostic/gate attempt 或运行正式门禁。
 
 ## 9. W8-R2 Requirements and Evidence
 
@@ -195,4 +197,23 @@ W1-W7 已完成并通过 focused/full validation 与 scoped commits。被拒绝�
 - 实现 commits：`297b8ead`（三个 Semantic Skill 追加 rev3）与 `2305d9c6`（Contracts/Platform/Web/10795 recovery）。
 - 10795 rendered checksum 为 `sha256:6a367834c337db45823104c28e4ecc2445b3ab73270fb0bbf766a20aad4f6d9d`；已在专用容器内
   exact `data_agent` clone 上通过 PostgreSQL 17 apply、owner/grant/postcondition、HOLD/replay/conflict 验证，scratch database 已删除。
-- 专用权威 `data_agent` 仍为 frontier 10794、Falcon E3、semantic gen1，`e430=STAGED`；10795 尚未应用，也未再次运行 Finalizer。
+- 专用权威 `data_agent` 已为 frontier 10795，Falcon E3、semantic gen1，`e430=HOLD`；新 `e431` 未落库，E4 baseline/activation 为零。
+
+## 10. W8-R3 Build-bound Smoke Revalidation
+
+- **R-G2-36 Build-bound idempotency。** Finalizer 的 successor smoke 幂等身份必须绑定 exact `stage_identity` 与完整
+  `RuntimeBuildIdentity`，使用 `falcon24-e4-successor-smoke-identity@2.0.0` canonical hash 派生 key。同 stage/同 build 返回同一 key；
+  build identity 任一字段变化必须产生不同 key。
+- **R-G2-37 Append-only revalidation。** `semantic.commit_semantic_successor_smoke(jsonb)` 保留 `STAGED` 首次 PASS/FAIL 状态机，并允许
+  `SMOKE_PASSED + new key + PASS` 追加新的 build-bound SMOKE receipt。旧 validation/smoke receipt、stage identity 与
+  `smoke_passed_at` 不得更新或删除。
+- **R-G2-38 Revalidation fail closed。** `SMOKE_PASSED + FAIL`、同 key/不同 command、重复 receipt hash、错误 stage digest 或 receipt
+  closure 必须整笔失败；stage 保持 `SMOKE_PASSED`，receipt count/hash 不变。
+- **R-G2-39 Exact proof binding。** Finalizer 必须使用本轮 Worker 真实返回并经 Port 重验的 `smoke_receipt_hash` 构造 proof v2 和 E4
+  baseline。不得搜索“任意最新 PASS”、复用旧 build receipt 或覆盖旧 receipt。
+- 实现 commit `cd09c721`；10796 是 10795 之后的 forward migration，只 `CREATE OR REPLACE` 唯一 smoke commit RPC，并在迁移事务前后对全部既有 successor
+  stage/receipt 做 ordered canonical count/hash 比较；rendered checksum 为
+  `sha256:4b3541be45d3e117510a497910de45f918b7a12111c338348b7bbd1de8217286`。
+- exact `data_agent` clone 上已验证：新 Worker build 追加 PASS、same-key replay 返回同一 receipt、same-key/different-build conflict、
+  `SMOKE_PASSED + FAIL` 返回 `40001` 且零状态/历史变化。scratch database 已删除，未创建新 Docker container。
+- 专用权威库尚未应用 10796，也未运行 `e432`；当前完成事实仍是 all-old E3/gen1。

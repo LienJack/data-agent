@@ -1,8 +1,8 @@
 # Falcon24 Semantic Generation 2 与 E4 原子权威恢复 — Implementation Plan
 
-> W1-W7 已于 2026-08-28 实施并全量验证。用户已批准 exact review packet 与 W8；10794 已应用且 protected history 未变。
-> 随后单次 Finalizer 已 stage/smoke generation 2，但因 Semantic Skill revision conflict 停止。W8-R2 源码与 10795 已验证提交；
-> 专用 `data_agent` 尚未应用 10795，旧 `e430` 仍为 STAGED，也未再次运行 Finalizer。
+> W1-W7 已于 2026-08-28 实施并全量验证。用户已批准 exact review packet 与 W8；10795 已应用，旧 `e430` 已封存为 HOLD。
+> clean build 上唯一一次 `e431` Finalizer 因 smoke 幂等键未绑定 Worker build 而失败关闭，current 仍为 E3/gen1 且无 E4 污染。
+> 用户已批准 W8-R3；build-bound key 与 10796 append-only revalidation 已在 exact clone 验证，尚未应用到专用 `data_agent`。
 
 ## 0. Current Freeze
 
@@ -562,11 +562,28 @@ Status: completed on 2026-08-28.
 - 聚焦验证：Contracts/Platform/Worker/migration 6 files / 36 tests，Web 3 files / 17 tests；Contracts、Agent Runtime、Platform、Web
   typecheck PASS，10795 renderer verify PASS。专用容器 exact clone 已完成 PostgreSQL 17 apply、HOLD、same-reason replay、different-reason
   conflict 与 owner/grant/ledger postcondition，随后删除；未创建新 Docker container。
-- [ ] 用户批准 W8-R2 数据库步骤后，将 10795 应用于专用 `data_agent` 并核对 frontier/checksum 与 protected history。
-- [ ] 通过 `hold:falcon24-authority-staging` 以 exact `e430` / retained hash / 原 failure code 封存旧 session，核对 `HOLD` 且
+- [x] 用户批准 W8-R2 数据库步骤后，将 10795 应用于专用 `data_agent` 并核对 frontier/checksum 与 protected history。
+- [x] 通过 `hold:falcon24-authority-staging` 以 exact `e430` / retained hash / 原 failure code 封存旧 session，核对 `HOLD` 且
   current 仍 E3/gen1；禁止直接 DML。
-- [ ] 在上述两个代码 commit 与文档 commit 上生成新 clean Web/Worker build identity，使用新 staging id 运行一次 Finalizer。
-- [ ] 若再次 HOLD，立即停止并只读审计；若 ACTIVE，继续 production-port readback 后才进入 W9。
+- [x] 在 commit `eedf64cfdcb213ae66669ce4299df8ebe3ff9d17` 上生成 clean Web/Worker build identity，使用新 staging id `e431`
+  运行一次 Finalizer；结果为 `FALCON24_SEMANTIC_SUCCESSOR_SMOKE_PROCESS_FAILED`，未重跑。
+- [x] 只读审计确认 `e431` 未落库、E4 baseline/activation/diagnostic/formal gate 均为零，current 保持 E3/gen1；进入 W8-R3。
+
+**W8-R3 build-bound smoke recovery**
+
+- [x] scoped implementation commit：`cd09c721`（Web build-bound key、10796、manifest 与聚焦测试）。
+- [x] TDD 定义 `buildFalcon24SuccessorSmokeIdempotencyKey`：同 stage/同 Worker build 稳定重放，不同 exact build 产生不同 key。
+- [x] 新增 forward migration 10796，只演进唯一 `commit_semantic_successor_smoke(jsonb)`：允许 `SMOKE_PASSED + PASS + new key`
+  append receipt；禁止 `SMOKE_PASSED + FAIL`、同 key/不同 command、receipt hash 重用和 terminal new write。
+- [x] Migration 事务对全部既有 successor stage/receipt 做 ordered canonical count/hash 前后比较；owner 为
+  `data_agent_u6_rpc_owner`，public/anon/authenticated/service_role revoke，仅 backend execute。
+- [x] 聚焦验证：Web typecheck；Web 2 files / 11 tests；migration/inventory 2 files / 8 tests；Biome、renderer verify、diff check PASS。
+- [x] 既有专用容器的 exact `data_agent` clone 已完成 PostgreSQL 17 apply、new-build PASS append、same-key replay、
+  same-key/different-build conflict、`SMOKE_PASSED + FAIL` rollback；旧 receipt/stage timestamp 未变，scratch 已删除，未新建 Docker。
+- [ ] 将 scoped code/migration 与 spec commits 固定后，在专用 `data_agent` 应用 exact 10796 checksum
+  `sha256:4b3541be45d3e117510a497910de45f918b7a12111c338348b7bbd1de8217286`，再次核对 all-old E3/gen1 与历史 bytes。
+- [ ] 基于新 commit 生成 clean Web/Worker build identity，只用全新 staging id `e432` 执行一次 Finalizer；若 HOLD，立即只读审计并停止；
+  若 ACTIVE，完成 production-port readback 后才进入 W9。
 
 **Stop conditions**
 

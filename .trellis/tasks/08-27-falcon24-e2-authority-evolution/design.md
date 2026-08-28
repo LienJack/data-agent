@@ -1,8 +1,8 @@
 # Falcon24 Semantic Generation 2 与 E4 原子权威恢复 — Design
 
-> W1-W7 已于 2026-08-28 实施并全量验证，用户已批准 exact review packet 与 W8。10794 已应用且受保护历史未变；后续单次
-> Finalizer 已生成 smoke-passed generation 2 candidate，但 supporting Team materialization 因三个 Semantic Skill 错误复用 revision 2
-> 而停止。W8-R2 已以追加 revision 3 和 10795 pre-baseline HOLD authority 修复并验证，尚未应用到专用权威数据库。
+> W1-W7 已于 2026-08-28 实施并全量验证，用户已批准 exact review packet 与 W8。10795 已应用，`e430` 已封存为 HOLD；clean build
+> 上唯一一次 `e431` Finalizer 因旧 smoke 幂等键未绑定 Worker build 而失败关闭，current 仍为 E3/gen1，且没有 `e431`/E4 污染。
+> 用户已批准 W8-R3；build-bound key 与 10796 append-only smoke revalidation 已在 exact clone 验证，尚未应用到专用权威数据库。
 
 ## 1. Scope / Trigger
 
@@ -599,3 +599,51 @@ Falcon staging advisory -> current authority row -> exact staging session row �
 HOLD 成功后继续抛出原错误。若 HOLD 自身失败，则返回 `FALCON24_E4_STAGING_HOLD_FAILED`，并将原错误与 HOLD 错误保留为内部 cause，
 禁止继续 baseline/activation。独立恢复 CLI 要求 confirmation、E4、staging id、expected retained-assets hash 与稳定 failure code；
 它先通过正常 capability authority 核对 current=E3，再调用同一 Port，不直接执行 SQL。
+
+## 15. W8-R3 Build-bound Smoke Revalidation Design
+
+### 15.1 Root cause and identity contract
+
+`stageIdentity` 只覆盖 ChangeSet/review/source snapshot/compiler/predecessor，因此不同 Worker build 对同一 stage 会得到同一旧 smoke key；
+但 `semantic-runtime-smoke-receipt@1.0.0` 明确包含完整 `worker_build_identity`，新 build 必然产生不同 receipt/command hash。10783 的原始
+RPC 将 same key/different command 正确判为 conflict，所以问题在调用端幂等身份，不是 stage 或历史 receipt 损坏。
+
+```text
+smoke_identity = canonical_sha256({
+  schema_version: falcon24-e4-successor-smoke-identity@2.0.0,
+  stage_identity,
+  worker_build_identity
+})
+smoke_idempotency_key = stable_uuid("falcon24:E4:semantic-smoke-idempotency:" + smoke_identity)
+```
+
+### 15.2 RPC state machine and lock order
+
+10796 不建第二 authority，也不修改 10783 历史 migration；它在同一函数签名上前向演进：
+
+```text
+same key + same command                      -> exact receipt replay
+same key + different command                 -> IDEMPOTENCY_CONFLICT
+STAGED + PASS + new key                      -> append SMOKE; CAS SMOKE_PASSED
+STAGED + FAIL + new key                      -> append SMOKE + REJECTION; CAS REJECTED
+SMOKE_PASSED + PASS + new build-bound key    -> append SMOKE; stage/timestamps unchanged
+SMOKE_PASSED + FAIL                          -> FENCE_MISMATCH; append/update count = 0
+REJECTED/PROMOTED + new key                  -> FENCE_MISMATCH
+```
+
+锁顺序保持 `semantic authority fence -> exact stage FOR UPDATE -> receipt uniqueness check`。same-key replay 在 terminal/status fence 之前，
+确保进程丢失响应后仍可读取原 receipt；任何新写先验证完整 receipt/hash/closure，再检查 receipt hash 唯一性并 append。
+
+### 15.3 Crash recovery and activation binding
+
+- 进程在 Worker 验证后、RPC 前中断：无新 receipt；同 build 派生同 key 可安全重放。
+- RPC commit 后、Finalizer 收包前中断：same key/same command 返回 exact 已写 receipt，不追加第三份。
+- revalidation FAIL 或幂等冲突：事务回滚，current 仍 E3/gen1，stage 仍 `SMOKE_PASSED`。
+- revalidation PASS：Finalizer 只消费本轮返回的 exact receipt hash 构造 proof；combined activation 失败仍整笔 all-old。
+
+### 15.4 File boundaries and tests
+
+- Web：`finalize-falcon24-authority.ts` 只负责 build-bound key；不选择或伪造 receipt。
+- Database：10796 source/rendered SQL/manifest 只演进 `semantic.commit_semantic_successor_smoke(jsonb)` 的受控状态机与 grants。
+- Tests：helper 覆盖同 build replay/不同 build divergence；migration 测试覆盖 exact 10795 baseline、无 receipt UPDATE/DELETE、ACL 与历史快照；
+  PostgreSQL 17 exact clone 覆盖 append PASS、replay、conflict、FAIL rollback 和 scratch cleanup。
