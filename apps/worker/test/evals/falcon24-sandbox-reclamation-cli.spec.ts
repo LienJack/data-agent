@@ -90,6 +90,29 @@ describe("Falcon24 sandbox reclamation", () => {
     });
   });
 
+  it("builds a non-scoring E4 diagnostic reclamation receipt without a campaign slot", async () => {
+    const observation = await managementObservation();
+
+    await expect(
+      reclaimFalcon24RunSandboxes({
+        runtime: () => ({ cleanupRun: vi.fn(async () => observation) }),
+        claim: vi.fn(async () => ({ disposition: "CLAIMED" as const, receipt: null })),
+        campaign_id: "E4-Q1",
+        run_id: runId,
+        runtime_attestation_hash: `sha256:${"a".repeat(64)}`,
+      }),
+    ).resolves.toMatchObject({
+      disposition: "CLAIMED",
+      receipt: {
+        schema_version: "falcon24-sandbox-reclamation-receipt@3.0.0",
+        authority_epoch: "E4",
+        campaign_id: "E4-Q1",
+        run_id: runId,
+        residual: 0,
+      },
+    });
+  });
+
   it("rejects invalid campaign/run identity before calling OpenSandbox", async () => {
     const cleanupRun = vi.fn(async () => managementObservation());
     const claim = vi.fn(async () => ({ disposition: "CLAIMED" as const, receipt: null }));

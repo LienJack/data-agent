@@ -8,6 +8,7 @@ import {
   buildFalcon24SandboxReclamationReceiptV2,
   FALCON24_STRICT_ACCEPTANCE_POLICY_ID,
   falcon24AcceptanceCampaignIdSchema,
+  falcon24GateIdSchema,
   type falcon24SandboxReclamationReceiptDocumentSchema,
 } from "@data-agent/contracts/evals";
 import { adaptPgPool } from "@data-agent/platform/persistence";
@@ -103,7 +104,7 @@ export async function reclaimFalcon24RunSandboxes(input: {
   readonly run_id: string;
   readonly runtime_attestation_hash: `sha256:${string}`;
 }) {
-  const campaignId = falcon24AcceptanceCampaignIdSchema.parse(input.campaign_id);
+  const campaignId = falcon24GateIdSchema.parse(input.campaign_id);
   const authorityEpoch = authorityEpochForFalcon24Gate(campaignId);
   const runId = runIdSchema.parse(input.run_id);
   const claim = await input.claim();
