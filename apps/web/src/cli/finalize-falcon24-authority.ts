@@ -22,6 +22,7 @@ import {
   buildFalcon24StagingReceiptV2,
   type Falcon24E1StagingReceipt,
   type Falcon24StagingReceiptV2,
+  falcon24AuthorityEpochOrdinal,
   falcon24AuthorityEpochSchema,
   type falcon24SuccessorAuthorityEpochSchema,
   verifyFalcon24E1StagingReceipt,
@@ -87,7 +88,10 @@ const DEFAULT_PRINCIPAL_ID = "00000000-0000-4000-8000-00000000e125";
 const DEFAULT_STAGING_ID = "00000000-0000-4000-8000-00000000e230";
 const DEFAULT_DATASOURCE_ID = "37653002-af62-53c9-bf21-519468aa39ab";
 const TARGET_AUTHORITY_EPOCH = "E4" as const;
-const supportedFinalizationEpochSchema = z.enum(["E4", "E5"]);
+const supportedFinalizationEpochSchema = falcon24AuthorityEpochSchema.refine(
+  (epoch) => epoch === "E4" || falcon24AuthorityEpochOrdinal(epoch) >= 5n,
+  "FALCON24_AUTHORITY_FINALIZATION_EPOCH_UNSUPPORTED",
+);
 const SEMANTIC_DOMAIN = "falcon24" as const;
 const REPOSITORY_ROOT = fileURLToPath(new URL("../../../../", import.meta.url));
 const execFileAsync = promisify(execFile);
@@ -198,6 +202,13 @@ function reportedAuthorityEpoch(environment: NodeJS.ProcessEnv): string {
     environment.FALCON24_AUTHORITY_EPOCH ?? TARGET_AUTHORITY_EPOCH,
   );
   return parsed.success ? parsed.data : TARGET_AUTHORITY_EPOCH;
+}
+
+function predecessorAuthorityEpoch(target: string): string {
+  const ordinal = falcon24AuthorityEpochOrdinal(target);
+  if (target === "E4") return "E3";
+  if (ordinal < 5n) throw new TypeError("FALCON24_AUTHORITY_FINALIZATION_EPOCH_UNSUPPORTED");
+  return `E${ordinal - 1n}`;
 }
 
 async function contractHash(root: string, paths: readonly string[]) {
@@ -862,7 +873,8 @@ export async function runFalcon24AuthorityFinalization(
       authorizer: authority.authorizer,
     });
     const currentAuthority = requireValue(await epoch.loadCurrent(capability));
-    const expectedCurrentEpoch = configuration.authority_epoch === "E5" ? "E4" : "E3";
+    const retainedTarget = configuration.authority_epoch !== "E4";
+    const expectedCurrentEpoch = predecessorAuthorityEpoch(configuration.authority_epoch);
     if (currentAuthority?.authority_epoch !== expectedCurrentEpoch) {
       throw new TypeError("FALCON24_AUTHORITY_EPOCH_NOT_SUCCESSOR");
     }
@@ -898,7 +910,7 @@ export async function runFalcon24AuthorityFinalization(
       before.semantic_pointer.release.datasource_id !== configuration.datasource_id
     ) {
       throw new TypeError(
-        configuration.authority_epoch === "E5"
+        retainedTarget
           ? "FALCON24_RETAINED_SEMANTIC_PREFLIGHT_MISMATCH"
           : "FALCON24_SEMANTIC_SUCCESSOR_PREFLIGHT_MISMATCH",
       );
@@ -912,27 +924,26 @@ export async function runFalcon24AuthorityFinalization(
       generation: before.semantic_pointer.release.generation,
       release_digest: exactContentHash(before.semantic_pointer.release.release_digest),
     };
-    const supporting =
-      configuration.authority_epoch === "E5"
-        ? await loadFalcon24SupportingAuthorityContext({
-            capability,
-            defaults_reader: defaultsReader,
-            scope: before.scope,
-            expected_semantic_release: expectedSemanticRelease,
-            expected_datasource_id: configuration.datasource_id,
-            expected_defaults_version: before.workspace_defaults.version,
-          })
-        : await loadFalcon24E4SupportingAuthorityContext({
-            capability,
-            defaults_reader: defaultsReader,
-            scope: before.scope,
-            expected_semantic_predecessor: expectedSemanticRelease,
-            expected_datasource_id: configuration.datasource_id,
-            expected_defaults_version: before.workspace_defaults.version,
-          });
+    const supporting = retainedTarget
+      ? await loadFalcon24SupportingAuthorityContext({
+          capability,
+          defaults_reader: defaultsReader,
+          scope: before.scope,
+          expected_semantic_release: expectedSemanticRelease,
+          expected_datasource_id: configuration.datasource_id,
+          expected_defaults_version: before.workspace_defaults.version,
+        })
+      : await loadFalcon24E4SupportingAuthorityContext({
+          capability,
+          defaults_reader: defaultsReader,
+          scope: before.scope,
+          expected_semantic_predecessor: expectedSemanticRelease,
+          expected_datasource_id: configuration.datasource_id,
+          expected_defaults_version: before.workspace_defaults.version,
+        });
     if (supporting.schema_snapshot_ref.resource_revision !== 1) {
       throw new TypeError(
-        configuration.authority_epoch === "E5"
+        retainedTarget
           ? "FALCON24_RETAINED_SUPPORTING_AUTHORITY_INCOMPLETE"
           : "FALCON24_E4_SUPPORTING_AUTHORITY_INCOMPLETE",
       );
@@ -1041,7 +1052,7 @@ export async function runFalcon24AuthorityFinalization(
         runtime.sandbox,
       ]);
     };
-    if (configuration.authority_epoch === "E5") {
+    if (retainedTarget) {
       const result = await finalizeFalcon24RetainedAuthority({
         capability,
         authority_epoch: configuration.authority_epoch,

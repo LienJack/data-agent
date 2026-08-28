@@ -10,6 +10,7 @@ import {
   type Falcon24RetainedSemanticReleaseAuthorityProof,
   type Falcon24SemanticAuthorityClosure,
   falcon24AuthorityBindingV2Schema,
+  falcon24AuthorityEpochOrdinal,
 } from "@data-agent/contracts/runs";
 import type { RuntimeBuildIdentity } from "@data-agent/contracts/server";
 import {
@@ -129,7 +130,11 @@ export async function finalizeFalcon24RetainedAuthority(input: {
   }) => Promise<void>;
 }): Promise<Falcon24RetainedFinalizationResult> {
   const closure = await input.readback.loadCurrentClosure();
-  assertRetainedClosure(closure, "E4");
+  const targetOrdinal = falcon24AuthorityEpochOrdinal(input.authority_epoch);
+  if (targetOrdinal < 5n) {
+    throw new TypeError("FALCON24_RETAINED_AUTHORITY_EPOCH_INVALID");
+  }
+  assertRetainedClosure(closure, `E${targetOrdinal - 1n}`);
   const published = await verifySemanticReleaseEnvelope(
     await input.readback.loadPublishedRelease({
       semantic_domain: closure.scope.semantic_domain,

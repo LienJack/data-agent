@@ -50,19 +50,22 @@ describe("Falcon24 versioned authority finalization", () => {
     });
   });
 
-  it("recognizes E5 as an explicit retained-authority target before confirmation", async () => {
-    await expect(
-      runFalcon24AuthorityFinalization({
-        NODE_ENV: "test",
-        FALCON24_AUTHORITY_EPOCH: "E5",
-      }),
-    ).resolves.toEqual({
-      schema_version: "falcon24-authority-finalization-result@2.0.0",
-      authority_epoch: "E5",
-      terminal: "NOT_RUN",
-      reason_code: "FALCON24_AUTHORITY_ACTIVATION_CONFIRMATION_REQUIRED",
-    });
-  });
+  it.each(["E5", "E6"])(
+    "recognizes %s as an explicit retained-authority target before confirmation",
+    async (authorityEpoch) => {
+      await expect(
+        runFalcon24AuthorityFinalization({
+          NODE_ENV: "test",
+          FALCON24_AUTHORITY_EPOCH: authorityEpoch,
+        }),
+      ).resolves.toEqual({
+        schema_version: "falcon24-authority-finalization-result@2.0.0",
+        authority_epoch: authorityEpoch,
+        terminal: "NOT_RUN",
+        reason_code: "FALCON24_AUTHORITY_ACTIVATION_CONFIRMATION_REQUIRED",
+      });
+    },
+  );
 
   it("rejects unsupported activation targets before confirmation", async () => {
     await expect(

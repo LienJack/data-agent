@@ -59,6 +59,13 @@ const e5Authority = {
   baseline_hash: hash("7"),
   activation_attempt_id: id(12),
 } as const;
+const e6Authority = {
+  schema_version: "falcon24-authority-binding@2.0.0",
+  authority_epoch: "E6",
+  baseline_id: id(18),
+  baseline_hash: hash("c"),
+  activation_attempt_id: id(19),
+} as const;
 const versions = {
   semantic_pointer: 3,
   semantic_runtime: 3,
@@ -134,19 +141,24 @@ async function promotedEnvelope(): Promise<SemanticSuccessorStageEnvelope> {
   };
 }
 
-async function arrange() {
+async function arrange(
+  authorities: {
+    readonly current: typeof e4Authority | typeof e5Authority;
+    readonly target: typeof e5Authority | typeof e6Authority;
+  } = { current: e4Authority, target: e5Authority },
+) {
   const published = await promotedEnvelope();
   const before: Falcon24SemanticAuthorityClosure = {
     schema_version: "falcon24-semantic-authority-closure@1.0.0",
     scope,
-    authority: e4Authority,
+    authority: authorities.current,
     semantic_pointer: { version: versions.semantic_pointer, release },
     semantic_runtime: { version: versions.semantic_runtime, release },
     workspace_defaults: { version: versions.workspace_defaults, release },
   };
   const after: Falcon24SemanticAuthorityClosure = {
     ...before,
-    authority: e5Authority,
+    authority: authorities.target,
   };
   const events: string[] = [];
   const loadCurrentClosure = vi
@@ -164,21 +176,23 @@ async function arrange() {
     return published;
   });
   const stageFalconAuthority = vi.fn(async () => {
-    events.push("stage-e5");
+    events.push(`stage-${authorities.target.authority_epoch.toLowerCase()}`);
     return {
       baseline_ref: {
-        baseline_id: e5Authority.baseline_id,
-        baseline_hash: e5Authority.baseline_hash,
+        baseline_id: authorities.target.baseline_id,
+        baseline_hash: authorities.target.baseline_hash,
       },
-      activation_attempt_ref: { activation_attempt_id: e5Authority.activation_attempt_id },
+      activation_attempt_ref: {
+        activation_attempt_id: authorities.target.activation_attempt_id,
+      },
     };
   });
   const activateRetained = vi.fn(async () => {
-    events.push("activate-e5");
-    return { ok: true as const, value: e5Authority };
+    events.push(`activate-${authorities.target.authority_epoch.toLowerCase()}`);
+    return { ok: true as const, value: authorities.target };
   });
   const holdActivationAttempt = vi.fn(async () => {
-    events.push("hold-e5");
+    events.push(`hold-${authorities.target.authority_epoch.toLowerCase()}`);
   });
   return {
     published,
@@ -186,8 +200,8 @@ async function arrange() {
     after,
     events,
     input: {
-      capability: { authority: "falcon24-e5" },
-      authority_epoch: "E5",
+      capability: { authority: `falcon24-${authorities.target.authority_epoch.toLowerCase()}` },
+      authority_epoch: authorities.target.authority_epoch,
       web_build_identity: webBuild,
       worker_build_identity: workerBuild,
       epoch: { activateRetained },
@@ -242,6 +256,25 @@ describe("Falcon24 retained semantic finalization", () => {
       "projection_payload",
     );
     expect(arranged.calls.holdActivationAttempt).not.toHaveBeenCalled();
+  });
+
+  it("advances E5 to E6 through the same retained semantic authority", async () => {
+    const arranged = await arrange({ current: e5Authority, target: e6Authority });
+
+    const result = await finalizeFalcon24RetainedAuthority(arranged.input);
+
+    expect(arranged.events).toEqual([
+      "load-current",
+      "load-published",
+      "stage-e6",
+      "activate-e6",
+      "load-current-readback",
+      "load-published",
+    ]);
+    expect(result.authority).toEqual(e6Authority);
+    expect(result.readback.semantic_pointer).toEqual(arranged.before.semantic_pointer);
+    expect(result.readback.semantic_runtime).toEqual(arranged.before.semantic_runtime);
+    expect(result.readback.workspace_defaults).toEqual(arranged.before.workspace_defaults);
   });
 
   it("holds the exact E5 attempt once when retained activation fails", async () => {
