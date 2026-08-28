@@ -116,6 +116,49 @@ describe("PostgreSQL Falcon24 versioned authority epoch", () => {
     expect(scripted.calls).toHaveLength(0);
   });
 
+  it("holds an exact pre-baseline E4 staging session with a content-addressed command", async () => {
+    const auth = authority();
+    const stagingId = id(12);
+    const scripted = scriptedPool((text) =>
+      text.includes("hold_falcon24_authority_staging_session")
+        ? {
+            schema_version: "falcon24-staging-hold@2.0.0",
+            authority_epoch: "E4",
+            staging_id: stagingId,
+            retained_assets_hash: hash("a"),
+            status: "HOLD",
+            failure_code: "BUILTIN_TEAM_SKILL_REVISION_CONFLICT",
+          }
+        : undefined,
+    );
+    const result = await createPostgresFalcon24AuthorityEpoch({
+      pool: scripted.pool,
+      authorizer: auth.authorizer,
+    }).holdStagingSession(auth.capability, {
+      schema_version: "falcon24-staging-hold-request@2.0.0",
+      authority_epoch: "E4",
+      staging_id: stagingId,
+      expected_retained_assets_hash: hash("a"),
+      failure_code: "BUILTIN_TEAM_SKILL_REVISION_CONFLICT",
+    });
+
+    expect(result).toMatchObject({
+      ok: true,
+      value: { staging_id: stagingId, status: "HOLD" },
+    });
+    expect(
+      scripted.calls.find(({ text }) => text.includes("hold_falcon24_authority_staging_session"))
+        ?.values,
+    ).toEqual([
+      expect.objectContaining({
+        schema_version: "falcon24-staging-hold-request@2.0.0",
+        authority_epoch: "E4",
+        staging_id: stagingId,
+        command_hash: expect.stringMatching(/^sha256:[0-9a-f]{64}$/),
+      }),
+    ]);
+  });
+
   it("loads the exact current E2 binding", async () => {
     const auth = authority();
     const binding = {

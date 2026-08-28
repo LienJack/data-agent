@@ -13,6 +13,7 @@ import {
   falcon24AuthorityPersistenceBindingSchema,
   falcon24E1ActivationAttemptSchema,
   falcon24SemanticAuthorityClosureSchema,
+  falcon24StagingHoldRequestV2Schema,
   falcon24StagingSessionRequestV2Schema,
   verifyCombinedFalcon24SemanticActivationCommand,
   verifyCombinedFalcon24SemanticActivationReceipt,
@@ -140,6 +141,18 @@ describe("Falcon24 E1 authority epoch contracts", () => {
         retained_assets_hash: hash("1"),
       }),
     ).toMatchObject({ authority_epoch: "E2" });
+    expect(
+      falcon24StagingHoldRequestV2Schema.parse({
+        schema_version: "falcon24-staging-hold-request@2.0.0",
+        authority_epoch: "E4",
+        staging_id: id(70),
+        expected_retained_assets_hash: hash("7"),
+        failure_code: "BUILTIN_TEAM_SKILL_REVISION_CONFLICT",
+      }),
+    ).toMatchObject({
+      authority_epoch: "E4",
+      failure_code: "BUILTIN_TEAM_SKILL_REVISION_CONFLICT",
+    });
     expect(
       falcon24ActivationAttemptV2Schema.parse({
         schema_version: "falcon24-activation-attempt@2.0.0",

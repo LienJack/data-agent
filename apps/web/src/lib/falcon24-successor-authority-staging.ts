@@ -17,6 +17,7 @@ import {
   buildFalcon24StagingReceiptV2,
   type Falcon24StagingReceiptV2,
   falcon24ActivationAttemptV2Schema,
+  falcon24StagingHoldResultV2Schema,
   verifyFalcon24StagingReceiptV2,
 } from "@data-agent/contracts/runs";
 import { z } from "zod";
@@ -66,6 +67,7 @@ const SUPPORTING_COMPONENTS = Object.freeze([
 
 export interface Falcon24E4StagingAuthorityPort {
   beginStaging(capability: unknown, request: unknown): Promise<PortResult<unknown>>;
+  holdStagingSession(capability: unknown, request: unknown): Promise<PortResult<unknown>>;
   recordReceipt(capability: unknown, receipt: unknown): Promise<PortResult<unknown>>;
   stageBaseline(capability: unknown, request: unknown): Promise<PortResult<unknown>>;
   beginActivationAttempt(capability: unknown, request: unknown): Promise<PortResult<unknown>>;
@@ -88,6 +90,48 @@ function required<T>(result: PortResult<T>): T {
 
 function exact(left: unknown, right: unknown): boolean {
   return canonicalizeJson(left) === canonicalizeJson(right);
+}
+
+function stableFailureCode(error: unknown): string {
+  const message = error instanceof Error ? error.message : "";
+  return /^[A-Z][A-Z0-9_]{2,127}$/u.test(message)
+    ? message
+    : "FALCON24_E4_SUPPORTING_STAGING_FAILED";
+}
+
+async function holdPreBaselineStaging(input: {
+  readonly capability: unknown;
+  readonly epoch: Falcon24E4StagingAuthorityPort;
+  readonly staging_id: string;
+  readonly retained_assets_hash: `sha256:${string}`;
+  readonly cause: unknown;
+}): Promise<void> {
+  const failureCode = stableFailureCode(input.cause);
+  try {
+    const held = falcon24StagingHoldResultV2Schema.parse(
+      required(
+        await input.epoch.holdStagingSession(input.capability, {
+          schema_version: "falcon24-staging-hold-request@2.0.0",
+          authority_epoch: "E4",
+          staging_id: input.staging_id,
+          expected_retained_assets_hash: input.retained_assets_hash,
+          failure_code: failureCode,
+        }),
+      ),
+    );
+    if (
+      held.authority_epoch !== "E4" ||
+      held.staging_id !== input.staging_id ||
+      held.retained_assets_hash !== input.retained_assets_hash ||
+      held.failure_code !== failureCode
+    ) {
+      throw new TypeError("FALCON24_E4_STAGING_HOLD_MISMATCH");
+    }
+  } catch (holdError) {
+    throw new TypeError("FALCON24_E4_STAGING_HOLD_FAILED", {
+      cause: new AggregateError([input.cause, holdError]),
+    });
+  }
 }
 
 function stableUuid(material: string): string {
@@ -213,11 +257,23 @@ export async function stageFalcon24E4SuccessorAuthority(input: {
     throw new TypeError("FALCON24_E4_STAGING_SESSION_MISMATCH");
   }
 
-  const receipts = await verifySupportingReceipts({
-    receipts: await input.stage_supporting_receipts(),
-    staging_id: configuration.staging_id,
-    production_isolation_proven: configuration.production_isolation_proven,
-  });
+  let receipts: Awaited<ReturnType<typeof verifySupportingReceipts>>;
+  try {
+    receipts = await verifySupportingReceipts({
+      receipts: await input.stage_supporting_receipts(),
+      staging_id: configuration.staging_id,
+      production_isolation_proven: configuration.production_isolation_proven,
+    });
+  } catch (error) {
+    await holdPreBaselineStaging({
+      capability: input.capability,
+      epoch: input.epoch,
+      staging_id: configuration.staging_id,
+      retained_assets_hash: input.retained_assets_hash,
+      cause: error,
+    });
+    throw error;
+  }
   const semanticReceipt = await buildFalcon24StagingReceiptV2({
     schema_version: "falcon24-staging-receipt@2.0.0",
     authority_epoch: "E4",

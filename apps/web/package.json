@@ -16,6 +16,7 @@
     "bootstrap:falcon24-e1": "NODE_OPTIONS=--conditions=react-server tsx src/cli/bootstrap-falcon24-e1.ts",
     "prepare:falcon24-successor-review": "NODE_OPTIONS=--conditions=react-server tsx src/cli/prepare-falcon24-semantic-successor-review.ts",
     "finalize:falcon24-authority": "NODE_OPTIONS=--conditions=react-server tsx src/cli/finalize-falcon24-authority.ts",
+    "hold:falcon24-authority-staging": "NODE_OPTIONS=--conditions=react-server tsx src/cli/hold-falcon24-authority-staging.ts",
     "falcon24:diagnostic:control": "NODE_OPTIONS=--conditions=react-server tsx src/cli/falcon24-diagnostic.ts",
     "falcon24:analysis:control": "NODE_OPTIONS=--conditions=react-server tsx src/cli/falcon24-agent-acceptance.ts",
     "falcon24:qualification:control": "NODE_OPTIONS=--conditions=react-server tsx src/cli/falcon24-qualification.ts"

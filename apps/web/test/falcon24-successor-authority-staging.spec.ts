@@ -123,6 +123,20 @@ function successfulEpoch(calls: string[]) {
       calls.push("begin-staging");
       return { ok: true as const, value: { ...request, status: "STAGED" } };
     }),
+    holdStagingSession: vi.fn(async (_capability: unknown, request: Record<string, unknown>) => {
+      calls.push("hold-staging");
+      return {
+        ok: true as const,
+        value: {
+          schema_version: "falcon24-staging-hold@2.0.0",
+          authority_epoch: request.authority_epoch,
+          staging_id: request.staging_id,
+          retained_assets_hash: request.expected_retained_assets_hash,
+          status: "HOLD",
+          failure_code: request.failure_code,
+        },
+      };
+    }),
     recordReceipt: vi.fn(
       async (_capability: unknown, receipt: unknown): Promise<{ ok: true; value: unknown }> => {
         calls.push("semantic-receipt");
@@ -264,6 +278,29 @@ describe("Falcon24 E4 successor authority staging", () => {
       "FALCON24_E4_SUPPORTING_RECEIPTS_INVALID",
     );
     expect(arrangedValue.epoch.recordReceipt).not.toHaveBeenCalled();
+    expect(arrangedValue.epoch.stageBaseline).not.toHaveBeenCalled();
+    expect(arrangedValue.epoch.holdStagingSession).toHaveBeenCalledWith(
+      expect.anything(),
+      expect.objectContaining({
+        schema_version: "falcon24-staging-hold-request@2.0.0",
+        authority_epoch: "E4",
+        staging_id: id(16),
+        expected_retained_assets_hash: hash("f"),
+        failure_code: "FALCON24_E4_SUPPORTING_RECEIPTS_INVALID",
+      }),
+    );
+  });
+
+  it("holds a pre-baseline session when supporting Team materialization fails", async () => {
+    const arrangedValue = await arranged();
+    arrangedValue.stageSupportingReceipts.mockRejectedValueOnce(
+      new TypeError("BUILTIN_TEAM_SKILL_REVISION_CONFLICT"),
+    );
+
+    await expect(stageFalcon24E4SuccessorAuthority(input(arrangedValue))).rejects.toThrow(
+      "BUILTIN_TEAM_SKILL_REVISION_CONFLICT",
+    );
+    expect(arrangedValue.calls).toEqual(["begin-staging", "hold-staging"]);
     expect(arrangedValue.epoch.stageBaseline).not.toHaveBeenCalled();
   });
 

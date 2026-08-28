@@ -12,6 +12,8 @@ import {
   falcon24AuthorityBindingV2Schema,
   falcon24RunAuthorityLookupSchema,
   falcon24StageBaselineRequestV2Schema,
+  falcon24StagingHoldRequestV2Schema,
+  falcon24StagingHoldResultV2Schema,
   falcon24StagingSessionRequestV2Schema,
   falcon24UiReceiptDocumentSchema,
   falcon24UiReceiptV2Schema,
@@ -39,6 +41,10 @@ const STABLE_DATABASE_ERRORS = new Set([
   "FALCON24_AUTHORITY_STAGING_IDENTITY_CONFLICT",
   "FALCON24_AUTHORITY_STAGING_SESSION_NOT_FOUND",
   "FALCON24_AUTHORITY_STAGING_SESSION_TERMINAL",
+  "FALCON24_AUTHORITY_STAGING_HOLD_INVALID",
+  "FALCON24_AUTHORITY_STAGING_HOLD_MISMATCH",
+  "FALCON24_AUTHORITY_STAGING_HOLD_BASELINE_EXISTS",
+  "FALCON24_AUTHORITY_STAGING_HOLD_CONFLICT",
   "FALCON24_AUTHORITY_STAGING_RECEIPT_INVALID",
   "FALCON24_AUTHORITY_STAGING_RECEIPT_CONFLICT",
   "FALCON24_AUTHORITY_STAGING_INCOMPLETE",
@@ -229,6 +235,20 @@ export function createPostgresFalcon24AuthorityEpoch(input: {
         sql: "select app_data_agent.begin_falcon24_authority_staging_session($1::jsonb) as value",
         command,
         parse: (raw) => stagingSessionSchema.parse(raw),
+      });
+    },
+
+    async holdStagingSession(capability: unknown, candidate: unknown) {
+      const request = falcon24StagingHoldRequestV2Schema.parse(candidate);
+      const command = await commandWithHash(request);
+      return invoke({
+        capability,
+        access: "WRITE",
+        operation: "falcon24-authority.hold-staging",
+        correlation_id: request.staging_id,
+        sql: "select app_data_agent.hold_falcon24_authority_staging_session($1::jsonb) as value",
+        command,
+        parse: (raw) => falcon24StagingHoldResultV2Schema.parse(raw),
       });
     },
 

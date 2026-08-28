@@ -77,6 +77,23 @@ export const falcon24StagingSessionRequestV2Schema = z.strictObject({
   retained_assets_hash: contentHashSchema,
 });
 
+export const falcon24StagingHoldRequestV2Schema = z.strictObject({
+  schema_version: z.literal("falcon24-staging-hold-request@2.0.0"),
+  authority_epoch: falcon24SuccessorAuthorityEpochSchema,
+  staging_id: immutableIdSchema,
+  expected_retained_assets_hash: contentHashSchema,
+  failure_code: stableFailureCodeSchema,
+});
+
+export const falcon24StagingHoldResultV2Schema = z.strictObject({
+  schema_version: z.literal("falcon24-staging-hold@2.0.0"),
+  authority_epoch: falcon24SuccessorAuthorityEpochSchema,
+  staging_id: immutableIdSchema,
+  retained_assets_hash: contentHashSchema,
+  status: z.literal("HOLD"),
+  failure_code: stableFailureCodeSchema,
+});
+
 function addStagingReceiptIsolationIssue(
   receipt: {
     component: z.infer<typeof falcon24E1StagingComponentSchema>;
@@ -627,6 +644,8 @@ export type Falcon24AuthorityPersistenceBinding = z.infer<
 >;
 export type Falcon24E1StagingReceipt = z.infer<typeof falcon24E1StagingReceiptSchema>;
 export type Falcon24StagingReceiptV2 = z.infer<typeof falcon24StagingReceiptV2Schema>;
+export type Falcon24StagingHoldRequestV2 = z.infer<typeof falcon24StagingHoldRequestV2Schema>;
+export type Falcon24StagingHoldResultV2 = z.infer<typeof falcon24StagingHoldResultV2Schema>;
 export type Falcon24E1ActivationAttempt = z.infer<typeof falcon24E1ActivationAttemptSchema>;
 export type Falcon24E1UiReceipt = z.infer<typeof falcon24E1UiReceiptSchema>;
 export type Falcon24ActivationAttemptV2 = z.infer<typeof falcon24ActivationAttemptV2Schema>;
