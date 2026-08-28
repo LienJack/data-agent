@@ -649,6 +649,7 @@ validateSemanticRuntimeClosure(
 ): Promise<SemanticRuntimeClosureValidationReceipt>;
 buildFalcon24SemanticReleaseAuthorityProofV2(input: unknown);
 buildCombinedFalcon24SemanticActivationCommand(input: unknown);
+verifyFalcon24RetainedAssets(repositoryRoot: string): Promise<Falcon24RetainedAssetsProof>;
 runFalcon24AuthorityFinalization(environment?: NodeJS.ProcessEnv);
 runFalcon24E1Bootstrap(environment?: NodeJS.ProcessEnv);
 createPostgresFalcon24DiagnosticAuthority({ pool, authorizer });
@@ -688,6 +689,12 @@ app_data_agent.activate_falcon24_authority_with_semantic_successor(requested jso
   active attempt、核对 runtime attestation、执行 exact Run cleanup 并生成 residual=0 receipt；不得调用 formal gate authority。
 - E4-Q1 只能构建 `falcon24-qualification-manifest@3.0.0`，并绑定同一 PASSED diagnostic 的 attempt/run/receipt hash；v2 manifest 在 E4
   必须被 Port 和 PostgreSQL 双重拒绝。
+- `falcon24-retained-assets@1.0.0` 本身及其三个 E1 semantic source hash 属于历史证据；当前同路径源码允许随 generation 2 前进。
+  W8 preflight 必须证明 v1 manifest bytes 与首次引入提交相同，并从该提交读取三个 Git blob 复核历史 hash；对 E4 仍直接消费的
+  dataset、LLM 与 analysis runtime 文件则继续核对当前 checkout hash。不得修改 v1 manifest 或把当前源码退回 E1 来消除 drift。
+- 数据保留按权威身份而不是“年代久远”判断：plan 明列的 generation 1/E1-E3 Release、pointer、baseline、receipt、activation、Run、gate、
+  Artifact、diagnostic 永不删除；只有只读证明未被 current closure/receipt 引用且不参与完成证据的旧非权威数据，才可通过已审查
+  lifecycle/forward migration 丢弃。手工 SQL 与删除受保护历史始终禁止。
 
 ### 4. Validation & Error Matrix
 
@@ -707,14 +714,17 @@ app_data_agent.activate_falcon24_authority_with_semantic_successor(requested jso
 | diagnostic begin 未设置 semantic domain 或 current 不是 exact E4/gen2 | `FALCON24_DIAGNOSTIC_AUTHORITY_MISMATCH`，不创建 attempt |
 | diagnostic UI/Artifact/Run/build/reclamation 任一不闭合 | 对应 `FALCON24_DIAGNOSTIC_*`，attempt 不得伪造 PASS |
 | E4-Q1 缺 PASSED diagnostic receipt 或仍使用 manifest v2 | `FALCON24_QUALIFICATION_DIAGNOSTIC_REQUIRED` / `...PASSED_REQUIRED` |
+| v1 retained manifest bytes 或 origin Git blob 漂移 | `FALCON24_E1_RETAINED_MANIFEST_BYTES_DRIFT` / `...HISTORICAL_SOURCE_HASH_INVALID` |
+| E4 当前消费的 retained 文件 hash 漂移 | `FALCON24_E1_RETAINED_CURRENT_FILE_HASH_INVALID` |
 
 ### 5. Good / Base / Bad Cases
 
 - Good：服务器锁定 reviewed ChangeSet/source，编译四类投影，重算全部 digest，共享 validator PASS 后 stage；smoke PASS 后 combined RPC 原子切换。
 - Base：candidate 闭包失败时完整 stage 与 rejection receipt 原子保存为 `REJECTED`，current 保持 gen1/E3。
 - Good diagnostic：active attempt → 真实 composer exact Run → 答案页 Trace UI → 五 Artifact → Worker residual=0 → PASS receipt → E4-Q1 v3。
+- Good retained：v1 manifest 与 origin Git blobs 保持原样，当前三个 semantic source drift 被显式报告并由 clean build attestation 接管。
 - Bad：CLI 传 projection bytes、UPDATE generation 1、Worker fallback、用 retired bootstrap 创建新 gen1、API-only diagnostic、让
-  diagnostic claim 正式 gate slot，或先切 semantic 再激活 E4。
+  diagnostic claim 正式 gate slot、把当前源码退回 E1、修改旧 retained manifest，或先切 semantic 再激活 E4。
 
 ### 6. Tests Required
 
@@ -729,6 +739,8 @@ app_data_agent.activate_falcon24_authority_with_semantic_successor(requested jso
 - Diagnostic：begin transaction semantic domain、one-active/replay、deterministic non-scoring browser claim、真实 composer/Trace UI、同源
   QA/Trace receipt、五 Artifact、Worker no-formal-gate reclamation、residual=0、PASS/FAIL immutability。
 - E4-Q1：CLI/Port/PostgreSQL 三层拒绝 v2 或 missing/stale/mismatched diagnostic receipt；v3 exact ref 才能 begin。
+- Retained preflight：manifest/origin blob/current retained asset 的正反例；合法 semantic forward drift 必须 READY，历史 blob 或当前消费文件
+  篡改必须分别以稳定 reason code HOLD。
 
 ### 7. Wrong vs Correct
 
@@ -741,6 +753,15 @@ const command = await buildStageReviewedSemanticSuccessorCommand(refsAndExpected
 const stage = await publicationAuthority.stageReviewedSuccessor(capability, command);
 const verified = await verifySemanticReleaseEnvelope(stage.value);
 const validation = await validateSemanticRuntimeClosure(verified);
+
+// Wrong：要求 generation 2 当前源码继续等于 E1 manifest 中的历史 source hash。
+await verifyCurrentFilesAgainstHistoricalSemanticHashes(retainedV1);
+
+// Correct：历史 bytes 从 manifest origin commit 证明，当前源码由 clean build attestation 证明。
+const retainedProof = await verifyFalcon24RetainedAssets(repositoryRoot);
+if (retainedProof.verified_historical_semantic_file_count !== 3) {
+  throw new TypeError("FALCON24_E1_RETAINED_HISTORY_INCOMPLETE");
+}
 
 // Wrong：为 fresh 环境恢复已经失效的 generation-1 bootstrap writer。
 await bootstrapFalcon24GenerationOne({ projection_payload });

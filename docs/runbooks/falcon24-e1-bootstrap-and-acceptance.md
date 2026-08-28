@@ -34,6 +34,11 @@ pnpm sandbox:analysis:attest
 pnpm sandbox:analysis:unique
 ```
 
+Retained verifier 的 `READY` 必须同时给出 `manifest_origin_commit=5eb4714e13ef3daad44ae79412832e6108c17902`、
+`verified_historical_semantic_file_count=3` 与 `verified_current_retained_file_count=31`。三个
+`current_semantic_drift_files` 是 generation 2 的显式前向变化：旧 E1 bytes 由 origin commit 的 Git blob 证明，当前 build 则由后续
+build attestation 证明；不得要求当前源码重新等于 E1，也不得修改旧 manifest 消除 drift。
+
 预期审计 stash 为 `audit/rejected-generation1-repair-2026-08-28`；它不得 restore、drop 或执行。Docker 清单只能包含既有
 `data-agent-postgres`、`data-agent-clamav`、`data-agent-neo4j` 和唯一专用
 `data-agent-falcon24-e1-e81a29c6`，不得再创建数据库容器。
@@ -49,6 +54,11 @@ OpenSandbox attestation。`production_isolation_proven=false` 时即使功能链
 2. 导出 generation 1 source/projection bytes、E1-E3 baseline/receipt/run/gate 的 count、identity 与 hash；
 3. 核对 current exact 为 E3，semantic pointer/runtime/defaults exact 为 generation 1；
 4. 只应用已提交并验证的 forward migrations，禁止手工 SQL、backfill 或历史 UPDATE/DELETE。
+
+若只读审计发现重构前旧数据损坏，先按以下边界分类：generation 1 release/projection/pointer 历史和 E1/E2/E3
+baseline/receipt/activation/Run/gate/Artifact/diagnostic 永不丢弃；不在该集合、未被 current closure/receipt 引用且不参与完成证据的
+旧非权威数据可以丢弃。丢弃必须通过已审查 lifecycle 或新的 forward migration，并保存分类依据与前后 count/hash；禁止临时手工 SQL，
+也禁止借此改写受保护历史。
 
 Finalizer 的服务器环境必须提供以下引用；秘密、DSN 与 provider payload 不得写入日志或 Artifact：
 

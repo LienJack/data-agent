@@ -433,6 +433,13 @@ Status: completed on 2026-08-28.
 - Production graph 扫描未发现 repair RPC/CLI、第二 publisher、Worker fallback、client projection payload 面或 bootstrap semantic SQL。
   唯一 successor publisher 为 `publishReviewedSemanticChangeSet` + 单一 `createPostgresSemanticPublicationAuthority`；实际 Finalizer 只调用
   该 authority 与 combined activation，历史 bootstrap 只返回 fail-closed 结果。Docker 复核仍只有既有四个容器，审计 stash 未变化。
+- W8 授权前的二次就绪审计发现旧 retained verifier 把三个已由 generation 2 合法演进的当前源码路径误判为 E1 历史损坏。
+  `c0d88ebf` 保持 `falcon24-retained-assets@1.0.0` bytes 不变，改为从 manifest 首次引入提交 `5eb4714e` 读取并验证三个历史 Git blob，
+  同时继续对 E4 当前消费的 31 个 dataset/LLM/runtime 文件严格验 hash；当前三个 semantic drift 仅作为显式前向差异报告。2 个测试文件
+  13/13、focused Biome、CLI preflight、OpenSandbox attestation 与 runtime uniqueness 全部 PASS；未连接数据库或启动新容器。
+- 用户补充的数据处置边界：只有本计划明列的 generation 1/E1-E3 权威历史不可丢失。若 W8 只读审计发现重构前损坏数据，必须先证明
+  它不被 current closure/receipt 引用且不属于完成证据；此后才可经已审查 lifecycle/forward migration 丢弃，禁止手工 SQL 或把
+  “可丢弃旧数据”扩大到受保护集合。
 
 **Stop conditions**
 
