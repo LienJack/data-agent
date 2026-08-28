@@ -102,7 +102,6 @@ begin
     and preparation.tenant_id=(scope_json->>'tenant_id')::uuid
     and preparation.environment=scope_json->>'environment'
     and preparation.semantic_domain=p_command->>'semantic_domain'
-    and preparation.principal_id=principal_id
     and preparation.idempotency_key=(p_command->>'idempotency_key')::uuid;
   if found then
     if existing.input_digest<>input_digest

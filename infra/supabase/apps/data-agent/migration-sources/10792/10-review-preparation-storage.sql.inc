@@ -21,6 +21,7 @@ create table semantic.semantic_successor_review_preparation(
   packet_digest text not null check(packet_digest~'^sha256:[0-9a-f]{64}$'),
   created_at timestamptz not null default pg_catalog.clock_timestamp(),
   primary key(app_id,tenant_id,environment,semantic_domain,principal_id,idempotency_key),
+  unique(app_id,tenant_id,environment,semantic_domain,idempotency_key),
   unique(app_id,tenant_id,environment,semantic_domain,change_set_id),
   unique(app_id,tenant_id,environment,semantic_domain,packet_id),
   foreign key(app_id,tenant_id,environment,semantic_domain,change_set_id)

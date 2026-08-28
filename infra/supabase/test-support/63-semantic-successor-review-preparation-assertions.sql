@@ -27,6 +27,7 @@ declare
   app_id constant uuid:='00000000-0000-4000-8000-00000000da01';
   tenant_id constant uuid:='00000000-0000-4000-8000-00000000a192';
   principal_id constant uuid:='00000000-0000-4000-8000-000000001192';
+  continuation_principal_id constant uuid:='00000000-0000-4000-8000-000000001193';
   predecessor_id constant uuid:='00000000-0000-4000-8000-000000007191';
   predecessor_digest constant text:=
     'sha256:1111111111111111111111111111111111111111111111111111111111111111';
@@ -41,7 +42,9 @@ begin
     'Falcon24 successor review preparation fixture');
   insert into app_data_agent.memberships(
     app_id,tenant_id,environment,principal_id,membership_role)
-  values(app_id,tenant_id,'test',principal_id,'owner');
+  values
+    (app_id,tenant_id,'test',principal_id,'owner'),
+    (app_id,tenant_id,'test',continuation_principal_id,'owner');
   insert into semantic.semantic_authority_fence(
     app_id,tenant_id,environment,fence_epoch)
   values(app_id,tenant_id,'test',1);
@@ -143,7 +146,11 @@ begin
       'release_digest','sha256:1111111111111111111111111111111111111111111111111111111111111111'),
     'expected_pointer_version',1,'change_set',change_set);
   opened:=semantic.prepare_falcon24_successor_review(command);
+  perform pg_catalog.set_config('data_agent.principal_id',
+    '00000000-0000-4000-8000-000000001193',true);
   replay:=semantic.prepare_falcon24_successor_review(command);
+  perform pg_catalog.set_config('data_agent.principal_id',
+    '00000000-0000-4000-8000-000000001192',true);
   if (opened-'created') is distinct from (replay-'created')
     or opened->>'candidate_status'<>'WAITING_REVIEW'
     or (opened->>'created')::boolean is not true

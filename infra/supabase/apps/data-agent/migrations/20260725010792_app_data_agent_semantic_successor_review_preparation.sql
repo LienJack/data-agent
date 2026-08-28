@@ -1,4 +1,4 @@
--- falcon24_semantic_successor_review_preparation_migration_checksum: sha256:78ab36c0a9927b91fd5607179c353684088ede528b7c3ce4f3d59b1649722ba5
+-- falcon24_semantic_successor_review_preparation_migration_checksum: sha256:41ef0f9ef259b9ca72a4d6d49a5d8cd3ddcdef94500e789289bffbea6d3341be
 begin;
 
 select platform.acquire_migration_lock(
@@ -89,6 +89,7 @@ create table semantic.semantic_successor_review_preparation(
   packet_digest text not null check(packet_digest~'^sha256:[0-9a-f]{64}$'),
   created_at timestamptz not null default pg_catalog.clock_timestamp(),
   primary key(app_id,tenant_id,environment,semantic_domain,principal_id,idempotency_key),
+  unique(app_id,tenant_id,environment,semantic_domain,idempotency_key),
   unique(app_id,tenant_id,environment,semantic_domain,change_set_id),
   unique(app_id,tenant_id,environment,semantic_domain,packet_id),
   foreign key(app_id,tenant_id,environment,semantic_domain,change_set_id)
@@ -230,7 +231,6 @@ begin
     and preparation.tenant_id=(scope_json->>'tenant_id')::uuid
     and preparation.environment=scope_json->>'environment'
     and preparation.semantic_domain=p_command->>'semantic_domain'
-    and preparation.principal_id=principal_id
     and preparation.idempotency_key=(p_command->>'idempotency_key')::uuid;
   if found then
     if existing.input_digest<>input_digest
@@ -935,6 +935,6 @@ $postconditions$;
 select platform.assert_migration_checksum(
   'app','00000000-0000-4000-8000-00000000da01'::uuid,
   '20260725010792_app_data_agent_semantic_successor_review_preparation',
-  'sha256:78ab36c0a9927b91fd5607179c353684088ede528b7c3ce4f3d59b1649722ba5');
+  'sha256:41ef0f9ef259b9ca72a4d6d49a5d8cd3ddcdef94500e789289bffbea6d3341be');
 
 commit;
