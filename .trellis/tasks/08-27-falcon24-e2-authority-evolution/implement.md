@@ -492,6 +492,8 @@ Status: completed on 2026-08-28.
 
 - 用户再次明确批准执行数据库变更与 E4 activation。
 - W1-W7 commits/build attestations固定；专用容器仍为 `data-agent-falcon24-e1-e81a29c6`，不创建新 DB 容器。
+- 当前 worktree 不提供 `DATABASE_URL` 或显式 Falcon scope；授权后必须在一次性 server shell 注入专用 `data_agent` DSN，并从数据库
+  capability/deployment 事实只读确认 environment/workspace/principal/datasource。不得复用普通开发库 DSN，也不得把 CLI fallback 当作证据。
 
 **Work**
 

@@ -50,10 +50,14 @@ OpenSandbox attestation。`production_isolation_proven=false` 时即使功能链
 
 只有获得新的明确授权后，才先对专用数据库做只读审计：
 
-1. 确认 migration frontier 仍为 10782；
-2. 导出 generation 1 source/projection bytes、E1-E3 baseline/receipt/run/gate 的 count、identity 与 hash；
-3. 核对 current exact 为 E3，semantic pointer/runtime/defaults exact 为 generation 1；
-4. 只应用已提交并验证的 forward migrations，禁止手工 SQL、backfill 或历史 UPDATE/DELETE。
+1. 在一次性 server shell 中显式注入 `DATABASE_URL`，目标必须是现有专用容器映射端口与 `data_agent` 数据库；只记录脱敏后的
+   target match 结果，不回显、持久化或写入 Artifact。禁止依赖当前 worktree 的 dotenv，也禁止复用普通 `data-agent-postgres` DSN。
+2. 确认 migration frontier 仍为 10782；
+3. 从数据库现有 capability/deployment 事实确认 exact environment、workspace、principal 与 datasource，再显式设置对应 scope 变量；
+   不得把 CLI 的 `local`/固定 UUID fallback 当作专用 E3 环境证据。
+4. 导出 generation 1 source/projection bytes、E1-E3 baseline/receipt/run/gate 的 count、identity 与 hash；
+5. 核对 current exact 为 E3，semantic pointer/runtime/defaults exact 为 generation 1；
+6. 只应用已提交并验证的 forward migrations，禁止手工 SQL、backfill 或历史 UPDATE/DELETE。
 
 若只读审计发现重构前旧数据损坏，先按以下边界分类：generation 1 release/projection/pointer 历史和 E1/E2/E3
 baseline/receipt/activation/Run/gate/Artifact/diagnostic 永不丢弃；不在该集合、未被 current closure/receipt 引用且不参与完成证据的
@@ -65,6 +69,11 @@ payload 或 digest，不写正式 generation 2 Release/pointer/runtime/E4：
 
 ```sh
 export DATA_AGENT_ALLOW_FALCON24_SUCCESSOR_REVIEW_PREPARATION=YES
+export DATABASE_URL=<secret-dedicated-data-agent-dsn>
+export WORKER_DEPLOYMENT_ID=<audited-deployment-id>
+export WORKER_TENANT_ID=<audited-workspace-id>
+export WORKER_PRINCIPAL_ID=<audited-server-principal-id>
+export FALCON24_DATASOURCE_ID=<audited-datasource-id>
 export FALCON24_ENVIRONMENT=<exact-environment>
 
 pnpm --filter @data-agent/web prepare:falcon24-successor-review
@@ -83,7 +92,12 @@ reviewer。successor 的 `decision_reason` 若提供，必须是最长 128 字�
 
 ```sh
 export DATA_AGENT_ALLOW_FALCON24_AUTHORITY_ACTIVATION=YES
+export DATABASE_URL=<same-secret-dedicated-data-agent-dsn>
 export FALCON24_AUTHORITY_EPOCH=E4
+export WORKER_DEPLOYMENT_ID=<same-audited-deployment-id>
+export WORKER_TENANT_ID=<same-audited-workspace-id>
+export WORKER_PRINCIPAL_ID=<same-audited-server-principal-id>
+export FALCON24_DATASOURCE_ID=<same-audited-datasource-id>
 export FALCON24_WEB_BUILD_IDENTITY_FILE=<absolute-web-build-identity-json>
 export FALCON24_WORKER_BUILD_IDENTITY_FILE=<absolute-worker-build-identity-json>
 export FALCON24_BUILD_ATTESTATION_FILE=<absolute-build-attestation-json>
