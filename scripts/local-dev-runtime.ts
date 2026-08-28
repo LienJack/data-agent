@@ -22,7 +22,7 @@ import {
   readWorkspaceBuildAttestation,
   type TurboBuildDryRun,
   verifyWorkspaceBuildAttestation,
-  type WorkspaceBuildAttestation,
+  type WorkspaceBuildAttestationV2,
   writeWorkspaceBuildAttestation,
 } from "./lib/workspace-build-integrity.js";
 
@@ -372,7 +372,7 @@ export class RecoverableWorkspaceBuildCoordinator<Role extends string, Generatio
 }
 
 interface PreparedLocalWorkspaceGeneration {
-  readonly attestation: WorkspaceBuildAttestation;
+  readonly attestation: WorkspaceBuildAttestationV2;
   readonly identities: ReadonlyMap<
     LocalApplicationProcessSpec["name"],
     RuntimeBuildIdentityProjection

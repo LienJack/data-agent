@@ -4,6 +4,7 @@ import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { fileURLToPath } from "node:url";
 import { afterEach, describe, expect, it } from "vitest";
+import { sha256ContentHash } from "../packages/contracts/src/common/index.js";
 import { runtimeBuildIdentitySchema } from "../packages/contracts/src/operations/runtime-build-identity.js";
 import {
   resolveImpactedWorkspaceConsumers,
@@ -45,6 +46,7 @@ function turboDryRun(
     readonly directory: string;
     readonly hash: string;
     readonly outputs?: readonly string[];
+    readonly excludedOutputs?: readonly string[];
   }>,
 ) {
   return parseTurboBuildDryRun({
@@ -55,6 +57,7 @@ function turboDryRun(
       package: task.packageName,
       hash: task.hash,
       outputs: task.outputs ?? ["dist/**"],
+      excludedOutputs: task.excludedOutputs ?? [],
       directory: task.directory,
       dependencies: [],
       dependents: [],
@@ -68,6 +71,7 @@ async function createBuildFixture(): Promise<string> {
   for (const path of [
     "packages/contracts/dist",
     "packages/platform/dist",
+    "packages/platform/dist/cache",
     "packages/platform/src",
   ]) {
     await mkdir(join(root, path), { recursive: true });
@@ -96,6 +100,7 @@ async function createBuildFixture(): Promise<string> {
     ["packages/contracts/dist/index.d.ts", "export declare const version = 1;"],
     ["packages/platform/dist/index.js", "export const query = 'new';"],
     ["packages/platform/dist/index.d.ts", 'export declare const query = "new";'],
+    ["packages/platform/dist/cache/turbopack.bin", "mutable-cache-v1"],
     ["packages/platform/src/index.ts", "export const query = 'new';"],
   ] as const) {
     await writeFile(join(root, path), content);
@@ -179,6 +184,7 @@ describe("Workspace build attestation", () => {
         directory: task.directory,
         hash: task.task_hash,
         outputs: task.outputs,
+        excludedOutputs: task.excluded_outputs,
       })),
     );
     const attestation = createWorkspaceBuildAttestation({
@@ -229,6 +235,35 @@ describe("Workspace build attestation", () => {
     expect(() => parseTurboBuildDryRun({ tasks: "missing" })).toThrowError(
       expect.objectContaining({ code: "DEV_WORKSPACE_BUILD_GRAPH_INVALID" }),
     );
+    expect(
+      parseTurboBuildDryRun({
+        tasks: [
+          {
+            taskId: "@data-agent/platform#build",
+            task: "build",
+            package: "@data-agent/platform",
+            hash: "1".repeat(16),
+            outputs: ["dist/**"],
+            directory: "packages/platform",
+          },
+        ],
+      }).tasks[0]?.excluded_outputs,
+    ).toEqual([]);
+    expect(
+      parseTurboBuildDryRun({
+        tasks: [
+          {
+            taskId: "@data-agent/platform#build",
+            task: "build",
+            package: "@data-agent/platform",
+            hash: "1".repeat(16),
+            outputs: ["dist/**"],
+            excludedOutputs: null,
+            directory: "packages/platform",
+          },
+        ],
+      }).tasks[0]?.excluded_outputs,
+    ).toEqual([]);
 
     const root = await createBuildFixture();
     await rm(join(root, "packages/platform/dist"), { recursive: true });
@@ -245,6 +280,115 @@ describe("Workspace build attestation", () => {
     ).toThrowError(expect.objectContaining({ code: "DEV_WORKSPACE_BUILD_OUTPUT_MISSING" }));
   });
 
+  it("规范保存 excludedOutputs，cache 漂移不改变证明而真实 output 漂移失败", async () => {
+    const root = await createBuildFixture();
+    const build = turboDryRun([
+      {
+        packageName: "@data-agent/platform",
+        directory: "packages/platform",
+        hash: "1".repeat(16),
+        outputs: ["dist/**"],
+        excludedOutputs: ["dist/cache/**"],
+      },
+    ]);
+    expect(build.tasks[0]).toMatchObject({
+      outputs: ["dist/**"],
+      excluded_outputs: ["dist/cache/**"],
+    });
+    const attestation = createWorkspaceBuildAttestation({
+      repoRoot: root,
+      beforeBuild: build,
+      afterBuild: build,
+      consumers: [{ consumerRole: "web", packageNames: ["@data-agent/platform"] }],
+      builtAt: "2026-08-29T00:00:00.000Z",
+      gitCommit: "e".repeat(40),
+      gitDirty: false,
+    });
+    expect(attestation.schema_version).toBe("workspace-build-attestation@2.0.0");
+    expect(attestation.consumers[0]?.package_tasks[0]?.excluded_outputs).toEqual(["dist/cache/**"]);
+
+    await writeFile(join(root, "packages/platform/dist/cache/turbopack.bin"), "mutable-cache-v2");
+    expect(
+      verifyWorkspaceBuildAttestation({ repoRoot: root, attestation, currentBuild: build }),
+    ).toEqual(attestation);
+
+    await writeFile(join(root, "packages/platform/dist/index.js"), "tampered-runtime-output");
+    expect(() =>
+      verifyWorkspaceBuildAttestation({ repoRoot: root, attestation, currentBuild: build }),
+    ).toThrowError(expect.objectContaining({ code: "DEV_WORKSPACE_BUILD_OUTPUT_MISMATCH" }));
+  });
+
+  it("只读校验 v1 历史证明，但新 writer 只生成 v2", async () => {
+    const root = await createBuildFixture();
+    const build = buildDryRun();
+    const current = createWorkspaceBuildAttestation({
+      repoRoot: root,
+      beforeBuild: build,
+      afterBuild: build,
+      consumers: [{ consumerRole: "web", packageNames: ["@data-agent/platform"] }],
+      builtAt: "2026-08-22T00:00:00.000Z",
+      gitCommit: "a".repeat(40),
+      gitDirty: false,
+    });
+    const consumers = await Promise.all(
+      current.consumers.map(async (consumer) => {
+        const packageTasks = consumer.package_tasks.map(
+          ({ excluded_outputs: _excluded, ...task }) => task,
+        );
+        return {
+          consumer_role: consumer.consumer_role,
+          build_id: await sha256ContentHash({
+            root_inputs: current.root_inputs,
+            package_tasks: packageTasks,
+          }),
+          package_tasks: packageTasks,
+        };
+      }),
+    );
+    const historical = {
+      ...current,
+      schema_version: "workspace-build-attestation@1.0.0" as const,
+      consumers,
+      generation_id: await sha256ContentHash({
+        built_at: current.built_at,
+        root_inputs: current.root_inputs,
+        consumers,
+      }),
+    };
+    const path = join(root, "attestation-v1.json");
+    await writeFile(path, `${JSON.stringify(historical)}\n`);
+
+    expect(readWorkspaceBuildAttestation(path)).toEqual(historical);
+    expect(
+      verifyWorkspaceBuildAttestation({
+        repoRoot: root,
+        attestation: historical,
+        currentBuild: build,
+      }),
+    ).toEqual(historical);
+  });
+
+  it("拒绝不安全、重复或重叠的 output glob", () => {
+    for (const excludedOutputs of [
+      ["/absolute/cache/**"],
+      ["../cache/**"],
+      ["dist/cache/**", "dist/cache/**"],
+      ["dist/**"],
+    ]) {
+      expect(() =>
+        turboDryRun([
+          {
+            packageName: "@data-agent/platform",
+            directory: "packages/platform",
+            hash: "1".repeat(16),
+            outputs: ["dist/**"],
+            excludedOutputs,
+          },
+        ]),
+      ).toThrowError(expect.objectContaining({ code: "DEV_WORKSPACE_BUILD_GRAPH_INVALID" }));
+    }
+  });
+
   it("构建中 task hash 漂移时不生成新证明", async () => {
     const root = await createBuildFixture();
     expect(() =>
@@ -255,6 +399,36 @@ describe("Workspace build attestation", () => {
         consumers: [{ consumerRole: "web", packageNames: ["@data-agent/platform"] }],
         builtAt: "2026-08-22T00:00:00.000Z",
         gitCommit: "a".repeat(40),
+        gitDirty: false,
+      }),
+    ).toThrowError(expect.objectContaining({ code: "DEV_WORKSPACE_BUILD_CHANGED_DURING_BUILD" }));
+
+    const before = turboDryRun([
+      {
+        packageName: "@data-agent/platform",
+        directory: "packages/platform",
+        hash: "1".repeat(16),
+        outputs: ["dist/**"],
+        excludedOutputs: ["dist/cache/**"],
+      },
+    ]);
+    const after = turboDryRun([
+      {
+        packageName: "@data-agent/platform",
+        directory: "packages/platform",
+        hash: "1".repeat(16),
+        outputs: ["dist/**"],
+        excludedOutputs: ["dist/transient/**"],
+      },
+    ]);
+    expect(() =>
+      createWorkspaceBuildAttestation({
+        repoRoot: root,
+        beforeBuild: before,
+        afterBuild: after,
+        consumers: [{ consumerRole: "web", packageNames: ["@data-agent/platform"] }],
+        builtAt: "2026-08-29T00:00:00.000Z",
+        gitCommit: "e".repeat(40),
         gitDirty: false,
       }),
     ).toThrowError(expect.objectContaining({ code: "DEV_WORKSPACE_BUILD_CHANGED_DURING_BUILD" }));

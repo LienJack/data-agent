@@ -44,6 +44,10 @@ python-sandbox health  # 通过受控 IPC/容器 healthcheck，不开放公共 T
 - 所有公开 dev 入口必须先经过根级 freshness coordinator。Coordinator 以 Turbo task hash 作为 input
   identity，以实际 output digest 验证磁盘产物；package/root input 变化时先停止 affected consumer，构建
   失败期间不得恢复旧 generation。raw `next dev` / `tsx watch` / `node dist` 不属于受支持入口。
+- Workspace build attestation v2 必须分别保存 Turbo dry-run 的 `outputs` 与 `excludedOutputs`，并把两个规范集合都纳入
+  task/build identity；output walker 使用同一 exclude 集合。Turbo 对空排除集合可能返回 `null` 或省略字段，统一规范为 `[]`。
+  `.next/cache/**` 等显式排除项不得影响 output digest；非排除产物变化仍必须失败关闭。v1 只允许按历史 hash 公式读取/核验，
+  新 writer 不得继续签发 v1。
 - Web/Worker/Indexer/Semantic Authoring 在任何数据库或端口访问前必须加载与 role 匹配的绝对路径 runtime
   identity。公开 health 只暴露 opaque `build_id` / `generation_id`；Git、路径、task/output digest 只留在
   受控证据或启动日志。
@@ -86,6 +90,7 @@ python-sandbox health  # 通过受控 IPC/容器 healthcheck，不开放公共 T
 | Turbo graph 缺 consumer/package | `DEV_WORKSPACE_BUILD_GRAPH_INVALID`，零应用端口 |
 | source/root input 与证明不同 | `DEV_WORKSPACE_BUILD_STALE`，停止 affected consumer |
 | output 缺失或被替换 | `DEV_WORKSPACE_BUILD_OUTPUT_MISSING/MISMATCH`，失败关闭 |
+| output/excluded glob 缺失、重复、绝对路径、越界或 include/exclude 冲突 | `DEV_WORKSPACE_BUILD_GRAPH_INVALID`，不生成证明 |
 | build 中输入继续变化 | 丢弃旧 generation，合并后重建 |
 | build 失败 | `DEV_WORKSPACE_BUILD_FAILED`，保持 blocked；后续变化/显式 retry 可恢复 |
 | runtime identity 缺失/非法/role 不符 | `RUNTIME_BUILD_IDENTITY_*`，数据库与 health 端口均未创建 |
@@ -116,7 +121,8 @@ python-sandbox health  # 通过受控 IPC/容器 healthcheck，不开放公共 T
   缺失配置失败关闭和诊断不含 Secret。
 - Migration：已应用版本跳过，缺失版本应用，checksum 漂移非零退出。
 - Workspace freshness：graph/attestation contract、source 已变但旧 dist、output tamper、build 中漂移、burst
-  coalescing、失败恢复、signal cleanup、四 role guard 与 opaque health identity。
+  coalescing、失败恢复、signal cleanup、四 role guard 与 opaque health identity；另覆盖 `excludedOutputs=null/omitted`、
+  cache mutation 不漂移、非 cache mutation 拒绝、v1 read-only/v2 writer。
 - Docker/Release：Web/Worker/Indexer identity 存在；非法 provenance、stale/tampered output 非零；runner 不含
   `.git`、`.turbo`、完整 attestation、绝对路径或 package digest。
 - Diagnostics：重复 bootstrap 只有一个 subscriber；logger throw 不改变公开事务结果；SQL/message/params/

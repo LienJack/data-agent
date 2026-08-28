@@ -15,7 +15,8 @@ import {
 } from "node:fs";
 import { dirname, isAbsolute, join, relative, resolve, sep } from "node:path";
 
-const attestationVersion = "workspace-build-attestation@1.0.0" as const;
+const legacyAttestationVersion = "workspace-build-attestation@1.0.0" as const;
+const attestationVersion = "workspace-build-attestation@2.0.0" as const;
 const runtimeIdentityVersion = "runtime-build-identity@1.0.0" as const;
 const defaultRootInputs = [
   "package.json",
@@ -66,6 +67,7 @@ export interface TurboBuildTaskIdentity {
   readonly directory: string;
   readonly task_hash: string;
   readonly outputs: readonly string[];
+  readonly excluded_outputs: readonly string[];
 }
 
 export interface TurboBuildDryRun {
@@ -76,13 +78,28 @@ export interface WorkspaceBuildPackageTask extends TurboBuildTaskIdentity {
   readonly output_digest: `sha256:${string}`;
 }
 
+export interface WorkspaceBuildPackageTaskV1 {
+  readonly task_id: string;
+  readonly package_name: string;
+  readonly directory: string;
+  readonly task_hash: string;
+  readonly outputs: readonly string[];
+  readonly output_digest: `sha256:${string}`;
+}
+
 export interface WorkspaceBuildConsumerAttestation {
   readonly consumer_role: RuntimeBuildConsumerRole;
   readonly build_id: `sha256:${string}`;
   readonly package_tasks: readonly WorkspaceBuildPackageTask[];
 }
 
-export interface WorkspaceBuildAttestation {
+export interface WorkspaceBuildConsumerAttestationV1 {
+  readonly consumer_role: RuntimeBuildConsumerRole;
+  readonly build_id: `sha256:${string}`;
+  readonly package_tasks: readonly WorkspaceBuildPackageTaskV1[];
+}
+
+export interface WorkspaceBuildAttestationV2 {
   readonly schema_version: typeof attestationVersion;
   readonly generation_id: `sha256:${string}`;
   readonly built_at: string;
@@ -91,6 +108,18 @@ export interface WorkspaceBuildAttestation {
   readonly root_inputs: Readonly<Record<string, `sha256:${string}`>>;
   readonly consumers: readonly WorkspaceBuildConsumerAttestation[];
 }
+
+export interface WorkspaceBuildAttestationV1 {
+  readonly schema_version: typeof legacyAttestationVersion;
+  readonly generation_id: `sha256:${string}`;
+  readonly built_at: string;
+  readonly git_commit: string;
+  readonly git_dirty: boolean;
+  readonly root_inputs: Readonly<Record<string, `sha256:${string}`>>;
+  readonly consumers: readonly WorkspaceBuildConsumerAttestationV1[];
+}
+
+export type WorkspaceBuildAttestation = WorkspaceBuildAttestationV1 | WorkspaceBuildAttestationV2;
 
 export interface RuntimeBuildIdentityProjection {
   readonly schema_version: typeof runtimeIdentityVersion;
@@ -188,12 +217,33 @@ function requiredString(object: JsonObject, key: string): string {
     : invalid(`字段 ${key} 必须是非空字符串。`);
 }
 
-function stringArray(object: JsonObject, key: string): string[] {
-  const value = object[key];
-  if (!Array.isArray(value) || !value.every((entry) => typeof entry === "string")) {
-    invalid(`字段 ${key} 必须是字符串数组。`);
+function canonicalOutputGlobs(object: JsonObject, key: "outputs" | "excludedOutputs"): string[] {
+  const raw = object[key];
+  if (key === "excludedOutputs" && (raw === undefined || raw === null)) return [];
+  if (!Array.isArray(raw) || !raw.every((entry) => typeof entry === "string")) {
+    return invalidGraph(`字段 ${key} 必须是字符串数组。`);
   }
-  return [...value];
+  const values = [...raw];
+  if (key === "outputs" && values.length === 0) {
+    return invalidGraph("Turbo build task 必须声明至少一个 output glob。");
+  }
+  const seen = new Set<string>();
+  for (const value of values) {
+    const segments = value.split("/");
+    if (
+      value.length === 0 ||
+      value.startsWith("!") ||
+      isAbsolute(value) ||
+      value.includes("\\") ||
+      value.includes("\0") ||
+      segments.includes("..") ||
+      seen.has(value)
+    ) {
+      return invalidGraph(`Turbo ${key} 包含不安全或重复 glob。`);
+    }
+    seen.add(value);
+  }
+  return [...seen].sort();
 }
 
 function hasExactKeys(object: JsonObject, keys: readonly string[]): boolean {
@@ -227,12 +277,18 @@ export function parseTurboBuildDryRun(input: unknown): TurboBuildDryRun {
     if (taskId !== `${packageName}#build` || !turboTaskHashPattern.test(taskHash)) {
       return invalidGraph(`Turbo dry-run task ${taskId} identity 无效。`);
     }
+    const outputs = canonicalOutputGlobs(candidate, "outputs");
+    const excludedOutputs = canonicalOutputGlobs(candidate, "excludedOutputs");
+    if (excludedOutputs.some((pattern) => outputs.includes(pattern))) {
+      return invalidGraph(`Turbo dry-run task ${taskId} 的 include/exclude glob 冲突。`);
+    }
     return {
       task_id: taskId,
       package_name: packageName,
       directory: requiredString(candidate, "directory"),
       task_hash: taskHash,
-      outputs: stringArray(candidate, "outputs"),
+      outputs,
+      excluded_outputs: excludedOutputs,
     } satisfies TurboBuildTaskIdentity;
   });
 
@@ -256,7 +312,7 @@ function pathIsWithin(path: string, root: string): boolean {
 
 function outputFiles(
   repoRoot: string,
-  task: TurboBuildTaskIdentity,
+  task: TurboBuildTaskIdentity | WorkspaceBuildPackageTaskV1,
   filesystem: WorkspaceBuildFilesystem,
   missingCode:
     | "DEV_WORKSPACE_BUILD_OUTPUT_MISSING"
@@ -267,9 +323,13 @@ function outputFiles(
     return invalid(`Task ${task.task_id} 的目录越过仓库边界。`);
   }
   const includes = task.outputs.filter((pattern) => !pattern.startsWith("!"));
-  const excludes = task.outputs
+  const legacyExcludes = task.outputs
     .filter((pattern) => pattern.startsWith("!"))
     .map((pattern) => pattern.slice(1));
+  const excludes = [
+    ...legacyExcludes,
+    ...("excluded_outputs" in task ? task.excluded_outputs : []),
+  ];
   const matches = new Set<string>();
   for (const pattern of includes) {
     for (const match of filesystem.glob(pattern, { cwd: packageRoot, exclude: excludes })) {
@@ -294,7 +354,7 @@ function outputFiles(
 
 function outputDigest(
   repoRoot: string,
-  task: TurboBuildTaskIdentity,
+  task: TurboBuildTaskIdentity | WorkspaceBuildPackageTaskV1,
   filesystem: WorkspaceBuildFilesystem,
   missingCode?: "DEV_WORKSPACE_BUILD_OUTPUT_MISSING" | "DEV_WORKSPACE_BUILD_OUTPUT_MISMATCH",
 ): `sha256:${string}` {
@@ -369,6 +429,17 @@ function taskSignature(task: TurboBuildTaskIdentity): string {
     directory: task.directory,
     task_hash: task.task_hash,
     outputs: task.outputs,
+    excluded_outputs: task.excluded_outputs,
+  });
+}
+
+function legacyTaskSignature(task: TurboBuildTaskIdentity | WorkspaceBuildPackageTaskV1): string {
+  return canonicalize({
+    task_id: task.task_id,
+    package_name: task.package_name,
+    directory: task.directory,
+    task_hash: task.task_hash,
+    outputs: task.outputs,
   });
 }
 
@@ -412,7 +483,7 @@ export function createWorkspaceBuildAttestation(input: {
   readonly gitDirty: boolean;
   readonly rootInputPaths?: readonly string[];
   readonly filesystem?: WorkspaceBuildFilesystem;
-}): WorkspaceBuildAttestation {
+}): WorkspaceBuildAttestationV2 {
   if (!isTimestamp(input.builtAt) || !gitCommitPattern.test(input.gitCommit)) {
     invalid("Workspace build provenance 的 builtAt 或 gitCommit 无效。");
   }
@@ -491,21 +562,24 @@ export function projectRuntimeBuildIdentities(
 }
 
 function assertAttestation(value: unknown): asserts value is WorkspaceBuildAttestation {
+  const topLevelKeys = [
+    "schema_version",
+    "generation_id",
+    "built_at",
+    "git_commit",
+    "git_dirty",
+    "root_inputs",
+    "consumers",
+  ] as const;
   if (
     !isJsonObject(value) ||
-    !hasExactKeys(value, [
-      "schema_version",
-      "generation_id",
-      "built_at",
-      "git_commit",
-      "git_dirty",
-      "root_inputs",
-      "consumers",
-    ]) ||
-    value.schema_version !== attestationVersion
+    !hasExactKeys(value, topLevelKeys) ||
+    (value.schema_version !== legacyAttestationVersion &&
+      value.schema_version !== attestationVersion)
   ) {
     invalid("Workspace build attestation version 或顶层字段无效。");
   }
+  const isLegacy = value.schema_version === legacyAttestationVersion;
   if (
     !isContentHash(value.generation_id) ||
     !isTimestamp(value.built_at) ||
@@ -522,7 +596,7 @@ function assertAttestation(value: unknown): asserts value is WorkspaceBuildAttes
   }
 
   const roles = new Set<RuntimeBuildConsumerRole>();
-  const consumers: WorkspaceBuildConsumerAttestation[] = [];
+  const consumers: JsonObject[] = [];
   for (const rawConsumer of value.consumers) {
     if (
       !isJsonObject(rawConsumer) ||
@@ -541,17 +615,21 @@ function assertAttestation(value: unknown): asserts value is WorkspaceBuildAttes
     roles.add(role);
 
     const packageNames = new Set<string>();
-    const packageTasks: WorkspaceBuildPackageTask[] = rawConsumer.package_tasks.map((rawTask) => {
+    const packageTasks = rawConsumer.package_tasks.map((rawTask): JsonObject => {
+      const taskKeys = isLegacy
+        ? ["task_id", "package_name", "directory", "task_hash", "outputs", "output_digest"]
+        : [
+            "task_id",
+            "package_name",
+            "directory",
+            "task_hash",
+            "outputs",
+            "excluded_outputs",
+            "output_digest",
+          ];
       if (
         !isJsonObject(rawTask) ||
-        !hasExactKeys(rawTask, [
-          "task_id",
-          "package_name",
-          "directory",
-          "task_hash",
-          "outputs",
-          "output_digest",
-        ]) ||
+        !hasExactKeys(rawTask, taskKeys) ||
         typeof rawTask.task_id !== "string" ||
         typeof rawTask.package_name !== "string" ||
         rawTask.task_id !== `${rawTask.package_name}#build` ||
@@ -561,21 +639,51 @@ function assertAttestation(value: unknown): asserts value is WorkspaceBuildAttes
         !turboTaskHashPattern.test(rawTask.task_hash) ||
         !Array.isArray(rawTask.outputs) ||
         !rawTask.outputs.every((output) => typeof output === "string") ||
+        (!isLegacy &&
+          (!Array.isArray(rawTask.excluded_outputs) ||
+            !rawTask.excluded_outputs.every((output) => typeof output === "string"))) ||
         !isContentHash(rawTask.output_digest)
       ) {
         return invalid("Workspace build attestation package task 无效。");
+      }
+      if (!isLegacy) {
+        let normalized: TurboBuildTaskIdentity | undefined;
+        try {
+          normalized = parseTurboBuildDryRun({
+            tasks: [
+              {
+                taskId: rawTask.task_id,
+                task: "build",
+                package: rawTask.package_name,
+                hash: rawTask.task_hash,
+                directory: rawTask.directory,
+                outputs: rawTask.outputs,
+                excludedOutputs: rawTask.excluded_outputs,
+              },
+            ],
+          }).tasks[0];
+        } catch {
+          return invalid("Workspace build attestation package task glob 无效。");
+        }
+        if (
+          !normalized ||
+          canonicalize(normalized.outputs) !== canonicalize(rawTask.outputs) ||
+          canonicalize(normalized.excluded_outputs) !== canonicalize(rawTask.excluded_outputs)
+        ) {
+          return invalid("Workspace build attestation package task glob 非 canonical。");
+        }
       }
       if (packageNames.has(rawTask.package_name)) {
         invalid(`Workspace build attestation package ${rawTask.package_name} 重复。`);
       }
       packageNames.add(rawTask.package_name);
-      return rawTask as unknown as WorkspaceBuildPackageTask;
+      return rawTask;
     });
     const consumer = {
       consumer_role: role,
       build_id: rawConsumer.build_id,
       package_tasks: packageTasks,
-    } satisfies WorkspaceBuildConsumerAttestation;
+    };
     if (
       consumer.build_id !==
       contentHash(canonicalize({ root_inputs: value.root_inputs, package_tasks: packageTasks }))
@@ -596,7 +704,7 @@ function assertAttestation(value: unknown): asserts value is WorkspaceBuildAttes
 
 export function writeWorkspaceBuildAttestation(
   path: string,
-  attestation: WorkspaceBuildAttestation,
+  attestation: WorkspaceBuildAttestationV2,
   filesystem: WorkspaceBuildFilesystem = nodeWorkspaceBuildFilesystem,
 ): void {
   assertAttestation(attestation);
@@ -632,18 +740,31 @@ export function verifyWorkspaceBuildAttestation(input: {
   assertAttestation(input.attestation);
   const filesystem = input.filesystem ?? nodeWorkspaceBuildFilesystem;
   const currentTasks = new Map(input.currentBuild.tasks.map((task) => [task.package_name, task]));
+  const isLegacy = input.attestation.schema_version === legacyAttestationVersion;
   for (const consumer of input.attestation.consumers) {
     for (const expected of consumer.package_tasks) {
       const current = currentTasks.get(expected.package_name);
-      if (!current || taskSignature(current) !== taskSignature(expected)) {
+      const expectedSignature = isLegacy
+        ? legacyTaskSignature(expected)
+        : "excluded_outputs" in expected
+          ? taskSignature(expected)
+          : invalid("Workspace build attestation v2 缺少 excluded_outputs。");
+      const currentSignature = isLegacy
+        ? legacyTaskSignature(current ?? expected)
+        : current && taskSignature(current);
+      if (!current || currentSignature !== expectedSignature) {
         throw new WorkspaceBuildIntegrityError(
           "DEV_WORKSPACE_BUILD_STALE",
           `${expected.package_name} 当前 Turbo task identity 与证明不一致。`,
         );
       }
       if (
-        outputDigest(input.repoRoot, current, filesystem, "DEV_WORKSPACE_BUILD_OUTPUT_MISMATCH") !==
-        expected.output_digest
+        outputDigest(
+          input.repoRoot,
+          expected,
+          filesystem,
+          "DEV_WORKSPACE_BUILD_OUTPUT_MISMATCH",
+        ) !== expected.output_digest
       ) {
         throw new WorkspaceBuildIntegrityError(
           "DEV_WORKSPACE_BUILD_OUTPUT_MISMATCH",

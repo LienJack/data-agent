@@ -723,12 +723,12 @@ stop condition。W8 成功前不创建 E4 diagnostic/Q1/C1；成功后 W9/W10 �
 
 ### E5-W1 — Workspace build attestation v2
 
-- [ ] 先加 failing characterization：dry-run 含 `excludedOutputs` 时 parser 当前丢失；cache byte mutation 当前改变 digest。
-- [ ] `TurboBuildTaskIdentity` 增加 `excluded_outputs`；严格规范 glob、排序/去重、include/exclude 分域；task signature/output walker 共用。
-- [ ] attestation v2 写入新字段和新 hash；v1 reader 保持历史只读兼容，writer 只能创建 v2。
-- [ ] 覆盖 malformed/越界/symlink、cache mutation stable、non-cache mutation mismatch、build 前后 exclude drift。
-- [ ] `pnpm vitest run tests/workspace-build-integrity.spec.ts`、相关 scripts typecheck/Biome/diff check。
-- [ ] scoped commit：`fix(build): preserve excluded Turbo outputs`。
+- [x] 先加 failing characterization：dry-run 含 `excludedOutputs` 时 parser 当前丢失；cache byte mutation 当前改变 digest。
+- [x] `TurboBuildTaskIdentity` 增加 `excluded_outputs`；严格规范 glob、排序/去重、include/exclude 分域；task signature/output walker 共用。
+- [x] attestation v2 写入新字段和新 hash；v1 reader 保持历史只读兼容，writer 只能创建 v2。
+- [x] 覆盖 malformed/越界/symlink、cache mutation stable、non-cache mutation mismatch、build 前后 exclude drift。
+- [x] `pnpm vitest run tests/workspace-build-integrity.spec.ts`、相关 scripts typecheck/Biome/diff check。
+- [x] scoped commit：`fix(build): preserve excluded Turbo outputs`。
 
 ### E5-W2 — Contracts and 10798 retained activation
 
