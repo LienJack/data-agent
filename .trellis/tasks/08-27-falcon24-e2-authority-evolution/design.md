@@ -1,10 +1,13 @@
-# Falcon24 Semantic Generation 2 与 E4 原子权威恢复 — Design
+# Falcon24 Semantic Generation 2、E4 原子恢复与 E5 前向构建权威 — Design
 
 > W1-W7 已于 2026-08-28 实施并全量验证，用户已批准 exact review packet 与 W8。10795 已应用，`e430` 已封存为 HOLD；clean build
 > 上唯一一次 `e431` Finalizer 因旧 smoke 幂等键未绑定 Worker build 而失败关闭，current 仍为 E3/gen1，且没有 `e431`/E4 污染。
 > W8-R3 与 10796 已应用；随后只运行一次 `e432` Finalizer，新 build smoke PASS 已 append，但 combined RPC 因错误比较两个哈希域而
 > HOLD。用户已批准 W8-R4；修复已提交为 `04d5db4e`，但权威库尚未执行 e432 HOLD/10797/e433。current 仍为 E3/gen1；
 > `e432` 保留 STAGED baseline/session 与 OPEN attempt，等待受控执行。
+>
+> 2026-08-29 amendment：W8-R4 已完成且 E4/gen2 已原子激活。E4 build attestation 后验发现遗漏 Turbo `excludedOutputs`，
+> 因而不可复现；E4 已冻结，用户授权前进 E5。本文第 17 节为 E5 的权威设计，冲突时覆盖旧 W9/W10 的 E4 标签。
 
 ## 1. Scope / Trigger
 
@@ -725,3 +728,125 @@ STAGED baseline + OPEN attempt
 - Web full 135 files / 556 passed + 1 skipped；Platform full 111 files / 685 passed；Contracts full 99 files / 951 passed；
   Web/Platform/Contracts typecheck、10797 renderer、workspace migration inventory、Biome、diff check 全部 PASS。
 - 临时 scratch databases 已删除，未创建 Docker container，权威 `data_agent` 在文档提交时仍为 frontier 10796、E3/gen1、e432 OPEN。
+
+## 17. E5 Retained-Semantic Epoch Rollover
+
+### 17.1 First-principles boundary
+
+需要改变的是被 Falcon baseline 冻结的 build closure，不是 semantic Release。generation 2 已由唯一 publisher 编译、smoke 并原子发布，
+且 production pointer/runtime/defaults exact 一致。为修复 attestation 而制造 generation 3 会产生没有业务语义变化的伪 successor；原地重签 E4
+又破坏 Epoch 冻结。因此最小正确状态变换为：
+
+```text
+all-old: Falcon E4 + semantic gen2 + attestation v1 (immutable historical)
+  -> stage E5 supporting receipts + retained-semantic proof + attestation v2
+  -> activate_falcon24_authority(request@3) in one PostgreSQL transaction
+all-new: Falcon E5 + the exact same semantic gen2 + attestation v2
+```
+
+### 17.2 Build attestation v2
+
+Turbo task identity 规范化为：
+
+```ts
+interface TurboBuildTaskIdentity {
+  task_id: string;
+  package_name: string;
+  directory: string;
+  task_hash: string;
+  outputs: readonly string[];
+  excluded_outputs: readonly string[];
+}
+```
+
+Parser 从 dry-run 的 `outputs` 与 `excludedOutputs` 分别读取，排序、去重并验证相对 glob；output walker 只以 `outputs` 为 include，
+只以 `excluded_outputs` 为 exclude。二者同时进入 task signature 与 attestation hash。v2 reader 只接受 exact keys；v1 reader 继续按历史字段和历史
+hash 公式校验，但不能用于创建 E5 identity。cache mutation characterization 必须证明 exclude 的执行语义，而不仅是 JSON 中出现该字段。
+
+### 17.3 Retained semantic proof and activation command
+
+`falcon24-retained-semantic-release-authority-proof@1.0.0` 由服务器从 production closure 构造，绑定：
+
+- expected current E4 exact binding 与 target E5；
+- gen2 release/datasource/digest；semantic pointer、runtime pointer、workspace defaults exact version；
+- executable、relationship、runtime-restriction、graph projection digests；
+- Web/Worker build ID 与 generation ID；
+- proof hash 独立哈希域。
+
+Semantic staging receipt 的 `subject_hash=gen2 release_digest`，`evidence_hash=retained proof hash`。客户端只传 scope、expected exact refs、
+staging/baseline/attempt id 与 idempotency key；不传 projection payload/digest 或 proof hash。
+
+既有 `activate_falcon24_authority(jsonb)` 增加 request@3 分支：
+
+```ts
+{
+  schema_version: "falcon24-activation-request@3.0.0";
+  authority_epoch: "E5";
+  attempt_id: UUID;
+  baseline_id: UUID;
+  expected_baseline_hash: Hash;
+  expected_current_authority: AuthorityBindingV2; // exact E4
+  expected_semantic_release: SemanticReleaseRef;  // exact gen2
+  expected_versions: {
+    semantic_pointer: number;
+    semantic_runtime: number;
+    workspace_defaults: number;
+  };
+  retained_semantic_proof_hash: Hash;
+  command_hash: Hash;
+}
+```
+
+v2 分支保持 E2/E3 历史行为；v3 仅接受 target ordinal >=5、exact `current+1`、generation >=2。Port 不再用“epoch >=4”粗粒度拒绝，而是 E4 semantic
+successor 仍只能走 combined RPC，E5+ retained semantic 只能走 request@3。
+
+### 17.4 Transaction and lock order
+
+10798 对 v3 使用固定顺序：
+
+```text
+semantic scope fence advisory lock
+-> Falcon activation advisory lock
+-> Falcon current FOR UPDATE
+-> semantic active pointer FOR UPDATE
+-> semantic runtime pointer FOR UPDATE
+-> workspace defaults pointer/revision FOR UPDATE
+-> E5 staging session/baseline/activation attempt FOR UPDATE
+-> supporting receipts FOR SHARE
+```
+
+随后验证 exact E4/current、exact gen2 三指针、retained proof 与 SEMANTIC_RELEASE receipt、baseline 六 receipt、E5 零 Run/config/artifact/
+diagnostic/qualification/campaign/gate 污染。提交只更新 attempt/baseline/session/Falcon current；semantic/defaults 行不得 UPDATE。事务后再次用 production
+ports readback，并比较迁移/激活前后的 semantic rows canonical bytes。
+
+### 17.5 Diagnostic and formal gates
+
+Diagnostic v2 与 Qualification manifest v4 以 canonical successor epoch 代替 E4 literal，并派生 `${epoch}-Q1`；DB 从 current authority 与
+exact diagnostic receipt 验证 E5。Acceptance campaign 已使用 epoch-derived identity，继续要求同一 winning E5-Q1。E4 原有零行不会回填。
+
+执行顺序仍是动态 Agent Tool Loop：Root 每轮只决定下一 Tool Call，Tool Result 回到 Root 后再决策；Host 只验证当前 call、scope、artifact、
+安全、预算、幂等与最大轮数，不声明业务 DAG。诊断及每个正式 slot 都必须由 composer 提交并从答案入口进入 exact Trace UI。
+
+### 17.6 Crash and recovery matrix
+
+| Window | Observable state | Recovery |
+|---|---|---|
+| build/attestation failure | E4/gen2 | 修复未冻结代码，生成新 E5 candidate；不触库 |
+| E5 stage/supporting failure | E4/gen2 + terminal HOLD stage | 新 staging identity；不删历史 |
+| v3 activation failure | E4/gen2 all-old | exact attempt capability HOLD；禁止补写 |
+| v3 activation commit | E5/gen2 all-new | 不回退；后续 frozen change 进入 E6 |
+| diagnostic first failure | E5 diagnostic immutable FAIL/HOLD | 停止，不 retry |
+| Q1/C1 first failure | exact E5 gate HOLD | 停止，不 resume/拼接 |
+
+### 17.7 File boundary and validation matrix
+
+- Build：`scripts/lib/workspace-build-integrity.ts`、release/entry consumers、`tests/workspace-build-integrity.spec.ts`。
+- Contracts：authority activation v3、retained proof、diagnostic v2、qualification v4 与 tests。
+- Platform：PostgreSQL authority/diagnostic/qualification adapters 与 tests。
+- Web：E5 Finalizer、diagnostic/qualification controls、package scripts 与 tests。
+- Worker：diagnostic reclamation 的 epoch-derived fence 与 tests。
+- Database：10798 source/rendered SQL、registry/inventory、fresh + exact E4 clone fixtures。
+- Docs/Trellis：本任务 PRD/design/implement 与 E5 runbook/evidence index。
+
+负例必须覆盖 excludedOutputs 丢失/伪造、cache/non-cache mutation、stale E4/ref/version、gen3 injection、proof hash-domain 混用、E5 污染、RLS 越权、
+事务失败注入、并发双激活、诊断/资格跨 epoch receipt 和 campaign 未绑定 winning Q1。

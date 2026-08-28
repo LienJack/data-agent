@@ -1,10 +1,14 @@
-# Falcon24 Semantic Generation 2 与 E4 原子权威恢复 — Implementation Plan
+# Falcon24 Semantic Generation 2、E4 原子恢复与 E5 前向构建权威 — Implementation Plan
 
 > W1-W7 已于 2026-08-28 实施并全量验证。用户已批准 exact review packet 与 W8；10795 已应用，旧 `e430` 已封存为 HOLD。
 > clean build 上唯一一次 `e431` Finalizer 因 smoke 幂等键未绑定 Worker build 而失败关闭，current 仍为 E3/gen1 且无 E4 污染。
 > W8-R3 与 10796 已应用；随后只运行一次 `e432` Finalizer，新 smoke PASS 已 append，但 combined activation 因错误混用 ChangeSet/snapshot
 > digest 而 HOLD。用户已批准 W8-R4；代码/迁移/测试已提交为 `04d5db4e`，权威库尚未执行 e432 HOLD、10797 或 e433。
 > current 仍为 E3/gen1；`e432` 保留 STAGED baseline/session 与 OPEN attempt，等待受控权威执行。
+>
+> 2026-08-29 amendment：e432 已 HOLD、10797 已应用、e433 已唯一执行并原子激活 E4/gen2。E4 的 attestation 后验发现错误签入
+> `.next/cache/**`，且原物理 cache bytes 已不可恢复。E4 不得重签；用户已授权进入 E5 并无人值守。第 6 节 E5 包替代下方历史 W9/W10
+> 的 E4 执行标签，E4 diagnostic/Q1/C1 保持零行。
 
 ## 0. Current Freeze
 
@@ -504,9 +508,9 @@ Status: completed on 2026-08-28.
 - [x] 应用并核对 10783-10793 forward migrations 与 E1-E3/gen1 审计摘要。
 - [x] 将已通过 exact-clone Oracle 的 10794 应用于专用数据库并再次核对 protected history。
 - [x] 通过唯一 publisher stage generation 2；运行 deterministic smoke PASS。
-- [ ] 构建 E4 proof/receipts/baseline/session，combined transaction原子激活。
-- [ ] 使用生产端口核对 semantic pointer/runtime/defaults=current gen2，Falcon current=E4，receipt/outbox/stage PROMOTED exact。
-- [ ] 再次证明 generation 1/E1-E3 bytes未变与 `production_gate=HOLD`。
+- [x] 构建 E4 proof/receipts/baseline/session，combined transaction原子激活。
+- [x] 使用生产端口核对 semantic pointer/runtime/defaults=current gen2，Falcon current=E4，receipt/outbox/stage PROMOTED exact。
+- [x] 再次证明 generation 1/E1-E3 bytes未变与 `production_gate=HOLD`。
 
 **2026-08-28 execution evidence**
 
@@ -624,7 +628,7 @@ Status: completed on 2026-08-28.
 
 - 无运行数据库内容提交；只在有批准的证据索引/runbook更新时 scoped commit。
 
-### W9 — Single non-scoring E4 diagnostic
+### W9 — Historical E4 diagnostic plan（由 E5-W5 替代）
 
 **Preconditions**
 
@@ -645,7 +649,7 @@ Status: completed on 2026-08-28.
 
 - 只提交批准的安全证据索引，不提交截图、raw rows、provider payload或秘密。
 
-### W10 — E4-Q1 and E4-C1
+### W10 — Historical E4-Q1 and E4-C1 plan（由 E5-W6 替代）
 
 **Preconditions**
 
@@ -704,3 +708,87 @@ W1-W7 已按工作包边界实施并提交，被拒绝的 dirty repair 实现继
 exact review packet 与 E4 activation；该授权允许应用已审查的 10794 和一次修正后的 Finalizer，但不允许手工 SQL、连续重跑或放宽
 stop condition。W8 成功前不创建 E4 diagnostic/Q1/C1；成功后 W9/W10 仍服从单次诊断、首败 HOLD、无 retry/resume 与真实 Trace UI
 证据边界。
+
+## 6. E5 Unattended Forward Plan
+
+用户在 E4 build closure 缺陷被完整证明后明确指示“进去 E5，进去无人值班”。这构成对 PRD 第 12 节和 Design 第 17 节所述前向边界的
+实施批准；没有未决产品/风险选择。每个包必须 focused validation + scoped commit，且下一包只消费已提交的前一包。
+
+### E5-W0 — Freeze E4 and amend Trellis artifacts
+
+- [x] 只读核对 frontier=10797、current=E4、semantic gen2、E4 diagnostic/qualification/campaign=0。
+- [x] 记录 Turbo `outputs`/`excludedOutputs` 证据与不可恢复的 E4 cache 结论。
+- [x] PRD/design/implement 明确 E5 retained-semantic rollover、10798、E5-D1/Q1/C1、锁序、崩溃窗口、文件与测试边界。
+- [x] `git diff --check`、Trellis validate 后 scoped commit：`docs(falcon24): plan E5 build authority rollover`。
+
+### E5-W1 — Workspace build attestation v2
+
+- [ ] 先加 failing characterization：dry-run 含 `excludedOutputs` 时 parser 当前丢失；cache byte mutation 当前改变 digest。
+- [ ] `TurboBuildTaskIdentity` 增加 `excluded_outputs`；严格规范 glob、排序/去重、include/exclude 分域；task signature/output walker 共用。
+- [ ] attestation v2 写入新字段和新 hash；v1 reader 保持历史只读兼容，writer 只能创建 v2。
+- [ ] 覆盖 malformed/越界/symlink、cache mutation stable、non-cache mutation mismatch、build 前后 exclude drift。
+- [ ] `pnpm vitest run tests/workspace-build-integrity.spec.ts`、相关 scripts typecheck/Biome/diff check。
+- [ ] scoped commit：`fix(build): preserve excluded Turbo outputs`。
+
+### E5-W2 — Contracts and 10798 retained activation
+
+- [ ] Contract：retained semantic proof@1、activation request@3、diagnostic@2、qualification manifest@4；所有 epoch/gate ID 由 canonical epoch 派生。
+- [ ] Platform：authority Port 的 v3 method；E4 combined successor path保持不变；diagnostic/qualification adapters 使用 manifest epoch。
+- [ ] 10798 演进既有 `activate_falcon24_authority(jsonb)`：v2 历史兼容、v3 exact E4->E5/gen2 retained closure、固定锁序、零污染、all-old/all-new。
+- [ ] 10798 同时演进 diagnostic/Q1 DB authority，使 PASSED diagnostic prerequisite 对 E5-Q1 生效，不回写 E4。
+- [ ] fresh PostgreSQL 17、exact E4 populated clone、migration replay/rollback、RLS/grants、stale refs、failure injection、两并发调用。
+- [ ] Contracts/Platform focused + full tests、typecheck、renderer/inventory/static migration checks。
+- [ ] scoped commit：`feat(falcon24): add retained semantic E5 activation`。
+
+### E5-W3 — E5 Finalizer and gate controls
+
+- [ ] 将 supporting-context loader 泛化为 exact current generation >=2，不改变 E4 predecessor loader 的历史行为。
+- [ ] E5 Finalizer 只从 production read ports读取 gen2/projection/defaults，服务器构造 retained proof，阶段化六类 receipt/baseline/attempt。
+- [ ] Finalizer 调用 activation request@3；失败立即 exact HOLD，成功后 production readback证明 E5/gen2且 semantic/default bytes/version不变。
+- [ ] Diagnostic、qualification、acceptance、Worker reclamation CLI 全部从 manifest/current 推导 E5，不含 E4 literal；动态 Tool Loop 不变。
+- [ ] Web/Worker focused + full tests、typecheck、no client payload/digest/static boundary scans。
+- [ ] scoped commit：`feat(falcon24): finalize E5 retained authority`。
+
+### E5-W4 — Clean build, migration and one atomic activation
+
+Preconditions：前三包已提交、worktree clean、专用容器仍唯一、E4/gen2 exact、E5 污染=0。
+
+- [ ] 在 exact committed HEAD 强制构建 Web/Worker，生成 attestation v2 与 identities，`git_dirty=false`。
+- [ ] 删除/重建/写入 `.next/cache/**` 后 guard仍 PASS；修改一个非 cache output 的副本时 guard稳定 FAIL，随后恢复副本并重新验证原 identity。
+- [ ] 在 exact E4 clone 应用 10798 并运行 populated fixture；scratch DB 删除。
+- [ ] 权威库应用 10798，核对 migration checksum 与 E1-E4/gen1/gen2/default canonical bytes无变化。
+- [ ] 使用全新 deterministic E5 staging identity运行 Finalizer且只运行一次。
+- [ ] ACTIVE 后核对 current=E5、semantic pointer/runtime/defaults exact gen2未变、E4 frozen facts未变、E5 diagnostic/gates=0。
+- [ ] 若任一步失败：写入既定 HOLD（适用时）并停止，不重新运行 Finalizer。
+- [ ] 只提交安全 evidence index/runbook，不提交 attestation 临时文件、log、secret 或 raw DB data。
+
+### E5-W5 — One non-scoring E5 diagnostic
+
+- [ ] 轮换专用账号 credential；只在进程环境/安全临时文件使用，绝不输出或提交 secret。
+- [ ] 启动 exact E5 Web/Worker；按需启动瞬态 OpenSandbox，记录 container identity，结束即清理。
+- [ ] residual preflight=0 后创建且只创建一个 E5 diagnostic attempt。
+- [ ] 从真实 authenticated composer 提交固定问题；等待终态答案；从答案入口打开 exact Run Trace UI。
+- [ ] 证明 Semantic -> Text2SQL -> SQL -> QueryEvidence -> typed Arrow -> Python operator -> AnalysisReport -> Chart；打开五类 Artifact；residual=0。
+- [ ] 完成 immutable PASS receipt，验证不计分；首次失败写 FAIL/HOLD，立即停止且不重试。
+
+### E5-W6 — E5-Q1 then E5-C1
+
+- [ ] 用 exact E5 diagnostic receipt 创建唯一 E5-Q1；严格串行 G1=1、G2=5、G3=5、G4=5，共 16/16。
+- [ ] 每 slot composer -> answer -> exact Trace UI；同源 receipts、完整链、Artifact、residual=0；首败 HOLD并停止。
+- [ ] 仅在 winning E5-Q1 certificate 后创建唯一 E5-C1；5 题 x COLD/WARM x 3，共 30/30，不复用 Q1 Run。
+- [ ] C1 每 slot 同样真实 UI 证据；首败 HOLD并停止。
+
+### E5-W7 — Final audit and cleanup
+
+- [ ] 对 generation 1、E1-E3、gen2/E4、E5 做 canonical count/hash/identity 审计；受保护历史零变化。
+- [ ] 核对唯一 diagnostic PASS、E5-Q1 16/16、E5-C1 30/30、exact Trace UI、residual=0。
+- [ ] 核对 `production_isolation_proven=false` / `production_gate=HOLD`，禁止描述为 production GO。
+- [ ] 停止本任务启动的服务；删除全部瞬态 sandbox/container/scratch DB/credential temp；保留四个既有长期容器。
+- [ ] `trellis-check`、spec update、Trellis validate、最终 scoped docs commit；task policy允许时 archive。
+
+### E5 stop conditions
+
+- Formal diagnostic/Q1/C1 第一次失败：数据库写 immutable FAIL/HOLD 后立即停止，不 retry/resume。
+- 任何 mixed E4/E5 或 semantic/defaults drift：严重事故，停止；不得补偿 DML。
+- 任何受保护历史修改、生产/外部发布、长期基础设施或不可恢复广泛删除：停止并汇报。
+- 其余计划内本地失败在 owning package 修复、重新验证并形成新 commit；尚未激活 E5 时可生成新的 candidate build identity。

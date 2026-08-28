@@ -1,13 +1,11 @@
-# Falcon24 Semantic Generation 2 与 E4 原子权威恢复
+# Falcon24 Semantic Generation 2、E4 原子恢复与 E5 前向构建权威
 
-> 执行状态（2026-08-28）：W1-W7 已实施并通过全量验证；被拒绝的 generation-1 repair 现场已按用户授权封存到可恢复审计 stash。
-> 用户已批准 exact review packet 与 W8。10795 已应用，旧 `e430` 已通过 capability-gated authority 封存为 `HOLD`；随后 clean build
-> 上唯一一次 `e431` Finalizer 因既有 smoke 幂等键未绑定 Worker build 而失败关闭，且未留下 `e431` session、E4 baseline 或 activation。
-> 当前仍为 E3/gen1，generation 2 candidate 保持 `SMOKE_PASSED`。W8-R3 与 10796 已提交并应用；其后只运行一次 `e432`
-> Finalizer，新 build smoke PASS 已 append，但 combined activation 因把 ChangeSet digest 与 schema snapshot digest 混为同一哈希域而 HOLD。
-> 用户已批准 W8-R4；10797、Finalizer post-baseline HOLD closure 与恢复 CLI 已在 scoped commit `04d5db4e` 完成并通过验证。
-> 权威库尚未应用 10797，`e432` 仍为 STAGED session/baseline + OPEN attempt，E4/current 未移动；下一步严格为 capability HOLD e432、
-> 应用 exact 10797、生成新 clean build 并只运行一次 `e433`。诊断与正式门禁只能在 W8 成功后按 fail-closed 顺序执行。
+> 执行状态（2026-08-29）：W1-W8-R4 已完成。10797 已应用，`e432` 已经既有 capability authority 封存为 `HOLD`；clean build 上
+> 唯一一次 `e433` Finalizer 已把 generation 2 与 E4 在同一事务中激活并通过 production-port readback。当前 exact authority 为 E4，
+> semantic pointer/runtime/workspace defaults 均为 generation 2，E4 diagnostic、qualification 与 campaign 均为零。
+> E4 build attestation 随后被证明错误包含 Turbo 已明确排除的 `.next/cache/**`：dry-run 的 `excludedOutputs` 在
+> `parseTurboBuildDryRun` 中被丢弃，导致证明签入不可重建 cache bytes。E4 已冻结且不可原地重签。用户已明确授权进入 E5 并无人值守执行；
+> 本文第 12 节为该授权的前向修正，出现冲突时以第 12 节为准。
 
 ## 1. Goal
 
@@ -140,14 +138,14 @@ PostgreSQL 事务内原子激活。原子激活后先完成一条非计分诊断
   pointer/runtime 与 Falcon current 永远不存在跨代混合。
 - [x] **AC-G2-06** `falcon24-semantic-release-authority-proof@2` 证明 predecessor->candidate lineage、generation+1、四类
   projection 与 validation/smoke receipts，不再要求 successor 等于 predecessor。
-- [ ] **AC-G2-07** 原子激活后 exact current 为 generation 2/E4，生产端口重载核对全部 exact refs；combined activation
+- [x] **AC-G2-07** 原子激活后 exact current 为 generation 2/E4，生产端口重载核对全部 exact refs；combined activation
   receipt、outbox 与 stage PROMOTED 完整。
-- [ ] **AC-G2-08** 单一诊断 attempt 通过真实 Q&A 与 Trace UI 证明完整链、Artifact 可用和 residual=0；其结果不计分。
-- [ ] **AC-G2-09** E4-Q1 达到 16/16，随后 E4-C1 达到 30/30；每个正式 slot 均有同源 QA/Trace UI receipts 与 exact
-  Run/baseline/build/gen2 release 绑定。
+- [ ] **AC-G2-08** 单一 E5 诊断 attempt 通过真实 Q&A 与 Trace UI 证明完整链、Artifact 可用和 residual=0；其结果不计分。
+- [ ] **AC-G2-09** E5-Q1 达到 16/16，随后 E5-C1 达到 30/30；每个正式 slot 均有同源 QA/Trace UI receipts 与 exact
+  Run/E5 baseline/build/gen2 release 绑定。
 - [x] **AC-G2-10** Contracts、Semantic、Platform、Worker、Web、PostgreSQL 17 fresh/upgrade、concurrency、RLS/security、
   build/typecheck 和 public-data scans 全部通过；每个批准后的实施包有 focused validation 与独立 scoped commit。
-- [ ] **AC-G2-11** 最终报告明确 generation 1/E1-E3 未变、gen2/E4 identities、diagnostic、16/16、30/30、residual=0，
+- [ ] **AC-G2-11** 最终报告明确 generation 1/E1-E3 未变、gen2/E4 frozen identities、E5 identities、diagnostic、16/16、30/30、residual=0，
   并如实保留 `production_isolation_proven=false` / `production_gate=HOLD`。
 
 ## 6. Rejected Alternative: Repair Generation 1 Projections In Place
@@ -246,3 +244,51 @@ idempotency key 与新 Worker receipt command hash 冲突而返回 `FALCON24_SEM
 - 用户已明确批准 W8-R4。实现 commit `04d5db4e` 固定 10797 checksum
   `sha256:c5afa3d4b8babc91b61b2bd3d6f3edc18324502254270d08e8d63049dc18e984`，并完成 Web/Platform/Contracts 全量、三层 typecheck、
   renderer/inventory/Biome 与 PostgreSQL 17 populated-clone 验证。权威执行仍按独立 gate：先用 Port 封存 e432，再应用 10797，最后只运行一次 e433。
+
+## 12. E5 Forward Build Authority Amendment
+
+### 12.1 Verified trigger and immutable boundary
+
+- E4 已于 `2026-08-28T11:59:59.741684Z` 激活；baseline
+  `4e52c876-0bd4-56b0-9407-87e2eb3418c0` / `sha256:e63c3074e81a455b0457d4330d6c53d05a6e59001d3c9455ede6b6a3eee25b98`
+  与 activation attempt `18d48688-5737-5952-b2d8-cb3fcd578012` 只读冻结。
+- 当前 semantic Release 为 generation 2：`18472091-59b1-5d86-b399-9605ca627040` /
+  `sha256:9c53ca74db82181ff46a591ee4e2b88d63e5c9b4e6e3fa157f10fa085ca74dd6`。E5 不编译 generation 3，不推进 semantic
+  pointer/runtime/defaults；它只证明并冻结新的可重建 Web/Worker build closure。
+- `turbo --dry=json` 对 Web 同时返回 `outputs=[".next/**"]` 与 `excludedOutputs=[".next/cache/**"]`。当前 parser 只保留前者，
+  因而 E4 attestation 错误签入 cache。禁止修改、替换或重签 E4 attestation、baseline、receipt 或 activation。
+
+### 12.2 E5 requirements
+
+- **R-E5-01 Output identity 完整。** `TurboBuildTaskIdentity` 必须同时规范保存 include outputs 与 excluded outputs；task signature、
+  attestation schema、hash、readback 和 guard 使用同一 canonical identity。`.next/cache/**` 的任意创建、删除或 byte 变化不得改变 Web output digest。
+- **R-E5-02 证明版本前进。** 新 attestation 使用 `workspace-build-attestation@2.0.0`；v1 只读验证历史。v2 对缺失、重复、绝对路径、`..`、
+  空 include、include/exclude 冲突和越界 symlink fail closed；不得把未知 Turbo 字段静默解释为已证明输出。
+- **R-E5-03 Retained semantic proof。** 新 `falcon24-retained-semantic-release-authority-proof@1.0.0` 绑定 target E5、exact current E4、
+  exact generation-2 release、semantic pointer/runtime/workspace-default versions、datasource、四类 production projection digest 与新 build identities。
+  服务端通过 production read ports 重算该证明；CLI 不传 proof digest 或 semantic payload。
+- **R-E5-04 单一 activation authority。** 演进既有 `activate_falcon24_authority(jsonb)` 接受
+  `falcon24-activation-request@3.0.0`，不得新增第二 current pointer 或第二 Falcon activation authority。v2 保留为 E2/E3 历史兼容；v3 只允许
+  `expected current=E(n-1)`、`target=En` 且 target ordinal 至少 5。
+- **R-E5-05 单事务 retained rollover。** v3 在一个事务中锁 Falcon activation fence/current、semantic pointer/runtime、workspace defaults、
+  E5 stage/baseline/attempt；验证三类 semantic refs 仍为 exact gen2、E5 无 Run/config/artifact/diagnostic/gate 污染、六类 receipt exact 后，
+  仅激活 E5 baseline/session/current。semantic rows 与 defaults bytes/version 必须保持不变。
+- **R-E5-06 锁序。** 所有相关入口统一为 semantic fence advisory lock -> Falcon activation advisory lock -> Falcon current -> semantic pointer/runtime ->
+  workspace defaults -> stage/baseline/attempt。锁序由 migration 注释、并发测试和失败注入共同固定。
+- **R-E5-07 崩溃恢复。** stage/receipt/baseline 失败通过既有 capability HOLD authority 终结；activation 失败只能观察 E4/gen2 全旧状态；
+  activation 成功后不回退 E4。任何后续 frozen closure 修改必须进入 E6。
+- **R-E5-08 E5 诊断与门禁。** 诊断、qualification、campaign 合同不再写死 E4，而是绑定 canonical current epoch；E5 唯一 gate IDs 为
+  `E5-Q1` 与 `E5-C1`。E4 零 diagnostic/gate 事实保持不变。诊断问题与动态 Tool Loop/full Trace UI/residual=0 要求不变。
+- **R-E5-09 首败停止。** E5 单一诊断首次失败即写 immutable FAIL/HOLD 并停止；E5-Q1 或 E5-C1 任一首个 slot 失败即 HOLD，不 retry、
+  resume、跨 attempt 拼证据或用 API-only 代替答案入口 Trace UI。
+
+### 12.3 E5 acceptance
+
+- [ ] **AC-E5-01** cache mutation characterization 失败后，v2 parser/attestation 测试证明 excluded outputs 被保存、哈希并执行；v1 历史仍可读。
+- [ ] **AC-E5-02** 10798 PostgreSQL 17 fresh + exact E4 clone upgrade、rollback、RLS/security、failure injection 和 concurrency 全部 PASS；
+  E1-E4、gen1/gen2、pointer/runtime/default bytes 无漂移。
+- [ ] **AC-E5-03** E5 clean build/attestation `git_dirty=false`，guard 在 cache 删除、重建和增量写入后保持稳定，非 cache output 变化稳定拒绝。
+- [ ] **AC-E5-04** capability-gated Finalizer 只运行一次并原子得到 E5/gen2；post-commit production readback 证明 Falcon current=E5，
+  semantic pointer/runtime/defaults exact 未变，E4 immutable facts 未变。
+- [ ] **AC-E5-05** 唯一 E5 diagnostic PASS；随后 E5-Q1 16/16、E5-C1 30/30、exact Run Trace UI 与 residual=0 全部可复核。
+- [ ] **AC-E5-06** 最终仍如实报告 `production_isolation_proven=false` / `production_gate=HOLD`，瞬态容器和轮换凭据完成回收。
