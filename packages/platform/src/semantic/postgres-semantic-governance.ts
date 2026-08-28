@@ -729,25 +729,27 @@ export class PostgresSemanticGovernanceService implements SemanticGovernancePort
         const dbDecision = input.decision;
         const dbRole = capability.role === "OWNER" ? "admin_reviewer" : "domain_reviewer";
 
-        const result = await client.query<{ record_review_decision: Record<string, unknown> }>(
-          `SELECT semantic.record_review_decision(
-          $1::uuid, $2::uuid, $3, $4,
-          $5::uuid, $6, $7, $8, $9
-        )`,
-          [
-            scope.appId,
-            scope.tenantId,
-            scope.environment,
-            scope.semanticDomain,
-            input.packet_id,
-            capability.principal,
-            dbRole,
-            dbDecision,
-            input.decision_reason ?? null,
-          ],
-        );
+        const result = await client.query<{
+          human_record_semantic_review_decision: Record<string, unknown>;
+        }>("SELECT semantic.human_record_semantic_review_decision($1::jsonb)", [
+          {
+            schema_version: "human-semantic-review-decision@1.0.0",
+            scope: {
+              app_id: scope.appId,
+              tenant_id: scope.tenantId,
+              workspace_id: scope.tenantId,
+              environment: scope.environment,
+            },
+            semantic_domain: scope.semanticDomain,
+            packet_id: input.packet_id,
+            principal_id: capability.principal,
+            semantic_role: dbRole,
+            decision: dbDecision,
+            decision_reason: input.decision_reason ?? null,
+          },
+        ]);
 
-        const rpcResult = result.rows[0]?.record_review_decision;
+        const rpcResult = result.rows[0]?.human_record_semantic_review_decision;
         if (!rpcResult) {
           throw new SemanticGovernanceAdapterError("RPC_FAILED", "审核决策 RPC 调用失败", 500);
         }

@@ -98,6 +98,24 @@ function createFixture(options: FixtureOptions = {}) {
               rowCount: 1,
             };
           }
+          if (text.includes("semantic.human_record_semantic_review_decision")) {
+            return {
+              rows: [
+                {
+                  human_record_semantic_review_decision: {
+                    decision_id: ids.revision,
+                    decision_digest: `sha256:${"4".repeat(64)}`,
+                    packet_closed: true,
+                    outcome: "APPROVED",
+                    total_approvals: 1,
+                    total_rejections: 0,
+                    required_approvals: 1,
+                  },
+                },
+              ] as Row[],
+              rowCount: 1,
+            };
+          }
           if (text.includes("SELECT task.semantic_domain")) {
             return { rows: [], rowCount: 0 };
           }
@@ -407,6 +425,46 @@ describe("PostgresSemanticGovernanceService transaction boundary", () => {
       JSON.stringify(sourcePayload),
       JSON.stringify(diff),
     ]);
+  });
+
+  it("submits a human decision only through the scoped review wrapper", async () => {
+    const fixture = await arrange();
+
+    const result = await fixture.service.submitDecision(fixture.context, {
+      schema_version: "semantic-decision@1.0.0",
+      semantic_domain: "revenue",
+      packet_id: ids.packet,
+      decision: "APPROVE",
+      decision_reason: "Reviewed against the frozen successor change set.",
+    });
+    expect(result).toMatchObject({
+      ok: true,
+      value: { packetClosed: true, outcome: "APPROVED", totalApprovals: 1 },
+    });
+
+    const rpc = fixture.calls.find((call) =>
+      call.text.includes("semantic.human_record_semantic_review_decision"),
+    );
+    expect(rpc?.values).toEqual([
+      {
+        schema_version: "human-semantic-review-decision@1.0.0",
+        scope: {
+          app_id: ids.app,
+          tenant_id: ids.tenant,
+          workspace_id: ids.tenant,
+          environment: "test",
+        },
+        semantic_domain: "revenue",
+        packet_id: ids.packet,
+        principal_id: ids.principal,
+        semantic_role: "admin_reviewer",
+        decision: "APPROVE",
+        decision_reason: "Reviewed against the frozen successor change set.",
+      },
+    ]);
+    expect(
+      fixture.calls.some((call) => call.text.includes("semantic.record_review_decision(")),
+    ).toBe(false);
   });
 
   it("forwards publish and rollback authority material without replacement", async () => {
