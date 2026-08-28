@@ -62,6 +62,10 @@ import {
   verifyCurrentBuiltinTeamAuthority,
 } from "../lib/builtin-team-authority";
 import { stageFalcon24E4SuccessorAuthority } from "../lib/falcon24-successor-authority-staging";
+import {
+  buildFalcon24SuccessorChangeSet,
+  falcon24SuccessorOperationId,
+} from "../lib/falcon24-successor-change-set";
 import { finalizeFalcon24SemanticSuccessor } from "../lib/falcon24-successor-finalization";
 import { createFalcon24SuccessorFinalizationReadback } from "../lib/falcon24-successor-readback";
 import { createFalcon24SuccessorSmokeProcess } from "../lib/falcon24-successor-smoke-process";
@@ -88,10 +92,6 @@ const configurationSchema = z.strictObject({
   principal_id: z.uuid(),
   staging_id: z.uuid(),
   datasource_id: z.uuid(),
-  successor_change_set_id: z.uuid(),
-  successor_change_set_hash: z.string().regex(/^sha256:[0-9a-f]{64}$/u),
-  successor_review_id: z.uuid(),
-  successor_review_hash: z.string().regex(/^sha256:[0-9a-f]{64}$/u),
   environment: z.string().regex(/^[A-Za-z0-9][A-Za-z0-9._-]{0,63}$/u),
   web_build_identity_file: z.string().min(1).max(4_096).refine(isAbsolute),
   worker_build_identity_file: z.string().min(1).max(4_096).refine(isAbsolute),
@@ -767,10 +767,6 @@ export async function runFalcon24AuthorityFinalization(
     principal_id: environment.WORKER_PRINCIPAL_ID ?? DEFAULT_PRINCIPAL_ID,
     staging_id: environment.FALCON24_STAGING_ID ?? DEFAULT_STAGING_ID,
     datasource_id: environment.FALCON24_DATASOURCE_ID ?? DEFAULT_DATASOURCE_ID,
-    successor_change_set_id: environment.FALCON24_SUCCESSOR_CHANGE_SET_ID,
-    successor_change_set_hash: environment.FALCON24_SUCCESSOR_CHANGE_SET_HASH,
-    successor_review_id: environment.FALCON24_SUCCESSOR_REVIEW_ID,
-    successor_review_hash: environment.FALCON24_SUCCESSOR_REVIEW_HASH,
     environment: environment.FALCON24_ENVIRONMENT ?? "local",
     web_build_identity_file: webBuildIdentityFile,
     worker_build_identity_file:
@@ -902,6 +898,60 @@ export async function runFalcon24AuthorityFinalization(
     }
     const sourceSnapshotHash = exactContentHash(supporting.schema_snapshot_ref.resource_hash);
     const compilerBundleHash = await semanticPublicationCompilerBundleDigest();
+    const publicationAuthority = createPostgresSemanticPublicationAuthority(pool, {
+      appId: capability.scope.app_id,
+      workspaceId: capability.scope.tenant_id,
+      environment: capability.scope.environment,
+      principalId: capability.principal,
+      datasourceId: configuration.datasource_id,
+      semanticDomain: SEMANTIC_DOMAIN,
+    });
+    const successorChangeSet = await buildFalcon24SuccessorChangeSet({
+      repository_root: REPOSITORY_ROOT,
+      scope: before.scope,
+      base_release: {
+        release_id: before.semantic_pointer.release.release_id,
+        generation: before.semantic_pointer.release.generation,
+        release_hash: before.semantic_pointer.release.release_digest,
+      },
+      expected_datasource_id: configuration.datasource_id,
+      revision: 1,
+    });
+    const preparedReview = await publicationAuthority.prepareSuccessorReview({
+      idempotency_key: falcon24SuccessorOperationId(
+        `falcon24:E4:successor-review:${successorChangeSet.change_set.change_set_hash}`,
+      ),
+      expected_predecessor: {
+        release_id: before.semantic_pointer.release.release_id,
+        generation: before.semantic_pointer.release.generation,
+        release_digest: before.semantic_pointer.release.release_digest,
+      },
+      expected_pointer_version: before.semantic_pointer.version,
+      change_set: successorChangeSet.change_set,
+    });
+    const publishPreparationDigest = await sha256ContentHash({
+      schema_version: "falcon24-successor-publish-preparation-identity@1.0.0",
+      scope: before.scope,
+      change_set_ref: preparedReview.change_set_ref,
+      review_id: preparedReview.review_packet_ref.review_id,
+      compiler_bundle_digest: compilerBundleHash,
+      expected_predecessor: before.semantic_pointer.release,
+      expected_pointer_version: before.semantic_pointer.version,
+      target_generation: 2,
+    });
+    const approvedSuccessor = await publicationAuthority.prepareApprovedSuccessor({
+      review_id: preparedReview.review_packet_ref.review_id,
+      change_set_ref: preparedReview.change_set_ref,
+      compiler_bundle_digest: compilerBundleHash,
+      target_generation: 2,
+      idempotency_digest: publishPreparationDigest,
+      expected_predecessor: {
+        release_id: before.semantic_pointer.release.release_id,
+        generation: before.semantic_pointer.release.generation,
+        release_digest: before.semantic_pointer.release.release_digest,
+      },
+      expected_pointer_version: before.semantic_pointer.version,
+    });
     const acceptanceContracts = await buildFalcon24AcceptanceContractHashes({
       repository_root: REPOSITORY_ROOT,
       oracle_contract_hash: exactContentHash(retained.analysis_runtime.oracle_contract_hash),
@@ -909,14 +959,8 @@ export async function runFalcon24AuthorityFinalization(
     const stageIdentity = await sha256ContentHash({
       schema_version: "falcon24-e4-successor-finalization-identity@1.0.0",
       scope: before.scope,
-      change_set_ref: {
-        change_set_id: configuration.successor_change_set_id,
-        change_set_hash: configuration.successor_change_set_hash,
-      },
-      review_ref: {
-        review_id: configuration.successor_review_id,
-        review_hash: configuration.successor_review_hash,
-      },
+      change_set_ref: approvedSuccessor.change_set_ref,
+      review_ref: approvedSuccessor.review_ref,
       source_snapshot_ref: {
         snapshot_id: supporting.schema_snapshot_ref.resource_id,
         snapshot_revision: supporting.schema_snapshot_ref.resource_revision,
@@ -1035,14 +1079,8 @@ export async function runFalcon24AuthorityFinalization(
         command_id: stableUuid(`falcon24:E4:semantic-stage:${stageIdentity}`),
         idempotency_key: stableUuid(`falcon24:E4:semantic-stage-idempotency:${stageIdentity}`),
         scope: before.scope,
-        change_set_ref: {
-          change_set_id: configuration.successor_change_set_id,
-          change_set_hash: contentHashSchema.parse(configuration.successor_change_set_hash),
-        },
-        review_ref: {
-          review_id: configuration.successor_review_id,
-          review_hash: contentHashSchema.parse(configuration.successor_review_hash),
-        },
+        change_set_ref: approvedSuccessor.change_set_ref,
+        review_ref: approvedSuccessor.review_ref,
         source_snapshot_ref: {
           snapshot_id: supporting.schema_snapshot_ref.resource_id,
           snapshot_revision: supporting.schema_snapshot_ref.resource_revision,
@@ -1067,14 +1105,7 @@ export async function runFalcon24AuthorityFinalization(
         command_id: stableUuid(`falcon24:E4:combined-activation:${stageIdentity}`),
         idempotency_key: stableUuid(`falcon24:E4:combined-activation-idempotency:${stageIdentity}`),
       },
-      publication_authority: createPostgresSemanticPublicationAuthority(pool, {
-        appId: capability.scope.app_id,
-        workspaceId: capability.scope.tenant_id,
-        environment: capability.scope.environment,
-        principalId: capability.principal,
-        datasourceId: configuration.datasource_id,
-        semanticDomain: SEMANTIC_DOMAIN,
-      }),
+      publication_authority: publicationAuthority,
       smoke: createFalcon24SuccessorSmokeProcess({
         repository_root: REPOSITORY_ROOT,
         database_url: configuration.database_url,

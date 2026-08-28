@@ -67,13 +67,38 @@ describe("Falcon24 versioned authority finalization", () => {
     expect(source).toContain("finalizeFalcon24SemanticSuccessor");
     expect(source).toContain("stageFalcon24E4SuccessorAuthority");
     expect(source).toContain("createPostgresSemanticPublicationAuthority");
+    expect(source).toContain("buildFalcon24SuccessorChangeSet");
+    expect(source).toContain("prepareSuccessorReview");
+    expect(source).toContain("prepareApprovedSuccessor");
     expect(source).toContain("createFalcon24SuccessorSmokeProcess");
+    expect(source).not.toContain("FALCON24_SUCCESSOR_CHANGE_SET_ID");
+    expect(source).not.toContain("FALCON24_SUCCESSOR_CHANGE_SET_HASH");
+    expect(source).not.toContain("FALCON24_SUCCESSOR_REVIEW_ID");
+    expect(source).not.toContain("FALCON24_SUCCESSOR_REVIEW_HASH");
     expect(source).not.toContain("prepareWorkspaceAuthority");
     expect(source).not.toContain("stageSemanticReleaseReceipt");
     expect(source).not.toContain("createPostgresGreenfieldBootstrapReleaseAuthority");
     expect(source).not.toContain("buildFalcon24SemanticReleaseAuthorityProof");
     expect(source).not.toMatch(/\.activate\s*\(/u);
     expect(source).not.toContain("updateWorkspaceDefaults");
+  });
+
+  it("requires the server-built ChangeSet and exact human approval before staging", () => {
+    const source = readFileSync(
+      fileURLToPath(new URL("../src/cli/finalize-falcon24-authority.ts", import.meta.url)),
+      "utf8",
+    );
+    const buildIndex = source.indexOf("await buildFalcon24SuccessorChangeSet");
+    const reviewIndex = source.indexOf("await publicationAuthority.prepareSuccessorReview");
+    const approvalIndex = source.indexOf("await publicationAuthority.prepareApprovedSuccessor");
+    const stageIndex = source.indexOf("await finalizeFalcon24SemanticSuccessor");
+
+    expect(buildIndex).toBeGreaterThan(0);
+    expect(reviewIndex).toBeGreaterThan(buildIndex);
+    expect(approvalIndex).toBeGreaterThan(reviewIndex);
+    expect(stageIndex).toBeGreaterThan(approvalIndex);
+    expect(source).toContain("change_set_ref: approvedSuccessor.change_set_ref");
+    expect(source).toContain("review_ref: approvedSuccessor.review_ref");
   });
 
   it("content-addresses every final acceptance contract from its frozen source closure", async () => {
