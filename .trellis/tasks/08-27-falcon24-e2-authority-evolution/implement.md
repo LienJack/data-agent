@@ -786,14 +786,36 @@ stop condition。W8 成功前不创建 E4 diagnostic/Q1/C1；成功后 W9/W10 �
 
 Preconditions：前三包已提交、worktree clean、专用容器仍唯一、E4/gen2 exact、E5 污染=0。
 
-- [ ] 在 exact committed HEAD 强制构建 Web/Worker，生成 attestation v2 与 identities，`git_dirty=false`。
-- [ ] 删除/重建/写入 `.next/cache/**` 后 guard仍 PASS；修改一个非 cache output 的副本时 guard稳定 FAIL，随后恢复副本并重新验证原 identity。
-- [ ] 在 exact E4 clone 应用 10798 并运行 populated fixture；scratch DB 删除。
-- [ ] 权威库应用 10798，核对 migration checksum 与 E1-E4/gen1/gen2/default canonical bytes无变化。
-- [ ] 使用全新 deterministic E5 staging identity运行 Finalizer且只运行一次。
-- [ ] ACTIVE 后核对 current=E5、semantic pointer/runtime/defaults exact gen2未变、E4 frozen facts未变、E5 diagnostic/gates=0。
-- [ ] 若任一步失败：写入既定 HOLD（适用时）并停止，不重新运行 Finalizer。
-- [ ] 只提交安全 evidence index/runbook，不提交 attestation 临时文件、log、secret 或 raw DB data。
+- [x] 在 exact committed HEAD 强制构建 Web/Worker，生成 attestation v2 与 identities，`git_dirty=false`。
+- [x] 删除/重建/写入 `.next/cache/**` 后 guard仍 PASS；修改一个非 cache output 的副本时 guard稳定 FAIL，随后恢复副本并重新验证原 identity。
+- [x] 在 exact E4 clone 应用 10798 并运行 populated fixture；scratch DB 删除。
+- [x] 权威库应用 10798，核对 migration checksum 与 E1-E4/gen1/gen2/default canonical bytes无变化。
+- [x] 使用全新 deterministic E5 staging identity运行 Finalizer且只运行一次。
+- [x] ACTIVE 后核对 current=E5、semantic pointer/runtime/defaults exact gen2未变、E4 frozen facts未变、E5 diagnostic/gates=0。
+- [x] 若任一步失败：写入既定 HOLD（适用时）并停止，不重新运行 Finalizer；本次所有步骤首次通过，未触发该分支。
+- [x] 只提交安全 evidence index/runbook，不提交 attestation 临时文件、log、secret 或 raw DB data。
+
+**Evidence（2026-08-29）**
+
+- exact commit `4044eec436ee2cfca084a82886b6853228ae7bd5` 强制构建 8/8 packages PASS；attestation
+  `workspace-build-attestation@2.0.0`，generation `sha256:d27602e7e2c49044749dcb2e3a57626fcf25b2e317552a5ef48496163ae455b2`，
+  Web build `sha256:cf1c1513d41f08fea3b85ecfeb663d02e642a2ff4fcc14276f181b0bcadce8bf`，Worker build
+  `sha256:5bc93b50c9b707c95d036a8c35add67047a60dbfb0140a2f7d9a3bafb30c798c`，`git_dirty=false`。
+  `.next/cache` probe 后 guard PASS；非 cache `BUILD_ID` probe稳定返回 `DEV_WORKSPACE_BUILD_OUTPUT_MISMATCH`，恢复字节后再次 PASS。
+- 同一专用 PostgreSQL 17 容器内从 exact E4 权威库克隆 `data_agent_e5_w4_scratch`；10798安装、populated fixture的 stale
+  all-old、activation/replay/conflict、diagnostic v2、qualification v4、semantic/defaults byte equality全部 PASS，默认 rollback 后 E4且
+  E5 rows=0；scratch已删除。
+- 权威库单次应用 10798，ledger checksum
+  `sha256:18b91331ab0c3820aa016aa985e125ed7b4140820050bb1ac7efc6fb563f346a`。迁移前后 gen1、gen2、semantic pointer、
+  runtime activation、workspace defaults、E1-E4 baseline canonical hashes逐项相同；迁移后 E5 baseline/diagnostic/Q1/C1仍为0。
+- deterministic staging id `58adb8bc-62c9-5b9f-ba29-68a93e14e9cb` 的 Finalizer只调用一次并返回 ACTIVE：E5 baseline
+  `f0ae49cd-fdcb-5ac8-99e1-26865405271b` / `sha256:f3274aa55998f10fd5196449a5b78ec6a7497a05d5bdd3cf7c76a7bc0d080948`，
+  activation attempt `b74512a0-784d-5c06-92e9-06eba0247f2f`，retained proof
+  `sha256:f2387e1c3b0bb941802a01c115a0d41b3d5a192fbc4187147beca2c8b83f1be1`。
+- post-readback current=E5；release仍为 gen2 `18472091-59b1-5d86-b399-9605ca627040` /
+  `sha256:9c53ca74db82181ff46a591ee4e2b88d63e5c9b4e6e3fa157f10fa085ca74dd6`；pointer/runtime/defaults versions仍为
+  `3/3/4`且 canonical hashes与迁移/激活前相同。gen1/gen2、四类 gen2 projection与 E1-E4 baseline保持不变；E5 diagnostic、
+  qualification、campaign均为0；production isolation仍为真实 `false/HOLD`。长期 Docker仍只有既有四个容器。
 
 ### E5-W5 — One non-scoring E5 diagnostic
 
