@@ -2,7 +2,7 @@ import {
   SEMANTIC_FORMULA_AST_V2_VERSION,
   SEMANTIC_FORMULA_AST_VERSION,
   type SemanticFormulaExpression,
-} from "@data-agent/contracts";
+} from "@data-agent/contracts/artifacts";
 
 export const FORMULA_EXPRESSION_KINDS = [
   "LITERAL",

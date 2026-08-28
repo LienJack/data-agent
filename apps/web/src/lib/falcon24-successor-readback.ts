@@ -1,10 +1,8 @@
 import "server-only";
 
-import type {
-  Falcon24SemanticAuthorityClosure,
-  SemanticSuccessorStageEnvelope,
-} from "@data-agent/contracts";
+import type { SemanticSuccessorStageEnvelope } from "@data-agent/contracts/artifacts";
 import type { PortResult } from "@data-agent/contracts/ports";
+import type { Falcon24SemanticAuthorityClosure } from "@data-agent/contracts/runs";
 
 interface SemanticClosureReader {
   load(
