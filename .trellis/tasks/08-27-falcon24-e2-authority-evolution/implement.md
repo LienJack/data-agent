@@ -457,6 +457,15 @@ Status: completed on 2026-08-28.
   rollback fixture、跨 principal replay、hash/CAS/quorum、只读 review evidence、无提前正式发布全部 PASS。专用 E3 数据库未连接。
 - [x] 10792 当前 checksum：`sha256:41ef0f9ef259b9ca72a4d6d49a5d8cd3ddcdef94500e789289bffbea6d3341be`。
 - [x] Scoped commits：`483243e0`、`9c0aef74`、`c3b30bae`、`5b8a326e`、`b47f10cf`、`b326b837`。
+- [x] Final qualification：Platform 111 files / 684 tests；Web 132 passed + 1 skipped files / 545 passed + 1 skipped tests；两个
+  typecheck、10792 renderer、全 Supabase static check、Trellis validate 与 PostgreSQL rollback fixture PASS。强制八包 release build PASS，
+  仅保留两个既有 Evals installer 动态 `fs.stat` warning。
+- [x] Commit `ae0beb0c` 的 clean build attestation：generation
+  `sha256:37695368a6226b3fe78f5f363e329f1043097f6c8386e37299a7f3379083ef94`，Web build
+  `sha256:2955282f7313c0069fc37abf0744e4bc253d102ef5a4b29d5c68879ec410ee85`，Worker build
+  `sha256:b0426a8f2067a55ca1c7971ade25959fd6764468067c69b866d81b172b314615`，`git_dirty=false`。
+- [x] Retained verifier `READY`（historical=3/current=31）；OpenSandbox attestation 为 `production_gate=HOLD`、
+  `production_isolation_proven=false`；runtime uniqueness PASS。Docker 仍只有既有四个运行容器，专用 E3 数据库未连接。
 
 **Stop conditions**
 
