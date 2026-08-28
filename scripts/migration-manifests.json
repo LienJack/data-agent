@@ -2671,6 +2671,25 @@
       "postcondition": {
         "checksum_occurrences": 2
       }
+    },
+    {
+      "id": "10792",
+      "migration_name": "20260725010792_app_data_agent_semantic_successor_review_preparation.sql",
+      "source_directory": "infra/supabase/apps/data-agent/migration-sources/10792",
+      "segments": [
+        "00-preamble.sql.inc",
+        "10-review-preparation-storage.sql.inc",
+        "20-review-preparation-rpcs.sql.inc",
+        "30-human-review-rpc.sql.inc",
+        "80-security.sql.inc",
+        "90-postconditions.sql.inc",
+        "99-ledger.sql.inc"
+      ],
+      "placeholder": "__FALCON24_SEMANTIC_SUCCESSOR_REVIEW_PREPARATION_MIGRATION_CHECKSUM__",
+      "checksum_header": "falcon24_semantic_successor_review_preparation_migration_checksum",
+      "postcondition": {
+        "checksum_occurrences": 2
+      }
     }
   ],
   "exceptions": [
