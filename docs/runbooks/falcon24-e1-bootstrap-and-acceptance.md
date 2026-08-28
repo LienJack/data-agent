@@ -43,7 +43,7 @@ build attestation 证明；不得要求当前源码重新等于 E1，也不得�
 `data-agent-postgres`、`data-agent-clamav`、`data-agent-neo4j` 和唯一专用
 `data-agent-falcon24-e1-e81a29c6`，不得再创建数据库容器。
 
-必须保存 final commit、Web/Worker build identity、10783/10790/10791 checksum、retained manifest hash、Operator registry digest 与
+必须保存 final commit、Web/Worker build identity、10783/10790/10791/10792 checksum、retained manifest hash、Operator registry digest 与
 OpenSandbox attestation。`production_isolation_proven=false` 时即使功能链通过，最终 production 结论仍为 HOLD。
 
 ## 3. W8：E3 → generation 2 / E4 原子激活
@@ -60,15 +60,26 @@ baseline/receipt/activation/Run/gate/Artifact/diagnostic 永不丢弃；不在�
 旧非权威数据可以丢弃。丢弃必须通过已审查 lifecycle 或新的 forward migration，并保存分类依据与前后 count/hash；禁止临时手工 SQL，
 也禁止借此改写受保护历史。
 
-Finalizer 的服务器环境必须提供以下引用；秘密、DSN 与 provider payload 不得写入日志或 Artifact：
+迁移完成并重新核对 gen1/E1-E3 未变后，先由服务器固定 builder 打开/重放人工评审 packet。该命令不接受 ChangeSet/review/projection
+payload 或 digest，不写正式 generation 2 Release/pointer/runtime/E4：
+
+```sh
+export DATA_AGENT_ALLOW_FALCON24_SUCCESSOR_REVIEW_PREPARATION=YES
+export FALCON24_ENVIRONMENT=<exact-environment>
+
+pnpm --filter @data-agent/web prepare:falcon24-successor-review
+```
+
+保存返回的 `change_set_ref` 与 `review_packet_ref`。随后由当前 reviewer policy 中的真人通过普通 Semantic Governance UI/API 审阅 exact
+packet 并提交 APPROVE；禁止 SQL、脚本自动批准或让 Finalizer 代替 reviewer。批准必须产生严格
+`semantic-review-decision@1.0.0` document，ChangeSet/review hash 均由 PostgreSQL/Contracts 重算。若还未批准，Finalizer 必须以
+`SEMANTIC_SUCCESSOR_APPROVED_REVIEW_REQUIRED` 停止，gen1/E3 保持 current。
+
+真人批准后，Finalizer 的服务器环境只提供运行 authority/build 参数；秘密、DSN 与 provider payload 不得写入日志或 Artifact：
 
 ```sh
 export DATA_AGENT_ALLOW_FALCON24_AUTHORITY_ACTIVATION=YES
 export FALCON24_AUTHORITY_EPOCH=E4
-export FALCON24_SUCCESSOR_CHANGE_SET_ID=<reviewed-change-set-uuid>
-export FALCON24_SUCCESSOR_CHANGE_SET_HASH=<sha256>
-export FALCON24_SUCCESSOR_REVIEW_ID=<approved-review-uuid>
-export FALCON24_SUCCESSOR_REVIEW_HASH=<sha256>
 export FALCON24_WEB_BUILD_IDENTITY_FILE=<absolute-web-build-identity-json>
 export FALCON24_WORKER_BUILD_IDENTITY_FILE=<absolute-worker-build-identity-json>
 export FALCON24_BUILD_ATTESTATION_FILE=<absolute-build-attestation-json>
@@ -77,9 +88,10 @@ export FALCON24_ENVIRONMENT=<exact-environment>
 pnpm --filter @data-agent/web finalize:falcon24-authority
 ```
 
-该命令固定执行：exact E3/gen1/defaults preflight → 唯一 reviewed successor publisher → shared validator → deterministic Worker smoke →
-proof v2 → E4 supporting staging → 单一 combined PostgreSQL transaction → production-port readback。CLI 不接受 projection payload/digest，
-也不调用旧 defaults writer、generation-1 equality proof 或普通 `epoch.activate`。
+该命令固定执行：exact E3/gen1/defaults preflight → 服务端重建同一固定 ChangeSet → scope-level review replay → exact human approval
+document → PREPARED attempt → 唯一 reviewed successor publisher → shared validator → deterministic Worker smoke → proof v2 → E4 supporting
+staging → 单一 combined PostgreSQL transaction → production-port readback。CLI 不接受 ChangeSet/review/projection payload/digest，也不调用旧
+defaults writer、generation-1 equality proof 或普通 `epoch.activate`。
 
 成功结果必须同时证明：
 

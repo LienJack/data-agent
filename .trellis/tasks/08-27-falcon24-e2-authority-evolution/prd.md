@@ -52,6 +52,9 @@ PostgreSQL 事务内原子激活。原子激活后先完成一条非计分诊断
   不允许在 E4 内替换实现或重新签发 baseline。
 - **R-G2-07 真实隔离声明。** `production_isolation_proven=false` 时始终保持 `production_gate=HOLD`；功能 PASS 不得被描述为
   production GO。
+- **R-G2-07A 固定 ChangeSet 与真人批准。** Falcon24 generation 2 的 ChangeSet 必须由服务端执行固定仓库 builder 后按合同重验，
+  先进入 scope 级幂等、append-only 的 review-preparation 域。评审只能由当前 reviewer policy 下的真人通过治理 Port 提交；Finalizer
+  不接受外部 ChangeSet/review hash，不自动批准，未获得 exact APPROVE document 时稳定停止。
 
 ## 4. Functional Requirements
 

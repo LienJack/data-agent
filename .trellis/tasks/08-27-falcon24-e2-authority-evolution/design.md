@@ -60,6 +60,25 @@ interface SemanticPublicationAuthorityPort {
 普通 Semantic Studio publish 若不参与 Falcon combined activation，仍复用同一 compiler/validator/正式写入 kernel；不得复制
 projection 编译、hash 或 Release insert 逻辑。
 
+### 2.1A Fixed ChangeSet and human review preparation
+
+后继 migration 10792 在正式 successor stage 之前增加 review-preparation 域：
+
+- `semantic_successor_review_preparation` append-only 绑定 predecessor exact ref、pointer CAS、固定 ChangeSet、candidate revision 与 review
+  packet；`scope + idempotency_key` 唯一，允许另一名同 scope 授权操作员继续同一 packet。
+- `semantic_successor_review_decision_document` append-only 保存严格 `semantic-review-decision@1.0.0`；backend 仅能按 capability/RLS
+  SELECT 该证据，不能直接 DML。
+- `prepare_falcon24_successor_review(jsonb)` 只接受 server-verified ChangeSet 和 expected CAS，创建 `WAITING_REVIEW` candidate 与
+  `HUMAN_REVIEW` packet；不写正式 Release/pointer/runtime/E4。
+- `human_record_semantic_review_decision(jsonb)` 是治理 Port 唯一真人入口；服务端重算 review hash，满足 quorum 后才把 candidate 推进
+  `APPROVED`。Finalizer 与 review-preparation CLI 都不能调用它自动批准。
+- `prepare_falcon24_successor_publish_attempt(jsonb)` 只消费 exact closed APPROVED packet/review document，把 candidate CAS 到
+  `PUBLISHING` 并创建幂等 `PREPARED` attempt；仍不写正式 Release/pointer/runtime/E4。
+
+Web 的 `buildFalcon24SuccessorChangeSet` 只能执行固定仓库脚本并再次调用 `verifySemanticChangeSet`。CLI 不接收 ChangeSet、review、
+projection 或 release digest；专门的 review-preparation CLI 只打开 packet。普通治理 UI/API 完成人工批准后，Finalizer 重新构建同一
+ChangeSet、重放 preparation、读取批准文档并准备 attempt，随后才进入唯一 `stageReviewedSuccessor`。
+
 ### 2.2 Stage command
 
 CLI/Web 只提交业务引用、expected CAS 与幂等键，不提交任何 projection payload/digest：
@@ -326,12 +345,14 @@ STAGED --smoke PASS CAS--> SMOKE_PASSED --combined activation--> PROMOTED
 
 `prepareWorkspaceAuthority` 不得再从 current generation 1 自动推导 E4 semantic ref。顺序固定为：
 
-1. `stageReviewedSuccessor` 生成并验证 gen2 stage。
-2. Worker deterministic smoke；得到 PASS receipt。
-3. 构造 proof v2 和 E4 `SEMANTIC_RELEASE` staging receipt。
-4. 暂存其余 E4 receipts、baseline、session/attempt，但不激活。
-5. 调用 combined activation RPC。
-6. 提交后用生产 Semantic read port 与 Falcon authority port 重载并核对 pointer/runtime/defaults/current。
+1. 服务端重建固定 ChangeSet，重放/打开 human review packet；没有 exact APPROVE document 时停止。
+2. `prepareApprovedSuccessor` 读取严格 review document 并创建唯一 `PREPARED` publish attempt。
+3. `stageReviewedSuccessor` 生成并验证 gen2 stage。
+4. Worker deterministic smoke；得到 PASS receipt。
+5. 构造 proof v2 和 E4 `SEMANTIC_RELEASE` staging receipt。
+6. 暂存其余 E4 receipts、baseline、session/attempt，但不激活。
+7. 调用 combined activation RPC。
+8. 提交后用生产 Semantic read port 与 Falcon authority port 重载并核对 pointer/runtime/defaults/current。
 
 提交后的 authority closure 通过后继 migration 10791 提供的
 `load_falcon24_semantic_authority_closure(jsonb)` 读取。命令只包含 `semantic_domain`，服务端从当前 capability/RLS scope
@@ -381,6 +402,7 @@ semantic runtime 和 workspace defaults。四者任一缺失、跨 scope、Relea
 | Condition | Stable failure / terminal behavior |
 | --- | --- |
 | ChangeSet/review/snapshot/compiler ref 不存在、scope/hash 不同 | `SEMANTIC_SUCCESSOR_SOURCE_CLOSURE_INVALID`，无 stage |
+| 固定 ChangeSet 尚无 exact human APPROVE document | `SEMANTIC_SUCCESSOR_APPROVED_REVIEW_REQUIRED`；保留 review packet，gen1/E3 不变 |
 | target generation != predecessor+1 | `SEMANTIC_SUCCESSOR_GENERATION_INVALID`，无 stage |
 | expected pointer/version stale | `SEMANTIC_SUCCESSOR_POINTER_STALE`，无 stage |
 | 同 idempotency key 不同 canonical input | `SEMANTIC_SUCCESSOR_IDEMPOTENCY_CONFLICT` |

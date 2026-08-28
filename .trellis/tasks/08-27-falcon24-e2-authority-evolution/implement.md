@@ -441,6 +441,23 @@ Status: completed on 2026-08-28.
   它不被 current closure/receipt 引用且不属于完成证据；此后才可经已审查 lifecycle/forward migration 丢弃，禁止手工 SQL 或把
   “可丢弃旧数据”扩大到受保护集合。
 
+### W7-R — Fixed ChangeSet and human-review readiness
+
+- [x] 新增 10792 review-preparation storage/RPC/security/postconditions；scope-level idempotency 支持第二名有效 principal 重放同一固定
+  ChangeSet，append-only review document 仅向 backend 开放 capability/RLS 只读证据，所有 direct DML 继续拒绝。
+- [x] `PostgresSemanticGovernanceService.submitDecision` 只调用 `human_record_semantic_review_decision(jsonb)`；backend 不再能执行内部
+  `record_review_decision`。
+- [x] 单一 `createPostgresSemanticPublicationAuthority` 增加 prepare/replay 与 approved-attempt 方法；CLI 无 projection payload、
+  candidate digest 或第二 publisher 面。
+- [x] 新增固定 ChangeSet server builder 与 `prepare:falcon24-successor-review`；该 CLI 只产生/重放 `WAITING_REVIEW` packet，不批准、
+  不 stage、不 smoke、不激活。
+- [x] Finalizer 删除 `FALCON24_SUCCESSOR_CHANGE_SET_*` / `FALCON24_SUCCESSOR_REVIEW_*` 输入，按固定顺序执行 build → review replay →
+  exact human approval → PREPARED attempt → stage/smoke/combined activation。
+- [x] 复用既有 `data-agent-postgres`，从已验证模板克隆 scratch DB `data_agent_falcon24_w7_review_10792`；10792 PostgreSQL 17 upgrade、
+  rollback fixture、跨 principal replay、hash/CAS/quorum、只读 review evidence、无提前正式发布全部 PASS。专用 E3 数据库未连接。
+- [x] 10792 当前 checksum：`sha256:41ef0f9ef259b9ca72a4d6d49a5d8cd3ddcdef94500e789289bffbea6d3341be`。
+- [x] Scoped commits：`483243e0`、`9c0aef74`、`c3b30bae`、`5b8a326e`、`b47f10cf`、`b326b837`。
+
 **Stop conditions**
 
 - 任一验证失败不进入 W8；修复回到拥有该行为的工作包并创建新的 scoped commit。若修改 frozen E4 closure，重新构建后续 identity。
@@ -530,6 +547,7 @@ W0 approval
   -> W5 proof/finalizer/combined adapter
   -> W6 diagnostic authority
   -> W7 full qualification
+  -> W7-R fixed ChangeSet + human review readiness
   -> explicit DB/activation approval
   -> W8 stage + atomic E4 activation
   -> W9 single diagnostic
