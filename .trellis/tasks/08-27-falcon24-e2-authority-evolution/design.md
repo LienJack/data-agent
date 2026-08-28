@@ -1,7 +1,8 @@
 # Falcon24 Semantic Generation 2 与 E4 原子权威恢复 — Design
 
-> W1-W7 已于 2026-08-28 实施并全量验证，用户已批准 exact review packet 与 W8。第一次 Finalizer 在 stage 前因旧 bootstrap
-> dependency closure 缺失而全旧 HOLD；10794 exact-scope 前向恢复已通过 populated-clone 验证，待应用到专用权威数据库。
+> W1-W7 已于 2026-08-28 实施并全量验证，用户已批准 exact review packet 与 W8。10794 已应用且受保护历史未变；后续单次
+> Finalizer 已生成 smoke-passed generation 2 candidate，但 supporting Team materialization 因三个 Semantic Skill 错误复用 revision 2
+> 而停止。W8-R2 已以追加 revision 3 和 10795 pre-baseline HOLD authority 修复并验证，尚未应用到专用权威数据库。
 
 ## 1. Scope / Trigger
 
@@ -569,3 +570,32 @@ gen2 semantic promotion 与 E4 current/defaults 原子绑定。因此它不是�
    10790，避免修改历史 migration，也避免让 10783 核心原子激活 migration 同时承载 diagnostic/gate policy。
 3. **Fresh bootstrap admission：** 因 combined activation 合同要求 exact E3 predecessor，旧 E1 bootstrap 不得伪造 E3 或建立另一套
    promotion authority；它被退役为纯 fail-closed guard。现有 E3 恢复只走唯一 Finalizer/Port，gen2 current 前 Web/Worker 保持关闭。
+
+## 14. W8-R2 Pre-baseline Recovery Design
+
+### 14.1 Root cause and immutable fix
+
+Commit `148889cad4a79112baf923fee19923f0dbf1fb35` 改变了三个 Semantic Skill body，也正确推进了 Semantic Product Profile，
+但遗漏 Skill revision 2 -> 3。专用库中 revision 2 是已经发布的不同 immutable bytes，因此该事实不是可丢弃的旧数据损坏。
+修复只在源码把三个 Skill 目标 revision 推进为 3；`materializeBuiltinTeamProfiles` 仍通过现有 list/CAS/commit Port 追加新 revision 并推进 head。
+
+### 14.2 State machine
+
+```text
+begin E4 staging -> STAGED
+  supporting receipts / Team materialization fail before baseline
+    -> hold_falcon24_authority_staging_session(exact CAS) -> HOLD
+  all supporting receipts accepted
+    -> semantic receipt -> baseline -> activation attempt -> combined activation -> CONSUMED
+```
+
+HOLD 是终态；旧 receipt 保留且不可改写。旧 `e430` 封存后，下一次 Finalizer 使用新 staging id。RPC 在同一事务中按
+Falcon staging advisory -> current authority row -> exact staging session row 的顺序加锁；baseline 存在时拒绝该 recovery path，
+由既有 activation-attempt HOLD authority 负责 post-baseline 失败，避免两条 HOLD 权威重叠。
+
+### 14.3 Failure handling
+
+`stageFalcon24E4SuccessorAuthority` 只包围 baseline 之前的 supporting receipt verification。原始稳定错误会成为 session failure code；
+HOLD 成功后继续抛出原错误。若 HOLD 自身失败，则返回 `FALCON24_E4_STAGING_HOLD_FAILED`，并将原错误与 HOLD 错误保留为内部 cause，
+禁止继续 baseline/activation。独立恢复 CLI 要求 confirmation、E4、staging id、expected retained-assets hash 与稳定 failure code；
+它先通过正常 capability authority 核对 current=E3，再调用同一 Port，不直接执行 SQL。

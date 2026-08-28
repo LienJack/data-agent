@@ -160,7 +160,8 @@ bootstrap policy、historical COMMITTED attempt、source release 与 runtime res
 
 - 静态测试断言 exact 10793 checksum、E3/gen1 scope、零 E4/零 successor 污染、partial-state 失败与只 INSERT
   三张允许表。
-- renderer/manifest/inventory 测试固定 source segments、rendered SQL、header/body checksum、frontier=10794、next=10795。
+- 10794 renderer/manifest 测试固定其 source segments、rendered SQL 与 header/body checksum；加入 pre-baseline HOLD 后，workspace
+  migration inventory 的当前 frontier=10795、next=10796。
 - PostgreSQL 17 exact populated clone：应用前 fence/pointer=0/0，应用后=1/1，replay 后仍=1/1。
 - 对 380 张非允许用户表比较 row count/canonical hash；另行复核 E3 baseline、generation 1 release/projections、
   review packet/decision 与 stage/E4/diagnostic counts。
@@ -178,3 +179,87 @@ values (..., 'sha256:guessed');
 select app_data_agent.u2_canonical_sha256(validation_receipt_json)
   into derived_validation_hash;
 ```
+
+## 15. Scenario: Falcon Pre-baseline Staging HOLD
+
+### 15.1 Scope / Trigger
+
+- Trigger：Falcon successor staging session 已为 `STAGED`，supporting receipt 或 Team materialization 在 baseline 创建前失败。
+- 目的：append-only 保留已写 receipts，并将 session 受控终结为 HOLD；不建立 baseline/attempt，不删除 receipt，不重用 staging id。
+- Post-baseline 失败不走本 RPC，必须继续使用 activation-attempt HOLD authority。
+
+### 15.2 Signatures
+
+```text
+falcon24StagingHoldRequestV2Schema
+falcon24StagingHoldResultV2Schema
+PostgresFalcon24AuthorityEpoch.holdStagingSession(capability, request)
+app_data_agent.hold_falcon24_authority_staging_session(jsonb) -> jsonb
+pnpm --dir apps/web hold:falcon24-authority-staging
+```
+
+锁顺序固定为 `falcon24-authority-staging advisory -> current authority FOR UPDATE -> staging session FOR UPDATE`。
+
+### 15.3 Contracts
+
+Request exact keys：
+
+```json
+{
+  "schema_version": "falcon24-staging-hold-request@2.0.0",
+  "authority_epoch": "E4",
+  "staging_id": "uuid",
+  "expected_retained_assets_hash": "sha256:<64 hex>",
+  "failure_code": "STABLE_UPPER_SNAKE_CASE"
+}
+```
+
+Adapter 仅在服务器端追加 `command_hash`。Result 固定为 `falcon24-staging-hold@2.0.0`、`status=HOLD`，并回显 exact epoch、
+staging id、retained hash 与 failure code。CLI 环境键：
+
+- required：`DATABASE_URL`、`FALCON24_STAGING_ID`、`FALCON24_EXPECTED_RETAINED_ASSETS_HASH`、
+  `FALCON24_STAGING_FAILURE_CODE`、`DATA_AGENT_ALLOW_FALCON24_STAGING_HOLD=YES`；
+- fixed/default：`FALCON24_AUTHORITY_EPOCH=E4`、deployment/workspace/principal 与 environment 仍按 Finalizer 的 server context 解析；
+- CLI 只调用 capability authority 与 Port，禁止 `pool.query`、`client.query` 或 session payload/DML 输入。
+
+### 15.4 Validation & Error Matrix
+
+| 条件 | 结果 |
+| --- | --- |
+| exact keys/schema/UUID/hash/reason/command hash 错误或含潜在秘密 | `FALCON24_AUTHORITY_STAGING_HOLD_INVALID` |
+| current 不存在或 target 不是 `current+1` | `FALCON24_CURRENT_AUTHORITY_NOT_FOUND` / `FALCON24_AUTHORITY_EPOCH_NOT_SUCCESSOR` |
+| session 不存在或 retained hash 不同 | `...SESSION_NOT_FOUND` / `...HOLD_MISMATCH` |
+| session 已有任何 baseline | `FALCON24_AUTHORITY_STAGING_HOLD_BASELINE_EXISTS` |
+| session 已 HOLD 且 failure code 相同 | idempotent replay，返回同一 HOLD document |
+| session 已 HOLD 但 failure code 不同 | `FALCON24_AUTHORITY_STAGING_HOLD_CONFLICT` |
+| session 已 CONSUMED | `FALCON24_AUTHORITY_STAGING_SESSION_TERMINAL` |
+| supporting failure 后 HOLD authority 自身失败 | `FALCON24_E4_STAGING_HOLD_FAILED`，禁止继续 baseline/activation |
+
+### 15.5 Good / Base / Bad Cases
+
+- Good：Finalizer 在 Team materialization 失败后调用 Port，session `STAGED -> HOLD`，原稳定 reason 继续向上抛出，current 保持 all-old。
+- Base：进程在 HOLD 返回后丢失响应；同一 exact request 重放返回同一 HOLD document。
+- Bad：直接 UPDATE session、删除已写 receipts、把 HOLD 恢复为 STAGED、重用同一 staging id，或让 pre-baseline RPC 接受已有 baseline。
+
+### 15.6 Tests Required
+
+- Contract：strict request/result、E1/未知字段/错误 hash/reason 拒绝。
+- Platform：服务端 command hash、correlation id、RPC 名称、stable DB error mapping 与 exact result parse。
+- Web：supporting receipt 不完整和 Team revision conflict 都先调用 HOLD；成功后抛回原 reason；HOLD 失败不得 stage baseline。
+- Migration：exact 10794 checksum、PG17、helper/session inventory、owner/security-definer/search path、public revoke/backend grant、
+  migration 前后 session bytes 不变。
+- PostgreSQL clone：apply、first HOLD、same-reason replay、different-reason conflict、baseline-exists refusal，并确认权威库未受 scratch 影响。
+
+### 15.7 Wrong vs Correct
+
+```sql
+-- Wrong: 绕过 capability/RLS 并留下无 failure reason 的现场修补
+update app_data_agent.falcon24_authority_staging_sessions
+set status='HOLD' where staging_id=:id;
+
+-- Correct: client 只提交 exact CAS material；Adapter 生成 command_hash，RPC 锁定并验证 scope/current/session/baseline
+select app_data_agent.hold_falcon24_authority_staging_session(:server_built_command);
+```
+
+当 source-owned Skill body 改变时，同样禁止复用已发布 revision：必须提高 revision，通过 Skill Registry append + CAS 推进 head；
+数据库中的旧 revision bytes 即使来自重构前也属于已引用权威历史，不能按“可丢弃旧数据”处理。

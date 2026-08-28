@@ -1,8 +1,10 @@
 # Falcon24 Semantic Generation 2 与 E4 原子权威恢复
 
 > 执行状态（2026-08-28）：W1-W7 已实施并通过全量验证；被拒绝的 generation-1 repair 现场已按用户授权封存到可恢复审计 stash。
-> 用户已批准 exact review packet 与 W8。第一次 Finalizer 因旧 bootstrap 缺失 dependency pointer 稳定 HOLD，数据库保持完整 E3/gen1；
-> 10794 前向恢复已在专用库 exact clone 验证，尚未应用到权威 `data_agent`。诊断与正式门禁只能在 W8 成功后按 fail-closed 顺序执行。
+> 用户已批准 exact review packet 与 W8。10794 已应用到专用权威库且未改变受保护历史；随后唯一一次 Finalizer 已生成并 smoke PASS
+> generation 2 candidate，但在 Falcon supporting Team materialization 阶段因三个 Semantic Skill 的源码变更仍错误复用 revision 2 而 HOLD。
+> 当前仍为 E3/gen1，candidate 保持 `SMOKE_PASSED`，E4 baseline/activation 为零；旧 E4 staging session `e430` 仍为 `STAGED`。
+> W8-R2 代码与 10795 已验证并提交，但尚未应用到专用库。诊断与正式门禁只能在 W8 成功后按 fail-closed 顺序执行。
 
 ## 1. Goal
 
@@ -173,5 +175,24 @@ drop、提交、执行或用于修改数据库。否决原因：
 W1-W7 已完成并通过 focused/full validation 与 scoped commits。被拒绝的 generation 1 repair 只保留在命名审计 stash 中，不得恢复
 或执行。用户已对 packet `801bfa69-2ea6-49d9-9a6a-676b0e3facd6` 作出 exact APPROVE，并明确批准 W8。第一次 Finalizer 只执行一次，
 以 `SEMANTIC_SUCCESSOR_DEPENDENCY_POINTER_REQUIRED` HOLD；只读核对证明 stage/E4/diagnostic 均为零、current 仍为 E3/gen1。
-下一步仅允许先应用已审查的 10794 并核对 all-old 历史不变，再在新 clean build 上执行一次修正后的 Finalizer。若再次 HOLD，停止并审计，
-不得连续重跑。E4 成功前不得创建 diagnostic/gate attempt 或运行正式门禁。
+10794 已应用并通过 all-old 历史核对；第二次、也是 10794 后唯一一次 Finalizer 生成了 generation 2 stage 并完成 deterministic smoke，
+随后以 `BUILTIN_TEAM_SKILL_REVISION_CONFLICT` 停止。下一步必须先应用 10795，通过 capability-gated CLI 将旧 `e430` 会话从
+`STAGED` 封存为 `HOLD`，再以包含 Semantic Skill rev3 的新 clean build 和新 staging id 执行一次 Finalizer。不得重用 `e430`、
+不得直接 UPDATE session、不得连续重跑。E4 成功前不得创建 diagnostic/gate attempt 或运行正式门禁。
+
+## 9. W8-R2 Requirements and Evidence
+
+- **R-G2-32 Skill revision immutability。** `Frozen Semantic Definitions`、`Frozen Semantic Relationships`、
+  `Frozen Semantic Lineage` 的当前 body 与历史 revision 2 bytes 不同，必须追加 revision 3 并通过既有 Skill Registry CAS 推进 head；
+  禁止改写数据库 revision 2 或把当前 body 继续发布为 revision 2。
+- **R-G2-33 Pre-baseline session recovery。** Supporting receipt/Team materialization 在 baseline 创建前失败时，Finalizer 必须调用
+  `hold_falcon24_authority_staging_session(jsonb)`，只允许 exact successor、exact staging id、exact retained-assets hash 且无 baseline 的
+  `STAGED -> HOLD`。同一 failure code 可重放；不同 reason、错误 hash、已有 baseline 或 terminal session 必须失败关闭。
+- **R-G2-34 No direct recovery DML。** 已遗留的 `e430` 只能通过显式确认的
+  `hold:falcon24-authority-staging` CLI 和 capability-authorized Port 封存；CLI 不包含 `pool.query`/`client.query`，也不接受任意 session payload。
+- **R-G2-35 New attempt identity。** `e430` 成为 HOLD 后不得恢复、清空 receipt 或重新 STAGED。下一次 Finalizer 必须使用新 staging id、
+  新 clean build identity 和当前源码产生的 AGENT_PROFILES receipt；generation 2 stage/smoke 可按原幂等身份精确复用。
+- 实现 commits：`297b8ead`（三个 Semantic Skill 追加 rev3）与 `2305d9c6`（Contracts/Platform/Web/10795 recovery）。
+- 10795 rendered checksum 为 `sha256:6a367834c337db45823104c28e4ecc2445b3ab73270fb0bbf766a20aad4f6d9d`；已在专用容器内
+  exact `data_agent` clone 上通过 PostgreSQL 17 apply、owner/grant/postcondition、HOLD/replay/conflict 验证，scratch database 已删除。
+- 专用权威 `data_agent` 仍为 frontier 10794、Falcon E3、semantic gen1，`e430=STAGED`；10795 尚未应用，也未再次运行 Finalizer。

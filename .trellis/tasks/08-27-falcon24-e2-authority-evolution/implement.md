@@ -1,7 +1,8 @@
 # Falcon24 Semantic Generation 2 与 E4 原子权威恢复 — Implementation Plan
 
-> W1-W7 已于 2026-08-28 实施并全量验证。用户已批准 exact review packet 与 W8；第一次 Finalizer 在 stage 前全旧 HOLD。
-> 10794 已完成实现与 exact-clone 验证，待应用到专用 `data_agent` 后继续单次修正执行。
+> W1-W7 已于 2026-08-28 实施并全量验证。用户已批准 exact review packet 与 W8；10794 已应用且 protected history 未变。
+> 随后单次 Finalizer 已 stage/smoke generation 2，但因 Semantic Skill revision conflict 停止。W8-R2 源码与 10795 已验证提交；
+> 专用 `data_agent` 尚未应用 10795，旧 `e430` 仍为 STAGED，也未再次运行 Finalizer。
 
 ## 0. Current Freeze
 
@@ -499,8 +500,8 @@ Status: completed on 2026-08-28.
 **Work**
 
 - [x] 应用并核对 10783-10793 forward migrations 与 E1-E3/gen1 审计摘要。
-- [ ] 将已通过 exact-clone Oracle 的 10794 应用于专用数据库并再次核对 protected history。
-- [ ] 通过唯一 publisher stage generation 2；运行 deterministic smoke PASS。
+- [x] 将已通过 exact-clone Oracle 的 10794 应用于专用数据库并再次核对 protected history。
+- [x] 通过唯一 publisher stage generation 2；运行 deterministic smoke PASS。
 - [ ] 构建 E4 proof/receipts/baseline/session，combined transaction原子激活。
 - [ ] 使用生产端口核对 semantic pointer/runtime/defaults=current gen2，Falcon current=E4，receipt/outbox/stage PROMOTED exact。
 - [ ] 再次证明 generation 1/E1-E3 bytes未变与 `production_gate=HOLD`。
@@ -543,7 +544,29 @@ Status: completed on 2026-08-28.
 - 10794 已在同一既有专用 PostgreSQL 容器内、由 exact `data_agent` 克隆出的 scratch database
   `data_agent_falcon24_w8_dependency_10794` 验证：应用前 frontier=10793 且 fence/pointer=0/0；应用与 replay 后 ledger/fence/pointer
   始终=1/1/1，380 张非允许用户表 ordered canonical count/hash drift=0，E3/gen1/review exact 不变，stage/E4/diagnostic=0。
-  该 migration 尚未应用到权威 `data_agent`，因此 stage/smoke/E4 checklist 保持未完成。
+  该 migration 已应用到权威 `data_agent`；380 张非允许用户表 aggregate hash 仍为
+  `sha256:63d20c74c0191a446b95c13d6e08a1d3c3ae70f2f48e28a745c7628f745697a0`，E3/gen1 未变。
+
+**W8-R2 evidence and next gate**
+
+- 10794 后唯一一次 Finalizer 创建 successor stage `44eb7b8d-27e4-556a-8833-7e7c293a04cc`，candidate generation 2
+  `18472091-59b1-5d86-b399-9605ca627040` / `sha256:9c53ca74db82181ff46a591ee4e2b88d63e5c9b4e6e3fa157f10fa085ca74dd6`，
+  validation receipt `sha256:06860d254853aa9a71d7bde24f91f233eeadd8f7e4ee5033d72d71b0fa0bdcb2` 与 smoke receipt
+  `sha256:4b51d04e3ceefcbc25a5b1ed97443b5112a16bc9fab02a62bb344094fe487411` 均 PASS。
+- Falcon supporting session `00000000-0000-4000-8000-00000000e430` 已写五类 supporting receipts，但 Team materialization 返回
+  `BUILTIN_TEAM_SKILL_REVISION_CONFLICT`；无 SEMANTIC_RELEASE receipt、E4 baseline、activation attempt、diagnostic 或 formal gate。
+- `297b8ead` 将三个已改变 body 的 Semantic Skill 从目标 revision 2 推进为 3；测试证明既有不同 hash 的 immutable revision 2 会通过
+  Registry CAS 追加 revision 3，不会冲突或覆盖历史。
+- `2305d9c6` 增加 strict HOLD contract/Port、Finalizer pre-baseline failure closure、显式恢复 CLI 与 migration 10795；checksum
+  `sha256:6a367834c337db45823104c28e4ecc2445b3ab73270fb0bbf766a20aad4f6d9d`。
+- 聚焦验证：Contracts/Platform/Worker/migration 6 files / 36 tests，Web 3 files / 17 tests；Contracts、Agent Runtime、Platform、Web
+  typecheck PASS，10795 renderer verify PASS。专用容器 exact clone 已完成 PostgreSQL 17 apply、HOLD、same-reason replay、different-reason
+  conflict 与 owner/grant/ledger postcondition，随后删除；未创建新 Docker container。
+- [ ] 用户批准 W8-R2 数据库步骤后，将 10795 应用于专用 `data_agent` 并核对 frontier/checksum 与 protected history。
+- [ ] 通过 `hold:falcon24-authority-staging` 以 exact `e430` / retained hash / 原 failure code 封存旧 session，核对 `HOLD` 且
+  current 仍 E3/gen1；禁止直接 DML。
+- [ ] 在上述两个代码 commit 与文档 commit 上生成新 clean Web/Worker build identity，使用新 staging id 运行一次 Finalizer。
+- [ ] 若再次 HOLD，立即停止并只读审计；若 ACTIVE，继续 production-port readback 后才进入 W9。
 
 **Stop conditions**
 
