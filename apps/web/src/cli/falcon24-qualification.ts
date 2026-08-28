@@ -10,6 +10,7 @@ import { sha256ContentHash } from "@data-agent/contracts/common";
 import {
   authorityEpochForFalcon24Gate,
   buildFalcon24QualificationManifestV2,
+  buildFalcon24QualificationManifestV3,
   buildFalcon24ResolutionTraceGateReceiptV2,
   buildFalcon24ResolutionTraceUiGateReceiptV2,
   FALCON24_QUALIFICATION_EXPECTED_PATH,
@@ -26,6 +27,7 @@ import { buildFalcon24AgentAnalysisAcceptanceSuite } from "@data-agent/evals";
 import { createPostgresRepository } from "@data-agent/platform/persistence";
 import {
   createPostgresFalcon24AuthorityEpoch,
+  createPostgresFalcon24DiagnosticAuthority,
   createPostgresFalcon24QualificationAuthority,
 } from "@data-agent/platform/runs";
 import {
@@ -185,6 +187,10 @@ async function main(): Promise<void> {
     pool: getWorkspaceSqlPool(),
     authorizer: workspaceAuthority.authorizer,
   });
+  const diagnosticAuthority = createPostgresFalcon24DiagnosticAuthority({
+    pool: getWorkspaceSqlPool(),
+    authorizer: workspaceAuthority.authorizer,
+  });
   const epochAuthority = createPostgresFalcon24AuthorityEpoch({
     pool: getWorkspaceSqlPool(),
     authorizer: workspaceAuthority.authorizer,
@@ -315,8 +321,8 @@ async function main(): Promise<void> {
     if (currentAuthority.authority_epoch !== authorityEpoch) {
       throw new Error("FALCON24_GATE_EPOCH_MISMATCH");
     }
-    const manifest = await buildFalcon24QualificationManifestV2({
-      schema_version: "falcon24-qualification-manifest@2.0.0",
+    const semanticRelease = selected.semantic_release;
+    const manifestMaterial = {
       authority_epoch: authorityEpoch,
       qualification_id: qualificationId,
       attempt_id: attemptId,
@@ -333,7 +339,37 @@ async function main(): Promise<void> {
       web_build_hash: webBuildHash,
       runtime_attestation_hash: runtimeAttestationHash,
       slots: slotMaterials.map(({ identities: _identities, ...slot }) => slot),
-    });
+    } as const;
+    const manifest =
+      authorityEpoch === "E4"
+        ? await (async () => {
+            const diagnosticAttemptId = z.uuid().parse(argument("diagnostic-attempt-id"));
+            const diagnostic = requireValue(
+              await diagnosticAuthority.load(capability, diagnosticAttemptId),
+            );
+            if (
+              diagnostic?.status !== "PASSED" ||
+              !diagnostic.terminal_receipt_hash ||
+              diagnostic.authority_epoch !== "E4" ||
+              diagnostic.semantic_release_digest !== semanticRelease.resource_hash ||
+              diagnostic.authority_baseline_hash !== currentAuthority.baseline_hash
+            ) {
+              throw new Error("FALCON24_QUALIFICATION_DIAGNOSTIC_PASSED_REQUIRED");
+            }
+            return buildFalcon24QualificationManifestV3({
+              ...manifestMaterial,
+              schema_version: "falcon24-qualification-manifest@3.0.0",
+              diagnostic_receipt_ref: {
+                attempt_id: diagnostic.attempt_id,
+                run_id: diagnostic.run_id,
+                receipt_hash: diagnostic.terminal_receipt_hash,
+              },
+            });
+          })()
+        : await buildFalcon24QualificationManifestV2({
+            ...manifestMaterial,
+            schema_version: "falcon24-qualification-manifest@2.0.0",
+          });
     const qualification = requireValue(await qualificationAuthority.begin(capability, manifest));
     const outputPath = resolve(
       root,

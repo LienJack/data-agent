@@ -283,6 +283,58 @@ describe("Falcon24 versioned browser gate", () => {
     ).toBe(true);
   });
 
+  it("submits a deterministic non-scoring diagnostic without a formal gate fence", async () => {
+    const attemptId = "00000000-0000-4000-8000-000000000115";
+    const question = "最近 12 个完整月的订单收入趋势如何？请按月展示，并生成折线图。";
+    execFileAsyncMock.mockReset();
+    execFileAsyncMock.mockImplementation(async (_file: string, args: readonly string[]) => {
+      const encoded = args.at(-1);
+      const script =
+        args.includes("eval") && encoded ? Buffer.from(encoded, "base64").toString() : "";
+      const result = script.includes("Boolean(document.querySelector")
+        ? false
+        : script.includes("sessionStorage.removeItem")
+          ? true
+          : script.includes("sessionStorage.getItem")
+            ? {
+                schema_version: "falcon24-browser-diagnostic-submit-consumed@1.0.0",
+                run_id: runId,
+                attempt_id: attemptId,
+                conversation_id: conversationId,
+                submission_kind: "DIAGNOSTIC",
+              }
+            : undefined;
+      return {
+        stdout: JSON.stringify({
+          success: true,
+          data: result === undefined ? {} : { result },
+          error: null,
+        }),
+        stderr: "",
+      };
+    });
+
+    await expect(
+      submitFalcon24QuestionFromBrowser({
+        session: "falcon24-e4-diagnostic-submit",
+        web_base_url: "https://data-agent.example",
+        workspace_id: workspaceId,
+        conversation_id: conversationId,
+        expected_run_id: runId,
+        question,
+        viewport: { width: 1440, height: 900 },
+        claim: {
+          schema_version: "falcon24-browser-diagnostic-submit-claim@1.0.0",
+          question,
+          conversation_id: conversationId,
+          idempotency_key: "00000000-0000-4000-8000-000000000117",
+          diagnostic_attempt_id: attemptId,
+          run_id: runId,
+        },
+      }),
+    ).resolves.toEqual({ run_id: runId, attempt_id: attemptId });
+  });
+
   it("fails closed when QA and Trace UI receipts do not share one exact authority and browser identity", async () => {
     const authority = {
       schema_version: "falcon24-authority-binding@2.0.0" as const,

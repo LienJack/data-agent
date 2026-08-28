@@ -48,15 +48,18 @@ import type { RunConnectionState, RunProjection } from "./run-projection";
 const FALCON24_GATE_CLAIM_KEY = "falcon24-browser-submit-claim";
 const FALCON24_GATE_CONSUMED_KEY = "falcon24-browser-submit-consumed";
 
-function readFalcon24GateClaim(question: string, conversationId: string) {
-  const raw = window.sessionStorage.getItem(FALCON24_GATE_CLAIM_KEY);
-  if (!raw) return undefined;
-  window.sessionStorage.removeItem(FALCON24_GATE_CLAIM_KEY);
+export function parseFalcon24BrowserSubmissionClaim(
+  raw: string,
+  question: string,
+  conversationId: string,
+) {
   const candidate = JSON.parse(raw) as {
     schema_version?: unknown;
     question?: unknown;
     conversation_id?: unknown;
     idempotency_key?: unknown;
+    diagnostic_attempt_id?: unknown;
+    run_id?: unknown;
     acceptance_fence?: {
       authority_kind?: unknown;
       authority_epoch?: unknown;
@@ -67,6 +70,22 @@ function readFalcon24GateClaim(question: string, conversationId: string) {
       claim_fence_token?: unknown;
     };
   };
+  if (candidate.schema_version === "falcon24-browser-diagnostic-submit-claim@1.0.0") {
+    if (
+      candidate.question !== question ||
+      candidate.conversation_id !== conversationId ||
+      typeof candidate.idempotency_key !== "string" ||
+      typeof candidate.diagnostic_attempt_id !== "string" ||
+      typeof candidate.run_id !== "string"
+    ) {
+      throw new Error("FALCON24_BROWSER_DIAGNOSTIC_CLAIM_INVALID");
+    }
+    return {
+      idempotency_key: candidate.idempotency_key,
+      diagnostic_attempt_id: candidate.diagnostic_attempt_id,
+      run_id: candidate.run_id,
+    } as const;
+  }
   const fence = candidate.acceptance_fence;
   const gateId =
     fence?.authority_kind === "QUALIFICATION"
@@ -111,6 +130,13 @@ function readFalcon24GateClaim(question: string, conversationId: string) {
           claim_fence_token: string;
         };
   };
+}
+
+function readFalcon24GateClaim(question: string, conversationId: string) {
+  const raw = window.sessionStorage.getItem(FALCON24_GATE_CLAIM_KEY);
+  if (!raw) return undefined;
+  window.sessionStorage.removeItem(FALCON24_GATE_CLAIM_KEY);
+  return parseFalcon24BrowserSubmissionClaim(raw, question, conversationId);
 }
 
 /**
@@ -1047,20 +1073,36 @@ export const useQAStore = create<QAStore>((set, get) => ({
       if (!activeConversation.modelProfileId) throw new Error("发送消息前请先选择模型");
 
       // 服务端在一个事务中从 Conversation 冻结资源、写入用户消息并创建 Run。
-      const gateClaim = readFalcon24GateClaim(content, conversationId);
-      const run = await createQaRun(content, conversationId, workspaceId, files, gateClaim);
-      if (gateClaim && run.runId !== gateClaim.acceptance_fence.run_id) {
+      const submissionClaim = readFalcon24GateClaim(content, conversationId);
+      const run = await createQaRun(content, conversationId, workspaceId, files, submissionClaim);
+      const expectedRunId = submissionClaim
+        ? "acceptance_fence" in submissionClaim
+          ? submissionClaim.acceptance_fence.run_id
+          : submissionClaim.run_id
+        : null;
+      if (expectedRunId && run.runId !== expectedRunId) {
         throw new Error("FALCON24_BROWSER_GATE_RUN_ID_MISMATCH");
       }
-      if (gateClaim) {
+      if (submissionClaim && "acceptance_fence" in submissionClaim) {
         window.sessionStorage.setItem(
           FALCON24_GATE_CONSUMED_KEY,
           JSON.stringify({
             schema_version: "falcon24-browser-submit-consumed@2.0.0",
             run_id: run.runId,
-            attempt_id: gateClaim.acceptance_fence.attempt_id,
+            attempt_id: submissionClaim.acceptance_fence.attempt_id,
             conversation_id: conversationId,
-            acceptance_fence: gateClaim.acceptance_fence,
+            acceptance_fence: submissionClaim.acceptance_fence,
+          }),
+        );
+      } else if (submissionClaim) {
+        window.sessionStorage.setItem(
+          FALCON24_GATE_CONSUMED_KEY,
+          JSON.stringify({
+            schema_version: "falcon24-browser-diagnostic-submit-consumed@1.0.0",
+            run_id: run.runId,
+            attempt_id: submissionClaim.diagnostic_attempt_id,
+            conversation_id: conversationId,
+            submission_kind: "DIAGNOSTIC",
           }),
         );
       }

@@ -150,26 +150,32 @@ export async function createQaRun(
   conversationId: string,
   workspaceId?: string,
   files: readonly Readonly<{ file_id: string; revision: number; revision_hash: string }>[] = [],
-  gateClaim?: Readonly<{
-    idempotency_key: string;
-    acceptance_fence:
-      | Readonly<{
-          authority_kind: "QUALIFICATION";
-          authority_epoch: string;
-          qualification_id: string;
-          attempt_id: string;
-          run_id: string;
-          claim_fence_token: string;
-        }>
-      | Readonly<{
-          authority_kind: "FINAL_CAMPAIGN";
-          authority_epoch: string;
-          campaign_id: string;
-          attempt_id: string;
-          run_id: string;
-          claim_fence_token: string;
-        }>;
-  }>,
+  gateClaim?:
+    | Readonly<{
+        idempotency_key: string;
+        acceptance_fence:
+          | Readonly<{
+              authority_kind: "QUALIFICATION";
+              authority_epoch: string;
+              qualification_id: string;
+              attempt_id: string;
+              run_id: string;
+              claim_fence_token: string;
+            }>
+          | Readonly<{
+              authority_kind: "FINAL_CAMPAIGN";
+              authority_epoch: string;
+              campaign_id: string;
+              attempt_id: string;
+              run_id: string;
+              claim_fence_token: string;
+            }>;
+      }>
+    | Readonly<{
+        idempotency_key: string;
+        diagnostic_attempt_id: string;
+        run_id: string;
+      }>,
 ): Promise<RunProjection> {
   const resolvedWorkspace = workspaceId?.trim() || resolveWorkspaceId();
   if (!resolvedWorkspace || !conversationId) {
@@ -184,7 +190,9 @@ export async function createQaRun(
         question,
         idempotency_key: gateClaim?.idempotency_key ?? crypto.randomUUID(),
         files,
-        ...(gateClaim ? { acceptance_fence: gateClaim.acceptance_fence } : {}),
+        ...(gateClaim && "acceptance_fence" in gateClaim
+          ? { acceptance_fence: gateClaim.acceptance_fence }
+          : {}),
       }),
     },
     resolvedWorkspace,

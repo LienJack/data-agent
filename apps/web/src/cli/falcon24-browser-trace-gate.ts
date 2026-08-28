@@ -72,6 +72,20 @@ const browserGateClaimSchema = z.strictObject({
   acceptance_fence: browserGateFenceSchema,
 });
 
+const browserDiagnosticClaimSchema = z.strictObject({
+  schema_version: z.literal("falcon24-browser-diagnostic-submit-claim@1.0.0"),
+  question: z.string().trim().min(1).max(4_000),
+  conversation_id: z.uuid(),
+  idempotency_key: z.string().min(1).max(512),
+  diagnostic_attempt_id: z.uuid(),
+  run_id: z.uuid(),
+});
+
+const browserSubmissionClaimSchema = z.union([
+  browserGateClaimSchema,
+  browserDiagnosticClaimSchema,
+]);
+
 const browserGateConsumedSchema = z.strictObject({
   schema_version: z.literal("falcon24-browser-submit-consumed@2.0.0"),
   run_id: z.uuid(),
@@ -79,6 +93,19 @@ const browserGateConsumedSchema = z.strictObject({
   conversation_id: z.uuid(),
   acceptance_fence: browserGateFenceSchema,
 });
+
+const browserDiagnosticConsumedSchema = z.strictObject({
+  schema_version: z.literal("falcon24-browser-diagnostic-submit-consumed@1.0.0"),
+  run_id: z.uuid(),
+  attempt_id: z.uuid(),
+  conversation_id: z.uuid(),
+  submission_kind: z.literal("DIAGNOSTIC"),
+});
+
+const browserSubmissionConsumedSchema = z.union([
+  browserGateConsumedSchema,
+  browserDiagnosticConsumedSchema,
+]);
 
 const agentBrowserOutputSchema = z.strictObject({
   success: z.literal(true),
@@ -221,13 +248,16 @@ export interface Falcon24BrowserTraceGateInput {
   readonly question: string;
   readonly attempt_id: string;
   readonly authority_epoch: string;
-  readonly gate_id: string;
+  readonly gate_id?: string;
+  readonly submission_kind?: "GATE" | "DIAGNOSTIC";
   readonly viewport: Readonly<{ width: 1440 | 390; height: number }>;
   readonly trace: ResolutionTrace;
   readonly details: readonly ResolutionTraceDetail[];
 }
 
 export type Falcon24BrowserGateClaim = Readonly<z.infer<typeof browserGateClaimSchema>>;
+export type Falcon24BrowserDiagnosticClaim = Readonly<z.infer<typeof browserDiagnosticClaimSchema>>;
+export type Falcon24BrowserSubmissionClaim = Readonly<z.infer<typeof browserSubmissionClaimSchema>>;
 
 export function verifyFalcon24UiReceiptPair(input: {
   readonly qa_e2e: unknown;
@@ -307,19 +337,27 @@ export async function submitFalcon24QuestionFromBrowser(input: {
   readonly expected_run_id: string;
   readonly question: string;
   readonly viewport: Readonly<{ width: 1440 | 390; height: number }>;
-  readonly claim: Falcon24BrowserGateClaim;
+  readonly claim: Falcon24BrowserSubmissionClaim;
 }) {
   const session = z
     .string()
     .regex(/^[A-Za-z0-9._-]{3,128}$/u)
     .parse(input.session);
   const expectedRunId = z.uuid().parse(input.expected_run_id);
-  const claim = browserGateClaimSchema.parse(input.claim);
+  const claim = browserSubmissionClaimSchema.parse(input.claim);
+  const claimRunId =
+    claim.schema_version === "falcon24-browser-submit-claim@2.0.0"
+      ? claim.acceptance_fence.run_id
+      : claim.run_id;
+  const claimAttemptId =
+    claim.schema_version === "falcon24-browser-submit-claim@2.0.0"
+      ? claim.acceptance_fence.attempt_id
+      : claim.diagnostic_attempt_id;
   const startUrl = falcon24QaStartUrl(input);
   if (
     claim.question !== input.question ||
     claim.conversation_id !== input.conversation_id ||
-    claim.acceptance_fence.run_id !== expectedRunId
+    claimRunId !== expectedRunId
   ) {
     throw new Error("FALCON24_BROWSER_GATE_CLAIM_IDENTITY_INVALID");
   }
@@ -356,13 +394,17 @@ export async function submitFalcon24QuestionFromBrowser(input: {
   const consumed = await browserEval(
     session,
     `(() => { const raw=sessionStorage.getItem(${JSON.stringify(GATE_CONSUMED_KEY)}); return raw ? JSON.parse(raw) : null; })()`,
-    browserGateConsumedSchema,
+    browserSubmissionConsumedSchema,
   );
   if (
     consumed.run_id !== expectedRunId ||
-    consumed.attempt_id !== claim.acceptance_fence.attempt_id ||
+    consumed.attempt_id !== claimAttemptId ||
     consumed.conversation_id !== input.conversation_id ||
-    JSON.stringify(consumed.acceptance_fence) !== JSON.stringify(claim.acceptance_fence)
+    (claim.schema_version === "falcon24-browser-submit-claim@2.0.0"
+      ? consumed.schema_version !== "falcon24-browser-submit-consumed@2.0.0" ||
+        JSON.stringify(consumed.acceptance_fence) !== JSON.stringify(claim.acceptance_fence)
+      : consumed.schema_version !== "falcon24-browser-diagnostic-submit-consumed@1.0.0" ||
+        consumed.submission_kind !== "DIAGNOSTIC")
   ) {
     throw new Error("FALCON24_BROWSER_GATE_CONSUMPTION_INVALID");
   }
@@ -377,8 +419,12 @@ export async function runFalcon24BrowserTraceGate(input: Falcon24BrowserTraceGat
   const question = z.string().trim().min(1).max(4_000).parse(input.question);
   const attemptId = z.uuid().parse(input.attempt_id);
   const authorityEpoch = falcon24AuthorityEpochSchema.parse(input.authority_epoch);
-  const gateId = falcon24GateIdSchema.parse(input.gate_id);
-  if (authorityEpochForFalcon24Gate(gateId) !== authorityEpoch) {
+  const diagnostic = input.submission_kind === "DIAGNOSTIC";
+  const gateId = diagnostic ? null : falcon24GateIdSchema.parse(input.gate_id);
+  if (
+    (diagnostic && authorityEpoch !== "E4") ||
+    (!diagnostic && gateId && authorityEpochForFalcon24Gate(gateId) !== authorityEpoch)
+  ) {
     throw new Error("FALCON24_BROWSER_GATE_AUTHORITY_MISMATCH");
   }
   const viewport = z
@@ -422,18 +468,23 @@ export async function runFalcon24BrowserTraceGate(input: Falcon24BrowserTraceGat
   const consumed = await browserEval(
     session,
     `(() => { const raw=sessionStorage.getItem(${JSON.stringify(GATE_CONSUMED_KEY)}); return raw ? JSON.parse(raw) : null; })()`,
-    browserGateConsumedSchema,
+    browserSubmissionConsumedSchema,
   );
   const consumedGateId =
-    consumed.acceptance_fence.authority_kind === "QUALIFICATION"
-      ? consumed.acceptance_fence.qualification_id
-      : consumed.acceptance_fence.campaign_id;
+    consumed.schema_version === "falcon24-browser-submit-consumed@2.0.0"
+      ? consumed.acceptance_fence.authority_kind === "QUALIFICATION"
+        ? consumed.acceptance_fence.qualification_id
+        : consumed.acceptance_fence.campaign_id
+      : null;
   if (
     consumed.run_id !== input.trace.run_id ||
     consumed.attempt_id !== attemptId ||
     consumed.conversation_id !== input.conversation_id ||
-    consumed.acceptance_fence.authority_epoch !== authorityEpoch ||
-    consumedGateId !== gateId
+    (diagnostic
+      ? consumed.schema_version !== "falcon24-browser-diagnostic-submit-consumed@1.0.0"
+      : consumed.schema_version !== "falcon24-browser-submit-consumed@2.0.0" ||
+        consumed.acceptance_fence.authority_epoch !== authorityEpoch ||
+        consumedGateId !== gateId)
   ) {
     throw new Error("FALCON24_BROWSER_GATE_CONSUMPTION_INVALID");
   }
