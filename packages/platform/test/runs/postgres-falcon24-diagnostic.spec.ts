@@ -142,6 +142,9 @@ describe("PostgreSQL Falcon24 diagnostic authority", () => {
 
     expect(result).toMatchObject({ ok: true, value: { status: "ACTIVE", run_id: ids.run } });
     expect(
+      scripted.calls.find(({ text }) => text.includes("set_config('app.semantic_domain'"))?.values,
+    ).toEqual(["falcon24"]);
+    expect(
       scripted.calls.find(({ text }) => text.includes("begin_falcon24_diagnostic"))?.values,
     ).toEqual([
       expect.objectContaining({

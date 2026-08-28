@@ -136,6 +136,7 @@ export function createPostgresFalcon24DiagnosticAuthority(input: {
     readonly access: "READ" | "WRITE";
     readonly operation: string;
     readonly command: unknown;
+    readonly semantic_domain?: string;
     readonly parse: (value: unknown) => T | Promise<T>;
   }) =>
     withAppTransaction(
@@ -149,6 +150,11 @@ export function createPostgresFalcon24DiagnosticAuthority(input: {
         map_database_error: mapDatabaseError,
       },
       async ({ client }) => {
+        if (options.semantic_domain) {
+          await client.query("select pg_catalog.set_config('app.semantic_domain',$1,true)", [
+            options.semantic_domain,
+          ]);
+        }
         const result = await client.query<JsonRow>(
           `select app_data_agent.${options.operation}($1::jsonb) as value`,
           [options.command],
@@ -169,6 +175,7 @@ export function createPostgresFalcon24DiagnosticAuthority(input: {
         access: "WRITE",
         operation: "begin_falcon24_diagnostic",
         command,
+        semantic_domain: "falcon24",
         parse: (raw) => diagnosticRowSchema.parse(raw),
       });
     },

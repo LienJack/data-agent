@@ -1,6 +1,6 @@
 import { execFile } from "node:child_process";
 import { createHash } from "node:crypto";
-import { readFile } from "node:fs/promises";
+import { mkdir, readFile } from "node:fs/promises";
 import { dirname, resolve } from "node:path";
 import { pathToFileURL } from "node:url";
 import { promisify } from "node:util";
@@ -378,6 +378,7 @@ async function main(): Promise<void> {
       argument("browser-screenshot") ??
         `artifacts/falcon24-agent-analysis/browser/E4-DIAGNOSTIC/${attempt.run_id}.png`,
     );
+    await mkdir(dirname(screenshotPath), { recursive: true });
     const observation = await runFalcon24BrowserTraceGate({
       session: z.string().min(1).parse(argument("browser-session")),
       web_base_url: z.string().url().parse(argument("web-base-url")),
