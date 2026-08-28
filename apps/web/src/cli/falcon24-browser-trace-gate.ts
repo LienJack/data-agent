@@ -12,6 +12,7 @@ import {
   falcon24QualificationGateIdSchema,
 } from "@data-agent/contracts/evals";
 import {
+  falcon24AuthorityEpochOrdinal,
   falcon24AuthorityEpochSchema,
   falcon24QaE2eReceiptV2Schema,
   falcon24TraceUiReceiptV2Schema,
@@ -422,7 +423,7 @@ export async function runFalcon24BrowserTraceGate(input: Falcon24BrowserTraceGat
   const diagnostic = input.submission_kind === "DIAGNOSTIC";
   const gateId = diagnostic ? null : falcon24GateIdSchema.parse(input.gate_id);
   if (
-    (diagnostic && authorityEpoch !== "E4") ||
+    (diagnostic && falcon24AuthorityEpochOrdinal(authorityEpoch) < 4n) ||
     (!diagnostic && gateId && authorityEpochForFalcon24Gate(gateId) !== authorityEpoch)
   ) {
     throw new Error("FALCON24_BROWSER_GATE_AUTHORITY_MISMATCH");

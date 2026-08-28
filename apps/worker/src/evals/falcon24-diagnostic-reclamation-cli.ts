@@ -1,7 +1,11 @@
 import { mkdir, readFile, writeFile } from "node:fs/promises";
 import { dirname, resolve } from "node:path";
 import { sha256ContentHash } from "@data-agent/contracts/common";
-import { FALCON24_STRICT_ACCEPTANCE_POLICY_ID } from "@data-agent/contracts/evals";
+import {
+  FALCON24_STRICT_ACCEPTANCE_POLICY_ID,
+  qualificationIdForEpoch,
+} from "@data-agent/contracts/evals";
+import { falcon24AuthorityEpochOrdinal } from "@data-agent/contracts/runs";
 import { adaptPgPool } from "@data-agent/platform/persistence";
 import { createPostgresFalcon24DiagnosticAuthority } from "@data-agent/platform/runs";
 import {
@@ -75,7 +79,10 @@ async function main(): Promise<void> {
       authorizer: capabilityAuthority.authorizer,
     });
     const attempt = requireValue(await diagnosticAuthority.load(capability, attemptId));
-    if (attempt?.status !== "ACTIVE" || attempt.authority_epoch !== "E4") {
+    if (
+      attempt?.status !== "ACTIVE" ||
+      falcon24AuthorityEpochOrdinal(attempt.authority_epoch) < 4n
+    ) {
       throw new TypeError("FALCON24_DIAGNOSTIC_ATTEMPT_NOT_ACTIVE");
     }
     const attestationPath = resolve(
@@ -97,7 +104,7 @@ async function main(): Promise<void> {
         return runtime;
       },
       claim: async () => ({ disposition: "CLAIMED" as const, receipt: null }),
-      campaign_id: "E4-Q1",
+      campaign_id: qualificationIdForEpoch(attempt.authority_epoch),
       run_id: attempt.run_id,
       runtime_attestation_hash: runtimeAttestationHash,
     });

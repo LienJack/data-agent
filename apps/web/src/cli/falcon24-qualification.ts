@@ -11,6 +11,7 @@ import {
   authorityEpochForFalcon24Gate,
   buildFalcon24QualificationManifestV2,
   buildFalcon24QualificationManifestV3,
+  buildFalcon24QualificationManifestV4,
   buildFalcon24ResolutionTraceGateReceiptV2,
   buildFalcon24ResolutionTraceUiGateReceiptV2,
   FALCON24_QUALIFICATION_EXPECTED_PATH,
@@ -21,6 +22,7 @@ import {
 import {
   buildFalcon24QaE2eReceiptV2,
   buildFalcon24TraceUiReceiptV2,
+  falcon24AuthorityEpochOrdinal,
 } from "@data-agent/contracts/runs";
 import { STATISTICAL_OPERATOR_REGISTRY_DIGEST } from "@data-agent/contracts/statistical-operators";
 import { buildFalcon24AgentAnalysisAcceptanceSuite } from "@data-agent/evals";
@@ -341,7 +343,7 @@ async function main(): Promise<void> {
       slots: slotMaterials.map(({ identities: _identities, ...slot }) => slot),
     } as const;
     const manifest =
-      authorityEpoch === "E4"
+      falcon24AuthorityEpochOrdinal(authorityEpoch) >= 4n
         ? await (async () => {
             const diagnosticAttemptId = z.uuid().parse(argument("diagnostic-attempt-id"));
             const diagnostic = requireValue(
@@ -350,21 +352,28 @@ async function main(): Promise<void> {
             if (
               diagnostic?.status !== "PASSED" ||
               !diagnostic.terminal_receipt_hash ||
-              diagnostic.authority_epoch !== "E4" ||
+              diagnostic.authority_epoch !== authorityEpoch ||
               diagnostic.semantic_release_digest !== semanticRelease.resource_hash ||
               diagnostic.authority_baseline_hash !== currentAuthority.baseline_hash
             ) {
               throw new Error("FALCON24_QUALIFICATION_DIAGNOSTIC_PASSED_REQUIRED");
             }
-            return buildFalcon24QualificationManifestV3({
-              ...manifestMaterial,
-              schema_version: "falcon24-qualification-manifest@3.0.0",
-              diagnostic_receipt_ref: {
-                attempt_id: diagnostic.attempt_id,
-                run_id: diagnostic.run_id,
-                receipt_hash: diagnostic.terminal_receipt_hash,
-              },
-            });
+            const diagnosticReceiptRef = {
+              attempt_id: diagnostic.attempt_id,
+              run_id: diagnostic.run_id,
+              receipt_hash: diagnostic.terminal_receipt_hash,
+            };
+            return authorityEpoch === "E4"
+              ? buildFalcon24QualificationManifestV3({
+                  ...manifestMaterial,
+                  schema_version: "falcon24-qualification-manifest@3.0.0",
+                  diagnostic_receipt_ref: diagnosticReceiptRef,
+                })
+              : buildFalcon24QualificationManifestV4({
+                  ...manifestMaterial,
+                  schema_version: "falcon24-qualification-manifest@4.0.0",
+                  diagnostic_receipt_ref: diagnosticReceiptRef,
+                });
           })()
         : await buildFalcon24QualificationManifestV2({
             ...manifestMaterial,

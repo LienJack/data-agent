@@ -7,6 +7,7 @@ import { promisify } from "node:util";
 import { sha256ContentHash } from "@data-agent/contracts/common";
 import {
   buildFalcon24DiagnosticAttempt,
+  buildFalcon24DiagnosticAttemptV2,
   FALCON24_DIAGNOSTIC_OBSERVED_EXECUTION_PATH,
   FALCON24_E4_DIAGNOSTIC_QUESTION,
   FALCON24_STRICT_ACCEPTANCE_POLICY_ID,
@@ -15,6 +16,8 @@ import {
 import {
   buildFalcon24QaE2eReceiptV2,
   buildFalcon24TraceUiReceiptV2,
+  falcon24AuthorityEpochOrdinal,
+  falcon24AuthorityEpochSchema,
 } from "@data-agent/contracts/runs";
 import { loadRuntimeBuildIdentity } from "@data-agent/contracts/server";
 import { createPostgresRepository } from "@data-agent/platform/persistence";
@@ -100,8 +103,11 @@ function diagnosticRunIdentity(input: {
   readonly workspaceId: string;
   readonly principalId: string;
   readonly attemptId: string;
+  readonly authorityEpoch: string;
 }) {
-  const idempotencyKey = stableUuid(`falcon24:E4:diagnostic:${input.attemptId}`);
+  const idempotencyKey = stableUuid(
+    `falcon24:${input.authorityEpoch}:diagnostic:${input.attemptId}`,
+  );
   return Object.freeze({
     ...deriveRunCommandIdentities({
       workspace_id: input.workspaceId,
@@ -109,7 +115,9 @@ function diagnosticRunIdentity(input: {
       idempotency_key: idempotencyKey,
     }),
     idempotencyKey,
-    conversationId: stableUuid(`falcon24:E4:diagnostic:conversation:${input.attemptId}`),
+    conversationId: stableUuid(
+      `falcon24:${input.authorityEpoch}:diagnostic:conversation:${input.attemptId}`,
+    ),
   });
 }
 
@@ -142,10 +150,17 @@ async function main(): Promise<void> {
       environment.SEMANTIC_PRINCIPAL_ID,
   });
   const attemptId = z.uuid().parse(argument("attempt-id"));
+  const authorityEpoch = falcon24AuthorityEpochSchema.parse(
+    argument("authority-epoch") ?? environment.FALCON24_AUTHORITY_EPOCH ?? "E4",
+  );
+  if (falcon24AuthorityEpochOrdinal(authorityEpoch) < 4n) {
+    throw new Error("FALCON24_DIAGNOSTIC_AUTHORITY_MISMATCH");
+  }
   const identities = diagnosticRunIdentity({
     workspaceId: scope.workspaceId,
     principalId: scope.principalId,
     attemptId,
+    authorityEpoch,
   });
   const workspaceAuthority = getWorkspaceAuthority();
   const capability = requireValue(
@@ -172,7 +187,7 @@ async function main(): Promise<void> {
     if (
       !attempt ||
       attempt.run_id !== identities.run_id ||
-      attempt.authority_epoch !== "E4" ||
+      attempt.authority_epoch !== authorityEpoch ||
       attempt.semantic_release_generation !== 2
     ) {
       throw new Error("FALCON24_DIAGNOSTIC_ATTEMPT_IDENTITY_MISMATCH");
@@ -198,8 +213,8 @@ async function main(): Promise<void> {
         ),
       ]);
     if (
-      currentAuthority?.authority_epoch !== "E4" ||
-      closure.authority.authority_epoch !== "E4" ||
+      currentAuthority?.authority_epoch !== authorityEpoch ||
+      closure.authority.authority_epoch !== authorityEpoch ||
       closure.authority.baseline_id !== currentAuthority.baseline_id ||
       closure.authority.baseline_hash !== currentAuthority.baseline_hash ||
       closure.semantic_pointer.release.generation !== 2 ||
@@ -226,13 +241,12 @@ async function main(): Promise<void> {
         DATA_AGENT_RUNTIME_BUILD_IDENTITY_FILE: workerBuildIdentityFile,
       },
     });
-    const manifest = await buildFalcon24DiagnosticAttempt({
-      schema_version: "falcon24-diagnostic-attempt@1.0.0",
+    const manifestMaterial = {
       attempt_id: attemptId,
       run_id: identities.run_id,
       authority: {
         schema_version: "falcon24-authority-binding@2.0.0",
-        authority_epoch: "E4",
+        authority_epoch: authorityEpoch,
         baseline_id: currentAuthority.baseline_id,
         baseline_hash: currentAuthority.baseline_hash,
         activation_attempt_id: currentAuthority.activation_attempt_id,
@@ -248,7 +262,17 @@ async function main(): Promise<void> {
       runtime_attestation_hash: await sha256ContentHash(runtimeAttestation),
       question: FALCON24_E4_DIAGNOSTIC_QUESTION,
       question_hash: await sha256ContentHash(FALCON24_E4_DIAGNOSTIC_QUESTION),
-    });
+    } as const;
+    const manifest =
+      authorityEpoch === "E4"
+        ? await buildFalcon24DiagnosticAttempt({
+            ...manifestMaterial,
+            schema_version: "falcon24-diagnostic-attempt@1.0.0",
+          })
+        : await buildFalcon24DiagnosticAttemptV2({
+            ...manifestMaterial,
+            schema_version: "falcon24-diagnostic-attempt@2.0.0",
+          });
     const attempt = requireValue(await diagnosticAuthority.begin(capability, manifest));
     const defaults = requireValue(
       await getEffectiveConfigResolver().getWorkspaceDefaults(capability),
@@ -265,7 +289,7 @@ async function main(): Promise<void> {
         await conversations.createConversation(capability, {
           schema_version: "workspace-conversation-create@1.0.0",
           conversation_id: identities.conversationId,
-          title: "Falcon24 E4 non-scoring diagnostic",
+          title: `Falcon24 ${authorityEpoch} non-scoring diagnostic`,
           datasource_id: defaults.datasource.resource_id,
           model_id: null,
           model_profile_id: defaults.model.resource_id,
@@ -376,7 +400,7 @@ async function main(): Promise<void> {
     const screenshotPath = resolve(
       root,
       argument("browser-screenshot") ??
-        `artifacts/falcon24-agent-analysis/browser/E4-DIAGNOSTIC/${attempt.run_id}.png`,
+        `artifacts/falcon24-agent-analysis/browser/${authorityEpoch}-DIAGNOSTIC/${attempt.run_id}.png`,
     );
     await mkdir(dirname(screenshotPath), { recursive: true });
     const observation = await runFalcon24BrowserTraceGate({
@@ -387,7 +411,7 @@ async function main(): Promise<void> {
       conversation_id: identities.conversationId,
       question: FALCON24_E4_DIAGNOSTIC_QUESTION,
       attempt_id: attemptId,
-      authority_epoch: "E4",
+      authority_epoch: authorityEpoch,
       submission_kind: "DIAGNOSTIC",
       viewport: { width: browserWidth, height: browserWidth === 390 ? 844 : 900 },
       trace,
@@ -398,7 +422,7 @@ async function main(): Promise<void> {
     );
     if (
       runAuthority.schema_version !== "falcon24-authority-binding@2.0.0" ||
-      runAuthority.authority_epoch !== "E4" ||
+      runAuthority.authority_epoch !== authorityEpoch ||
       runAuthority.baseline_id !== attempt.authority_baseline_id ||
       runAuthority.baseline_hash !== attempt.authority_baseline_hash
     ) {

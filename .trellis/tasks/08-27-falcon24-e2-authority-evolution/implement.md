@@ -760,12 +760,27 @@ stop condition。W8 成功前不创建 E4 diagnostic/Q1/C1；成功后 W9/W10 �
 
 ### E5-W3 — E5 Finalizer and gate controls
 
-- [ ] 将 supporting-context loader 泛化为 exact current generation >=2，不改变 E4 predecessor loader 的历史行为。
-- [ ] E5 Finalizer 只从 production read ports读取 gen2/projection/defaults，服务器构造 retained proof，阶段化六类 receipt/baseline/attempt。
-- [ ] Finalizer 调用 activation request@3；失败立即 exact HOLD，成功后 production readback证明 E5/gen2且 semantic/default bytes/version不变。
-- [ ] Diagnostic、qualification、acceptance、Worker reclamation CLI 全部从 manifest/current 推导 E5，不含 E4 literal；动态 Tool Loop 不变。
-- [ ] Web/Worker focused + full tests、typecheck、no client payload/digest/static boundary scans。
-- [ ] scoped commit：`feat(falcon24): finalize E5 retained authority`。
+- [x] 将 supporting-context loader 泛化为 exact current generation >=2，不改变 E4 predecessor loader 的历史行为。
+- [x] E5 Finalizer 只从 production read ports读取 gen2/projection/defaults，服务器构造 retained proof，阶段化六类 receipt/baseline/attempt。
+- [x] Finalizer 调用 activation request@3；失败立即 exact HOLD，成功后 production readback证明 E5/gen2且 semantic/default bytes/version不变。
+- [x] Diagnostic、qualification、acceptance、Worker reclamation CLI 全部从 manifest/current 推导 E5；仅历史 E4 contract builder保留显式 E4分支；动态 Tool Loop 不变。
+- [x] Web/Worker focused + full tests、typecheck、no client payload/digest/static boundary scans。
+- [x] scoped commit：`feat(falcon24): finalize E5 retained authority`。
+
+**Evidence（2026-08-29）**
+
+- `finalizeFalcon24RetainedAuthority` 从 production closure + exact promoted release reader加载 E4/gen2，复用 shared envelope/runtime
+  validator，服务器构造 retained proof@1和 activation request@3；CLI 的 E5 分支在任何 ChangeSet/review/compiler/publisher调用前返回，
+  不暴露 projection payload/digest 参数，也不写 semantic pointer/runtime/defaults。
+- retained staging 为 E5 阶段化五类 supporting receipt、server proof绑定的 semantic receipt、baseline和唯一 OPEN attempt；E4历史
+  successor staging仍走原 wrapper。激活失败只 HOLD exact E5 attempt；成功 readback要求 current=E5 且 gen2 release、三项 version和
+  promoted envelope bytes全部与激活前一致。
+- Diagnostic attempt/receipt对 E4继续使用历史 v1，对 E5+使用 v2；run/conversation/browser/screenshot身份从 epoch派生。
+  Qualification 对 E4使用 manifest v3、E5+使用 v4并绑定同 epoch PASSED diagnostic；browser trace gate接受 E4+ diagnostic；
+  Worker reclamation从 attempt epoch派生 `${epoch}-Q1`。Agent acceptance本来已从 gate/campaign manifest派生，无 E4专用路由。
+- Web全量单测 `135 passed / 1 skipped files，565 passed / 1 skipped tests`；新增/相关 6 文件聚焦 `44 tests`和 retained
+  staging/finalizer复核 `14 tests`均 PASS。Worker sandbox reclamation `10 tests`、Web/Worker typecheck、owned Biome、
+  `git diff --check`全部 PASS。
 
 ### E5-W4 — Clean build, migration and one atomic activation
 

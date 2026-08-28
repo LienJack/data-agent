@@ -8,7 +8,10 @@ import { beforeEach, describe, expect, it, vi } from "vitest";
 
 vi.mock("server-only", () => ({}));
 
-import { stageFalcon24E4SuccessorAuthority } from "../src/lib/falcon24-successor-authority-staging";
+import {
+  stageFalcon24E4SuccessorAuthority,
+  stageFalcon24RetainedAuthority,
+} from "../src/lib/falcon24-successor-authority-staging";
 
 const id = (suffix: number) => `90000000-0000-5000-8000-${String(suffix).padStart(12, "0")}`;
 const hash = (character: string) => `sha256:${character.repeat(64)}` as const;
@@ -101,12 +104,12 @@ async function proof(stageValue: Awaited<ReturnType<typeof buildSemanticSuccesso
   });
 }
 
-async function supportingReceipts(stagingId = id(16)) {
+async function supportingReceipts(stagingId = id(16), authorityEpoch = "E4") {
   return Promise.all(
     supportingComponents.map((component, index) =>
       buildFalcon24StagingReceiptV2({
         schema_version: "falcon24-staging-receipt@2.0.0",
-        authority_epoch: "E4",
+        authority_epoch: authorityEpoch,
         staging_id: stagingId,
         component,
         subject_hash: hash(String((index + 3) % 10)),
@@ -360,5 +363,87 @@ describe("Falcon24 E4 successor authority staging", () => {
     await expect(stageFalcon24E4SuccessorAuthority(input(arrangedValue))).rejects.toThrow(
       "FALCON24_E4_ACTIVATION_ATTEMPT_MISMATCH",
     );
+  });
+});
+
+describe("Falcon24 retained authority staging", () => {
+  beforeEach(() => vi.clearAllMocks());
+
+  it("stages E5 with retained proof evidence and no semantic writer", async () => {
+    const calls: string[] = [];
+    const epoch = successfulEpoch(calls);
+    const receipts = await supportingReceipts(id(16), "E5");
+
+    const result = await stageFalcon24RetainedAuthority({
+      capability: { role: "owner" },
+      epoch,
+      authority_epoch: "E5",
+      semantic_release_digest: candidate.release_digest,
+      retained_semantic_proof_hash: hash("d"),
+      staging_id: id(16),
+      retained_assets_hash: hash("f"),
+      source_commit: "a".repeat(40),
+      web_build_hash: hash("a"),
+      acceptance_contracts: acceptanceContracts,
+      production_isolation_proven: false,
+      production_gate: "HOLD",
+      stage_supporting_receipts: async () => {
+        calls.push("supporting-receipts");
+        return receipts;
+      },
+    });
+
+    expect(calls).toEqual([
+      "begin-staging",
+      "supporting-receipts",
+      "semantic-receipt",
+      "baseline",
+      "activation-attempt",
+    ]);
+    expect(epoch.recordReceipt).toHaveBeenCalledWith(
+      expect.anything(),
+      expect.objectContaining({
+        authority_epoch: "E5",
+        component: "SEMANTIC_RELEASE",
+        subject_hash: candidate.release_digest,
+        evidence_hash: hash("d"),
+      }),
+    );
+    expect(epoch.stageBaseline).toHaveBeenCalledWith(
+      expect.anything(),
+      expect.objectContaining({
+        authority_epoch: "E5",
+        baseline: expect.objectContaining({ authority_epoch: "E5" }),
+      }),
+    );
+    expect(result).toMatchObject({
+      baseline_ref: { baseline_hash: expect.stringMatching(/^sha256:[0-9a-f]{64}$/u) },
+      activation_attempt_ref: { activation_attempt_id: expect.any(String) },
+    });
+    expect(JSON.stringify(epoch.recordReceipt.mock.calls)).not.toContain("projection_payload");
+  });
+
+  it("rejects pre-E5 retained staging before opening a session", async () => {
+    const calls: string[] = [];
+    const epoch = successfulEpoch(calls);
+
+    await expect(
+      stageFalcon24RetainedAuthority({
+        capability: { role: "owner" },
+        epoch,
+        authority_epoch: "E4",
+        semantic_release_digest: candidate.release_digest,
+        retained_semantic_proof_hash: hash("d"),
+        staging_id: id(16),
+        retained_assets_hash: hash("f"),
+        source_commit: "a".repeat(40),
+        web_build_hash: hash("a"),
+        acceptance_contracts: acceptanceContracts,
+        production_isolation_proven: false,
+        production_gate: "HOLD",
+        stage_supporting_receipts: async () => [],
+      }),
+    ).rejects.toThrow("FALCON24_RETAINED_AUTHORITY_EPOCH_INVALID");
+    expect(epoch.beginStaging).not.toHaveBeenCalled();
   });
 });

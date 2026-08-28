@@ -9,7 +9,7 @@ function source(path: string): string {
   return readFileSync(resolve(root, path), "utf8");
 }
 
-describe("Falcon24 E4 diagnostic control surface", () => {
+describe("Falcon24 diagnostic control surface", () => {
   it("exposes one non-scoring diagnostic CLI backed by the PostgreSQL authority", () => {
     const packageJson = JSON.parse(source("apps/web/package.json")) as {
       readonly scripts?: Readonly<Record<string, string>>;
@@ -21,6 +21,7 @@ describe("Falcon24 E4 diagnostic control surface", () => {
     );
     expect(diagnostic).toContain("createPostgresFalcon24DiagnosticAuthority");
     expect(diagnostic).toContain("buildFalcon24DiagnosticAttempt");
+    expect(diagnostic).toContain("buildFalcon24DiagnosticAttemptV2");
     expect(diagnostic).toContain("submitFalcon24QuestionFromBrowser");
     expect(diagnostic).toContain("runFalcon24BrowserTraceGate");
     expect(diagnostic).toContain("commitUiReceipt");
@@ -42,13 +43,17 @@ describe("Falcon24 E4 diagnostic control surface", () => {
     expect(reclamation).not.toContain("createPostgresFalcon24QualificationAuthority");
   });
 
-  it("builds E4-Q1 manifest v3 from one exact PASSED diagnostic receipt", () => {
+  it("builds E4 v3 and E5+ v4 manifests from one exact same-epoch PASSED diagnostic", () => {
     const qualification = source("apps/web/src/cli/falcon24-qualification.ts");
+    const reclamation = source("apps/worker/src/evals/falcon24-diagnostic-reclamation-cli.ts");
 
     expect(qualification).toContain("buildFalcon24QualificationManifestV3");
+    expect(qualification).toContain("buildFalcon24QualificationManifestV4");
     expect(qualification).toContain("createPostgresFalcon24DiagnosticAuthority");
     expect(qualification).toContain("diagnostic_receipt_ref");
     expect(qualification).toContain("FALCON24_QUALIFICATION_DIAGNOSTIC_PASSED_REQUIRED");
+    expect(qualification).toContain("diagnostic.authority_epoch !== authorityEpoch");
+    expect(reclamation).toContain("qualificationIdForEpoch(attempt.authority_epoch)");
   });
 
   it("projects a diagnostic browser claim to deterministic idempotency without a formal fence", () => {

@@ -50,7 +50,21 @@ describe("Falcon24 versioned authority finalization", () => {
     });
   });
 
-  it("rejects every non-E4 activation target before confirmation", async () => {
+  it("recognizes E5 as an explicit retained-authority target before confirmation", async () => {
+    await expect(
+      runFalcon24AuthorityFinalization({
+        NODE_ENV: "test",
+        FALCON24_AUTHORITY_EPOCH: "E5",
+      }),
+    ).resolves.toEqual({
+      schema_version: "falcon24-authority-finalization-result@2.0.0",
+      authority_epoch: "E5",
+      terminal: "NOT_RUN",
+      reason_code: "FALCON24_AUTHORITY_ACTIVATION_CONFIRMATION_REQUIRED",
+    });
+  });
+
+  it("rejects unsupported activation targets before confirmation", async () => {
     await expect(
       runFalcon24AuthorityFinalization({
         NODE_ENV: "test",
@@ -67,6 +81,8 @@ describe("Falcon24 versioned authority finalization", () => {
 
     expect(source).toContain("finalizeFalcon24SemanticSuccessor");
     expect(source).toContain("stageFalcon24E4SuccessorAuthority");
+    expect(source).toContain("finalizeFalcon24RetainedAuthority");
+    expect(source).toContain("stageFalcon24RetainedAuthority");
     expect(source).toContain("createPostgresSemanticPublicationAuthority");
     expect(source).toContain("buildFalcon24SuccessorChangeSet");
     expect(source).toContain("prepareSuccessorReview");
@@ -82,6 +98,20 @@ describe("Falcon24 versioned authority finalization", () => {
     expect(source).not.toContain("buildFalcon24SemanticReleaseAuthorityProof");
     expect(source).not.toMatch(/\.activate\s*\(/u);
     expect(source).not.toContain("updateWorkspaceDefaults");
+  });
+
+  it("branches to retained E5 finalization before any successor publication work", () => {
+    const source = readFileSync(
+      fileURLToPath(new URL("../src/cli/finalize-falcon24-authority.ts", import.meta.url)),
+      "utf8",
+    );
+    const retainedIndex = source.indexOf("await finalizeFalcon24RetainedAuthority");
+    const publicationIndex = source.indexOf("await semanticPublicationCompilerBundleDigest");
+
+    expect(retainedIndex).toBeGreaterThan(0);
+    expect(publicationIndex).toBeGreaterThan(retainedIndex);
+    expect(source.slice(0, publicationIndex)).not.toContain("prepareSuccessorReview({");
+    expect(source.slice(0, publicationIndex)).not.toContain("prepareApprovedSuccessor({");
   });
 
   it("requires the server-built ChangeSet and exact human approval before staging", () => {

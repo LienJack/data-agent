@@ -61,7 +61,11 @@ import {
   resolveBuiltinTeamMaterializationInput,
   verifyCurrentBuiltinTeamAuthority,
 } from "../lib/builtin-team-authority";
-import { stageFalcon24E4SuccessorAuthority } from "../lib/falcon24-successor-authority-staging";
+import { finalizeFalcon24RetainedAuthority } from "../lib/falcon24-retained-finalization";
+import {
+  stageFalcon24E4SuccessorAuthority,
+  stageFalcon24RetainedAuthority,
+} from "../lib/falcon24-successor-authority-staging";
 import {
   buildFalcon24SuccessorChangeSet,
   falcon24SuccessorOperationId,
@@ -69,7 +73,10 @@ import {
 import { finalizeFalcon24SemanticSuccessor } from "../lib/falcon24-successor-finalization";
 import { createFalcon24SuccessorFinalizationReadback } from "../lib/falcon24-successor-readback";
 import { createFalcon24SuccessorSmokeProcess } from "../lib/falcon24-successor-smoke-process";
-import { loadFalcon24E4SupportingAuthorityContext } from "../lib/falcon24-successor-supporting-authority";
+import {
+  loadFalcon24E4SupportingAuthorityContext,
+  loadFalcon24SupportingAuthorityContext,
+} from "../lib/falcon24-successor-supporting-authority";
 import { createPostgresSemanticPublicationAuthority } from "../lib/postgres-semantic-publication";
 
 const CONFIRMATION_VARIABLE = "DATA_AGENT_ALLOW_FALCON24_AUTHORITY_ACTIVATION";
@@ -80,13 +87,14 @@ const DEFAULT_PRINCIPAL_ID = "00000000-0000-4000-8000-00000000e125";
 const DEFAULT_STAGING_ID = "00000000-0000-4000-8000-00000000e230";
 const DEFAULT_DATASOURCE_ID = "37653002-af62-53c9-bf21-519468aa39ab";
 const TARGET_AUTHORITY_EPOCH = "E4" as const;
+const supportedFinalizationEpochSchema = z.enum(["E4", "E5"]);
 const SEMANTIC_DOMAIN = "falcon24" as const;
 const REPOSITORY_ROOT = fileURLToPath(new URL("../../../../", import.meta.url));
 const execFileAsync = promisify(execFile);
 
 const configurationSchema = z.strictObject({
   database_url: z.string().min(1),
-  authority_epoch: z.literal(TARGET_AUTHORITY_EPOCH),
+  authority_epoch: supportedFinalizationEpochSchema,
   deployment_id: z.uuid(),
   workspace_id: z.uuid(),
   principal_id: z.uuid(),
@@ -186,9 +194,9 @@ function stableFailureCode(error: unknown): string {
 }
 
 function reportedAuthorityEpoch(environment: NodeJS.ProcessEnv): string {
-  const parsed = z
-    .literal(TARGET_AUTHORITY_EPOCH)
-    .safeParse(environment.FALCON24_AUTHORITY_EPOCH ?? TARGET_AUTHORITY_EPOCH);
+  const parsed = supportedFinalizationEpochSchema.safeParse(
+    environment.FALCON24_AUTHORITY_EPOCH ?? TARGET_AUTHORITY_EPOCH,
+  );
   return parsed.success ? parsed.data : TARGET_AUTHORITY_EPOCH;
 }
 
@@ -757,9 +765,9 @@ async function stageAgentProfileReceipt(input: {
 export async function runFalcon24AuthorityFinalization(
   environment: NodeJS.ProcessEnv = loadRuntimeEnvironment().environment,
 ) {
-  const authorityEpoch = z
-    .literal(TARGET_AUTHORITY_EPOCH)
-    .parse(environment.FALCON24_AUTHORITY_EPOCH ?? TARGET_AUTHORITY_EPOCH);
+  const authorityEpoch = supportedFinalizationEpochSchema.parse(
+    environment.FALCON24_AUTHORITY_EPOCH ?? TARGET_AUTHORITY_EPOCH,
+  );
   if (environment[CONFIRMATION_VARIABLE]?.trim() !== "YES") {
     return {
       schema_version: "falcon24-authority-finalization-result@2.0.0" as const,
@@ -854,7 +862,8 @@ export async function runFalcon24AuthorityFinalization(
       authorizer: authority.authorizer,
     });
     const currentAuthority = requireValue(await epoch.loadCurrent(capability));
-    if (currentAuthority?.authority_epoch !== "E3") {
+    const expectedCurrentEpoch = configuration.authority_epoch === "E5" ? "E4" : "E3";
+    if (currentAuthority?.authority_epoch !== expectedCurrentEpoch) {
       throw new TypeError("FALCON24_AUTHORITY_EPOCH_NOT_SUCCESSOR");
     }
     const predecessorReceipts = await loadPredecessorStagingReceipts({
@@ -883,108 +892,55 @@ export async function runFalcon24AuthorityFinalization(
       before.scope.tenant_id !== capability.scope.tenant_id ||
       before.scope.environment !== capability.scope.environment ||
       before.scope.semantic_domain !== SEMANTIC_DOMAIN ||
-      before.authority.authority_epoch !== "E3" ||
+      before.authority.authority_epoch !== expectedCurrentEpoch ||
       before.authority.baseline_id !== currentAuthority.baseline_id ||
       before.authority.baseline_hash !== currentAuthority.baseline_hash ||
       before.semantic_pointer.release.datasource_id !== configuration.datasource_id
     ) {
-      throw new TypeError("FALCON24_SEMANTIC_SUCCESSOR_PREFLIGHT_MISMATCH");
+      throw new TypeError(
+        configuration.authority_epoch === "E5"
+          ? "FALCON24_RETAINED_SEMANTIC_PREFLIGHT_MISMATCH"
+          : "FALCON24_SEMANTIC_SUCCESSOR_PREFLIGHT_MISMATCH",
+      );
     }
-    const supporting = await loadFalcon24E4SupportingAuthorityContext({
-      capability,
-      defaults_reader: createPostgresEffectiveConfigResolver({
-        pool: sqlPool,
-        authorizer: authority.authorizer,
-      }),
-      scope: before.scope,
-      expected_semantic_predecessor: {
-        release_id: before.semantic_pointer.release.release_id,
-        generation: before.semantic_pointer.release.generation,
-        release_digest: exactContentHash(before.semantic_pointer.release.release_digest),
-      },
-      expected_datasource_id: configuration.datasource_id,
-      expected_defaults_version: before.workspace_defaults.version,
+    const defaultsReader = createPostgresEffectiveConfigResolver({
+      pool: sqlPool,
+      authorizer: authority.authorizer,
     });
+    const expectedSemanticRelease = {
+      release_id: before.semantic_pointer.release.release_id,
+      generation: before.semantic_pointer.release.generation,
+      release_digest: exactContentHash(before.semantic_pointer.release.release_digest),
+    };
+    const supporting =
+      configuration.authority_epoch === "E5"
+        ? await loadFalcon24SupportingAuthorityContext({
+            capability,
+            defaults_reader: defaultsReader,
+            scope: before.scope,
+            expected_semantic_release: expectedSemanticRelease,
+            expected_datasource_id: configuration.datasource_id,
+            expected_defaults_version: before.workspace_defaults.version,
+          })
+        : await loadFalcon24E4SupportingAuthorityContext({
+            capability,
+            defaults_reader: defaultsReader,
+            scope: before.scope,
+            expected_semantic_predecessor: expectedSemanticRelease,
+            expected_datasource_id: configuration.datasource_id,
+            expected_defaults_version: before.workspace_defaults.version,
+          });
     if (supporting.schema_snapshot_ref.resource_revision !== 1) {
-      throw new TypeError("FALCON24_E4_SUPPORTING_AUTHORITY_INCOMPLETE");
+      throw new TypeError(
+        configuration.authority_epoch === "E5"
+          ? "FALCON24_RETAINED_SUPPORTING_AUTHORITY_INCOMPLETE"
+          : "FALCON24_E4_SUPPORTING_AUTHORITY_INCOMPLETE",
+      );
     }
     const sourceSnapshotHash = exactContentHash(supporting.schema_snapshot_ref.resource_hash);
-    const compilerBundleHash = await semanticPublicationCompilerBundleDigest();
-    const publicationAuthority = createPostgresSemanticPublicationAuthority(pool, {
-      appId: capability.scope.app_id,
-      workspaceId: capability.scope.tenant_id,
-      environment: capability.scope.environment,
-      principalId: capability.principal,
-      datasourceId: configuration.datasource_id,
-      semanticDomain: SEMANTIC_DOMAIN,
-    });
-    const successorChangeSet = await buildFalcon24SuccessorChangeSet({
-      repository_root: REPOSITORY_ROOT,
-      scope: before.scope,
-      base_release: {
-        release_id: before.semantic_pointer.release.release_id,
-        generation: before.semantic_pointer.release.generation,
-        release_hash: before.semantic_pointer.release.release_digest,
-      },
-      expected_datasource_id: configuration.datasource_id,
-      revision: 1,
-    });
-    const preparedReview = await publicationAuthority.prepareSuccessorReview({
-      idempotency_key: falcon24SuccessorOperationId(
-        `falcon24:E4:successor-review:${successorChangeSet.change_set.change_set_hash}`,
-      ),
-      expected_predecessor: {
-        release_id: before.semantic_pointer.release.release_id,
-        generation: before.semantic_pointer.release.generation,
-        release_digest: before.semantic_pointer.release.release_digest,
-      },
-      expected_pointer_version: before.semantic_pointer.version,
-      change_set: successorChangeSet.change_set,
-    });
-    const publishPreparationDigest = await sha256ContentHash({
-      schema_version: "falcon24-successor-publish-preparation-identity@1.0.0",
-      scope: before.scope,
-      change_set_ref: preparedReview.change_set_ref,
-      review_id: preparedReview.review_packet_ref.review_id,
-      compiler_bundle_digest: compilerBundleHash,
-      expected_predecessor: before.semantic_pointer.release,
-      expected_pointer_version: before.semantic_pointer.version,
-      target_generation: 2,
-    });
-    const approvedSuccessor = await publicationAuthority.prepareApprovedSuccessor({
-      review_id: preparedReview.review_packet_ref.review_id,
-      change_set_ref: preparedReview.change_set_ref,
-      compiler_bundle_digest: compilerBundleHash,
-      target_generation: 2,
-      idempotency_digest: publishPreparationDigest,
-      expected_predecessor: {
-        release_id: before.semantic_pointer.release.release_id,
-        generation: before.semantic_pointer.release.generation,
-        release_digest: before.semantic_pointer.release.release_digest,
-      },
-      expected_pointer_version: before.semantic_pointer.version,
-    });
     const acceptanceContracts = await buildFalcon24AcceptanceContractHashes({
       repository_root: REPOSITORY_ROOT,
       oracle_contract_hash: exactContentHash(retained.analysis_runtime.oracle_contract_hash),
-    });
-    const stageIdentity = await sha256ContentHash({
-      schema_version: "falcon24-e4-successor-finalization-identity@1.0.0",
-      scope: before.scope,
-      change_set_ref: approvedSuccessor.change_set_ref,
-      review_ref: approvedSuccessor.review_ref,
-      source_snapshot_ref: {
-        snapshot_id: supporting.schema_snapshot_ref.resource_id,
-        snapshot_revision: supporting.schema_snapshot_ref.resource_revision,
-        snapshot_hash: sourceSnapshotHash,
-      },
-      compiler_bundle_ref: {
-        compiler_version: SEMANTIC_PUBLICATION_COMPILER_VERSION,
-        compiler_bundle_hash: compilerBundleHash,
-      },
-      expected_predecessor: before.semantic_pointer.release,
-      expected_pointer_version: before.semantic_pointer.version,
-      target_generation: 2,
     });
     let supportingProofs: unknown;
     let team: unknown;
@@ -1085,6 +1041,143 @@ export async function runFalcon24AuthorityFinalization(
         runtime.sandbox,
       ]);
     };
+    if (configuration.authority_epoch === "E5") {
+      const result = await finalizeFalcon24RetainedAuthority({
+        capability,
+        authority_epoch: configuration.authority_epoch,
+        web_build_identity: webBuildIdentity,
+        worker_build_identity: workerBuildIdentity,
+        epoch,
+        readback,
+        stage_falcon_authority: async ({
+          semantic_release_digest: semanticReleaseDigest,
+          retained_semantic_proof_hash: retainedSemanticProofHash,
+        }) =>
+          stageFalcon24RetainedAuthority({
+            capability,
+            epoch,
+            authority_epoch: configuration.authority_epoch,
+            semantic_release_digest: semanticReleaseDigest,
+            retained_semantic_proof_hash: retainedSemanticProofHash,
+            staging_id: configuration.staging_id,
+            retained_assets_hash: exactContentHash(retained.manifest_hash),
+            source_commit: sourceCommit,
+            web_build_hash: webBuildIdentity.build_id,
+            acceptance_contracts: acceptanceContracts,
+            production_isolation_proven: runtimeAttestation.production_isolation_proven,
+            production_gate: runtimeAttestation.production_gate,
+            stage_supporting_receipts: stageSupportingReceipts,
+          }),
+        hold_activation_attempt: async (request) => {
+          requireValue(await epoch.holdActivationAttempt(capability, request));
+        },
+      });
+      if (!supportingProofs || !team) {
+        throw new TypeError("FALCON24_AUTHORITY_STAGING_INCOMPLETE");
+      }
+      return Object.freeze({
+        schema_version: "falcon24-authority-finalization-result@2.0.0" as const,
+        authority_epoch: configuration.authority_epoch,
+        terminal: "ACTIVE" as const,
+        authority: result.readback.authority,
+        source_commit: sourceCommit,
+        web_build: {
+          build_id: webBuildIdentity.build_id,
+          generation_id: webBuildIdentity.generation_id,
+        },
+        worker_build: {
+          build_id: workerBuildIdentity.build_id,
+          generation_id: workerBuildIdentity.generation_id,
+        },
+        release_build_closure: releaseBuildClosure,
+        staging_id: configuration.staging_id,
+        retained_semantic_authority: {
+          semantic_release: result.semantic_proof.semantic_release,
+          projection_refs: result.semantic_proof.projections,
+          expected_versions: result.semantic_proof.expected_versions,
+          semantic_proof_hash: result.semantic_proof.proof_hash,
+        },
+        staging_proofs: supportingProofs,
+        schema_snapshot: supporting.schema_snapshot_ref,
+        workspace_defaults: result.readback.workspace_defaults,
+        builtin_team: team,
+        production_readiness: runtimeAttestation.production_gate,
+      });
+    }
+
+    const compilerBundleHash = await semanticPublicationCompilerBundleDigest();
+    const publicationAuthority = createPostgresSemanticPublicationAuthority(pool, {
+      appId: capability.scope.app_id,
+      workspaceId: capability.scope.tenant_id,
+      environment: capability.scope.environment,
+      principalId: capability.principal,
+      datasourceId: configuration.datasource_id,
+      semanticDomain: SEMANTIC_DOMAIN,
+    });
+    const successorChangeSet = await buildFalcon24SuccessorChangeSet({
+      repository_root: REPOSITORY_ROOT,
+      scope: before.scope,
+      base_release: {
+        release_id: before.semantic_pointer.release.release_id,
+        generation: before.semantic_pointer.release.generation,
+        release_hash: before.semantic_pointer.release.release_digest,
+      },
+      expected_datasource_id: configuration.datasource_id,
+      revision: 1,
+    });
+    const preparedReview = await publicationAuthority.prepareSuccessorReview({
+      idempotency_key: falcon24SuccessorOperationId(
+        `falcon24:E4:successor-review:${successorChangeSet.change_set.change_set_hash}`,
+      ),
+      expected_predecessor: {
+        release_id: before.semantic_pointer.release.release_id,
+        generation: before.semantic_pointer.release.generation,
+        release_digest: before.semantic_pointer.release.release_digest,
+      },
+      expected_pointer_version: before.semantic_pointer.version,
+      change_set: successorChangeSet.change_set,
+    });
+    const publishPreparationDigest = await sha256ContentHash({
+      schema_version: "falcon24-successor-publish-preparation-identity@1.0.0",
+      scope: before.scope,
+      change_set_ref: preparedReview.change_set_ref,
+      review_id: preparedReview.review_packet_ref.review_id,
+      compiler_bundle_digest: compilerBundleHash,
+      expected_predecessor: before.semantic_pointer.release,
+      expected_pointer_version: before.semantic_pointer.version,
+      target_generation: 2,
+    });
+    const approvedSuccessor = await publicationAuthority.prepareApprovedSuccessor({
+      review_id: preparedReview.review_packet_ref.review_id,
+      change_set_ref: preparedReview.change_set_ref,
+      compiler_bundle_digest: compilerBundleHash,
+      target_generation: 2,
+      idempotency_digest: publishPreparationDigest,
+      expected_predecessor: {
+        release_id: before.semantic_pointer.release.release_id,
+        generation: before.semantic_pointer.release.generation,
+        release_digest: before.semantic_pointer.release.release_digest,
+      },
+      expected_pointer_version: before.semantic_pointer.version,
+    });
+    const stageIdentity = await sha256ContentHash({
+      schema_version: "falcon24-e4-successor-finalization-identity@1.0.0",
+      scope: before.scope,
+      change_set_ref: approvedSuccessor.change_set_ref,
+      review_ref: approvedSuccessor.review_ref,
+      source_snapshot_ref: {
+        snapshot_id: supporting.schema_snapshot_ref.resource_id,
+        snapshot_revision: supporting.schema_snapshot_ref.resource_revision,
+        snapshot_hash: sourceSnapshotHash,
+      },
+      compiler_bundle_ref: {
+        compiler_version: SEMANTIC_PUBLICATION_COMPILER_VERSION,
+        compiler_bundle_hash: compilerBundleHash,
+      },
+      expected_predecessor: before.semantic_pointer.release,
+      expected_pointer_version: before.semantic_pointer.version,
+      target_generation: 2,
+    });
     const result = await finalizeFalcon24SemanticSuccessor({
       stage_command: {
         schema_version: "stage-reviewed-semantic-successor-command@1.0.0",

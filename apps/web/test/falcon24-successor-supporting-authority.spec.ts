@@ -7,7 +7,10 @@ import { describe, expect, it, vi } from "vitest";
 
 vi.mock("server-only", () => ({}));
 
-import { loadFalcon24E4SupportingAuthorityContext } from "../src/lib/falcon24-successor-supporting-authority";
+import {
+  loadFalcon24E4SupportingAuthorityContext,
+  loadFalcon24SupportingAuthorityContext,
+} from "../src/lib/falcon24-successor-supporting-authority";
 
 const id = (suffix: number) => `90000000-0000-5000-8000-${String(suffix).padStart(12, "0")}`;
 const hash = (character: string) => `sha256:${character.repeat(64)}` as const;
@@ -193,5 +196,57 @@ describe("Falcon24 E4 supporting authority preflight", () => {
     await expect(loadFalcon24E4SupportingAuthorityContext(input(failed))).rejects.toThrow(
       "EFFECTIVE_CONFIG_SCOPE_DENIED",
     );
+  });
+});
+
+describe("Falcon24 retained supporting authority preflight", () => {
+  it("loads the exact active generation-2 defaults without a writer", async () => {
+    const successor = {
+      release_id: id(31),
+      generation: 2,
+      release_digest: hash("8"),
+    } as const;
+    const current = await defaults({
+      semantic_release: {
+        resource_id: successor.release_id,
+        resource_revision: successor.generation,
+        resource_hash: successor.release_digest,
+      },
+    });
+    const defaultsReader = reader({ ok: true, value: current });
+
+    await expect(
+      loadFalcon24SupportingAuthorityContext({
+        capability: { role: "owner" },
+        defaults_reader: defaultsReader,
+        scope,
+        expected_semantic_release: successor,
+        expected_datasource_id: id(4),
+        expected_defaults_version: 7,
+      }),
+    ).resolves.toMatchObject({
+      defaults_ref: current.defaults_ref,
+      schema_snapshot_ref: current.revision.defaults.schema_snapshot,
+    });
+    expect("updateWorkspaceDefaults" in defaultsReader).toBe(false);
+  });
+
+  it("rejects a stale generation-2 release with retained error identity", async () => {
+    const defaultsReader = reader({ ok: true, value: await defaults() });
+
+    await expect(
+      loadFalcon24SupportingAuthorityContext({
+        capability: { role: "owner" },
+        defaults_reader: defaultsReader,
+        scope,
+        expected_semantic_release: {
+          release_id: id(31),
+          generation: 2,
+          release_digest: hash("8"),
+        },
+        expected_datasource_id: id(4),
+        expected_defaults_version: 7,
+      }),
+    ).rejects.toThrow("FALCON24_RETAINED_WORKSPACE_DEFAULTS_STALE");
   });
 });
