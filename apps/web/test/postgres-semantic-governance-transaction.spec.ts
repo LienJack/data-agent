@@ -1,4 +1,10 @@
-import type { SemanticApplicationAuthority, SemanticGovernancePort } from "@data-agent/contracts";
+import {
+  buildSemanticAssertionCandidate,
+  buildSemanticChangeSet,
+  type SemanticApplicationAuthority,
+  type SemanticGovernancePort,
+  sha256ContentHash,
+} from "@data-agent/contracts";
 import type { SqlClient, SqlPool } from "@data-agent/platform";
 import { createPostgresCapabilityAuthority } from "@data-agent/platform";
 import { createSemanticGovernanceService } from "@data-agent/semantic/application";
@@ -36,6 +42,10 @@ interface FixtureOptions {
   readonly denyRevalidation?: boolean;
   readonly failBusinessQuery?: boolean;
   readonly candidateErrorMarker?: string;
+  readonly reviewTask?: Record<string, unknown>;
+  readonly reviewCandidate?: Record<string, unknown>;
+  readonly reviewCandidateRevisions?: readonly Record<string, unknown>[];
+  readonly reviewDecisions?: readonly Record<string, unknown>[];
 }
 
 function createFixture(options: FixtureOptions = {}) {
@@ -119,7 +129,23 @@ function createFixture(options: FixtureOptions = {}) {
           if (text.includes("SELECT task.semantic_domain")) {
             return { rows: [], rowCount: 0 };
           }
+          if (text.includes("FROM semantic.semantic_candidate_revision")) {
+            return {
+              rows: [...(options.reviewCandidateRevisions ?? [])] as Row[],
+              rowCount: options.reviewCandidateRevisions?.length ?? 0,
+            };
+          }
+          if (text.includes("FROM semantic.semantic_review_decision")) {
+            return {
+              rows: [...(options.reviewDecisions ?? [])] as Row[],
+              rowCount: options.reviewDecisions?.length ?? 0,
+            };
+          }
+          if (text.includes("FROM semantic.semantic_candidate") && options.reviewCandidate) {
+            return { rows: [options.reviewCandidate] as Row[], rowCount: 1 };
+          }
           if (text.includes("FROM semantic.semantic_review_task")) {
+            if (options.reviewTask) return { rows: [options.reviewTask] as Row[], rowCount: 1 };
             return { rows: [{ candidate_id: ids.candidate }] as Row[], rowCount: 1 };
           }
           if (text.includes("semantic.human_prepare_publish_attempt")) {
@@ -339,6 +365,17 @@ describe("PostgresSemanticGovernanceService transaction boundary", () => {
     expect(inboxQuery?.values?.[3]).toEqual(["customer", "revenue"]);
   });
 
+  it("keeps packets already decided by the current principal out of my-decision", async () => {
+    const fixture = await arrange();
+
+    await fixture.service.getInboxItems(fixture.context, "my-decision");
+    const inboxQuery = fixture.calls.find((call) =>
+      call.text.includes("SELECT task.semantic_domain"),
+    );
+    expect(inboxQuery?.text).toContain("own_decision.principal = $5");
+    expect(inboxQuery?.values?.[4]).toBe(ids.principal);
+  });
+
   it("maps supported database markers to stable public errors", async () => {
     const fixture = await arrange({ candidateErrorMarker: "SEMANTIC_CANDIDATE_INVALID" });
 
@@ -465,6 +502,140 @@ describe("PostgresSemanticGovernanceService transaction boundary", () => {
     expect(
       fixture.calls.some((call) => call.text.includes("semantic.record_review_decision(")),
     ).toBe(false);
+  });
+
+  it("returns the exact frozen successor ChangeSet and real quorum through the review API", async () => {
+    const reviewScope = {
+      app_id: ids.app,
+      tenant_id: ids.tenant,
+      environment: "test" as const,
+      semantic_domain: "revenue",
+    };
+    const assertion = await buildSemanticAssertionCandidate({
+      schema_version: "semantic-assertion-candidate@1.0.0",
+      assertion_id: ids.candidate,
+      scope: reviewScope,
+      target_kind: "METRIC",
+      canonical_key: "metric.order_revenue",
+      applicability_scope: { datasource: "falcon_db_24" },
+      assertion_payload: { metric: { metric_id: "metric.order_revenue" } },
+      source_kind: "CURRENT_SEMANTIC_FACT",
+      evidence: [
+        {
+          evidence_id: "falcon24:metric.order_revenue",
+          source_kind: "CURRENT_SEMANTIC_FACT",
+          source_ref: {
+            resource_id: "falcon24-semantic-blueprint",
+            resource_revision: 1,
+            resource_hash: `sha256:${"5".repeat(64)}`,
+          },
+          locator: { locator_kind: "SEMANTIC_OBJECT", locator_value: "metric.order_revenue" },
+          observation: "Verified frozen Falcon24 semantic assertion.",
+        },
+      ],
+      premise_assertion_ids: [],
+      inference_rule_id: null,
+      confidence: 1,
+    });
+    const changeSet = await buildSemanticChangeSet({
+      schema_version: "semantic-change-set@1.0.0",
+      change_set_id: ids.candidate,
+      scope: reviewScope,
+      base_release: {
+        release_id: ids.release,
+        generation: 1,
+        release_hash: `sha256:${"6".repeat(64)}`,
+      },
+      revision: 1,
+      assertions: [assertion],
+      conflicts: [],
+      competency_results: [],
+      validation: {
+        outcome: "PASS",
+        reason_codes: [],
+        formula_cycle_free: true,
+        evidence_closed: true,
+        identity_conflict_free: true,
+        shapes_valid: true,
+        formulas_valid: true,
+        grain_join_time_valid: true,
+        policy_quality_valid: true,
+        competency_cases_passed: true,
+      },
+      lifecycle_state: "REVIEW_FROZEN",
+    });
+    const packetPayload = {
+      schema_version: "semantic-successor-review-packet@1.0.0" as const,
+      title: "Falcon24 executable semantic successor",
+      description: "Forward-only reviewed successor.",
+      riskLevel: "critical" as const,
+      proposer_principal: "falcon24-successor-builder@1",
+      review_policy_ref: {
+        policy_version: 7,
+        policy_digest: `sha256:${"7".repeat(64)}`,
+      },
+      change_set: changeSet,
+    };
+    const packetDigest = await sha256ContentHash(packetPayload);
+    const fixture = await arrange({
+      reviewTask: {
+        semantic_domain: "revenue",
+        packet_id: ids.packet,
+        packet_kind: "CANDIDATE_REVIEW",
+        packet_digest: packetDigest,
+        packet_payload: packetPayload,
+        candidate_id: ids.candidate,
+        decision_window_status: "OPEN",
+        review_outcome: "PENDING",
+        decision_expires_at: "2026-09-01T00:00:00.000Z",
+        publish_expires_at: "2026-09-02T00:00:00.000Z",
+        created_at: "2026-08-28T00:00:00.000Z",
+        created_by: ids.principal,
+        closed_at: null,
+        quorum_rules_snapshot: { required_approvals: 3 },
+      },
+      reviewCandidate: {
+        candidate_id: ids.candidate,
+        proposer_principal: "falcon24-successor-builder@1",
+        candidate_status: "WAITING_REVIEW",
+        current_revision_id: ids.revision,
+        created_at: "2026-08-28T00:00:00.000Z",
+        updated_at: "2026-08-28T00:00:00.000Z",
+      },
+      reviewCandidateRevisions: [
+        {
+          revision_id: ids.revision,
+          revision_number: 1,
+          revision_payload: changeSet,
+          author_principal: "falcon24-successor-builder@1",
+          change_description: "Frozen Falcon24 successor ChangeSet",
+          change_class: "MAJOR",
+          created_at: "2026-08-28T00:00:00.000Z",
+        },
+      ],
+      reviewDecisions: [],
+    });
+
+    await expect(
+      fixture.service.getPacketDetail(fixture.context, ids.packet),
+    ).resolves.toMatchObject({
+      ok: true,
+      value: {
+        quorum: { required: 3, current: 0 },
+        diff: {
+          additions: [{ path: "metric.order_revenue" }],
+        },
+        impact: {
+          affectedMetrics: ["metric.order_revenue"],
+          breakingChanges: true,
+        },
+        authorityEvidence: {
+          schemaVersion: "semantic-successor-review-evidence@1.0.0",
+          packetDigest,
+          packetPayload,
+        },
+      },
+    });
   });
 
   it("forwards publish and rollback authority material without replacement", async () => {

@@ -447,18 +447,29 @@ Status: completed on 2026-08-28.
   ChangeSet，append-only review document 仅向 backend 开放 capability/RLS 只读证据，所有 direct DML 继续拒绝。
 - [x] `PostgresSemanticGovernanceService.submitDecision` 只调用 `human_record_semantic_review_decision(jsonb)`；backend 不再能执行内部
   `record_review_decision`。
+- [x] `getPacketDetail` 对 successor packet 重算 packet digest 与 frozen ChangeSet hash，返回 exact
+  `semantic-successor-review-evidence@1.0.0` payload，并从该 payload 派生可读 diff/impact；收件箱/详情 quorum 来自 policy snapshot 与
+  真实 decision rows。验证失败 fail closed，不允许审核盲批。当前仓库提供普通治理 API；没有可用治理 UI 时不得把 API 证据表述为 UI
+  证据。
 - [x] 单一 `createPostgresSemanticPublicationAuthority` 增加 prepare/replay 与 approved-attempt 方法；CLI 无 projection payload、
   candidate digest 或第二 publisher 面。
-- [x] 新增固定 ChangeSet server builder 与 `prepare:falcon24-successor-review`；该 CLI 只产生/重放 `WAITING_REVIEW` packet，不批准、
-  不 stage、不 smoke、不激活。
+- [x] 新增固定 ChangeSet server builder 与 `prepare:falcon24-successor-review`；该 CLI 首次调用只创建 `WAITING_REVIEW` packet，重放时
+  如实返回当前 successor 状态；它不批准、不 stage、不 smoke、不激活。
 - [x] Finalizer 删除 `FALCON24_SUCCESSOR_CHANGE_SET_*` / `FALCON24_SUCCESSOR_REVIEW_*` 输入，按固定顺序执行 build → review replay →
   exact human approval → PREPARED attempt → stage/smoke/combined activation。
 - [x] 复用既有 `data-agent-postgres`，从已验证模板克隆 scratch DB `data_agent_falcon24_w7_review_10792`；10792 PostgreSQL 17 upgrade、
   rollback fixture、跨 principal replay、hash/CAS/quorum、只读 review evidence、无提前正式发布全部 PASS。专用 E3 数据库未连接。
-- [x] 10792 当前 checksum：`sha256:41ef0f9ef259b9ca72a4d6d49a5d8cd3ddcdef94500e789289bffbea6d3341be`。
+- [x] 新 checksum 通过第二个短生命周期 scratch DB 的 PG17 upgrade/rollback fixture 后，确认两者均无活动连接且不属于权威历史或
+  完成证据，已删除 `data_agent_falcon24_w7_review_10792` 与 `data_agent_falcon24_w7_review_10792b`；保留已验证模板与专用 E3
+  数据库原样。
+- [x] Replay 在批准与 publish preparation 后分别返回当前 `APPROVED` / `PUBLISHING`，不再固定谎报 `WAITING_REVIEW`；Publication Port
+  与 review CLI 接受并保留 successor 可达的 review/publish 状态，Finalizer 因此可从已批准/已准备状态幂等继续，并对 rejected、expired
+  或 stale 状态稳定停止。
+- [x] 10792 当前 checksum：`sha256:9457e523edfd72d1f227f5109aea204e6ab8ed76a0f10cfd4b6f62a619cee055`。
 - [x] Scoped commits：`483243e0`、`9c0aef74`、`c3b30bae`、`5b8a326e`、`b47f10cf`、`b326b837`。
-- [x] Final qualification：Platform 111 files / 684 tests；Web 132 passed + 1 skipped files / 545 passed + 1 skipped tests；两个
-  typecheck、10792 renderer、全 Supabase static check、Trellis validate 与 PostgreSQL rollback fixture PASS。强制八包 release build PASS，
+- [x] Final qualification：Contracts 99 files / 951 tests；Platform 111 files / 684 tests；Web 132 passed + 1 skipped files / 548 passed + 1
+  skipped tests；三个 typecheck、10792 renderer、全 Supabase static check、Trellis validate 与 PostgreSQL rollback fixture PASS。强制八包
+  release build PASS，
   仅保留两个既有 Evals installer 动态 `fs.stat` warning。
 - [x] Commit `ae0beb0c` 的 clean build attestation：generation
   `sha256:37695368a6226b3fe78f5f363e329f1043097f6c8386e37299a7f3379083ef94`，Web build

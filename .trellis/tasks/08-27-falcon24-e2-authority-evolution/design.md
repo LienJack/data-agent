@@ -74,9 +74,17 @@ projection 编译、hash 或 Release insert 逻辑。
   `APPROVED`。Finalizer 与 review-preparation CLI 都不能调用它自动批准。
 - `prepare_falcon24_successor_publish_attempt(jsonb)` 只消费 exact closed APPROVED packet/review document，把 candidate CAS 到
   `PUBLISHING` 并创建幂等 `PREPARED` attempt；仍不写正式 Release/pointer/runtime/E4。
+- 普通治理 `getPacketDetail` 对该 packet 必须 fail-closed 重算 packet digest 与 ChangeSet hash，并返回
+  `semantic-successor-review-evidence@1.0.0` 的 exact append-only payload；列表和详情 quorum 必须来自
+  `quorum_rules_snapshot` 与真实 decision rows，不能使用 UI placeholder。用于 diff/impact 的显示投影只能从已验证 ChangeSet 派生，
+  不能替代或省略 exact evidence。
+- `prepare_falcon24_successor_review` 的幂等 replay 必须返回 candidate 当前真实状态，不能把历史首写状态冒充当前状态；Publication Port
+  与 review CLI 必须保留 successor 可达的 review/publish 状态。`REJECTED`、`REVIEW_EXPIRED`、`STALE_REBASE_REQUIRED` 等非成功终态
+  随后由发布准备稳定拒绝，而不是被适配器误判成损坏响应。
 
 Web 的 `buildFalcon24SuccessorChangeSet` 只能执行固定仓库脚本并再次调用 `verifySemanticChangeSet`。CLI 不接收 ChangeSet、review、
-projection 或 release digest；专门的 review-preparation CLI 只打开 packet。普通治理 UI/API 完成人工批准后，Finalizer 重新构建同一
+projection 或 release digest；专门的 review-preparation CLI 只打开 packet。普通治理 API 必须先向真人展示上述 exact evidence；若部署
+存在消费该 API 的治理 UI，可由 UI 完成同一流程，但没有可用 UI 时不得声称已产生 UI 审核证据。真人批准后，Finalizer 重新构建同一
 ChangeSet、重放 preparation、读取批准文档并准备 attempt，随后才进入唯一 `stageReviewedSuccessor`。
 
 ### 2.2 Stage command

@@ -174,6 +174,9 @@ begin
       'semantic_role','admin_reviewer','decision','APPROVE','decision_reason',null));
   if decision->>'outcome'<>'APPROVED' or (decision->>'packet_closed')::boolean is not true
   then raise exception 'SEMANTIC_SUCCESSOR_HUMAN_REVIEW_NOT_CLOSED'; end if;
+  replay:=semantic.prepare_falcon24_successor_review(command);
+  if replay->>'candidate_status'<>'APPROVED'
+  then raise exception 'SEMANTIC_SUCCESSOR_APPROVED_REPLAY_STATUS_INVALID'; end if;
 
   publish_command:=pg_catalog.jsonb_build_object(
     'schema_version','prepare-falcon24-semantic-successor-publish-attempt@1.0.0',
@@ -194,6 +197,9 @@ begin
     or (prepared->>'created')::boolean is not true
     or (prepared_replay->>'created')::boolean is not false
   then raise exception 'SEMANTIC_SUCCESSOR_PUBLISH_PREPARATION_INVALID'; end if;
+  replay:=semantic.prepare_falcon24_successor_review(command);
+  if replay->>'candidate_status'<>'PUBLISHING'
+  then raise exception 'SEMANTIC_SUCCESSOR_PUBLISHING_REPLAY_STATUS_INVALID'; end if;
 
   if not exists(select 1
       from semantic.semantic_successor_review_decision_document as document

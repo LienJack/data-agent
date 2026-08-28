@@ -5,6 +5,9 @@
  * 遵循 .trellis/spec/frontend/type-safety.md 的判别联合约定。
  */
 
+import type { ContentHash } from "../common/index.js";
+import type { SemanticSuccessorReviewPacketPayload } from "./semantic-lifecycle.js";
+
 // ─── 状态判别联合 ──────────────────────────────────────────────────────────────
 
 /** 语义审核包状态 */
@@ -73,8 +76,20 @@ export interface SemanticReviewPacket {
   /** 修订历史 */
   revisions: RevisionRecord[];
 
+  /**
+   * Exact PostgreSQL-authoritative material for a forward successor review.
+   * Generic review packets omit this field.
+   */
+  authorityEvidence?: SemanticSuccessorReviewAuthorityEvidence;
+
   /** 当前版本前驱（被 rebase 的旧版本） */
   supersedes?: string;
+}
+
+export interface SemanticSuccessorReviewAuthorityEvidence {
+  schemaVersion: "semantic-successor-review-evidence@1.0.0";
+  packetDigest: ContentHash;
+  packetPayload: SemanticSuccessorReviewPacketPayload;
 }
 
 /** 审核人 */

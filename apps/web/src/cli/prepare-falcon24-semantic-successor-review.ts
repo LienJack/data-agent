@@ -135,7 +135,7 @@ export async function runFalcon24SuccessorReviewPreparation(
     });
     return Object.freeze({
       schema_version: "falcon24-successor-review-preparation-result@1.0.0" as const,
-      terminal: "WAITING_REVIEW" as const,
+      terminal: prepared.candidate_status,
       authority_epoch: closure.authority.authority_epoch,
       predecessor_release: closure.semantic_pointer.release,
       change_set_ref: prepared.change_set_ref,

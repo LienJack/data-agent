@@ -23,8 +23,15 @@ import type {
   SemanticReviewPacket,
   SemanticRole,
   SemanticRollbackInput,
+  SemanticSuccessorReviewAuthorityEvidence,
 } from "@data-agent/contracts";
-import { semanticCandidateCreateResultSchema } from "@data-agent/contracts";
+import {
+  semanticCandidateCreateResultSchema,
+  semanticChangeSetSchema,
+  semanticSuccessorReviewPacketPayloadSchema,
+  verifySemanticChangeSet,
+} from "@data-agent/contracts";
+import { contentHashSchema, sha256ContentHash } from "@data-agent/contracts/common";
 import type pg from "pg";
 import {
   adaptPgPool,
@@ -167,6 +174,7 @@ interface ReviewTaskRow {
   semantic_domain: string;
   packet_id: string;
   packet_kind: string;
+  packet_digest: string;
   packet_payload: Record<string, unknown>;
   candidate_id: string | null;
   decision_window_status: string;
@@ -176,6 +184,13 @@ interface ReviewTaskRow {
   created_at: string;
   created_by: string;
   closed_at: string | null;
+  quorum_rules_snapshot: Record<string, unknown>;
+}
+
+interface InboxReviewTaskRow extends ReviewTaskRow {
+  proposer_principal: string | null;
+  candidate_status: string | null;
+  quorum_current: number;
 }
 
 interface ReviewDecisionRow {
@@ -220,6 +235,46 @@ function pluckString(payload: Record<string, unknown>, key: string, fallback = "
 function pluckStringArray(payload: Record<string, unknown>, key: string): string[] {
   const value = payload[key];
   return Array.isArray(value) ? value.filter((v): v is string => typeof v === "string") : [];
+}
+
+function positiveInteger(value: unknown): number | null {
+  if (typeof value === "number" && Number.isSafeInteger(value) && value > 0) return value;
+  if (typeof value === "string" && /^[1-9][0-9]*$/.test(value)) {
+    const parsed = Number(value);
+    return Number.isSafeInteger(parsed) ? parsed : null;
+  }
+  return null;
+}
+
+function requiredApprovals(snapshot: Record<string, unknown>): number {
+  return (
+    positiveInteger(snapshot.required_approvals) ?? positiveInteger(snapshot.min_reviewers) ?? 1
+  );
+}
+
+async function buildSuccessorAuthorityEvidence(
+  payload: Record<string, unknown>,
+  packetDigest: string,
+): Promise<SemanticSuccessorReviewAuthorityEvidence | undefined> {
+  if (payload.schema_version !== "semantic-successor-review-packet@1.0.0") return undefined;
+  const parsed = semanticSuccessorReviewPacketPayloadSchema.safeParse(payload);
+  const parsedDigest = contentHashSchema.safeParse(packetDigest);
+  if (!parsed.success || !parsedDigest.success) {
+    throw governanceError("SEMANTIC_GOVERNANCE_UNAVAILABLE");
+  }
+  try {
+    await verifySemanticChangeSet(parsed.data.change_set);
+  } catch {
+    throw governanceError("SEMANTIC_GOVERNANCE_UNAVAILABLE");
+  }
+  if ((await sha256ContentHash(parsed.data)) !== parsedDigest.data) {
+    throw governanceError("SEMANTIC_GOVERNANCE_UNAVAILABLE");
+  }
+  return {
+    schemaVersion: "semantic-successor-review-evidence@1.0.0",
+    packetDigest: parsedDigest.data,
+    packetPayload: parsed.data,
+  };
 }
 
 function assertAuthorityMatches(
@@ -402,16 +457,22 @@ export class PostgresSemanticGovernanceService implements SemanticGovernancePort
         switch (group) {
           case "my-decision": {
             // OPEN packets where the user hasn't decided yet
-            const result = await client.query<
-              ReviewTaskRow & { proposer_principal: string | null; candidate_status: string | null }
-            >(
-              `SELECT task.semantic_domain, task.packet_id, task.packet_kind, task.packet_payload,
+            const result = await client.query<InboxReviewTaskRow>(
+              `SELECT task.semantic_domain, task.packet_id, task.packet_kind, task.packet_digest,
+                    task.packet_payload, task.quorum_rules_snapshot,
                     task.candidate_id, task.decision_window_status,
                     task.review_outcome, task.decision_expires_at,
                     task.publish_expires_at, task.created_at,
                     task.created_by, task.closed_at,
                     cand.proposer_principal,
-                    cand.candidate_status
+                    cand.candidate_status,
+                    (SELECT pg_catalog.count(*) FILTER (WHERE decision.decision = 'APPROVE')::integer
+                       FROM semantic.semantic_review_decision decision
+                      WHERE decision.app_id = task.app_id
+                        AND decision.tenant_id = task.tenant_id
+                        AND decision.environment = task.environment
+                        AND decision.semantic_domain = task.semantic_domain
+                        AND decision.packet_id = task.packet_id) AS quorum_current
              FROM semantic.semantic_review_task task
              LEFT JOIN semantic.semantic_candidate cand
                ON cand.app_id = task.app_id
@@ -424,24 +485,45 @@ export class PostgresSemanticGovernanceService implements SemanticGovernancePort
                AND task.environment = $3
                AND task.semantic_domain = ANY($4::text[])
                AND task.decision_window_status = 'OPEN'
+               AND NOT EXISTS (
+                 SELECT 1 FROM semantic.semantic_review_decision own_decision
+                 WHERE own_decision.app_id = task.app_id
+                   AND own_decision.tenant_id = task.tenant_id
+                   AND own_decision.environment = task.environment
+                   AND own_decision.semantic_domain = task.semantic_domain
+                   AND own_decision.packet_id = task.packet_id
+                   AND own_decision.principal = $5
+               )
              ORDER BY task.created_at DESC`,
-              [scope.appId, scope.tenantId, scope.environment, semanticDomains],
+              [
+                scope.appId,
+                scope.tenantId,
+                scope.environment,
+                semanticDomains,
+                authority.principal,
+              ],
             );
             items = result.rows.map((row) => buildInboxItem(row, "my-decision"));
             break;
           }
           case "waiting-others": {
             // OPEN packets with at least one decision
-            const result = await client.query<
-              ReviewTaskRow & { proposer_principal: string | null; candidate_status: string | null }
-            >(
-              `SELECT task.semantic_domain, task.packet_id, task.packet_kind, task.packet_payload,
+            const result = await client.query<InboxReviewTaskRow>(
+              `SELECT task.semantic_domain, task.packet_id, task.packet_kind, task.packet_digest,
+                    task.packet_payload, task.quorum_rules_snapshot,
                     task.candidate_id, task.decision_window_status,
                     task.review_outcome, task.decision_expires_at,
                     task.publish_expires_at, task.created_at,
                     task.created_by, task.closed_at,
                     cand.proposer_principal,
-                    cand.candidate_status
+                    cand.candidate_status,
+                    (SELECT pg_catalog.count(*) FILTER (WHERE decision.decision = 'APPROVE')::integer
+                       FROM semantic.semantic_review_decision decision
+                      WHERE decision.app_id = task.app_id
+                        AND decision.tenant_id = task.tenant_id
+                        AND decision.environment = task.environment
+                        AND decision.semantic_domain = task.semantic_domain
+                        AND decision.packet_id = task.packet_id) AS quorum_current
              FROM semantic.semantic_review_task task
              LEFT JOIN semantic.semantic_candidate cand
                ON cand.app_id = task.app_id
@@ -471,16 +553,22 @@ export class PostgresSemanticGovernanceService implements SemanticGovernancePort
           }
           case "expiring": {
             // OPEN packets expiring within 24 hours
-            const result = await client.query<
-              ReviewTaskRow & { proposer_principal: string | null; candidate_status: string | null }
-            >(
-              `SELECT task.semantic_domain, task.packet_id, task.packet_kind, task.packet_payload,
+            const result = await client.query<InboxReviewTaskRow>(
+              `SELECT task.semantic_domain, task.packet_id, task.packet_kind, task.packet_digest,
+                    task.packet_payload, task.quorum_rules_snapshot,
                     task.candidate_id, task.decision_window_status,
                     task.review_outcome, task.decision_expires_at,
                     task.publish_expires_at, task.created_at,
                     task.created_by, task.closed_at,
                     cand.proposer_principal,
-                    cand.candidate_status
+                    cand.candidate_status,
+                    (SELECT pg_catalog.count(*) FILTER (WHERE decision.decision = 'APPROVE')::integer
+                       FROM semantic.semantic_review_decision decision
+                      WHERE decision.app_id = task.app_id
+                        AND decision.tenant_id = task.tenant_id
+                        AND decision.environment = task.environment
+                        AND decision.semantic_domain = task.semantic_domain
+                        AND decision.packet_id = task.packet_id) AS quorum_current
              FROM semantic.semantic_review_task task
              LEFT JOIN semantic.semantic_candidate cand
                ON cand.app_id = task.app_id
@@ -502,16 +590,22 @@ export class PostgresSemanticGovernanceService implements SemanticGovernancePort
           }
           case "completed": {
             // CLOSED packets
-            const result = await client.query<
-              ReviewTaskRow & { proposer_principal: string | null; candidate_status: string | null }
-            >(
-              `SELECT task.semantic_domain, task.packet_id, task.packet_kind, task.packet_payload,
+            const result = await client.query<InboxReviewTaskRow>(
+              `SELECT task.semantic_domain, task.packet_id, task.packet_kind, task.packet_digest,
+                    task.packet_payload, task.quorum_rules_snapshot,
                     task.candidate_id, task.decision_window_status,
                     task.review_outcome, task.decision_expires_at,
                     task.publish_expires_at, task.created_at,
                     task.created_by, task.closed_at,
                     cand.proposer_principal,
-                    cand.candidate_status
+                    cand.candidate_status,
+                    (SELECT pg_catalog.count(*) FILTER (WHERE decision.decision = 'APPROVE')::integer
+                       FROM semantic.semantic_review_decision decision
+                      WHERE decision.app_id = task.app_id
+                        AND decision.tenant_id = task.tenant_id
+                        AND decision.environment = task.environment
+                        AND decision.semantic_domain = task.semantic_domain
+                        AND decision.packet_id = task.packet_id) AS quorum_current
              FROM semantic.semantic_review_task task
              LEFT JOIN semantic.semantic_candidate cand
                ON cand.app_id = task.app_id
@@ -554,11 +648,11 @@ export class PostgresSemanticGovernanceService implements SemanticGovernancePort
         const semanticDomains = authorizedReadDomains(authority);
         // 1. Get review task
         const taskResult = await client.query<ReviewTaskRow>(
-          `SELECT semantic_domain, packet_id, packet_kind, packet_payload,
+          `SELECT semantic_domain, packet_id, packet_kind, packet_digest, packet_payload,
                 candidate_id, decision_window_status,
                 review_outcome, decision_expires_at,
                 publish_expires_at, created_at,
-                created_by, closed_at
+                created_by, closed_at, quorum_rules_snapshot
          FROM semantic.semantic_review_task
          WHERE app_id = $1::uuid
            AND tenant_id = $2::uuid
@@ -580,6 +674,10 @@ export class PostgresSemanticGovernanceService implements SemanticGovernancePort
         const task = taskResult.rows[0] as NonNullable<(typeof taskResult.rows)[0]>;
         const semanticDomain = task.semantic_domain;
         const payload = task.packet_payload;
+        const authorityEvidence = await buildSuccessorAuthorityEvidence(
+          payload,
+          task.packet_digest,
+        );
 
         // 2. Get candidate info if available
         let candidateStatus: string | null = null;
@@ -688,14 +786,15 @@ export class PostgresSemanticGovernanceService implements SemanticGovernancePort
           },
           reviewers,
           quorum: {
-            required: (task.packet_payload.quorumRequired as number) ?? 2,
-            current: (task.packet_payload.quorumCurrent as number) ?? 0,
+            required: requiredApprovals(task.quorum_rules_snapshot),
+            current: decisions.filter((decision) => decision.decision === "approved").length,
           },
           decisions,
           diff,
           impact,
           lineage: buildLineage(task, candidateStatus),
           revisions,
+          ...(authorityEvidence === undefined ? {} : { authorityEvidence }),
         };
 
         return packet;
@@ -1038,10 +1137,7 @@ export class PostgresSemanticGovernanceService implements SemanticGovernancePort
 
 // ─── 辅助函数 ──────────────────────────────────────────────────────────────────
 
-function buildInboxItem(
-  row: ReviewTaskRow & { proposer_principal: string | null; candidate_status: string | null },
-  group: InboxGroup,
-): InboxItem {
+function buildInboxItem(row: InboxReviewTaskRow, group: InboxGroup): InboxItem {
   const payload = row.packet_payload;
   const status = row.candidate_status ? mapToInboxStatus(row.candidate_status) : "candidate";
 
@@ -1056,8 +1152,8 @@ function buildInboxItem(
     expiresAt: row.decision_expires_at,
     proposer: row.proposer_principal ?? row.created_by,
     quorum: {
-      required: (payload.quorumRequired as number) ?? 2,
-      current: (payload.quorumCurrent as number) ?? 0,
+      required: requiredApprovals(row.quorum_rules_snapshot),
+      current: row.quorum_current,
     },
     currentDecision: mapReviewOutcome(row.review_outcome),
     group,
@@ -1065,6 +1161,19 @@ function buildInboxItem(
 }
 
 function buildDiff(payload: Record<string, unknown>): SemanticDiff {
+  const successor = successorChangeSetForDisplay(payload);
+  if (successor) {
+    return {
+      summary: `Forward successor ${successor.change_set_id} contains ${successor.assertions.length} frozen assertions; base generation ${successor.base_release.generation}; validation ${successor.validation.outcome}.`,
+      additions: successor.assertions.map((assertion) => ({
+        path: assertion.canonical_key,
+        after: JSON.stringify(assertion),
+        changeType: "added" as const,
+      })),
+      modifications: [],
+      deletions: [],
+    };
+  }
   const diff = payload.diff as Record<string, unknown> | undefined;
   return {
     summary: pluckString(diff ?? {}, "summary", "无变更摘要"),
@@ -1075,6 +1184,18 @@ function buildDiff(payload: Record<string, unknown>): SemanticDiff {
 }
 
 function buildImpact(payload: Record<string, unknown>): ImpactAnalysis {
+  const successor = successorChangeSetForDisplay(payload);
+  if (successor) {
+    return {
+      affectedQueries: successor.competency_results.map((result) => result.case_id),
+      affectedEvals: successor.competency_results.map((result) => result.case_id),
+      affectedMetrics: successor.assertions
+        .filter((assertion) => assertion.target_kind === "METRIC")
+        .map((assertion) => assertion.canonical_key),
+      breakingChanges: true,
+      summary: `Critical generation+1 authority transition from ${successor.base_release.release_id}; exact ChangeSet hash ${successor.change_set_hash}.`,
+    };
+  }
   const impact = payload.impact as Record<string, unknown> | undefined;
   return {
     affectedQueries: pluckStringArray(impact ?? {}, "affectedQueries"),
@@ -1083,6 +1204,13 @@ function buildImpact(payload: Record<string, unknown>): ImpactAnalysis {
     breakingChanges: (impact?.breakingChanges as boolean) ?? false,
     summary: pluckString(impact ?? {}, "summary", "无影响分析"),
   };
+}
+
+function successorChangeSetForDisplay(payload: Record<string, unknown>) {
+  const direct = semanticChangeSetSchema.safeParse(payload);
+  if (direct.success) return direct.data;
+  const nested = semanticChangeSetSchema.safeParse(payload.change_set);
+  return nested.success ? nested.data : null;
 }
 
 function buildLineage(task: ReviewTaskRow, candidateStatus: string | null): LineageRecord[] {

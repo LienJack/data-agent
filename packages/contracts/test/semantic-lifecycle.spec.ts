@@ -9,6 +9,7 @@ import {
   buildSemanticSuccessorStage,
   buildSemanticSuccessorStageLoadCommand,
   buildStageReviewedSemanticSuccessorCommand,
+  semanticSuccessorReviewPacketPayloadSchema,
   semanticSuccessorStageEnvelopeSchema,
   stageReviewedSemanticSuccessorCommandSchema,
   verifySemanticChangeSet,
@@ -347,5 +348,55 @@ describe("semantic lifecycle contracts", () => {
     await expect(verifySemanticChangeSet({ ...changeSet, revision: 2 })).rejects.toThrow(
       "SEMANTIC_CHANGE_SET_HASH_MISMATCH",
     );
+  });
+
+  it("requires an exact frozen ChangeSet in successor human-review packets", async () => {
+    const assertion = await buildSemanticAssertionCandidate(assertionInput());
+    const changeSet = await buildSemanticChangeSet({
+      schema_version: "semantic-change-set@1.0.0",
+      change_set_id: id(22),
+      scope,
+      base_release: { release_id: id(23), generation: 1, release_hash: hash("d") },
+      revision: 1,
+      assertions: [assertion],
+      conflicts: [],
+      competency_results: [],
+      validation: {
+        outcome: "PASS",
+        reason_codes: [],
+        formula_cycle_free: true,
+        evidence_closed: true,
+        identity_conflict_free: true,
+        shapes_valid: true,
+        formulas_valid: true,
+        grain_join_time_valid: true,
+        policy_quality_valid: true,
+        competency_cases_passed: true,
+      },
+      lifecycle_state: "REVIEW_FROZEN",
+    });
+    const packet = {
+      schema_version: "semantic-successor-review-packet@1.0.0",
+      title: "Falcon24 executable semantic successor",
+      description: "Forward-only reviewed successor.",
+      riskLevel: "critical",
+      proposer_principal: "falcon24-successor-builder@1",
+      review_policy_ref: { policy_version: 1, policy_digest: hash("e") },
+      change_set: changeSet,
+    };
+
+    expect(semanticSuccessorReviewPacketPayloadSchema.parse(packet)).toEqual(packet);
+    expect(() =>
+      semanticSuccessorReviewPacketPayloadSchema.parse({
+        ...packet,
+        projection_payload: { executable: {} },
+      }),
+    ).toThrow();
+    expect(() =>
+      semanticSuccessorReviewPacketPayloadSchema.parse({
+        ...packet,
+        change_set: { ...changeSet, lifecycle_state: "VALIDATED" },
+      }),
+    ).toThrow();
   });
 });

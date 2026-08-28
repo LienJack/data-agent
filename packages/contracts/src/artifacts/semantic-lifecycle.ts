@@ -703,6 +703,26 @@ export const semanticChangeSetSchema = semanticChangeSetMaterialSchema
     }
   });
 
+/**
+ * Exact append-only payload presented to a human reviewer before a Falcon24
+ * successor may enter the publication staging authority.
+ */
+export const semanticSuccessorReviewPacketPayloadSchema = z.strictObject({
+  schema_version: z.literal("semantic-successor-review-packet@1.0.0"),
+  title: z.string().trim().min(1).max(256),
+  description: z.string().trim().min(1).max(2_048),
+  riskLevel: z.literal("critical"),
+  proposer_principal: z.string().trim().min(1).max(256),
+  review_policy_ref: z.strictObject({
+    policy_version: z.number().int().min(1).max(Number.MAX_SAFE_INTEGER),
+    policy_digest: contentHashSchema,
+  }),
+  change_set: semanticChangeSetSchema.refine(
+    (changeSet) => changeSet.lifecycle_state === "REVIEW_FROZEN",
+    "Successor review packet requires a frozen ChangeSet.",
+  ),
+});
+
 function assertionMaterial(input: unknown) {
   const full = semanticAssertionCandidateSchema.safeParse(input);
   if (!full.success) return semanticAssertionCandidateMaterialSchema.parse(input);
@@ -827,6 +847,9 @@ export type SemanticAssertionCandidate = z.infer<typeof semanticAssertionCandida
 export type SemanticAssertionConflict = z.infer<typeof semanticAssertionConflictSchema>;
 export type SemanticChangeSetValidation = z.infer<typeof semanticChangeSetValidationSchema>;
 export type SemanticChangeSet = z.infer<typeof semanticChangeSetSchema>;
+export type SemanticSuccessorReviewPacketPayload = z.infer<
+  typeof semanticSuccessorReviewPacketPayloadSchema
+>;
 export type SemanticCompetencyCase = z.infer<typeof semanticCompetencyCaseSchema>;
 export type SemanticCompetencyResult = z.infer<typeof semanticCompetencyResultSchema>;
 export type SemanticReviewDecision = z.infer<typeof semanticReviewDecisionSchema>;

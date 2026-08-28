@@ -112,7 +112,16 @@ async function reviewedChangeSet() {
   );
 }
 
-async function arrange() {
+async function arrange(
+  reviewCandidateStatus:
+    | "WAITING_REVIEW"
+    | "APPROVED"
+    | "REJECTED"
+    | "REVIEW_EXPIRED"
+    | "STALE_REBASE_REQUIRED"
+    | "PUBLISHING"
+    | "PUBLISHED" = "WAITING_REVIEW",
+) {
   const snapshot = await sourceSnapshot();
   const changeSet = await reviewedChangeSet();
   const review = await buildSemanticReviewDecision({
@@ -229,8 +238,8 @@ async function arrange() {
                   review_id: review.review_id,
                   packet_digest: hash("c"),
                 },
-                candidate_status: "WAITING_REVIEW",
-                created: true,
+                candidate_status: reviewCandidateStatus,
+                created: reviewCandidateStatus === "WAITING_REVIEW",
               },
             },
           ] as Row[],
@@ -446,6 +455,23 @@ describe("PostgreSQL semantic successor publication authority", () => {
       },
     ]);
     expect(JSON.stringify(rpc?.values)).not.toContain("projection_payload");
+  });
+
+  it("preserves the current approved state when the fixed review preparation is replayed", async () => {
+    const fixture = await arrange("APPROVED");
+    const { createPostgresSemanticPublicationAuthority } = await import(
+      "../src/lib/postgres-semantic-publication.js"
+    );
+    const authority = createPostgresSemanticPublicationAuthority(fixture.pool, scope);
+
+    await expect(
+      authority.prepareSuccessorReview({
+        idempotency_key: id(29),
+        expected_predecessor: fixture.command.expected_predecessor,
+        expected_pointer_version: fixture.command.expected_pointer_version,
+        change_set: fixture.changeSet,
+      }),
+    ).resolves.toMatchObject({ candidate_status: "APPROVED", created: false });
   });
 
   it("prepares only an exact human-approved successor for server compilation", async () => {

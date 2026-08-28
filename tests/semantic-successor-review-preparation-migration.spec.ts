@@ -47,6 +47,8 @@ describe("10792 semantic successor review preparation migration", () => {
     const review = source("30-human-review-rpc.sql.inc");
 
     expect(preparation).toContain("SEMANTIC_SUCCESSOR_REVIEW_IDEMPOTENCY_CONFLICT");
+    expect(preparation).toContain("'candidate_status',existing_candidate_status");
+    expect(preparation).toContain("SEMANTIC_SUCCESSOR_REVIEW_STATE_INVALID");
     expect(source("10-review-preparation-storage.sql.inc")).toContain(
       "unique(app_id,tenant_id,environment,semantic_domain,idempotency_key)",
     );

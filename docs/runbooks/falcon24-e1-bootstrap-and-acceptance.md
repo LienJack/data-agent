@@ -70,8 +70,12 @@ export FALCON24_ENVIRONMENT=<exact-environment>
 pnpm --filter @data-agent/web prepare:falcon24-successor-review
 ```
 
-保存返回的 `change_set_ref` 与 `review_packet_ref`。随后由当前 reviewer policy 中的真人通过普通 Semantic Governance UI/API 审阅 exact
-packet 并提交 APPROVE；禁止 SQL、脚本自动批准或让 Finalizer 代替 reviewer。批准必须产生严格
+保存返回的 `change_set_ref` 与 `review_packet_ref`。随后由当前 reviewer policy 中的真人通过普通 Semantic Governance API 加载详情；
+响应必须包含 `authorityEvidence.schemaVersion=semantic-successor-review-evidence@1.0.0`、exact `packetDigest`、完整 frozen ChangeSet、真实
+quorum 与从同一 ChangeSet 派生的 diff/impact。若部署存在消费该 API 的治理 UI，可在 UI 中完成同一审核；没有可用 UI 时不得声称已
+产生 UI 审核证据。真人确认 exact packet 后再通过普通治理决策 API 提交 APPROVE；禁止 SQL、脚本自动批准或让 Finalizer 代替
+reviewer。successor 的 `decision_reason` 若提供，必须是最长 128 字符的稳定 reason code；没有合适 reason code 时传 `null`，不要把
+长篇审核意见塞入该字段。批准必须产生严格
 `semantic-review-decision@1.0.0` document，ChangeSet/review hash 均由 PostgreSQL/Contracts 重算。若还未批准，Finalizer 必须以
 `SEMANTIC_SUCCESSOR_APPROVED_REVIEW_REQUIRED` 停止，gen1/E3 保持 current。
 

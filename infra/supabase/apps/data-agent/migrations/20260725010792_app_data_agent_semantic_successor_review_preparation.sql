@@ -1,4 +1,4 @@
--- falcon24_semantic_successor_review_preparation_migration_checksum: sha256:41ef0f9ef259b9ca72a4d6d49a5d8cd3ddcdef94500e789289bffbea6d3341be
+-- falcon24_semantic_successor_review_preparation_migration_checksum: sha256:9457e523edfd72d1f227f5109aea204e6ab8ed76a0f10cfd4b6f62a619cee055
 begin;
 
 select platform.acquire_migration_lock(
@@ -139,6 +139,7 @@ declare
   pointer semantic.semantic_active_pointer%rowtype;
   policy semantic.semantic_reviewer_policy_revision%rowtype;
   existing semantic.semantic_successor_review_preparation%rowtype;
+  existing_candidate_status text;
   principal_id uuid;
   input_digest text;
   change_set_hash text;
@@ -236,12 +237,20 @@ begin
     if existing.input_digest<>input_digest
     then raise exception using errcode='23505',
       message='SEMANTIC_SUCCESSOR_REVIEW_IDEMPOTENCY_CONFLICT'; end if;
+    select candidate.candidate_status into existing_candidate_status
+    from semantic.semantic_candidate as candidate
+    where candidate.app_id=existing.app_id and candidate.tenant_id=existing.tenant_id
+      and candidate.environment=existing.environment
+      and candidate.semantic_domain=existing.semantic_domain
+      and candidate.candidate_id=existing.change_set_id;
+    if not found then raise exception using errcode='P0001',
+      message='SEMANTIC_SUCCESSOR_REVIEW_STATE_INVALID'; end if;
     return pg_catalog.jsonb_build_object(
       'change_set_ref',pg_catalog.jsonb_build_object(
         'change_set_id',existing.change_set_id,'change_set_hash',existing.change_set_hash),
       'review_packet_ref',pg_catalog.jsonb_build_object(
         'review_id',existing.packet_id,'packet_digest',existing.packet_digest),
-      'candidate_status','WAITING_REVIEW','created',false);
+      'candidate_status',existing_candidate_status,'created',false);
   end if;
 
   select active.* into pointer from semantic.semantic_active_pointer as active
@@ -935,6 +944,6 @@ $postconditions$;
 select platform.assert_migration_checksum(
   'app','00000000-0000-4000-8000-00000000da01'::uuid,
   '20260725010792_app_data_agent_semantic_successor_review_preparation',
-  'sha256:41ef0f9ef259b9ca72a4d6d49a5d8cd3ddcdef94500e789289bffbea6d3341be');
+  'sha256:9457e523edfd72d1f227f5109aea204e6ab8ed76a0f10cfd4b6f62a619cee055');
 
 commit;

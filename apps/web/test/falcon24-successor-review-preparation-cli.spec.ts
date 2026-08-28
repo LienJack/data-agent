@@ -11,7 +11,7 @@ describe("Falcon24 successor review-preparation CLI", () => {
   it("opens only a human review packet from the server-built ChangeSet", () => {
     expect(source).toContain("buildFalcon24SuccessorChangeSet");
     expect(source).toContain("prepareSuccessorReview");
-    expect(source).toContain("WAITING_REVIEW");
+    expect(source).toContain("terminal: prepared.candidate_status");
     expect(source).not.toContain("prepareApprovedSuccessor");
     expect(source).not.toContain("human_record_semantic_review_decision");
     expect(source).not.toContain("stageReviewedSuccessor");

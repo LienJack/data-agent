@@ -73,6 +73,7 @@ export {
   type SemanticDiff as SemanticReviewDiff,
   type SemanticReviewPacket,
   type SemanticRole,
+  type SemanticSuccessorReviewAuthorityEvidence,
   type SemanticViewState,
 } from "./semantic-governance-view.js";
 export * from "./semantic-graph-v2.js";

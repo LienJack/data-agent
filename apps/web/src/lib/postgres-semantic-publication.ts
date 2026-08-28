@@ -60,9 +60,18 @@ export interface PreparedFalcon24SuccessorReview {
     readonly review_id: string;
     readonly packet_digest: ContentHash;
   };
-  readonly candidate_status: "WAITING_REVIEW";
+  readonly candidate_status: Falcon24SuccessorReviewCandidateStatus;
   readonly created: boolean;
 }
+
+export type Falcon24SuccessorReviewCandidateStatus =
+  | "WAITING_REVIEW"
+  | "APPROVED"
+  | "REJECTED"
+  | "REVIEW_EXPIRED"
+  | "STALE_REBASE_REQUIRED"
+  | "PUBLISHING"
+  | "PUBLISHED";
 
 export interface PrepareApprovedFalcon24SuccessorInput {
   readonly review_id: string;
@@ -158,6 +167,23 @@ const ZERO_HASH = `sha256:${"0".repeat(64)}` as const;
 function parseContentHash(value: string): ContentHash {
   contentHashSchema.parse(value);
   return value as ContentHash;
+}
+
+function parseSuccessorReviewCandidateStatus(
+  value: unknown,
+): Falcon24SuccessorReviewCandidateStatus {
+  switch (value) {
+    case "WAITING_REVIEW":
+    case "APPROVED":
+    case "REJECTED":
+    case "REVIEW_EXPIRED":
+    case "STALE_REBASE_REQUIRED":
+    case "PUBLISHING":
+    case "PUBLISHED":
+      return value;
+    default:
+      throw new Error("SEMANTIC_SUCCESSOR_REVIEW_STATE_INVALID");
+  }
 }
 
 async function setPublicationAuthority(
@@ -308,13 +334,13 @@ async function prepareSuccessorReview(
     if (
       result.rowCount !== 1 ||
       !prepared ||
-      prepared.candidate_status !== "WAITING_REVIEW" ||
       typeof prepared.created !== "boolean" ||
       changeSetRef?.change_set_id !== changeSet.change_set_id ||
       changeSetRef.change_set_hash !== changeSet.change_set_hash
     ) {
       throw new Error("SEMANTIC_SUCCESSOR_REVIEW_PREPARATION_INVALID");
     }
+    const candidateStatus = parseSuccessorReviewCandidateStatus(prepared.candidate_status);
     const reviewId = immutableIdSchema.parse(reviewPacketRef?.review_id);
     const packetDigest = contentHashSchema.parse(reviewPacketRef?.packet_digest);
     await client.query("commit");
@@ -328,7 +354,7 @@ async function prepareSuccessorReview(
         review_id: reviewId,
         packet_digest: parseContentHash(packetDigest),
       },
-      candidate_status: "WAITING_REVIEW",
+      candidate_status: candidateStatus,
       created: prepared.created,
     };
   } catch (error) {
