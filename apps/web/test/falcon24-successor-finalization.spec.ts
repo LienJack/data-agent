@@ -251,6 +251,9 @@ async function arrange() {
       },
     };
   });
+  const holdActivationAttempt = vi.fn(async () => {
+    events.push("hold-activation-attempt");
+  });
   let combinedCommand: CombinedFalcon24SemanticActivationCommand | null = null;
   const promoteStagedSuccessor = vi.fn(
     async (received: CombinedFalcon24SemanticActivationCommand) => {
@@ -294,6 +297,7 @@ async function arrange() {
       },
       smoke: { run: runSmoke },
       stage_falcon_authority: stageFalconAuthority,
+      hold_activation_attempt: holdActivationAttempt,
       readback: { loadCurrentClosure, loadPublishedRelease },
     },
     calls: {
@@ -301,6 +305,7 @@ async function arrange() {
       loadStagedSuccessor,
       runSmoke,
       stageFalconAuthority,
+      holdActivationAttempt,
       promoteStagedSuccessor,
       loadCurrentClosure,
       loadPublishedRelease,
@@ -347,6 +352,7 @@ describe("Falcon24 semantic successor finalization", () => {
     expect(arranged.calls.runSmoke).toHaveBeenCalledWith(
       expect.objectContaining({ capability: { authority: "worker-smoke" } }),
     );
+    expect(arranged.calls.holdActivationAttempt).not.toHaveBeenCalled();
 
     const combined = arranged.combinedCommand();
     expect(combined).not.toBeNull();
@@ -369,6 +375,48 @@ describe("Falcon24 semantic successor finalization", () => {
     );
     expect(JSON.stringify(combined)).not.toContain("projection_payload");
     expect(JSON.stringify(combined)).not.toContain("projection_digest");
+  });
+
+  it("holds the exact staged activation once and rethrows the original promote failure", async () => {
+    const arranged = await arrange();
+    const promoteFailure = new TypeError("FALCON24_COMBINED_ACTIVATION_BASELINE_MISMATCH");
+    arranged.calls.promoteStagedSuccessor.mockRejectedValueOnce(promoteFailure);
+
+    await expect(finalizeFalcon24SemanticSuccessor(finalizationInput(arranged))).rejects.toBe(
+      promoteFailure,
+    );
+    expect(arranged.calls.holdActivationAttempt).toHaveBeenCalledTimes(1);
+    expect(arranged.calls.holdActivationAttempt).toHaveBeenCalledWith({
+      schema_version: "falcon24-activation-request@2.0.0",
+      authority_epoch: "E4",
+      attempt_id: activatedAuthority.activation_attempt_id,
+      baseline_id: activatedAuthority.baseline_id,
+      expected_baseline_hash: activatedAuthority.baseline_hash,
+      failure_code: "FALCON24_COMBINED_ACTIVATION_BASELINE_MISMATCH",
+    });
+    expect(arranged.calls.loadCurrentClosure).toHaveBeenCalledTimes(1);
+  });
+
+  it("returns a stable terminal error when promote and activation HOLD both fail", async () => {
+    const arranged = await arrange();
+    const promoteFailure = new Error("connection reset by peer");
+    const holdFailure = new TypeError("FALCON24_AUTHORITY_ACTIVATION_HOLD_CONFLICT");
+    arranged.calls.promoteStagedSuccessor.mockRejectedValueOnce(promoteFailure);
+    arranged.calls.holdActivationAttempt.mockRejectedValueOnce(holdFailure);
+
+    let observed: unknown;
+    try {
+      await finalizeFalcon24SemanticSuccessor(finalizationInput(arranged));
+    } catch (error) {
+      observed = error;
+    }
+    expect(observed).toBeInstanceOf(TypeError);
+    expect((observed as Error).message).toBe("FALCON24_E4_ACTIVATION_HOLD_FAILED");
+    expect((observed as Error).cause).toBeInstanceOf(AggregateError);
+    expect((observed as Error).cause).toMatchObject({ errors: [promoteFailure, holdFailure] });
+    expect(arranged.calls.holdActivationAttempt).toHaveBeenCalledWith(
+      expect.objectContaining({ failure_code: "FALCON24_COMBINED_ACTIVATION_FAILED" }),
+    );
   });
 
   it("fails closed before E4 staging when deterministic smoke fails", async () => {
@@ -445,6 +493,7 @@ describe("Falcon24 semantic successor finalization", () => {
       "FALCON24_POST_ACTIVATION_READBACK_MISMATCH",
     );
     expect(arranged.calls.promoteStagedSuccessor).toHaveBeenCalledTimes(1);
+    expect(arranged.calls.holdActivationAttempt).not.toHaveBeenCalled();
     expect(arranged.calls.loadPublishedRelease).not.toHaveBeenCalled();
   });
 
@@ -478,6 +527,7 @@ describe("Falcon24 semantic successor finalization", () => {
       "FALCON24_COMBINED_ACTIVATION_RECEIPT_MISMATCH",
     );
     expect(arranged.calls.loadCurrentClosure).toHaveBeenCalledTimes(1);
+    expect(arranged.calls.holdActivationAttempt).not.toHaveBeenCalled();
   });
 
   it("turns a post-commit read failure into a stable severe incident", async () => {
@@ -491,6 +541,7 @@ describe("Falcon24 semantic successor finalization", () => {
       "FALCON24_POST_ACTIVATION_READBACK_FAILED",
     );
     expect(arranged.calls.promoteStagedSuccessor).toHaveBeenCalledTimes(1);
+    expect(arranged.calls.holdActivationAttempt).not.toHaveBeenCalled();
   });
 
   it("rejects stale predecessor CAS before creating a successor stage", async () => {

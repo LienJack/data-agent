@@ -55,6 +55,15 @@ export interface Falcon24StagedAuthorityReferences {
   };
 }
 
+export interface Falcon24ActivationAttemptHoldRequest {
+  readonly schema_version: "falcon24-activation-request@2.0.0";
+  readonly authority_epoch: "E4";
+  readonly attempt_id: string;
+  readonly baseline_id: string;
+  readonly expected_baseline_hash: `sha256:${string}`;
+  readonly failure_code: string;
+}
+
 export interface Falcon24SuccessorFinalizationResult {
   readonly stage: SemanticSuccessorStageEnvelope;
   readonly validation_receipt: SemanticRuntimeClosureValidationReceipt;
@@ -76,6 +85,11 @@ function fail(code: string): never {
 function requirePortValue<T>(result: PortResult<T>): T {
   if (!result.ok) return fail(result.error.code);
   return result.value;
+}
+
+function stableActivationFailureCode(error: unknown): string {
+  const message = error instanceof Error ? error.message : "";
+  return /^[A-Z][A-Z0-9_]{2,127}$/u.test(message) ? message : "FALCON24_COMBINED_ACTIVATION_FAILED";
 }
 
 function expectedVersions(closure: Falcon24SemanticAuthorityClosure) {
@@ -193,6 +207,9 @@ export async function finalizeFalcon24SemanticSuccessor(input: {
     readonly smoke_receipt: SemanticRuntimeSmokeReceipt;
     readonly semantic_proof: Falcon24SemanticReleaseAuthorityProofV2;
   }) => Promise<Falcon24StagedAuthorityReferences>;
+  readonly hold_activation_attempt: (
+    request: Falcon24ActivationAttemptHoldRequest,
+  ) => Promise<void>;
   readonly readback: Falcon24SuccessorFinalizationReadback;
 }): Promise<Falcon24SuccessorFinalizationResult> {
   const command = await buildStageReviewedSemanticSuccessorCommand(input.stage_command);
@@ -273,9 +290,30 @@ export async function finalizeFalcon24SemanticSuccessor(input: {
     activation_attempt_ref: stagedAuthority.activation_attempt_ref,
     expected_versions: expectedVersions(before),
   });
-  const activationReceipt = await verifyCombinedFalcon24SemanticActivationReceipt(
-    await input.publication_authority.promoteStagedSuccessor(combinedCommand),
-  );
+  let activationResult: unknown;
+  try {
+    activationResult = await input.publication_authority.promoteStagedSuccessor(combinedCommand);
+  } catch (promoteError) {
+    try {
+      await input.hold_activation_attempt({
+        schema_version: "falcon24-activation-request@2.0.0",
+        authority_epoch: "E4",
+        attempt_id: stagedAuthority.activation_attempt_ref.activation_attempt_id,
+        baseline_id: stagedAuthority.baseline_ref.baseline_id,
+        expected_baseline_hash: stagedAuthority.baseline_ref.baseline_hash,
+        failure_code: stableActivationFailureCode(promoteError),
+      });
+    } catch (holdError) {
+      throw new TypeError("FALCON24_E4_ACTIVATION_HOLD_FAILED", {
+        cause: new AggregateError(
+          [promoteError, holdError],
+          "Falcon24 combined activation and activation-attempt HOLD both failed.",
+        ),
+      });
+    }
+    throw promoteError;
+  }
+  const activationReceipt = await verifyCombinedFalcon24SemanticActivationReceipt(activationResult);
   if (
     activationReceipt.command_id !== combinedCommand.command_id ||
     activationReceipt.command_hash !== combinedCommand.command_hash ||

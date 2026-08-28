@@ -1145,6 +1145,9 @@ export async function runFalcon24AuthorityFinalization(
           production_gate: runtimeAttestation.production_gate,
           stage_supporting_receipts: stageSupportingReceipts,
         }),
+      hold_activation_attempt: async (request) => {
+        requireValue(await epoch.holdActivationAttempt(capability, request));
+      },
       readback,
     });
     if (!supportingProofs || !team) {

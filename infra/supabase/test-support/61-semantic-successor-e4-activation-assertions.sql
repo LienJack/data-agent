@@ -63,6 +63,17 @@ begin
       '00000000-0000-4000-8000-00000000c832',principal_id::text,
       '00000000-0000-4000-8000-00000000d832','PUBLISHING');
 
+  insert into semantic.semantic_candidate_revision(
+    app_id,tenant_id,environment,semantic_domain,candidate_id,revision_id,
+    revision_number,source_revision_id,revision_payload,revision_digest,
+    author_principal,change_description,change_class)
+  values(app_id,tenant_id,'test','falcon24_successor',
+    '00000000-0000-4000-8000-00000000c832',
+    '00000000-0000-4000-8000-00000000d832',2,
+    '00000000-0000-4000-8000-00000000d832',
+    '{"schema_version":"semantic-candidate-revision@test"}'::jsonb,digest_b,
+    principal_id::text,'generation 2 successor','MAJOR');
+
   insert into semantic.semantic_review_task(
     app_id,tenant_id,environment,semantic_domain,packet_id,packet_kind,
     packet_digest,packet_payload,candidate_id,decision_window_status,review_outcome,

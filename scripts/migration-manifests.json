@@ -2756,6 +2756,23 @@
       "postcondition": {
         "checksum_occurrences": 2
       }
+    },
+    {
+      "id": "10797",
+      "migration_name": "20260725010797_app_data_agent_falcon24_successor_activation_closure.sql",
+      "source_directory": "infra/supabase/apps/data-agent/migration-sources/10797",
+      "segments": [
+        "00-preamble.sql.inc",
+        "20-combined-activation-rpc.sql.inc",
+        "80-security.sql.inc",
+        "90-postconditions.sql.inc",
+        "99-ledger.sql.inc"
+      ],
+      "placeholder": "__FALCON24_SUCCESSOR_ACTIVATION_CLOSURE_MIGRATION_CHECKSUM__",
+      "checksum_header": "falcon24_successor_activation_closure_migration_checksum",
+      "postcondition": {
+        "checksum_occurrences": 2
+      }
     }
   ],
   "exceptions": [
