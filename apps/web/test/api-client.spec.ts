@@ -10,6 +10,34 @@ afterEach(() => {
 });
 
 describe("workspace API client errors", () => {
+  it("projects a diagnostic browser claim to idempotency only", async () => {
+    const fetchMock = vi
+      .fn()
+      .mockResolvedValue(
+        Response.json({ runId: "00000000-0000-4000-8000-000000000013" }, { status: 201 }),
+      );
+    vi.stubGlobal("fetch", fetchMock);
+
+    await createQaRun(
+      "diagnostic question",
+      "00000000-0000-4000-8000-000000000010",
+      "00000000-0000-4000-8000-000000000011",
+      [],
+      {
+        idempotency_key: "00000000-0000-4000-8000-000000000012",
+        diagnostic_attempt_id: "00000000-0000-4000-8000-000000000014",
+        run_id: "00000000-0000-4000-8000-000000000013",
+      },
+    );
+
+    const request = fetchMock.mock.calls[0]?.[1] as RequestInit | undefined;
+    const body = JSON.parse(String(request?.body)) as Record<string, unknown>;
+    expect(body.idempotency_key).toBe("00000000-0000-4000-8000-000000000012");
+    expect(body).not.toHaveProperty("acceptance_fence");
+    expect(body).not.toHaveProperty("diagnostic_attempt_id");
+    expect(body).not.toHaveProperty("run_id");
+  });
+
   it("maps malformed trace and detail payloads to stable authority errors", async () => {
     const fetchMock = vi
       .fn()
