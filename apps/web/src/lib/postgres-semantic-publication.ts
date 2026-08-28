@@ -13,6 +13,7 @@ import {
   type ContentHash,
   canonicalizeJson,
   contentHashSchema,
+  immutableIdSchema,
   sha256ContentHash,
 } from "@data-agent/contracts/common";
 import {
@@ -36,6 +37,65 @@ export interface PostgresSemanticPublicationScope {
   readonly principalId: string;
   readonly datasourceId: string;
   readonly semanticDomain: string;
+}
+
+export interface PrepareFalcon24SuccessorReviewInput {
+  readonly idempotency_key: string;
+  readonly expected_predecessor: {
+    readonly release_id: string;
+    readonly generation: number;
+    readonly release_digest: string;
+  };
+  readonly expected_pointer_version: number;
+  readonly change_set: SemanticChangeSet;
+}
+
+export interface PreparedFalcon24SuccessorReview {
+  readonly change_set: SemanticChangeSet;
+  readonly change_set_ref: {
+    readonly change_set_id: string;
+    readonly change_set_hash: ContentHash;
+  };
+  readonly review_packet_ref: {
+    readonly review_id: string;
+    readonly packet_digest: ContentHash;
+  };
+  readonly candidate_status: "WAITING_REVIEW";
+  readonly created: boolean;
+}
+
+export interface PrepareApprovedFalcon24SuccessorInput {
+  readonly review_id: string;
+  readonly change_set_ref: {
+    readonly change_set_id: string;
+    readonly change_set_hash: string;
+  };
+  readonly compiler_bundle_digest: string;
+  readonly target_generation: number;
+  readonly idempotency_digest: string;
+  readonly expected_predecessor: PrepareFalcon24SuccessorReviewInput["expected_predecessor"];
+  readonly expected_pointer_version: number;
+}
+
+export interface PreparedApprovedFalcon24Successor {
+  readonly attempt_id: string;
+  readonly attempt_state: "PREPARED";
+  readonly change_set_ref: PreparedFalcon24SuccessorReview["change_set_ref"];
+  readonly review_ref: {
+    readonly review_id: string;
+    readonly review_hash: ContentHash;
+  };
+  readonly review_document: SemanticReviewDecision;
+  readonly created: boolean;
+}
+
+export interface PostgresSemanticPublicationAuthority extends SemanticPublicationAuthorityPort {
+  prepareSuccessorReview(
+    input: PrepareFalcon24SuccessorReviewInput,
+  ): Promise<PreparedFalcon24SuccessorReview>;
+  prepareApprovedSuccessor(
+    input: PrepareApprovedFalcon24SuccessorInput,
+  ): Promise<PreparedApprovedFalcon24Successor>;
 }
 
 interface AuthorityRow {
@@ -73,6 +133,7 @@ interface ReviewedPacketRow {
   readonly decision_principal: string;
   readonly decision: string;
   readonly decision_digest: string;
+  readonly review_document: unknown | null;
 }
 
 interface PreparedAttemptRow {
@@ -194,6 +255,168 @@ function packetMember(packet: unknown, key: "change_set" | "review"): unknown {
   return (packet as Readonly<Record<string, unknown>>)[key];
 }
 
+function publicationRpcScope(scope: PostgresSemanticPublicationScope) {
+  return {
+    app_id: scope.appId,
+    tenant_id: scope.workspaceId,
+    workspace_id: scope.workspaceId,
+    environment: scope.environment,
+  } as const;
+}
+
+async function prepareSuccessorReview(
+  pool: Pick<Pool, "connect">,
+  scope: PostgresSemanticPublicationScope,
+  input: PrepareFalcon24SuccessorReviewInput,
+): Promise<PreparedFalcon24SuccessorReview> {
+  const changeSet = await verifySemanticChangeSet(input.change_set);
+  if (
+    !commandScopeMatches(scope, changeSet.scope) ||
+    changeSet.lifecycle_state !== "REVIEW_FROZEN" ||
+    changeSet.validation.outcome !== "PASS" ||
+    changeSet.base_release.release_id !== input.expected_predecessor.release_id ||
+    changeSet.base_release.generation !== input.expected_predecessor.generation ||
+    changeSet.base_release.release_hash !== input.expected_predecessor.release_digest
+  ) {
+    throw new Error("SEMANTIC_SUCCESSOR_CHANGE_SET_SCOPE_INVALID");
+  }
+  const client = await pool.connect();
+  try {
+    await client.query("begin");
+    await setPublicationAuthority(client, scope);
+    const result = await client.query<{
+      readonly prepared: {
+        readonly change_set_ref?: Readonly<Record<string, unknown>>;
+        readonly review_packet_ref?: Readonly<Record<string, unknown>>;
+        readonly candidate_status?: unknown;
+        readonly created?: unknown;
+      };
+    }>("select semantic.prepare_falcon24_successor_review($1::jsonb) as prepared", [
+      {
+        schema_version: "prepare-falcon24-semantic-successor-review@1.0.0",
+        scope: publicationRpcScope(scope),
+        semantic_domain: scope.semanticDomain,
+        idempotency_key: input.idempotency_key,
+        expected_predecessor: input.expected_predecessor,
+        expected_pointer_version: input.expected_pointer_version,
+        change_set: changeSet,
+      },
+    ]);
+    const prepared = result.rows[0]?.prepared;
+    const changeSetRef = prepared?.change_set_ref;
+    const reviewPacketRef = prepared?.review_packet_ref;
+    if (
+      result.rowCount !== 1 ||
+      !prepared ||
+      prepared.candidate_status !== "WAITING_REVIEW" ||
+      typeof prepared.created !== "boolean" ||
+      changeSetRef?.change_set_id !== changeSet.change_set_id ||
+      changeSetRef.change_set_hash !== changeSet.change_set_hash
+    ) {
+      throw new Error("SEMANTIC_SUCCESSOR_REVIEW_PREPARATION_INVALID");
+    }
+    const reviewId = immutableIdSchema.parse(reviewPacketRef?.review_id);
+    const packetDigest = contentHashSchema.parse(reviewPacketRef?.packet_digest);
+    await client.query("commit");
+    return {
+      change_set: changeSet,
+      change_set_ref: {
+        change_set_id: immutableIdSchema.parse(changeSetRef.change_set_id),
+        change_set_hash: parseContentHash(contentHashSchema.parse(changeSetRef.change_set_hash)),
+      },
+      review_packet_ref: {
+        review_id: reviewId,
+        packet_digest: parseContentHash(packetDigest),
+      },
+      candidate_status: "WAITING_REVIEW",
+      created: prepared.created,
+    };
+  } catch (error) {
+    await client.query("rollback").catch(() => undefined);
+    throw error;
+  } finally {
+    client.release();
+  }
+}
+
+async function prepareApprovedSuccessor(
+  pool: Pick<Pool, "connect">,
+  scope: PostgresSemanticPublicationScope,
+  input: PrepareApprovedFalcon24SuccessorInput,
+): Promise<PreparedApprovedFalcon24Successor> {
+  if (input.target_generation !== input.expected_predecessor.generation + 1) {
+    throw new Error("SEMANTIC_SUCCESSOR_GENERATION_INVALID");
+  }
+  const client = await pool.connect();
+  try {
+    await client.query("begin");
+    await setPublicationAuthority(client, scope);
+    const result = await client.query<{
+      readonly prepared: {
+        readonly attempt_id?: unknown;
+        readonly attempt_state?: unknown;
+        readonly change_set_ref?: Readonly<Record<string, unknown>>;
+        readonly review_ref?: Readonly<Record<string, unknown>>;
+        readonly review_document?: unknown;
+        readonly created?: unknown;
+      };
+    }>("select semantic.prepare_falcon24_successor_publish_attempt($1::jsonb) as prepared", [
+      {
+        schema_version: "prepare-falcon24-semantic-successor-publish-attempt@1.0.0",
+        scope: publicationRpcScope(scope),
+        semantic_domain: scope.semanticDomain,
+        review_id: input.review_id,
+        change_set_ref: input.change_set_ref,
+        compiler_bundle_digest: input.compiler_bundle_digest,
+        target_generation: input.target_generation,
+        idempotency_digest: input.idempotency_digest,
+        expected_predecessor: input.expected_predecessor,
+        expected_pointer_version: input.expected_pointer_version,
+      },
+    ]);
+    const prepared = result.rows[0]?.prepared;
+    const review = await verifySemanticReviewDecision(prepared?.review_document);
+    if (
+      result.rowCount !== 1 ||
+      !prepared ||
+      prepared.attempt_state !== "PREPARED" ||
+      typeof prepared.created !== "boolean" ||
+      prepared.change_set_ref?.change_set_id !== input.change_set_ref.change_set_id ||
+      prepared.change_set_ref.change_set_hash !== input.change_set_ref.change_set_hash ||
+      prepared.review_ref?.review_id !== input.review_id ||
+      prepared.review_ref.review_hash !== review.review_hash ||
+      review.change_set_id !== input.change_set_ref.change_set_id ||
+      review.change_set_hash !== input.change_set_ref.change_set_hash ||
+      review.decision !== "APPROVE" ||
+      !commandScopeMatches(scope, review.scope)
+    ) {
+      throw new Error("SEMANTIC_SUCCESSOR_APPROVED_REVIEW_REQUIRED");
+    }
+    await client.query("commit");
+    return {
+      attempt_id: immutableIdSchema.parse(prepared.attempt_id),
+      attempt_state: "PREPARED",
+      change_set_ref: {
+        change_set_id: immutableIdSchema.parse(input.change_set_ref.change_set_id),
+        change_set_hash: parseContentHash(
+          contentHashSchema.parse(input.change_set_ref.change_set_hash),
+        ),
+      },
+      review_ref: {
+        review_id: immutableIdSchema.parse(prepared.review_ref.review_id),
+        review_hash: parseContentHash(contentHashSchema.parse(prepared.review_ref.review_hash)),
+      },
+      review_document: review,
+      created: prepared.created,
+    };
+  } catch (error) {
+    await client.query("rollback").catch(() => undefined);
+    throw error;
+  } finally {
+    client.release();
+  }
+}
+
 async function stageReviewedSuccessor(
   pool: Pick<Pool, "connect">,
   scope: PostgresSemanticPublicationScope,
@@ -277,13 +500,18 @@ async function stageReviewedSuccessor(
       `select task.candidate_id::text,task.decision_window_status,task.review_outcome,
               task.packet_payload,decision.decision_id::text,
               decision.principal as decision_principal,decision.decision,
-              decision.decision_digest
+              decision.decision_digest,document.review_document
          from semantic.semantic_review_task as task
          join semantic.semantic_review_decision as decision
            on decision.app_id=task.app_id and decision.tenant_id=task.tenant_id
           and decision.environment=task.environment
           and decision.semantic_domain=task.semantic_domain
           and decision.packet_id=task.packet_id
+         left join semantic.semantic_successor_review_decision_document as document
+           on document.app_id=decision.app_id and document.tenant_id=decision.tenant_id
+          and document.environment=decision.environment
+          and document.semantic_domain=decision.semantic_domain
+          and document.packet_id=decision.packet_id and document.decision_id=decision.decision_id
         where task.app_id=$1::uuid and task.tenant_id=$2::uuid
           and task.environment=$3::text and task.semantic_domain=$4::text
           and task.packet_id=$5::uuid and decision.decision_digest=$6::text
@@ -378,7 +606,9 @@ async function stageReviewedSuccessor(
       verifySemanticChangeSet(source.source_payload),
       verifySemanticChangeSet(candidate.revision_payload),
       verifySemanticChangeSet(packetMember(packet.packet_payload, "change_set")),
-      verifySemanticReviewDecision(packetMember(packet.packet_payload, "review")),
+      verifySemanticReviewDecision(
+        packet.review_document ?? packetMember(packet.packet_payload, "review"),
+      ),
     ]);
     if (
       canonicalizeJson(changeSet) !== canonicalizeJson(candidateChangeSet) ||
@@ -1221,9 +1451,11 @@ async function publishAtomically(
 export function createPostgresSemanticPublicationAuthority(
   pool: Pick<Pool, "connect">,
   scope: PostgresSemanticPublicationScope,
-): SemanticPublicationAuthorityPort {
+): PostgresSemanticPublicationAuthority {
   return {
     publishAtomically: (input) => publishAtomically(pool, scope, input),
+    prepareSuccessorReview: (input) => prepareSuccessorReview(pool, scope, input),
+    prepareApprovedSuccessor: (input) => prepareApprovedSuccessor(pool, scope, input),
     stageReviewedSuccessor: (command) => stageReviewedSuccessor(pool, scope, command),
     loadStagedSuccessor: (query) => loadStagedSuccessor(pool, scope, query),
     promoteStagedSuccessor: (command) => promoteStagedSuccessor(pool, scope, command),

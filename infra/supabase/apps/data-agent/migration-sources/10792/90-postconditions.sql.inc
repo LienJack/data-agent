@@ -9,13 +9,18 @@ begin
       or not exists(select 1 from pg_catalog.pg_class as relation
         where relation.oid=pg_catalog.to_regclass(relation_name)
           and relation.relrowsecurity and relation.relforcerowsecurity)
-      or pg_catalog.has_table_privilege('data_agent_backend',relation_name,'SELECT,INSERT,UPDATE,DELETE')
     then raise exception using errcode='P0001',
       message='SEMANTIC_SUCCESSOR_REVIEW_PREPARATION_POSTCONDITION_FAILED',
       detail=relation_name; end if;
   end loop;
 
-  if pg_catalog.to_regprocedure(
+  if pg_catalog.has_table_privilege('data_agent_backend',
+      'semantic.semantic_successor_review_preparation','SELECT,INSERT,UPDATE,DELETE')
+    or not pg_catalog.has_table_privilege('data_agent_backend',
+      'semantic.semantic_successor_review_decision_document','SELECT')
+    or pg_catalog.has_table_privilege('data_agent_backend',
+      'semantic.semantic_successor_review_decision_document','INSERT,UPDATE,DELETE')
+    or pg_catalog.to_regprocedure(
       'semantic.prepare_falcon24_successor_review(jsonb)') is null
     or pg_catalog.to_regprocedure(
       'semantic.human_record_semantic_review_decision(jsonb)') is null

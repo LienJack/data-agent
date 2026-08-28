@@ -1,4 +1,4 @@
--- falcon24_semantic_successor_review_preparation_migration_checksum: sha256:718dcb449c86f047d4d90b3e0336a5aa008259acf47d29932de3c03f349724e6
+-- falcon24_semantic_successor_review_preparation_migration_checksum: sha256:78ab36c0a9927b91fd5607179c353684088ede528b7c3ce4f3d59b1649722ba5
 begin;
 
 select platform.acquire_migration_lock(
@@ -806,6 +806,10 @@ create policy semantic_successor_review_document_insert_rpc
 on semantic.semantic_successor_review_decision_document for insert to data_agent_u6_rpc_owner
 with check(platform.backend_context_matches(app_id,tenant_id,environment,true)
   and semantic_domain=nullif(pg_catalog.current_setting('app.semantic_domain',true),''));
+create policy semantic_successor_review_document_backend_read
+on semantic.semantic_successor_review_decision_document for select to data_agent_backend
+using(platform.backend_context_matches(app_id,tenant_id,environment,false)
+  and semantic_domain=nullif(pg_catalog.current_setting('app.semantic_domain',true),''));
 
 create policy semantic_successor_review_task_insert_rpc
 on semantic.semantic_review_task for insert to data_agent_u6_rpc_owner
@@ -873,6 +877,8 @@ to data_agent_u6_rpc_owner;
 revoke all on table semantic.semantic_successor_review_preparation,
   semantic.semantic_successor_review_decision_document
 from public,anon,authenticated,service_role,data_agent_backend;
+grant select on table semantic.semantic_successor_review_decision_document
+  to data_agent_backend;
 revoke all on function
   semantic.prepare_falcon24_successor_review(jsonb),
   semantic.record_review_decision(uuid,uuid,text,text,uuid,text,text,text,text),
@@ -895,13 +901,18 @@ begin
       or not exists(select 1 from pg_catalog.pg_class as relation
         where relation.oid=pg_catalog.to_regclass(relation_name)
           and relation.relrowsecurity and relation.relforcerowsecurity)
-      or pg_catalog.has_table_privilege('data_agent_backend',relation_name,'SELECT,INSERT,UPDATE,DELETE')
     then raise exception using errcode='P0001',
       message='SEMANTIC_SUCCESSOR_REVIEW_PREPARATION_POSTCONDITION_FAILED',
       detail=relation_name; end if;
   end loop;
 
-  if pg_catalog.to_regprocedure(
+  if pg_catalog.has_table_privilege('data_agent_backend',
+      'semantic.semantic_successor_review_preparation','SELECT,INSERT,UPDATE,DELETE')
+    or not pg_catalog.has_table_privilege('data_agent_backend',
+      'semantic.semantic_successor_review_decision_document','SELECT')
+    or pg_catalog.has_table_privilege('data_agent_backend',
+      'semantic.semantic_successor_review_decision_document','INSERT,UPDATE,DELETE')
+    or pg_catalog.to_regprocedure(
       'semantic.prepare_falcon24_successor_review(jsonb)') is null
     or pg_catalog.to_regprocedure(
       'semantic.human_record_semantic_review_decision(jsonb)') is null
@@ -924,6 +935,6 @@ $postconditions$;
 select platform.assert_migration_checksum(
   'app','00000000-0000-4000-8000-00000000da01'::uuid,
   '20260725010792_app_data_agent_semantic_successor_review_preparation',
-  'sha256:718dcb449c86f047d4d90b3e0336a5aa008259acf47d29932de3c03f349724e6');
+  'sha256:78ab36c0a9927b91fd5607179c353684088ede528b7c3ce4f3d59b1649722ba5');
 
 commit;

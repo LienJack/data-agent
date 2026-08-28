@@ -216,6 +216,47 @@ async function arrange() {
       if (text.includes("platform.backend_context_matches")) {
         return { rows: [{ allowed: true }] as Row[], rowCount: 1 };
       }
+      if (text.includes("semantic.prepare_falcon24_successor_review")) {
+        return {
+          rows: [
+            {
+              prepared: {
+                change_set_ref: {
+                  change_set_id: changeSet.change_set_id,
+                  change_set_hash: changeSet.change_set_hash,
+                },
+                review_packet_ref: {
+                  review_id: review.review_id,
+                  packet_digest: hash("c"),
+                },
+                candidate_status: "WAITING_REVIEW",
+                created: true,
+              },
+            },
+          ] as Row[],
+          rowCount: 1,
+        };
+      }
+      if (text.includes("semantic.prepare_falcon24_successor_publish_attempt")) {
+        return {
+          rows: [
+            {
+              prepared: {
+                attempt_id: id(28),
+                attempt_state: "PREPARED",
+                change_set_ref: {
+                  change_set_id: changeSet.change_set_id,
+                  change_set_hash: changeSet.change_set_hash,
+                },
+                review_ref: { review_id: review.review_id, review_hash: review.review_hash },
+                review_document: review,
+                created: true,
+              },
+            },
+          ] as Row[],
+          rowCount: 1,
+        };
+      }
       if (text.includes("from semantic.semantic_active_pointer")) {
         return {
           rows: [
@@ -262,11 +303,12 @@ async function arrange() {
               candidate_id: changeSet.change_set_id,
               decision_window_status: "CLOSED",
               review_outcome: "APPROVED",
-              packet_payload: { change_set: changeSet, review },
+              packet_payload: { change_set: changeSet },
               decision_id: id(27),
               decision_principal: scope.principalId,
               decision: "APPROVE",
               decision_digest: review.review_hash,
+              review_document: review,
             },
           ] as Row[],
           rowCount: 1,
@@ -367,6 +409,72 @@ describe("PostgreSQL semantic successor publication authority", () => {
     expect(record.stage.compiler_bundle_ref).toEqual(fixture.command.compiler_bundle_ref);
     expect(record.validation_receipt.outcome).toBe("PASS");
     expect(fixture.released).toBe(1);
+  });
+
+  it("opens the fixed change set for human review without accepting projection material", async () => {
+    const fixture = await arrange();
+    const { createPostgresSemanticPublicationAuthority } = await import(
+      "../src/lib/postgres-semantic-publication.js"
+    );
+    const authority = createPostgresSemanticPublicationAuthority(fixture.pool, scope);
+    const prepared = await authority.prepareSuccessorReview({
+      idempotency_key: id(29),
+      expected_predecessor: fixture.command.expected_predecessor,
+      expected_pointer_version: fixture.command.expected_pointer_version,
+      change_set: fixture.changeSet,
+    });
+
+    expect(prepared.change_set_ref).toEqual(fixture.command.change_set_ref);
+    expect(prepared.review_packet_ref.review_id).toBe(fixture.review.review_id);
+    const rpc = fixture.calls.find(({ text }) =>
+      text.includes("semantic.prepare_falcon24_successor_review"),
+    );
+    expect(rpc?.values).toEqual([
+      {
+        schema_version: "prepare-falcon24-semantic-successor-review@1.0.0",
+        scope: {
+          app_id: scope.appId,
+          tenant_id: scope.workspaceId,
+          workspace_id: scope.workspaceId,
+          environment: scope.environment,
+        },
+        semantic_domain: scope.semanticDomain,
+        idempotency_key: id(29),
+        expected_predecessor: fixture.command.expected_predecessor,
+        expected_pointer_version: fixture.command.expected_pointer_version,
+        change_set: fixture.changeSet,
+      },
+    ]);
+    expect(JSON.stringify(rpc?.values)).not.toContain("projection_payload");
+  });
+
+  it("prepares only an exact human-approved successor for server compilation", async () => {
+    const fixture = await arrange();
+    const { createPostgresSemanticPublicationAuthority } = await import(
+      "../src/lib/postgres-semantic-publication.js"
+    );
+    const authority = createPostgresSemanticPublicationAuthority(fixture.pool, scope);
+    const prepared = await authority.prepareApprovedSuccessor({
+      review_id: fixture.review.review_id,
+      change_set_ref: fixture.command.change_set_ref,
+      compiler_bundle_digest: fixture.command.compiler_bundle_ref.compiler_bundle_hash,
+      target_generation: fixture.command.target_generation,
+      idempotency_digest: hash("d"),
+      expected_predecessor: fixture.command.expected_predecessor,
+      expected_pointer_version: fixture.command.expected_pointer_version,
+    });
+
+    expect(prepared).toMatchObject({
+      attempt_state: "PREPARED",
+      review_ref: { review_id: fixture.review.review_id, review_hash: fixture.review.review_hash },
+      review_document: fixture.review,
+    });
+    const rpc = fixture.calls.find(({ text }) =>
+      text.includes("semantic.prepare_falcon24_successor_publish_attempt"),
+    );
+    expect(JSON.stringify(rpc?.values)).not.toContain("projection_payload");
+    expect(JSON.stringify(rpc?.values)).not.toContain("projection_digest");
+    expect(JSON.stringify(rpc?.values)).not.toContain("candidate_release");
   });
 
   it("rejects a mismatched command scope before opening a database transaction", async () => {

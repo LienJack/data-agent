@@ -3,10 +3,7 @@ import { resolve } from "node:path";
 import { describe, expect, it } from "vitest";
 
 const root = resolve(import.meta.dirname, "..");
-const sourceDirectory = resolve(
-  root,
-  "infra/supabase/apps/data-agent/migration-sources/10792",
-);
+const sourceDirectory = resolve(root, "infra/supabase/apps/data-agent/migration-sources/10792");
 const migrationPath = resolve(
   root,
   "infra/supabase/apps/data-agent/migrations/20260725010792_app_data_agent_semantic_successor_review_preparation.sql",
@@ -59,7 +56,7 @@ describe("10792 semantic successor review preparation migration", () => {
     expect(review).toContain("semantic.verify_principal_not_excluded");
   });
 
-  it("keeps the new tables append-only and exposes only narrow backend RPCs", () => {
+  it("keeps the new tables append-only and exposes only scoped review evidence plus RPCs", () => {
     const storage = source("10-review-preparation-storage.sql.inc");
     const security = source("80-security.sql.inc");
     const postconditions = source("90-postconditions.sql.inc");
@@ -67,6 +64,10 @@ describe("10792 semantic successor review preparation migration", () => {
     expect(storage.match(/semantic_successor_receipt_immutable/g)?.length).toBe(2);
     expect(security).toContain("force row level security");
     expect(security).toContain("from public,anon,authenticated,service_role,data_agent_backend");
+    expect(security).toContain("semantic_successor_review_document_backend_read");
+    expect(security).toContain(
+      "grant select on table semantic.semantic_successor_review_decision_document",
+    );
     expect(security).toContain("to data_agent_backend");
     expect(postconditions).toContain("SEMANTIC_SUCCESSOR_REVIEW_PREPARATION_POSTCONDITION_FAILED");
   });

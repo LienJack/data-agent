@@ -188,6 +188,12 @@ begin
     or (prepared_replay->>'created')::boolean is not false
   then raise exception 'SEMANTIC_SUCCESSOR_PUBLISH_PREPARATION_INVALID'; end if;
 
+  if not exists(select 1
+      from semantic.semantic_successor_review_decision_document as document
+      where document.packet_id=(opened#>>'{review_packet_ref,review_id}')::uuid
+        and document.review_hash=decision->>'decision_digest')
+  then raise exception 'SEMANTIC_SUCCESSOR_REVIEW_DOCUMENT_NOT_READABLE'; end if;
+
   if pg_temp.successor_published_early()
   then raise exception 'SEMANTIC_SUCCESSOR_REVIEW_PREPARATION_PUBLISHED_EARLY'; end if;
 end
@@ -198,8 +204,10 @@ do $security$
 begin
   if pg_catalog.has_table_privilege('data_agent_backend',
       'semantic.semantic_successor_review_preparation','SELECT')
+    or not pg_catalog.has_table_privilege('data_agent_backend',
+      'semantic.semantic_successor_review_decision_document','SELECT')
     or pg_catalog.has_table_privilege('data_agent_backend',
-      'semantic.semantic_successor_review_decision_document','INSERT')
+      'semantic.semantic_successor_review_decision_document','INSERT,UPDATE,DELETE')
     or pg_catalog.has_function_privilege('data_agent_backend',
       'semantic.record_review_decision(uuid,uuid,text,text,uuid,text,text,text,text)','EXECUTE')
     or not pg_catalog.has_function_privilege('data_agent_backend',

@@ -24,6 +24,10 @@ create policy semantic_successor_review_document_insert_rpc
 on semantic.semantic_successor_review_decision_document for insert to data_agent_u6_rpc_owner
 with check(platform.backend_context_matches(app_id,tenant_id,environment,true)
   and semantic_domain=nullif(pg_catalog.current_setting('app.semantic_domain',true),''));
+create policy semantic_successor_review_document_backend_read
+on semantic.semantic_successor_review_decision_document for select to data_agent_backend
+using(platform.backend_context_matches(app_id,tenant_id,environment,false)
+  and semantic_domain=nullif(pg_catalog.current_setting('app.semantic_domain',true),''));
 
 create policy semantic_successor_review_task_insert_rpc
 on semantic.semantic_review_task for insert to data_agent_u6_rpc_owner
@@ -91,6 +95,8 @@ to data_agent_u6_rpc_owner;
 revoke all on table semantic.semantic_successor_review_preparation,
   semantic.semantic_successor_review_decision_document
 from public,anon,authenticated,service_role,data_agent_backend;
+grant select on table semantic.semantic_successor_review_decision_document
+  to data_agent_backend;
 revoke all on function
   semantic.prepare_falcon24_successor_review(jsonb),
   semantic.record_review_decision(uuid,uuid,text,text,uuid,text,text,text,text),
