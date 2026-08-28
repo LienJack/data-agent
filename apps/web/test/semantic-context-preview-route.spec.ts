@@ -63,7 +63,9 @@ describe("resolved context preview route", () => {
   });
 
   it("resolves a preview against the exact current Workspace Defaults", async () => {
-    const route = await import("../src/app/api/workspaces/[workspaceId]/semantic/context/preview/route");
+    const route = await import(
+      "../src/app/api/workspaces/[workspaceId]/semantic/context/preview/route"
+    );
     const response = await route.POST(
       new NextRequest("http://localhost/semantic/context/preview", {
         method: "POST",
@@ -86,7 +88,9 @@ describe("resolved context preview route", () => {
   });
 
   it("rejects an empty question without invoking the resolver", async () => {
-    const route = await import("../src/app/api/workspaces/[workspaceId]/semantic/context/preview/route");
+    const route = await import(
+      "../src/app/api/workspaces/[workspaceId]/semantic/context/preview/route"
+    );
     const response = await route.POST(
       new NextRequest("http://localhost/semantic/context/preview", {
         method: "POST",
@@ -100,7 +104,9 @@ describe("resolved context preview route", () => {
   });
 
   it("rejects unknown request fields without invoking the resolver", async () => {
-    const route = await import("../src/app/api/workspaces/[workspaceId]/semantic/context/preview/route");
+    const route = await import(
+      "../src/app/api/workspaces/[workspaceId]/semantic/context/preview/route"
+    );
     const response = await route.POST(
       new NextRequest("http://localhost/semantic/context/preview", {
         method: "POST",
