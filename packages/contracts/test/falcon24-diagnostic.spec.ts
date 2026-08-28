@@ -2,11 +2,15 @@ import { describe, expect, it } from "vitest";
 import { sha256ContentHash } from "../src/common/index.js";
 import {
   buildFalcon24DiagnosticAttempt,
+  buildFalcon24DiagnosticAttemptV2,
   buildFalcon24DiagnosticReceipt,
+  buildFalcon24DiagnosticReceiptV2,
   FALCON24_DIAGNOSTIC_OBSERVED_EXECUTION_PATH,
   FALCON24_E4_DIAGNOSTIC_QUESTION,
   verifyFalcon24DiagnosticAttempt,
+  verifyFalcon24DiagnosticAttemptDocument,
   verifyFalcon24DiagnosticReceipt,
+  verifyFalcon24DiagnosticReceiptDocument,
 } from "../src/evals/falcon24-diagnostic.js";
 
 const id = (suffix: number) => `00000000-0000-4000-8000-${String(suffix).padStart(12, "0")}`;
@@ -126,5 +130,51 @@ describe("Falcon24 E4 diagnostic contracts", () => {
         completed_at: "2026-08-28T12:00:00.000Z",
       }),
     ).resolves.toMatchObject({ outcome: "FAIL", failure_class: "EXTERNAL_DEPENDENCY" });
+  });
+
+  it("builds E5 diagnostic v2 with epoch-derived authority and retained gen2", async () => {
+    const historical = await attempt();
+    const { manifest_hash: _manifestHash, ...material } = historical;
+    const manifest = await buildFalcon24DiagnosticAttemptV2({
+      ...material,
+      schema_version: "falcon24-diagnostic-attempt@2.0.0",
+      authority: { ...authority, authority_epoch: "E5" },
+    });
+    await expect(verifyFalcon24DiagnosticAttemptDocument(manifest)).resolves.toEqual(manifest);
+
+    const receipt = await buildFalcon24DiagnosticReceiptV2({
+      schema_version: "falcon24-diagnostic-receipt@2.0.0",
+      attempt_id: manifest.attempt_id,
+      run_id: manifest.run_id,
+      attempt_manifest_hash: manifest.manifest_hash,
+      authority: manifest.authority,
+      semantic_release: semanticRelease,
+      outcome: "FAIL",
+      pass_evidence: null,
+      failure_class: "EXTERNAL_DEPENDENCY",
+      failure_code: "PROVIDER_UNAVAILABLE",
+      completed_at: "2026-08-29T12:00:00.000Z",
+    });
+    await expect(verifyFalcon24DiagnosticReceiptDocument(receipt)).resolves.toEqual(receipt);
+  });
+
+  it("rejects v2 diagnostic before E5 and gen3 injection", async () => {
+    const historical = await attempt();
+    const { manifest_hash: _manifestHash, ...material } = historical;
+    await expect(
+      buildFalcon24DiagnosticAttemptV2({
+        ...material,
+        schema_version: "falcon24-diagnostic-attempt@2.0.0",
+        authority,
+      }),
+    ).rejects.toThrow();
+    await expect(
+      buildFalcon24DiagnosticAttemptV2({
+        ...material,
+        schema_version: "falcon24-diagnostic-attempt@2.0.0",
+        authority: { ...authority, authority_epoch: "E5" },
+        semantic_release: { ...semanticRelease, generation: 3 },
+      }),
+    ).rejects.toThrow();
   });
 });

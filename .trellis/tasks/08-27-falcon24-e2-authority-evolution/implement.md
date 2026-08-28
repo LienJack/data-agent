@@ -732,13 +732,31 @@ stop condition。W8 成功前不创建 E4 diagnostic/Q1/C1；成功后 W9/W10 �
 
 ### E5-W2 — Contracts and 10798 retained activation
 
-- [ ] Contract：retained semantic proof@1、activation request@3、diagnostic@2、qualification manifest@4；所有 epoch/gate ID 由 canonical epoch 派生。
-- [ ] Platform：authority Port 的 v3 method；E4 combined successor path保持不变；diagnostic/qualification adapters 使用 manifest epoch。
-- [ ] 10798 演进既有 `activate_falcon24_authority(jsonb)`：v2 历史兼容、v3 exact E4->E5/gen2 retained closure、固定锁序、零污染、all-old/all-new。
-- [ ] 10798 同时演进 diagnostic/Q1 DB authority，使 PASSED diagnostic prerequisite 对 E5-Q1 生效，不回写 E4。
-- [ ] fresh PostgreSQL 17、exact E4 populated clone、migration replay/rollback、RLS/grants、stale refs、failure injection、两并发调用。
-- [ ] Contracts/Platform focused + full tests、typecheck、renderer/inventory/static migration checks。
-- [ ] scoped commit：`feat(falcon24): add retained semantic E5 activation`。
+- [x] Contract：retained semantic proof@1、activation request@3、diagnostic@2、qualification manifest@4；所有 epoch/gate ID 由 canonical epoch 派生。
+- [x] Platform：authority Port 的 v3 method；E4 combined successor path保持不变；diagnostic/qualification adapters 使用 manifest epoch。
+- [x] 10798 演进既有 `activate_falcon24_authority(jsonb)`：v2 历史兼容、v3 exact E4->E5/gen2 retained closure、固定锁序、零污染、all-old/all-new。
+- [x] 10798 同时演进 diagnostic/Q1 DB authority，使 PASSED diagnostic prerequisite 对 E5-Q1 生效，不回写 E4。
+- [x] fresh PostgreSQL 17、exact E4 populated clone、migration replay/rollback、RLS/grants、stale refs、failure injection、两并发调用。
+- [x] Contracts/Platform focused + full tests、typecheck、renderer/inventory/static migration checks。
+- [x] scoped commit：`feat(falcon24): add retained semantic E5 activation`。
+
+**Evidence（2026-08-29）**
+
+- 10798 rendered checksum 为 `sha256:18b91331ab0c3820aa016aa985e125ed7b4140820050bb1ac7efc6fb563f346a`；
+  `render-migration.ts 10798 --verify` 与 `--all --verify` 均 PASS。
+- exact E4/gen2 authority clone `data_agent_e5_w2_scratch` 上，10798 install、history snapshot/postcondition、stale version all-old、
+  E5 activation/replay、diagnostic v2 PASS/FAIL storage、qualification v4 prerequisite 与 semantic/defaults canonical byte equality全部 PASS；
+  默认夹具最终 `ROLLBACK` 后仍为 `E4|E5 rows=0`。
+- 单独的 scratch-only E6 overlap probe 让第一个事务在 activation 后继续持锁，第二个事务并发进入同一 v3 RPC；两者返回相同
+  `E6 / baseline e602 / attempt e603` binding，最终只有一个 `ACTIVATED` attempt。semantic release仍为 exact gen2，pointer/runtime
+  generations仍为 `3/3`，workspace defaults revision仍为 `4`。无 authority context 的 Backend调用稳定拒绝为
+  `DA_CONTEXT_FORBIDDEN`。
+- PostgreSQL 17 空库链按仓库真实顺序安装到 10798，10798 checksum postcondition返回 true；随后全量 smoke 在与本包无依赖、
+  本包未修改的旧 `32-provider-invocation-authority-assertions.sql` 失败为
+  `PROVIDER_INVOCATION_CROSS_RECORD_CLOSURE_ASSERTION_FAILED`。该后置失败未重跑、未计作全量通过，也不否定已完成的 fresh install证据。
+- Contracts 99 files / 956 tests、Platform 112 files / 694 tests与 7 个聚焦文件 / 49 tests均 PASS；两包 typecheck PASS；
+  owned TypeScript Biome与迁移静态合同 6 tests PASS。瞬态 fresh container与 scratch database均已删除；专用 authority database仍为
+  migration 10797/current E4。
 
 ### E5-W3 — E5 Finalizer and gate controls
 

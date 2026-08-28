@@ -7,6 +7,8 @@ import {
   sha256ContentHash,
   timestampSchema,
 } from "../common/index.js";
+import { falcon24AuthorityBindingV2Schema } from "../runs/authority-epoch.js";
+import { falcon24AuthorityEpochOrdinal } from "../runs/falcon24-authority-identity.js";
 import { FALCON24_REQUIRED_UI_ARTIFACT_TYPES } from "./falcon24-acceptance-campaign.js";
 
 export const FALCON24_E4_DIAGNOSTIC_QUESTION =
@@ -64,6 +66,36 @@ const diagnosticAttemptMaterialSchema = z
 export const falcon24DiagnosticAttemptSchema = diagnosticAttemptMaterialSchema.extend({
   manifest_hash: contentHashSchema,
 });
+
+const retainedDiagnosticAuthoritySchema = falcon24AuthorityBindingV2Schema.refine(
+  (authority) => falcon24AuthorityEpochOrdinal(authority.authority_epoch) >= 5n,
+  "FALCON24_DIAGNOSTIC_AUTHORITY_EPOCH_INVALID",
+);
+
+const diagnosticAttemptV2MaterialSchema = z
+  .strictObject({
+    ...diagnosticAttemptMaterialSchema.shape,
+    schema_version: z.literal("falcon24-diagnostic-attempt@2.0.0"),
+    authority: retainedDiagnosticAuthoritySchema,
+  })
+  .superRefine((attempt, context) => {
+    if (attempt.semantic_release.generation !== 2) {
+      context.addIssue({
+        code: "custom",
+        message: "FALCON24_DIAGNOSTIC_SEMANTIC_RELEASE_INVALID",
+        path: ["semantic_release"],
+      });
+    }
+  });
+
+export const falcon24DiagnosticAttemptV2Schema = diagnosticAttemptV2MaterialSchema.extend({
+  manifest_hash: contentHashSchema,
+});
+
+export const falcon24DiagnosticAttemptDocumentSchema = z.union([
+  falcon24DiagnosticAttemptSchema,
+  falcon24DiagnosticAttemptV2Schema,
+]);
 
 export const falcon24DiagnosticReceiptReferenceSchema = z.strictObject({
   attempt_id: immutableIdSchema,
@@ -165,6 +197,44 @@ export const falcon24DiagnosticReceiptSchema = diagnosticReceiptMaterialSchema.e
   receipt_hash: contentHashSchema,
 });
 
+const diagnosticReceiptV2MaterialSchema = z
+  .strictObject({
+    ...diagnosticReceiptMaterialSchema.shape,
+    schema_version: z.literal("falcon24-diagnostic-receipt@2.0.0"),
+    authority: retainedDiagnosticAuthoritySchema,
+  })
+  .superRefine((receipt, context) => {
+    const passed = receipt.outcome === "PASS";
+    if (
+      receipt.semantic_release.generation !== 2 ||
+      passed !== (receipt.pass_evidence !== null) ||
+      passed === (receipt.failure_class !== null) ||
+      passed === (receipt.failure_code !== null)
+    ) {
+      context.addIssue({ code: "custom", message: "FALCON24_DIAGNOSTIC_OUTCOME_INVALID" });
+    }
+    if (
+      receipt.pass_evidence?.opened_artifact_refs.some(
+        (reference) => reference.run_id !== receipt.run_id,
+      )
+    ) {
+      context.addIssue({
+        code: "custom",
+        message: "FALCON24_DIAGNOSTIC_RUN_CLOSURE_INVALID",
+        path: ["pass_evidence", "opened_artifact_refs"],
+      });
+    }
+  });
+
+export const falcon24DiagnosticReceiptV2Schema = diagnosticReceiptV2MaterialSchema.extend({
+  receipt_hash: contentHashSchema,
+});
+
+export const falcon24DiagnosticReceiptDocumentSchema = z.union([
+  falcon24DiagnosticReceiptSchema,
+  falcon24DiagnosticReceiptV2Schema,
+]);
+
 export async function buildFalcon24DiagnosticAttempt(input: unknown) {
   const material = diagnosticAttemptMaterialSchema.parse(input);
   if ((await sha256ContentHash(material.question)) !== material.question_hash) {
@@ -178,6 +248,29 @@ export async function buildFalcon24DiagnosticAttempt(input: unknown) {
 
 export async function verifyFalcon24DiagnosticAttempt(input: unknown) {
   const attempt = falcon24DiagnosticAttemptSchema.parse(input);
+  const { manifest_hash: observedHash, ...material } = attempt;
+  if (
+    (await sha256ContentHash(material.question)) !== material.question_hash ||
+    (await sha256ContentHash(material)) !== observedHash
+  ) {
+    throw new TypeError("FALCON24_DIAGNOSTIC_ATTEMPT_HASH_INVALID");
+  }
+  return attempt;
+}
+
+export async function buildFalcon24DiagnosticAttemptV2(input: unknown) {
+  const material = diagnosticAttemptV2MaterialSchema.parse(input);
+  if ((await sha256ContentHash(material.question)) !== material.question_hash) {
+    throw new TypeError("FALCON24_DIAGNOSTIC_QUESTION_HASH_INVALID");
+  }
+  return falcon24DiagnosticAttemptV2Schema.parse({
+    ...material,
+    manifest_hash: await sha256ContentHash(material),
+  });
+}
+
+export async function verifyFalcon24DiagnosticAttemptDocument(input: unknown) {
+  const attempt = falcon24DiagnosticAttemptDocumentSchema.parse(input);
   const { manifest_hash: observedHash, ...material } = attempt;
   if (
     (await sha256ContentHash(material.question)) !== material.question_hash ||
@@ -205,5 +298,24 @@ export async function verifyFalcon24DiagnosticReceipt(input: unknown) {
   return receipt;
 }
 
+export async function buildFalcon24DiagnosticReceiptV2(input: unknown) {
+  const material = diagnosticReceiptV2MaterialSchema.parse(input);
+  return falcon24DiagnosticReceiptV2Schema.parse({
+    ...material,
+    receipt_hash: await sha256ContentHash(material),
+  });
+}
+
+export async function verifyFalcon24DiagnosticReceiptDocument(input: unknown) {
+  const receipt = falcon24DiagnosticReceiptDocumentSchema.parse(input);
+  const { receipt_hash: observedHash, ...material } = receipt;
+  if ((await sha256ContentHash(material)) !== observedHash) {
+    throw new TypeError("FALCON24_DIAGNOSTIC_RECEIPT_HASH_INVALID");
+  }
+  return receipt;
+}
+
 export type Falcon24DiagnosticAttempt = z.infer<typeof falcon24DiagnosticAttemptSchema>;
 export type Falcon24DiagnosticReceipt = z.infer<typeof falcon24DiagnosticReceiptSchema>;
+export type Falcon24DiagnosticAttemptV2 = z.infer<typeof falcon24DiagnosticAttemptV2Schema>;
+export type Falcon24DiagnosticReceiptV2 = z.infer<typeof falcon24DiagnosticReceiptV2Schema>;

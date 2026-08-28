@@ -1,5 +1,6 @@
 import {
   buildFalcon24E1StagingReceipt,
+  buildFalcon24RetainedSemanticReleaseAuthorityProof,
   buildFalcon24StagingReceiptV2,
 } from "@data-agent/contracts/runs";
 import { describe, expect, it } from "vitest";
@@ -247,5 +248,105 @@ describe("PostgreSQL Falcon24 versioned authority epoch", () => {
       }),
     ).rejects.toThrow("FALCON24_COMBINED_SEMANTIC_ACTIVATION_REQUIRED");
     expect(scripted.calls).toHaveLength(0);
+  });
+
+  it("activates retained E5 authority through request v3 and the existing RPC", async () => {
+    const auth = authority();
+    const current = {
+      schema_version: "falcon24-authority-binding@2.0.0" as const,
+      authority_epoch: "E4",
+      baseline_id: id(60),
+      baseline_hash: hash("a"),
+      activation_attempt_id: id(61),
+    };
+    const release = {
+      release_id: id(62),
+      generation: 2,
+      release_digest: hash("b"),
+      datasource_id: id(63),
+    };
+    const proof = await buildFalcon24RetainedSemanticReleaseAuthorityProof({
+      schema_version: "falcon24-retained-semantic-release-authority-proof@1.0.0",
+      scope: {
+        app_id: ids.app,
+        tenant_id: ids.tenant,
+        environment: "test",
+        semantic_domain: "falcon24",
+      },
+      authority_epoch: "E5",
+      expected_current_authority: current,
+      semantic_release: release,
+      projections: {
+        executable: { projection_id: id(64), projection_digest: hash("c") },
+        relationship: { projection_id: id(65), projection_digest: hash("d") },
+        runtime_restriction: { projection_id: id(66), projection_digest: hash("e") },
+        graph: { projection_id: id(67), projection_digest: hash("f") },
+      },
+      expected_versions: { semantic_pointer: 2, semantic_runtime: 2, workspace_defaults: 3 },
+      web_build: { build_id: hash("1"), generation_id: hash("2") },
+      worker_build: { build_id: hash("3"), generation_id: hash("4") },
+    });
+    const binding = {
+      schema_version: "falcon24-authority-binding@2.0.0",
+      authority_epoch: "E5",
+      baseline_id: id(68),
+      baseline_hash: hash("5"),
+      activation_attempt_id: id(69),
+    };
+    const scripted = scriptedPool((text) =>
+      text.includes("activate_falcon24_authority") ? binding : undefined,
+    );
+    const port = createPostgresFalcon24AuthorityEpoch({
+      pool: scripted.pool,
+      authorizer: auth.authorizer,
+    });
+    const result = await port.activateRetained(auth.capability, {
+      request: {
+        schema_version: "falcon24-activation-request@3.0.0",
+        scope: proof.scope,
+        authority_epoch: "E5",
+        attempt_id: binding.activation_attempt_id,
+        baseline_id: binding.baseline_id,
+        expected_baseline_hash: binding.baseline_hash,
+        expected_current_authority: current,
+        expected_semantic_release: release,
+        expected_versions: proof.expected_versions,
+        retained_semantic_proof_hash: proof.proof_hash,
+      },
+      retained_semantic_proof: proof,
+    });
+    expect(result).toEqual({ ok: true, value: binding });
+    expect(
+      scripted.calls.find(({ text }) => text.includes("activate_falcon24_authority"))?.values,
+    ).toEqual([
+      expect.objectContaining({
+        schema_version: "falcon24-activation-request@3.0.0",
+        authority_epoch: "E5",
+        command_hash: expect.stringMatching(/^sha256:[0-9a-f]{64}$/),
+      }),
+    ]);
+
+    const mismatch = scriptedPool(() => undefined);
+    await expect(
+      createPostgresFalcon24AuthorityEpoch({
+        pool: mismatch.pool,
+        authorizer: auth.authorizer,
+      }).activateRetained(auth.capability, {
+        request: {
+          schema_version: "falcon24-activation-request@3.0.0",
+          scope: proof.scope,
+          authority_epoch: "E5",
+          attempt_id: id(70),
+          baseline_id: id(71),
+          expected_baseline_hash: hash("6"),
+          expected_current_authority: current,
+          expected_semantic_release: release,
+          expected_versions: proof.expected_versions,
+          retained_semantic_proof_hash: hash("7"),
+        },
+        retained_semantic_proof: proof,
+      }),
+    ).rejects.toThrow("FALCON24_RETAINED_ACTIVATION_PROOF_MISMATCH");
+    expect(mismatch.calls).toHaveLength(0);
   });
 });

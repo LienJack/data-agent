@@ -4,6 +4,7 @@ import { semanticScopeSchema } from "../artifacts/semantic-control-plane.js";
 import {
   semanticRuntimeSmokeReceiptReferenceSchema,
   semanticSuccessorCandidateReleaseReferenceSchema,
+  semanticSuccessorProjectionReferenceSetSchema,
   semanticSuccessorStageReferenceSchema,
 } from "../artifacts/semantic-lifecycle.js";
 import { contentHashSchema, immutableIdSchema, sha256ContentHash } from "../common/index.js";
@@ -13,6 +14,7 @@ import {
 } from "../evals/falcon24-authority-baseline.js";
 import {
   FALCON24_E1_AUTHORITY_EPOCH,
+  falcon24AuthorityEpochOrdinal,
   falcon24AuthorityEpochSchema,
   falcon24E1AuthorityEpochSchema,
   falcon24SuccessorAuthorityEpochSchema,
@@ -225,6 +227,144 @@ export const falcon24ActivationHoldRequestV2Schema =
   });
 
 export const falcon24ActivationRequestV2Schema = falcon24ActivationAttemptRequestV2Schema;
+
+const retainedSemanticExpectedVersionsSchema = z.strictObject({
+  semantic_pointer: z.number().int().min(1).max(Number.MAX_SAFE_INTEGER),
+  semantic_runtime: z.number().int().min(1).max(Number.MAX_SAFE_INTEGER),
+  workspace_defaults: z.number().int().min(1).max(Number.MAX_SAFE_INTEGER),
+});
+
+const retainedBuildIdentitySchema = z.strictObject({
+  build_id: contentHashSchema,
+  generation_id: contentHashSchema,
+});
+
+function addRetainedSemanticEpochIssues(
+  document: {
+    authority_epoch: string;
+    expected_current_authority: z.infer<typeof falcon24AuthorityBindingV2Schema>;
+    semantic_release?: z.infer<typeof semanticSuccessorCandidateReleaseReferenceSchema>;
+    expected_semantic_release?: z.infer<typeof semanticSuccessorCandidateReleaseReferenceSchema>;
+  },
+  context: z.RefinementCtx,
+): void {
+  const targetOrdinal = falcon24AuthorityEpochOrdinal(document.authority_epoch);
+  const currentOrdinal = falcon24AuthorityEpochOrdinal(
+    document.expected_current_authority.authority_epoch,
+  );
+  const release = document.semantic_release ?? document.expected_semantic_release;
+  if (targetOrdinal < 5n || targetOrdinal !== currentOrdinal + 1n) {
+    context.addIssue({
+      code: "custom",
+      message: "FALCON24_RETAINED_ACTIVATION_EPOCH_INVALID",
+      path: ["authority_epoch"],
+    });
+  }
+  if (release?.generation !== 2) {
+    context.addIssue({
+      code: "custom",
+      message: "FALCON24_RETAINED_SEMANTIC_RELEASE_INVALID",
+      path: [document.semantic_release ? "semantic_release" : "expected_semantic_release"],
+    });
+  }
+}
+
+const falcon24RetainedSemanticReleaseAuthorityProofMaterialSchema = z
+  .strictObject({
+    schema_version: z.literal("falcon24-retained-semantic-release-authority-proof@1.0.0"),
+    scope: semanticScopeSchema,
+    authority_epoch: falcon24SuccessorAuthorityEpochSchema,
+    expected_current_authority: falcon24AuthorityBindingV2Schema,
+    semantic_release: semanticSuccessorCandidateReleaseReferenceSchema,
+    projections: semanticSuccessorProjectionReferenceSetSchema,
+    expected_versions: retainedSemanticExpectedVersionsSchema,
+    web_build: retainedBuildIdentitySchema,
+    worker_build: retainedBuildIdentitySchema,
+  })
+  .superRefine(addRetainedSemanticEpochIssues);
+
+export const falcon24RetainedSemanticReleaseAuthorityProofSchema =
+  falcon24RetainedSemanticReleaseAuthorityProofMaterialSchema.extend({
+    proof_hash: contentHashSchema,
+  });
+
+function falcon24RetainedSemanticReleaseAuthorityProofMaterial(input: unknown) {
+  const full = falcon24RetainedSemanticReleaseAuthorityProofSchema.safeParse(input);
+  if (!full.success) {
+    return falcon24RetainedSemanticReleaseAuthorityProofMaterialSchema.parse(input);
+  }
+  const { proof_hash: _proofHash, ...material } = full.data;
+  return falcon24RetainedSemanticReleaseAuthorityProofMaterialSchema.parse(material);
+}
+
+export async function computeFalcon24RetainedSemanticReleaseAuthorityProofHash(input: unknown) {
+  return sha256ContentHash({
+    hash_domain: "falcon24-retained-semantic-release-authority-proof@1.0.0",
+    proof: falcon24RetainedSemanticReleaseAuthorityProofMaterial(input),
+  });
+}
+
+export async function buildFalcon24RetainedSemanticReleaseAuthorityProof(input: unknown) {
+  const material = falcon24RetainedSemanticReleaseAuthorityProofMaterial(input);
+  return falcon24RetainedSemanticReleaseAuthorityProofSchema.parse({
+    ...material,
+    proof_hash: await computeFalcon24RetainedSemanticReleaseAuthorityProofHash(material),
+  });
+}
+
+export async function verifyFalcon24RetainedSemanticReleaseAuthorityProof(input: unknown) {
+  const proof = falcon24RetainedSemanticReleaseAuthorityProofSchema.parse(input);
+  if (
+    (await computeFalcon24RetainedSemanticReleaseAuthorityProofHash(proof)) !== proof.proof_hash
+  ) {
+    throw new TypeError("FALCON24_RETAINED_SEMANTIC_PROOF_HASH_INVALID");
+  }
+  return proof;
+}
+
+export const falcon24ActivationRequestV3MaterialSchema = z
+  .strictObject({
+    schema_version: z.literal("falcon24-activation-request@3.0.0"),
+    scope: semanticScopeSchema,
+    authority_epoch: falcon24SuccessorAuthorityEpochSchema,
+    attempt_id: immutableIdSchema,
+    baseline_id: immutableIdSchema,
+    expected_baseline_hash: contentHashSchema,
+    expected_current_authority: falcon24AuthorityBindingV2Schema,
+    expected_semantic_release: semanticSuccessorCandidateReleaseReferenceSchema,
+    expected_versions: retainedSemanticExpectedVersionsSchema,
+    retained_semantic_proof_hash: contentHashSchema,
+  })
+  .superRefine(addRetainedSemanticEpochIssues);
+
+export const falcon24ActivationRequestV3Schema = falcon24ActivationRequestV3MaterialSchema.extend({
+  command_hash: contentHashSchema,
+});
+
+function falcon24ActivationRequestV3Material(input: unknown) {
+  const full = falcon24ActivationRequestV3Schema.safeParse(input);
+  if (!full.success) return falcon24ActivationRequestV3MaterialSchema.parse(input);
+  const { command_hash: _commandHash, ...material } = full.data;
+  return falcon24ActivationRequestV3MaterialSchema.parse(material);
+}
+
+export async function buildFalcon24ActivationRequestV3(input: unknown) {
+  const material = falcon24ActivationRequestV3Material(input);
+  return falcon24ActivationRequestV3Schema.parse({
+    ...material,
+    command_hash: await sha256ContentHash(material),
+  });
+}
+
+export async function verifyFalcon24ActivationRequestV3(input: unknown) {
+  const command = falcon24ActivationRequestV3Schema.parse(input);
+  if (
+    (await sha256ContentHash(falcon24ActivationRequestV3Material(command))) !== command.command_hash
+  ) {
+    throw new TypeError("FALCON24_RETAINED_ACTIVATION_COMMAND_HASH_INVALID");
+  }
+  return command;
+}
 
 const combinedFalcon24SemanticActivationExpectedVersionsSchema = z.strictObject({
   semantic_pointer: z.number().int().min(1).max(Number.MAX_SAFE_INTEGER),
@@ -649,6 +789,10 @@ export type Falcon24StagingHoldResultV2 = z.infer<typeof falcon24StagingHoldResu
 export type Falcon24E1ActivationAttempt = z.infer<typeof falcon24E1ActivationAttemptSchema>;
 export type Falcon24E1UiReceipt = z.infer<typeof falcon24E1UiReceiptSchema>;
 export type Falcon24ActivationAttemptV2 = z.infer<typeof falcon24ActivationAttemptV2Schema>;
+export type Falcon24ActivationRequestV3 = z.infer<typeof falcon24ActivationRequestV3Schema>;
+export type Falcon24RetainedSemanticReleaseAuthorityProof = z.infer<
+  typeof falcon24RetainedSemanticReleaseAuthorityProofSchema
+>;
 export type Falcon24UiReceiptV2 = z.infer<typeof falcon24UiReceiptV2Schema>;
 export type CombinedFalcon24SemanticActivationCommand = z.infer<
   typeof combinedFalcon24SemanticActivationCommandSchema

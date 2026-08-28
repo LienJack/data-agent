@@ -1,6 +1,9 @@
 import { z } from "zod";
 import { contentHashSchema, immutableIdSchema, sha256ContentHash } from "../common/index.js";
-import { falcon24SuccessorAuthorityEpochSchema } from "../runs/falcon24-authority-identity.js";
+import {
+  falcon24AuthorityEpochOrdinal,
+  falcon24SuccessorAuthorityEpochSchema,
+} from "../runs/falcon24-authority-identity.js";
 import {
   FALCON24_ACCEPTANCE_FAILURE_LAYER_ORDER,
   FALCON24_E1_QUALIFICATION_ID,
@@ -200,10 +203,36 @@ export const falcon24QualificationManifestV3Schema =
     manifest_hash: contentHashSchema,
   });
 
+const falcon24QualificationManifestV4MaterialSchema = z
+  .strictObject({
+    ...falcon24QualificationManifestV2MaterialSchema.shape,
+    schema_version: z.literal("falcon24-qualification-manifest@4.0.0"),
+    diagnostic_receipt_ref: falcon24DiagnosticReceiptReferenceSchema,
+  })
+  .superRefine(addQualificationManifestIssues)
+  .superRefine((manifest, context) => {
+    if (
+      falcon24AuthorityEpochOrdinal(manifest.authority_epoch) < 5n ||
+      manifest.qualification_id !== qualificationIdForEpoch(manifest.authority_epoch)
+    ) {
+      context.addIssue({
+        code: "custom",
+        message: "qualification_id 必须由 E5+ authority_epoch 派生。",
+        path: ["qualification_id"],
+      });
+    }
+  });
+
+export const falcon24QualificationManifestV4Schema =
+  falcon24QualificationManifestV4MaterialSchema.extend({
+    manifest_hash: contentHashSchema,
+  });
+
 export const falcon24QualificationManifestDocumentSchema = z.union([
   falcon24QualificationManifestSchema,
   falcon24QualificationManifestV2Schema,
   falcon24QualificationManifestV3Schema,
+  falcon24QualificationManifestV4Schema,
 ]);
 
 async function assertPromptHashes(
@@ -252,6 +281,15 @@ export async function buildFalcon24QualificationManifestV3(input: unknown) {
   });
 }
 
+export async function buildFalcon24QualificationManifestV4(input: unknown) {
+  const material = falcon24QualificationManifestV4MaterialSchema.parse(input);
+  await assertPromptHashes(material.slots);
+  return falcon24QualificationManifestV4Schema.parse({
+    ...material,
+    manifest_hash: await sha256ContentHash(material),
+  });
+}
+
 export async function verifyFalcon24QualificationManifestDocument(input: unknown) {
   const manifest = falcon24QualificationManifestDocumentSchema.parse(input);
   await assertPromptHashes(manifest.slots);
@@ -267,3 +305,4 @@ export type Falcon24QualificationSlot = z.infer<typeof falcon24QualificationSlot
 export type Falcon24QualificationManifest = z.infer<typeof falcon24QualificationManifestSchema>;
 export type Falcon24QualificationManifestV2 = z.infer<typeof falcon24QualificationManifestV2Schema>;
 export type Falcon24QualificationManifestV3 = z.infer<typeof falcon24QualificationManifestV3Schema>;
+export type Falcon24QualificationManifestV4 = z.infer<typeof falcon24QualificationManifestV4Schema>;

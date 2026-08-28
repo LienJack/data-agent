@@ -4,12 +4,14 @@ import {
   verifyFalcon24AuthorityBaselineDocument,
 } from "@data-agent/contracts/evals";
 import {
+  buildFalcon24ActivationRequestV3,
   falcon24ActivationAttemptDocumentSchema,
   falcon24ActivationAttemptRequestV2Schema,
   falcon24ActivationHoldRequestV2Schema,
   falcon24ActivationRequestV2Schema,
   falcon24AuthorityBindingSchema,
   falcon24AuthorityBindingV2Schema,
+  falcon24RetainedSemanticReleaseAuthorityProofSchema,
   falcon24RunAuthorityLookupSchema,
   falcon24StageBaselineRequestV2Schema,
   falcon24StagingHoldRequestV2Schema,
@@ -17,6 +19,7 @@ import {
   falcon24StagingSessionRequestV2Schema,
   falcon24UiReceiptDocumentSchema,
   falcon24UiReceiptV2Schema,
+  verifyFalcon24RetainedSemanticReleaseAuthorityProof,
   verifyFalcon24StagingReceiptV2,
   verifyFalcon24UiReceiptDocument,
 } from "@data-agent/contracts/runs";
@@ -120,6 +123,7 @@ export function createPostgresFalcon24AuthorityEpoch(input: {
     readonly correlation_id?: string;
     readonly sql: string;
     readonly command?: unknown;
+    readonly semantic_domain?: string;
     readonly parse: (value: unknown) => T | Promise<T>;
   }) =>
     withAppTransaction(
@@ -134,6 +138,11 @@ export function createPostgresFalcon24AuthorityEpoch(input: {
         map_database_error: mapDatabaseError,
       },
       async ({ client }) => {
+        if (options.semantic_domain) {
+          await client.query("select pg_catalog.set_config('app.semantic_domain',$1,true)", [
+            options.semantic_domain,
+          ]);
+        }
         const result = await client.query<JsonRow>(
           options.sql,
           options.command === undefined ? [] : [options.command],
@@ -336,6 +345,57 @@ export function createPostgresFalcon24AuthorityEpoch(input: {
         correlation_id: request.attempt_id,
         sql: "select app_data_agent.activate_falcon24_authority($1::jsonb) as value",
         command,
+        parse: (raw) => falcon24AuthorityBindingV2Schema.parse(raw),
+      });
+    },
+
+    async activateRetained(capability: unknown, candidate: unknown) {
+      const envelope = z
+        .strictObject({
+          request: z.unknown(),
+          retained_semantic_proof: falcon24RetainedSemanticReleaseAuthorityProofSchema,
+        })
+        .parse(candidate);
+      const proof = await verifyFalcon24RetainedSemanticReleaseAuthorityProof(
+        envelope.retained_semantic_proof,
+      );
+      const command = await buildFalcon24ActivationRequestV3(envelope.request);
+      const sameRelease =
+        command.expected_semantic_release.release_id === proof.semantic_release.release_id &&
+        command.expected_semantic_release.generation === proof.semantic_release.generation &&
+        command.expected_semantic_release.release_digest ===
+          proof.semantic_release.release_digest &&
+        command.expected_semantic_release.datasource_id === proof.semantic_release.datasource_id;
+      if (
+        command.retained_semantic_proof_hash !== proof.proof_hash ||
+        command.scope.app_id !== proof.scope.app_id ||
+        command.scope.tenant_id !== proof.scope.tenant_id ||
+        command.scope.environment !== proof.scope.environment ||
+        command.scope.semantic_domain !== proof.scope.semantic_domain ||
+        command.authority_epoch !== proof.authority_epoch ||
+        command.expected_current_authority.authority_epoch !==
+          proof.expected_current_authority.authority_epoch ||
+        command.expected_current_authority.baseline_id !==
+          proof.expected_current_authority.baseline_id ||
+        command.expected_current_authority.baseline_hash !==
+          proof.expected_current_authority.baseline_hash ||
+        command.expected_current_authority.activation_attempt_id !==
+          proof.expected_current_authority.activation_attempt_id ||
+        !sameRelease ||
+        command.expected_versions.semantic_pointer !== proof.expected_versions.semantic_pointer ||
+        command.expected_versions.semantic_runtime !== proof.expected_versions.semantic_runtime ||
+        command.expected_versions.workspace_defaults !== proof.expected_versions.workspace_defaults
+      ) {
+        throw new TypeError("FALCON24_RETAINED_ACTIVATION_PROOF_MISMATCH");
+      }
+      return invoke({
+        capability,
+        access: "WRITE",
+        operation: "falcon24-authority.activate-retained",
+        correlation_id: command.attempt_id,
+        sql: "select app_data_agent.activate_falcon24_authority($1::jsonb) as value",
+        command,
+        semantic_domain: command.scope.semantic_domain,
         parse: (raw) => falcon24AuthorityBindingV2Schema.parse(raw),
       });
     },

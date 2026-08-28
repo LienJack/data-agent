@@ -5,6 +5,7 @@ import {
   buildFalcon24QualificationManifest,
   buildFalcon24QualificationManifestV2,
   buildFalcon24QualificationManifestV3,
+  buildFalcon24QualificationManifestV4,
   FALCON24_QUALIFICATION_EXPECTED_PATH,
   verifyFalcon24QualificationManifest,
   verifyFalcon24QualificationManifestDocument,
@@ -190,6 +191,32 @@ describe("Falcon24 qualification contracts", () => {
     await expect(verifyFalcon24QualificationManifestDocument(manifest)).resolves.toEqual(manifest);
     await expect(
       buildFalcon24QualificationManifestV3({ ...material, authority_epoch: "E5" }),
+    ).rejects.toThrow();
+  });
+
+  it("builds E5 qualification v4 with an epoch-derived Q1 identity", async () => {
+    const material = {
+      ...(await manifestMaterial()),
+      schema_version: "falcon24-qualification-manifest@4.0.0",
+      authority_epoch: "E5",
+      qualification_id: "E5-Q1",
+      diagnostic_receipt_ref: {
+        attempt_id: id(80),
+        run_id: id(81),
+        receipt_hash: hash("8"),
+      },
+    };
+    const manifest = await buildFalcon24QualificationManifestV4(material);
+    await expect(verifyFalcon24QualificationManifestDocument(manifest)).resolves.toEqual(manifest);
+    await expect(
+      buildFalcon24QualificationManifestV4({ ...material, qualification_id: "E6-Q1" }),
+    ).rejects.toThrow();
+    await expect(
+      buildFalcon24QualificationManifestV4({
+        ...material,
+        authority_epoch: "E4",
+        qualification_id: "E4-Q1",
+      }),
     ).rejects.toThrow();
   });
 });

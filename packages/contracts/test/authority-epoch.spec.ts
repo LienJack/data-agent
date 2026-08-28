@@ -2,8 +2,10 @@ import { describe, expect, it } from "vitest";
 import {
   buildCombinedFalcon24SemanticActivationCommand,
   buildCombinedFalcon24SemanticActivationReceipt,
+  buildFalcon24ActivationRequestV3,
   buildFalcon24E1StagingReceipt,
   buildFalcon24QaE2eReceiptV2,
+  buildFalcon24RetainedSemanticReleaseAuthorityProof,
   buildFalcon24SemanticAuthorityClosureLoadCommand,
   buildFalcon24StagingReceiptV2,
   falcon24ActivationAttemptV2Schema,
@@ -17,7 +19,9 @@ import {
   falcon24StagingSessionRequestV2Schema,
   verifyCombinedFalcon24SemanticActivationCommand,
   verifyCombinedFalcon24SemanticActivationReceipt,
+  verifyFalcon24ActivationRequestV3,
   verifyFalcon24E1StagingReceipt,
+  verifyFalcon24RetainedSemanticReleaseAuthorityProof,
   verifyFalcon24SemanticAuthorityClosureLoadCommand,
   verifyFalcon24StagingReceiptV2,
   verifyFalcon24UiReceiptDocument,
@@ -372,5 +376,108 @@ describe("Falcon24 E1 authority epoch contracts", () => {
         semantic_domain: "other_domain",
       }),
     ).rejects.toThrow("FALCON24_SEMANTIC_AUTHORITY_CLOSURE_LOAD_HASH_INVALID");
+  });
+
+  it("binds retained semantic E5 activation to exact E4/gen2 closure", async () => {
+    const current = {
+      schema_version: "falcon24-authority-binding@2.0.0" as const,
+      authority_epoch: "E4",
+      baseline_id: id(80),
+      baseline_hash: hash("8"),
+      activation_attempt_id: id(81),
+    };
+    const release = {
+      release_id: id(82),
+      generation: 2,
+      release_digest: hash("9"),
+      datasource_id: id(83),
+    };
+    const proof = await buildFalcon24RetainedSemanticReleaseAuthorityProof({
+      schema_version: "falcon24-retained-semantic-release-authority-proof@1.0.0",
+      scope: {
+        app_id: id(76),
+        tenant_id: id(77),
+        environment: "test",
+        semantic_domain: "falcon24",
+      },
+      authority_epoch: "E5",
+      expected_current_authority: current,
+      semantic_release: release,
+      projections: {
+        executable: { projection_id: id(84), projection_digest: hash("a") },
+        relationship: { projection_id: id(85), projection_digest: hash("b") },
+        runtime_restriction: { projection_id: id(86), projection_digest: hash("c") },
+        graph: { projection_id: id(87), projection_digest: hash("d") },
+      },
+      expected_versions: { semantic_pointer: 2, semantic_runtime: 2, workspace_defaults: 3 },
+      web_build: { build_id: hash("e"), generation_id: hash("f") },
+      worker_build: { build_id: hash("1"), generation_id: hash("2") },
+    });
+    await expect(verifyFalcon24RetainedSemanticReleaseAuthorityProof(proof)).resolves.toEqual(
+      proof,
+    );
+
+    const command = await buildFalcon24ActivationRequestV3({
+      schema_version: "falcon24-activation-request@3.0.0",
+      scope: proof.scope,
+      authority_epoch: "E5",
+      attempt_id: id(88),
+      baseline_id: id(89),
+      expected_baseline_hash: hash("3"),
+      expected_current_authority: current,
+      expected_semantic_release: release,
+      expected_versions: proof.expected_versions,
+      retained_semantic_proof_hash: proof.proof_hash,
+    });
+    await expect(verifyFalcon24ActivationRequestV3(command)).resolves.toEqual(command);
+    await expect(
+      verifyFalcon24ActivationRequestV3({ ...command, retained_semantic_proof_hash: hash("4") }),
+    ).rejects.toThrow("FALCON24_RETAINED_ACTIVATION_COMMAND_HASH_INVALID");
+  });
+
+  it("rejects retained activation before E5, non-successor epochs, and gen3 injection", async () => {
+    const base = {
+      schema_version: "falcon24-activation-request@3.0.0" as const,
+      scope: {
+        app_id: id(96),
+        tenant_id: id(97),
+        environment: "test",
+        semantic_domain: "falcon24",
+      },
+      authority_epoch: "E5",
+      attempt_id: id(90),
+      baseline_id: id(91),
+      expected_baseline_hash: hash("5"),
+      expected_current_authority: {
+        schema_version: "falcon24-authority-binding@2.0.0" as const,
+        authority_epoch: "E4",
+        baseline_id: id(92),
+        baseline_hash: hash("6"),
+        activation_attempt_id: id(93),
+      },
+      expected_semantic_release: {
+        release_id: id(94),
+        generation: 2,
+        release_digest: hash("7"),
+        datasource_id: id(95),
+      },
+      expected_versions: { semantic_pointer: 2, semantic_runtime: 2, workspace_defaults: 3 },
+      retained_semantic_proof_hash: hash("8"),
+    };
+    await expect(
+      buildFalcon24ActivationRequestV3({ ...base, authority_epoch: "E4" }),
+    ).rejects.toThrow();
+    await expect(
+      buildFalcon24ActivationRequestV3({
+        ...base,
+        expected_current_authority: { ...base.expected_current_authority, authority_epoch: "E3" },
+      }),
+    ).rejects.toThrow();
+    await expect(
+      buildFalcon24ActivationRequestV3({
+        ...base,
+        expected_semantic_release: { ...base.expected_semantic_release, generation: 3 },
+      }),
+    ).rejects.toThrow();
   });
 });

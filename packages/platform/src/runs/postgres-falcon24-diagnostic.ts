@@ -1,14 +1,16 @@
 import { contentHashSchema, sha256ContentHash } from "@data-agent/contracts/common";
 import {
   FALCON24_DIAGNOSTIC_OBSERVED_EXECUTION_PATH,
-  falcon24DiagnosticAttemptSchema,
+  falcon24DiagnosticAttemptDocumentSchema,
   falcon24DiagnosticFailureClassSchema,
-  falcon24DiagnosticReceiptSchema,
+  falcon24DiagnosticReceiptDocumentSchema,
   falcon24SandboxReclamationReceiptDocumentSchema,
-  verifyFalcon24DiagnosticAttempt,
-  verifyFalcon24DiagnosticReceipt,
+  qualificationIdForEpoch,
+  verifyFalcon24DiagnosticAttemptDocument,
+  verifyFalcon24DiagnosticReceiptDocument,
   verifyFalcon24SandboxReclamationReceiptDocument,
 } from "@data-agent/contracts/evals";
+import { falcon24AuthorityEpochSchema } from "@data-agent/contracts/runs";
 import { canonicalImmutableIdSchema } from "@data-agent/contracts/workspaces";
 import { z } from "zod";
 import {
@@ -32,7 +34,7 @@ const diagnosticRowSchema = z.strictObject({
   principal_id: canonicalImmutableIdSchema,
   attempt_id: canonicalImmutableIdSchema,
   run_id: canonicalImmutableIdSchema,
-  authority_epoch: z.literal("E4"),
+  authority_epoch: falcon24AuthorityEpochSchema,
   authority_baseline_id: canonicalImmutableIdSchema,
   authority_baseline_hash: contentHashSchema,
   authority_activation_attempt_id: canonicalImmutableIdSchema,
@@ -50,7 +52,7 @@ const diagnosticRowSchema = z.strictObject({
   runtime_attestation_hash: contentHashSchema,
   question_hash: contentHashSchema,
   manifest_hash: contentHashSchema,
-  manifest_document: falcon24DiagnosticAttemptSchema,
+  manifest_document: falcon24DiagnosticAttemptDocumentSchema,
   status: z.enum(["ACTIVE", "PASSED", "FAILED"]),
   failure_class: falcon24DiagnosticFailureClassSchema.nullable(),
   failure_code: failureCodeSchema.nullable(),
@@ -165,9 +167,12 @@ export function createPostgresFalcon24DiagnosticAuthority(input: {
 
   return Object.freeze({
     async begin(capability: unknown, candidate: unknown) {
-      const manifest = await verifyFalcon24DiagnosticAttempt(candidate);
+      const manifest = await verifyFalcon24DiagnosticAttemptDocument(candidate);
       const command = await commandWithHash({
-        schema_version: "falcon24-diagnostic-begin@1.0.0" as const,
+        schema_version:
+          manifest.schema_version === "falcon24-diagnostic-attempt@2.0.0"
+            ? ("falcon24-diagnostic-begin@2.0.0" as const)
+            : ("falcon24-diagnostic-begin@1.0.0" as const),
         manifest,
       });
       return invoke({
@@ -209,8 +214,8 @@ export function createPostgresFalcon24DiagnosticAuthority(input: {
         request.outcome === "PASS" &&
         (request.sandbox_reclamation_receipt.schema_version !==
           "falcon24-sandbox-reclamation-receipt@3.0.0" ||
-          request.sandbox_reclamation_receipt.authority_epoch !== "E4" ||
-          request.sandbox_reclamation_receipt.campaign_id !== "E4-Q1")
+          request.sandbox_reclamation_receipt.campaign_id !==
+            qualificationIdForEpoch(request.sandbox_reclamation_receipt.authority_epoch))
       ) {
         throw new TypeError("FALCON24_DIAGNOSTIC_RECLAMATION_RECEIPT_INVALID");
       }
@@ -227,7 +232,9 @@ export function createPostgresFalcon24DiagnosticAuthority(input: {
         operation: "complete_falcon24_diagnostic",
         command,
         parse: async (raw) =>
-          verifyFalcon24DiagnosticReceipt(falcon24DiagnosticReceiptSchema.parse(raw)),
+          verifyFalcon24DiagnosticReceiptDocument(
+            falcon24DiagnosticReceiptDocumentSchema.parse(raw),
+          ),
       });
     },
   });

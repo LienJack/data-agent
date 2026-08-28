@@ -2,6 +2,7 @@ import {
   buildFalcon24QualificationManifest,
   buildFalcon24QualificationManifestV2,
   buildFalcon24QualificationManifestV3,
+  buildFalcon24QualificationManifestV4,
   FALCON24_QUALIFICATION_EXPECTED_PATH,
   falcon24AnalysisCaseIdSchema,
   sha256ContentHash,
@@ -204,6 +205,27 @@ async function e4Manifest() {
   });
 }
 
+async function e5Manifest() {
+  const historical = await manifest();
+  const {
+    manifest_hash: _manifestHash,
+    schema_version: _schemaVersion,
+    qualification_id: _qualificationId,
+    ...shared
+  } = historical;
+  return buildFalcon24QualificationManifestV4({
+    ...shared,
+    schema_version: "falcon24-qualification-manifest@4.0.0",
+    authority_epoch: "E5",
+    qualification_id: "E5-Q1",
+    diagnostic_receipt_ref: {
+      attempt_id: id(40),
+      run_id: id(41),
+      receipt_hash: hash("c"),
+    },
+  });
+}
+
 function scriptedPool(handler: (text: string, values?: readonly unknown[]) => unknown) {
   const calls: { readonly text: string; readonly values?: readonly unknown[] }[] = [];
   const client: SqlClient = {
@@ -295,6 +317,34 @@ describe("PostgreSQL Falcon24 qualification authority", () => {
         manifest: candidate,
       }),
     ]);
+  });
+
+  it("begins E5-Q1 with qualification v4 and its exact diagnostic receipt", async () => {
+    const auth = authority();
+    const candidate = await e5Manifest();
+    const scripted = scriptedPool((text) =>
+      text.includes("begin_falcon24_qualification")
+        ? qualification({
+            authority_epoch: "E5",
+            qualification_id: "E5-Q1",
+            manifest_hash: candidate.manifest_hash,
+            diagnostic_attempt_id: candidate.diagnostic_receipt_ref.attempt_id,
+            diagnostic_run_id: candidate.diagnostic_receipt_ref.run_id,
+            diagnostic_receipt_hash: candidate.diagnostic_receipt_ref.receipt_hash,
+          })
+        : undefined,
+    );
+    const result = await createPostgresFalcon24QualificationAuthority({
+      pool: scripted.pool,
+      authorizer: auth.authorizer,
+    }).begin(auth.capability, candidate);
+    expect(result).toMatchObject({
+      ok: true,
+      value: { authority_epoch: "E5", qualification_id: "E5-Q1" },
+    });
+    expect(
+      scripted.calls.find(({ text }) => text.includes("begin_falcon24_qualification"))?.values,
+    ).toEqual([expect.objectContaining({ schema_version: "falcon24-qualification-begin@4.0.0" })]);
   });
 
   it("loads the historical E1 qualification without treating it as current mutation input", async () => {

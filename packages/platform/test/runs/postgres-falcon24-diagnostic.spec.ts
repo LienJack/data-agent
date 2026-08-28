@@ -1,6 +1,8 @@
 import {
   buildFalcon24DiagnosticAttempt,
+  buildFalcon24DiagnosticAttemptV2,
   buildFalcon24DiagnosticReceipt,
+  buildFalcon24DiagnosticReceiptV2,
   FALCON24_E4_DIAGNOSTIC_QUESTION,
   sha256ContentHash,
 } from "@data-agent/contracts";
@@ -67,7 +69,9 @@ async function manifest() {
 }
 
 function row(
-  document: Awaited<ReturnType<typeof manifest>>,
+  document:
+    | Awaited<ReturnType<typeof manifest>>
+    | Awaited<ReturnType<typeof buildFalcon24DiagnosticAttemptV2>>,
   overrides: Record<string, unknown> = {},
 ) {
   return {
@@ -185,5 +189,57 @@ describe("PostgreSQL Falcon24 diagnostic authority", () => {
     });
 
     expect(result).toMatchObject({ ok: true, value: { outcome: "FAIL" } });
+  });
+
+  it("begins and terminally records an E5 retained-gen2 diagnostic", async () => {
+    const auth = authority();
+    const historical = await manifest();
+    const { manifest_hash: _manifestHash, ...material } = historical;
+    const candidate = await buildFalcon24DiagnosticAttemptV2({
+      ...material,
+      schema_version: "falcon24-diagnostic-attempt@2.0.0",
+      authority: { ...authorityBinding, authority_epoch: "E5" },
+    });
+    const active = row(candidate, {
+      authority_epoch: "E5",
+      manifest_document: candidate,
+    });
+    const receipt = await buildFalcon24DiagnosticReceiptV2({
+      schema_version: "falcon24-diagnostic-receipt@2.0.0",
+      attempt_id: candidate.attempt_id,
+      run_id: candidate.run_id,
+      attempt_manifest_hash: candidate.manifest_hash,
+      authority: candidate.authority,
+      semantic_release: semanticRelease,
+      outcome: "FAIL",
+      pass_evidence: null,
+      failure_class: "EXTERNAL_DEPENDENCY",
+      failure_code: "PROVIDER_UNAVAILABLE",
+      completed_at: now,
+    });
+    const scripted = scriptedPool((text) => {
+      if (text.includes("begin_falcon24_diagnostic")) return active;
+      if (text.includes("complete_falcon24_diagnostic")) return receipt;
+      return undefined;
+    });
+    const port = createPostgresFalcon24DiagnosticAuthority({
+      pool: scripted.pool,
+      authorizer: auth.authorizer,
+    });
+    await expect(port.begin(auth.capability, candidate)).resolves.toMatchObject({ ok: true });
+    expect(
+      scripted.calls.find(({ text }) => text.includes("begin_falcon24_diagnostic"))?.values,
+    ).toEqual([expect.objectContaining({ schema_version: "falcon24-diagnostic-begin@2.0.0" })]);
+    await expect(
+      port.complete(auth.capability, {
+        attempt_id: candidate.attempt_id,
+        outcome: "FAIL",
+        failure_class: "EXTERNAL_DEPENDENCY",
+        failure_code: "PROVIDER_UNAVAILABLE",
+      }),
+    ).resolves.toMatchObject({
+      ok: true,
+      value: { schema_version: "falcon24-diagnostic-receipt@2.0.0" },
+    });
   });
 });

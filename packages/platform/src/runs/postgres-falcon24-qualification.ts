@@ -12,7 +12,10 @@ import {
   verifyFalcon24ResolutionTraceUiGateReceiptDocument,
   verifyFalcon24SandboxReclamationReceiptDocument,
 } from "@data-agent/contracts/evals";
-import { falcon24AuthorityPersistenceBindingSchema } from "@data-agent/contracts/runs";
+import {
+  falcon24AuthorityEpochOrdinal,
+  falcon24AuthorityPersistenceBindingSchema,
+} from "@data-agent/contracts/runs";
 import { canonicalImmutableIdSchema } from "@data-agent/contracts/workspaces";
 import { z } from "zod";
 import {
@@ -345,17 +348,26 @@ export function createPostgresFalcon24QualificationAuthority(input: {
       if (manifest.schema_version === "falcon24-qualification-manifest@1.0.0") {
         throw new TypeError("FALCON24_QUALIFICATION_HISTORICAL_MANIFEST_READ_ONLY");
       }
-      if (
-        (manifest.authority_epoch === "E4") !==
-        (manifest.schema_version === "falcon24-qualification-manifest@3.0.0")
-      ) {
+      const diagnosticGated =
+        manifest.schema_version === "falcon24-qualification-manifest@3.0.0" ||
+        manifest.schema_version === "falcon24-qualification-manifest@4.0.0";
+      const epochOrdinal = falcon24AuthorityEpochOrdinal(manifest.authority_epoch);
+      const expectedVersion =
+        epochOrdinal >= 5n
+          ? "falcon24-qualification-manifest@4.0.0"
+          : manifest.authority_epoch === "E4"
+            ? "falcon24-qualification-manifest@3.0.0"
+            : "falcon24-qualification-manifest@2.0.0";
+      if (manifest.schema_version !== expectedVersion) {
         throw new TypeError("FALCON24_QUALIFICATION_DIAGNOSTIC_REQUIRED");
       }
       const command = await commandWithHash({
         schema_version:
           manifest.schema_version === "falcon24-qualification-manifest@3.0.0"
             ? ("falcon24-qualification-begin@3.0.0" as const)
-            : ("falcon24-qualification-begin@2.0.0" as const),
+            : manifest.schema_version === "falcon24-qualification-manifest@4.0.0"
+              ? ("falcon24-qualification-begin@4.0.0" as const)
+              : ("falcon24-qualification-begin@2.0.0" as const),
         manifest,
       });
       return invoke({
@@ -386,14 +398,14 @@ export function createPostgresFalcon24QualificationAuthority(input: {
             );
           }
           if (
-            manifest.schema_version === "falcon24-qualification-manifest@3.0.0" &&
+            diagnosticGated &&
             (row.diagnostic_attempt_id !== manifest.diagnostic_receipt_ref.attempt_id ||
               row.diagnostic_run_id !== manifest.diagnostic_receipt_ref.run_id ||
               row.diagnostic_receipt_hash !== manifest.diagnostic_receipt_ref.receipt_hash)
           ) {
             throw new PersistenceBoundaryError(
               "FALCON24_QUALIFICATION_DATABASE_CONTRACT_INVALID",
-              "Falcon24 E4 Qualification begin 未冻结 PASSED diagnostic receipt。",
+              "Falcon24 Qualification begin 未冻结同 Epoch PASSED diagnostic receipt。",
             );
           }
           return row;
