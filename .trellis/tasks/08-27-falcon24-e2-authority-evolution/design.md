@@ -1145,3 +1145,89 @@ E9/STAGED/inactive或 E10/PROMOTED/active，不存在混合状态。
 测试覆盖 v1 E9 exact failure、v2 E9 fence/E10 success、server-observed 42702 receipt、strict v7 hash domain、RLS/grants、
 history snapshots、fresh/exact E9 upgrade、failure injection、replay与双连接 all-old/all-new。文件边界为 Contracts provider/
 epoch contracts、Platform provider/epoch adapters、Worker dispatcher、Web recorder/Finalizer、10802 source/rendered/manifest与对应测试。
+
+## 23. E11 task-scoped Specialist logical-call recovery
+
+### 23.1 Proven identity collision
+
+四个 Root turn 的 accepted child task identity 分别不同，但当前 Specialist logical call material 为：
+
+```text
+data-agent/team-runtime@1\0provider:text2sql
+data-agent/team-runtime@1\0provider:text2sql:repair:1
+```
+
+它没有 child `task_id` 或 Root turn delegation identity。`RunExecutionContext` 正确地在同一 Run 内拒绝已消费 logical ID，
+因此第二个 child task 的首次 Text2SQL Provider call 被误判为旧调用重放。修复后的唯一公式为：
+
+```text
+specialist_call_id = stable_uuid({
+  namespace: "data-agent/specialist-provider-call@2",
+  run_id,
+  task_id,
+  stage,
+  call_index
+})
+```
+
+`task_id` 已由 Host admission 从 `run + root turn namespace + tool_call_id` 确定性生成并持久化，不依赖模型自报。
+同 task/同 stage/同 index 仍是同一 logical call；不同 task 即使 Profile/stage/objective 相同也属于不同的当前 Tool Call。
+
+### 23.2 Failure feedback without leaking candidates
+
+Text2SQL compiler/AST/runtime 已产生 allowlisted stable error code。候选修复循环继续只在内存中把 rejected candidate和安全
+diagnostic code交给同一 Specialist；invalid candidate不提交 Artifact。预算耗尽时只把 safe code作为 Root Tool Result 的
+`error_code`，未知或不合规 code回退通用 `TEAM_TEXT2SQL_CANDIDATE_POLICY_REJECTED`。Run event仍不保存 raw SQL、参数、Prompt或
+Provider response。这样 scratch canary能定位 contract mismatch，但不会扩大公开数据面。
+
+### 23.3 No database migration and E11 activation path
+
+E11 不需要新表、列或 RPC。现有 request@6/response@6 合同与 10801 RPC 从一开始就接受 canonical target ordinal `>=9`，
+并在锁内要求 `target=current+1`、exact terminal diagnostic receipt、fresh certification stage与 retained gen2 closure；10802 对 v6
+完整委托 frozen pre-E10 implementation。新增 request@8 或 10803只会复制现有 authority。
+
+Web Finalizer 从“ordinal决定 recovery kind”改为“target最低版本 + exactly-one server-loaded predecessor evidence”：
+
+```text
+E7       -> legacy diagnostic recovery v4
+E8       -> closure failure v5
+E9+      -> terminal diagnostic v6 OR finalization failure v7 (exactly one)
+target>=E10 certification readback -> v2 resolver
+```
+
+E10历史仍使用 finalization failure v7；E11使用 E10 terminal diagnostic v6。两条路径均通过同一 retained staging、同一
+`activate_falcon24_authority(jsonb)` 与同一 post-readback，CLI不接受 receipt bytes、proof hash、projection或candidate payload。
+
+### 23.4 State, locks and crash recovery
+
+```text
+E10 current + immutable diagnostic FAIL
+  -> fresh E11 live certification STAGED/inactive
+  -> E11 supporting receipts/baseline/OPEN attempt
+  -> request@6 transaction
+       semantic fence -> Falcon activation advisory -> diagnostic advisory
+       -> current -> semantic/runtime/defaults -> E10 diagnostic/run/receipt
+       -> E11 stage/artifact -> E11 baseline/LLM receipt
+  -> E11 current + stage PROMOTED/artifact active + gen2 unchanged
+```
+
+| Window | Observable state | Recovery |
+|---|---|---|
+| build/certification前失败 | E10 + immutable FAIL | 修复未激活 E11 code，fresh preparation；不触 E10 Run |
+| certification commit后崩溃 | E10 + E11 STAGED/inactive | same-key load/replay；E10 reader不可见 |
+| baseline/activation失败 | E10 + target HOLD，candidate inactive | 新 staging/attempt；旧 target不复用 |
+| request@6 rollback | E10 + E11 STAGED/inactive | all-old；禁止补偿 DML |
+| request@6 commit | E11 + PROMOTED/active + gen2 unchanged | production ports核对后才运行正式 diagnostic |
+| E11 formal failure | immutable FAIL/HOLD | 不 retry；内部 closure缺陷前进 E12+ |
+
+### 23.5 Files and tests
+
+- Worker：`apps/worker/src/teams/production-team-tools.ts` 与 tests；task-scoped identity、safe rejection code、同 context
+  cross-turn regression。
+- Web：`apps/web/src/lib/falcon24-retained-finalization.ts`、Finalizer CLI与 tests；evidence-driven E9+ recovery、E11 v6、
+  target>=E10 v2 resolver readback、exactly-one config。
+- Specs/Trellis/runbook：Agent Team runtime identity和 E11 evidence。
+- Database：无 migration文件；只重跑现有 v6 exact E10 populated clone、rollback/replay/concurrency/RLS 与 protected-history snapshot。
+
+测试矩阵必须覆盖同 task replay、跨 task相同 stage、repair index、跨 Run、safe code fallback、E11 request@6 proof splice、
+同时提供/完全缺少 predecessor evidence、E10 v7 regression、v2 readback mismatch、scratch canary和正式 Trace UI。

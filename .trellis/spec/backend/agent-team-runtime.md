@@ -35,6 +35,9 @@ Root turn 0..3 (AUTO)
 - Root direct answers are limited to `GENERAL_TEXT` based on general knowledge or visible user messages. Workspace facts, semantic definitions/relationships, aggregates, rankings, trends, rows and charts require delegation or accepted Artifact evidence。
 - Root uses server-owned `toolChoice=AUTO` for at most four normal turns. Each turn decides only the current next action or final answer; there is no dedicated review stage or predeclared future call chain。
 - Subagent terminal results return to Root as strict safe Tool Results. A later turn may pass an exact accepted output only through ordinary `input_artifact_refs`。
+- Specialist Provider logical call identity必须绑定 exact `run_id + accepted child task_id + stage + call_index`。同一 task的同一
+  call replay仍拒绝重复；不同 Root turn创建的不同 child task即使选择相同 Profile/stage也不得碰撞。`call_index`只表示同一
+  task内部的有界候选修复，不能替代 task identity。
 - Multiple calls in one turn are allowed only when each call already has every required accepted input and can execute independently. Their parallel execution is a performance optimization, not a Host business planner。
 - Host validates only the current calls: frozen Card/Profile, scope, budget, accepted inputs, datasource/schema/release binding, SQL/Sandbox safety, idempotency and recovery. Host never selects a subsequent business capability。
 - Provider output is normalized through the strict Root Harness. Mixed text/tool output, unknown tools, unknown Profiles and catalog hash mismatch fail closed。
@@ -140,6 +143,8 @@ The only model output contract is `text2sql-query-candidate@1.0.0`:
 | unsafe SQL before I/O | `TEXT2SQL_SQL_SHAPE_REJECTED` / `TEXT2SQL_SQL_DANGEROUS` |
 | PostgreSQL type/column/data failure | bounded `DATASOURCE_ADAPTER_SQL_*` code |
 | repair budget exhausted | `TEAM_TEXT2SQL_CANDIDATE_*` or final adapter code |
+| same task/same Specialist call replay | `PROVIDER_LOGICAL_CALL_DUPLICATE`；Provider I/O=0 |
+| different accepted child task uses same Specialist stage | 独立 logical call；继续当前 Tool Call admission与Provider边界 |
 | Artifact/Task replay correlation mismatch | `TEAM_ACCEPTED_REPLAY_CORRELATION_INVALID` |
 
 - Team task/handoff/completion/verifier/acceptance remain durable and idempotent。
@@ -147,7 +152,7 @@ The only model output contract is `text2sql-query-candidate@1.0.0`:
 
 ## 9. Required Tests
 
-- Root Harness: direct answer, native single delegation, cross-turn serial delegation, same-turn independent calls, safe Tool Result feedback, verifier feedback, mixed response rejection, four-turn exhaustion and durable replay。
+- Root Harness: direct answer, native single delegation, cross-turn serial delegation, same-turn independent calls, safe Tool Result feedback, verifier feedback, mixed response rejection, four-turn exhaustion and durable replay；另覆盖同 task replay仍duplicate、跨 turn不同 child task的相同 Specialist stage不碰撞、repair index分域。
 - V2 Profile materialization/admission: exact revision/hash/tool/Skill closure; V1 and stale revision rejection。
 - Semantic: strict selection intent, exact release/projection/hash/resource binding, metric/formula/dependency, dimension/grain/parent, relationship/join/cardinality, time/restriction, ambiguity, semantic-only final and no SQL execution。
 - Text2SQL: strict candidate schema, literal parameterization, relation/function/AST rejection, exact binding, EXPLAIN/read-only transaction, SQLSTATE classes, bounded repair and result-shape closure。

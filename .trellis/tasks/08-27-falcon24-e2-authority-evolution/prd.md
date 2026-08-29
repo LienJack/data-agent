@@ -493,3 +493,58 @@ readback 失败；在 exact backend context 下调用 10801 resolver 得到 Post
   v2 claims exact PASS，semantic pointer/runtime/defaults 仍指向同一 generation 2。
 - [ ] **AC-E10-04** 唯一 E10 diagnostic 经真实 composer 和答案入口 Trace UI 证明完整动态 Tool Loop、五类 Artifact
   与 residual=0；随后 E10-Q1=16/16、E10-C1=30/30。
+
+## 18. E11 cross-turn Specialist call authority amendment
+
+E10 已成功激活并通过 public profile 与 v2 certification resolver readback。唯一正式 E10 diagnostic attempt
+`e1000000-0000-5000-8000-00000000d110` / Run `b25484bb-8f9d-870d-bc5c-96212971e83e`
+在动态 Root Tool Loop 内终止，并已保存 immutable FAIL receipt
+`sha256:789a5e478fb6e056b9632e682fe4d91420129e2bfcc2449d5824bfca8a6949d4`：
+`FROZEN_CLOSURE_CHANGE_REQUIRED / ROOT_AGENT_TURN_BUDGET_EXHAUSTED`。E10-Q1/E10-C1 均为零。
+
+事件与 Team authority 证明：四个 Root 轮次分别创建四个不同的 `governed-text2sql-agent` child task；首个 task 的
+`sql.compiler.compile` 实际完成两个 Provider 调用，随后以
+`TEAM_TEXT2SQL_CANDIDATE_POLICY_REJECTED` 返回。第二至第四个 child task 尚未发起 Specialist Provider I/O，均在
+`RunExecutionContext` 以 `PROVIDER_LOGICAL_CALL_DUPLICATE` 失败。源码闭包证明
+`specialistProviderJson` 的 logical call identity 只绑定 `run_id + stage + repair_index`，遗漏了本轮已持久化的
+child `task_id`，所以跨 Root turn 的合法新 Tool Call 与旧 Tool Call 必然碰撞。现有安全事件没有持久化被拒绝 SQL
+或精确 policy 子码，因此本方案不推断首轮候选的具体缺陷。
+
+### 18.1 Requirements
+
+- **R-E11-01 Immutable E10 failure.** E10 diagnostic Run、43 条 event、四组 Team task/handoff、attempt 与 terminal
+  receipt 保持原字节；禁止 retry/resume 该 Run、删除失败 task 或把后续证据拼接到 E10。
+- **R-E11-02 Task-scoped Specialist identity.** Specialist logical call identity 必须绑定
+  `run_id + child_task_id + specialist_stage + call_index`。同一 task/同一 index 重放仍稳定返回 duplicate；同一 Run
+  不同 Root turn 产生的不同 accepted child task 必须得到不同 logical ID。repair index 仍只表示同一 task 内的有界候选修复。
+- **R-E11-03 Dynamic loop unchanged.** Root 每轮仍只选择当前 Tool Call；Host 不预声明未来链路、不按关键词路由、
+  不建立业务 DAG。新 identity 只修复当前 call 的幂等域，不能绕过 Profile、Artifact、预算、SQL/Sandbox 或恢复门禁。
+- **R-E11-04 Safe rejection feedback.** Text2SQL 候选最终被拒绝时，Root Tool Result 应保留已有 allowlisted stable
+  policy code；不得持久化或公开 raw SQL、Provider response、prompt、参数值或数据库细节。无法识别的错误继续收敛到通用
+  `TEAM_TEXT2SQL_CANDIDATE_POLICY_REJECTED`。
+- **R-E11-05 Reuse existing successor authority.** E10 terminal diagnostic 已满足
+  `falcon24-activation-request@6.0.0` 的通用 `target>=E9` successor 合同；10801/10802 已把 v6 委托链保留并要求
+  `target=current+1`。E11 不新增 10803、不替换任何既有 RPC。Finalizer 只需按显式 recovery evidence 在 E9+
+  选择 terminal-diagnostic v6 或 finalization-failure v7，并在 target>=E10 时统一使用 v2 certification resolver readback。
+- **R-E11-06 Fresh E11 build and certification.** Worker/Web 变更进入新的 clean build closure，重新运行 target E11
+  live certification并生成 STAGED/inactive candidate；E10 runtime 不得看见该 candidate。request@6 必须绑定 exact
+  E10 diagnostic receipt、fresh E11 stage、current E10、retained gen2 与 expected versions。
+- **R-E11-07 Scratch vertical proof before formal execution.** 在专用权威库的 exact physical clone 上先激活 E11，
+  创建非 diagnostic、非 Q1/C1 的开发 Run，证明至少一个跨 Root turn 相同 Specialist Profile 的新 task 不再发生 logical-ID
+  collision，并让固定诊断问题完成 Text2SQL/QueryEvidence/Analysis/Chart 闭包。该证据不能替代正式 composer/Trace UI 门禁。
+- **R-E11-08 Formal continuation.** 权威库 E11 原子激活与 production-port readback 后创建唯一 E11 diagnostic；通过后
+  执行 E11-Q1 16/16，再执行 E11-C1 30/30。任一失败先保存 immutable FAIL/HOLD；根据用户最新授权，内部 frozen
+  closure 缺陷继续前进 E(n+1)，但绝不重试同一正式 Run/attempt。
+
+### 18.2 Acceptance
+
+- [ ] **AC-E11-01** Worker regression 证明 task A 与 task B 的相同 Specialist stage 得到不同 logical ID；task A
+  同一 call replay仍 duplicate；repair 0/1 identity不同且均绑定 task A。
+- [ ] **AC-E11-02** Finalizer tests 证明 E10 diagnostic receipt可通过 request@6 激活 E11，v2 resolver完成 readback；
+  E10 finalization-failure v7 历史路径不变，配置同时提供两种 predecessor evidence 时失败关闭。
+- [ ] **AC-E11-03** Focused/full tests、typecheck/build、Trellis/spec检查、clean build attestation、fresh certification、
+  exact clone activation与非正式垂直 canary PASS；E1-E10、gen1/gen2和 E10 failure receipt bytes无漂移。
+- [ ] **AC-E11-04** 一次 E11 diagnostic 通过真实 composer与答案入口 Trace UI，证明完整动态 Tool Loop、五类 Artifact
+  和 residual=0；随后 E11-Q1=16/16、E11-C1=30/30。
+- [ ] **AC-E11-05** 最终审计保留真实 `production_isolation_proven=false / production_gate=HOLD`，停止本任务服务，
+  删除瞬态 credential/sandbox/scratch资源，仅保留既有四个长期容器和 rejected-repair审计 stash。

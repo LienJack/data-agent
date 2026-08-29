@@ -1097,6 +1097,63 @@ receipt persistence 本身需要新的 frozen-closure 修复，本任务不满�
 
 ### E10-W4-W6 — Formal diagnostic, gates and audit
 
-- [ ] 唯一 E10 diagnostic经真实 composer与答案入口Trace UI完整PASS、residual=0。
+- [x] 唯一 E10 diagnostic经真实 composer提交一次；Run在首轮 Text2SQL 两次候选被拒后，后三个 Root turn的
+  新 child task均被错误 `PROVIDER_LOGICAL_CALL_DUPLICATE` 阻断，最终 immutable
+  `ROOT_AGENT_TURN_BUDGET_EXHAUSTED` FAIL。没有 retry/resume；E10-Q1/C1=0。
 - [ ] E10-Q1 16/16；winning Q1后 E10-C1 30/30；任一formal首败immutable HOLD并停止。
 - [ ] canonical final audit、production false/HOLD、credential/service/browser/sandbox/scratch清理、Trellis验证与最终scoped commit。
+
+## 23. E11 unattended forward execution
+
+### E11-W0 — Freeze E10 failure and close the design
+
+- [x] 只读核对 E10 current/gen2、唯一 diagnostic receipt、43 条 Run event、四个不同 Text2SQL child task、Q1/C1=0。
+- [x] 证明 Specialist logical ID遗漏 child task：首 task产生 base+repair两个 Provider call，后续三个 task均在 Provider I/O前 duplicate。
+- [x] 记录无法从安全事件证明首轮具体 SQL policy 子码，不推断 raw candidate。
+- [x] PRD/design/implement/spec明确 task-scoped identity、safe feedback、既有 request@6复用、锁序、恢复、文件和测试边界。
+- [ ] Trellis validate、Markdown/diff check后 scoped docs commit。
+
+### E11-W1 — Worker dynamic Tool Loop identity fix
+
+- [ ] 先写 failing regression：同 Run、不同 accepted child task、相同 TEXT2SQL stage/call_index当前生成相同 logical ID并被 duplicate。
+- [ ] Specialist identity绑定 run/task/stage/call_index；同 task重放仍相同，repair index与跨 task均分域。
+- [ ] 候选最终失败只返回 safe stable policy code；raw candidate/parameters/prompt/provider output不进入 Event或Artifact。
+- [ ] Worker focused tests、Agent Runtime boundary tests、typecheck/build/Biome/diff check；scoped commit。
+
+### E11-W2 — Evidence-driven retained Finalizer
+
+- [ ] Finalizer configuration对 E9+要求 fresh LLM stage和 exactly one predecessor diagnostic attempt或 finalization failure receipt；
+  E7/E8专用历史分支不变。
+- [ ] `finalizeFalcon24RetainedAuthority`按 recovery kind选择既有 v6/v7，不再把 target>=10硬编码为 finalization failure。
+- [ ] target>=E10无论v6/v7均用 current certification resolver v2完成post-readback；v1没有fallback。
+- [ ] 增加 E10->E11 request@6、E9->E10 request@7 regression、missing/both evidence、readback mismatch tests。
+- [ ] Web focused/full tests、typecheck/build/Biome/static boundary scan；scoped commit。无 10803/migration变更。
+
+### E11-W3 — Full proof and scratch vertical canary
+
+- [ ] Contracts/Agent Runtime/Platform/Worker/Web focused+full suites、typecheck/build、Trellis/spec checks全部通过。
+- [ ] exact E10 physical clone核对 protected-history snapshot；用 fresh certification + request@6激活 scratch E11，证明 all-old/all-new、
+  replay、RLS/grants和 gen2/defaults byte equality。
+- [ ] 在 scratch E11上启动 exact Web/Worker和瞬态 sandbox，运行非 diagnostic/non-scoring Q&A canary；证明新 Text2SQL child task
+  不再 logical-ID collision，固定问题完成 QueryEvidence/typed Arrow/Python/Report/Chart并从答案入口打开 Trace UI。
+- [ ] 若 canary暴露 SQL policy mismatch，在尚未激活 E11 的 owning code内 TDD修复、重新 clean build并重建 certification；不放宽 AST/security。
+- [ ] 清理 scratch service/browser/sandbox/database；只保留四个长期容器。
+
+### E11-W4 — Dedicated certification and atomic activation
+
+- [ ] exact committed HEAD clean build attestation；fresh E11 live certification STAGED/inactive，E10 reader不可见。
+- [ ] 使用全新 staging/baseline/attempt，通过 request@6绑定 exact E10 diagnostic receipt并只原子激活一次。
+- [ ] production readback核对 current=E11、public AVAILABLE、v2 claims exact、semantic pointer/runtime/defaults仍 gen2、E10 receipt不变、E11 gates=0。
+
+### E11-W5 — Formal diagnostic and gates
+
+- [ ] 创建唯一 E11 diagnostic；真实 authenticated composer只提交固定问题一次，从答案入口进入 exact Trace UI。
+- [ ] 证明 Semantic -> Text2SQL -> SQL -> QueryEvidence -> typed Arrow -> Python operator -> AnalysisReport -> Chart、五类 Artifact和 residual=0；写 PASS receipt。
+- [ ] 创建唯一 E11-Q1，严格串行 G1=1/G2=5/G3=5/G4=5，共16/16；winning后创建 E11-C1，5题 x COLD/WARM x3，共30/30。
+- [ ] 同一正式 Run/attempt不 retry/resume、不跨 attempt拼证据；内部 frozen closure缺陷先写immutable FAIL/HOLD再自动前进 E12+。
+
+### E11-W6 — Final audit and cleanup
+
+- [ ] canonical audit generation1/E1-E3、gen2/E4-E11、各失败receipt、唯一winning diagnostic/Q1/C1与Trace UI receipts；protected bytes零漂移。
+- [ ] production isolation保持真实 false/HOLD；停止服务、关闭浏览器、删除轮换credential temp、sandbox/container/scratch DB。
+- [ ] audit stash保持原样；Trellis check/spec update/validate与最终scoped commit；全部AC闭合后才完成goal。
