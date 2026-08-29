@@ -170,12 +170,16 @@ describe.skipIf(!databaseUrl)("Falcon24 E7 LLM certification stage", () => {
     try {
       vi.resetModules();
       await import("../../src/evals/falcon24-e7-llm-certification-cli.js");
-      expect(fetch).toHaveBeenCalledTimes(5);
-      expect(JSON.parse(writes.at(-1) ?? "{}")).toMatchObject({
+      const initialReport = JSON.parse(writes.at(-1) ?? "{}") as Record<string, unknown>;
+      if (initialReport.terminal !== "PASS") {
+        throw new Error(`E7 stage probe failed: ${JSON.stringify(initialReport)}`);
+      }
+      expect(initialReport).toMatchObject({
         terminal: "PASS",
         replayed: false,
         stage_id: stageId,
       });
+      expect(fetch).toHaveBeenCalledTimes(5);
       const staged = await pool.query<{
         status: string;
         target_authority_epoch: string;
