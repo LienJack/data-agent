@@ -210,6 +210,12 @@ function temporalCastPattern(): string {
   return `::\\s*(?:pg_catalog\\.)?(?:date|timestamp|timestamptz)\\b`;
 }
 
+function temporalParameterExpression(index: number): string {
+  const reference = `\\$${index}(?!\\d)`;
+  const temporalType = `(?:pg_catalog\\.)?(?:date|timestamp|timestamptz)\\b`;
+  return `(?:${reference}(?:\\s*::\\s*${temporalType})?|CAST\\s*\\(\\s*${reference}\\s+AS\\s+${temporalType}\\s*\\))`;
+}
+
 function hasExplicitTemporalSourceCast(input: {
   readonly sql: string;
   readonly column_name: string;
@@ -234,9 +240,8 @@ function hasHalfOpenPredicate(input: {
 }): boolean {
   const column = quotedIdentifierPattern(input.column_name);
   const columnExpression = `${column}\\s*(?:${temporalCastPattern()})?`;
-  const parameter = (index: number) => `\\$${index}(?!\\d)(?:::[A-Za-z_][A-Za-z0-9_.]*)?`;
-  const start = parameter(input.start_parameter);
-  const end = parameter(input.end_parameter);
+  const start = temporalParameterExpression(input.start_parameter);
+  const end = temporalParameterExpression(input.end_parameter);
   const lowerBound = new RegExp(
     `(?:${columnExpression}\\s*>=\\s*${start}|${start}\\s*<=\\s*${columnExpression})`,
     "iu",
@@ -502,6 +507,7 @@ export const postgresqlQueryEvidenceSemanticBindingInternals = Object.freeze({
   logicalTypeForPhysicalType,
   hasExplicitTemporalSourceCast,
   hasTemporalBucketForSource,
+  temporalParameterExpression,
   physicalSourceIdentity,
   selectedSemanticObjects,
   validTimeValue,

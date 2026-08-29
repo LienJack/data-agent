@@ -556,6 +556,33 @@ describe("PostgreSQL QueryEvidence semantic binding", () => {
     });
   });
 
+  it("binds canonical deparsed temporal parameter casts to the half-open window", async () => {
+    const input = await fixture("text");
+    const binding = await buildPostgresqlQueryEvidenceSemanticBinding({
+      ...input,
+      candidate: {
+        ...input.candidate,
+        sql: "SELECT date_trunc($3, o.order_date::timestamp) AS order_month, sum(o.amount) AS revenue FROM public.orders AS o WHERE o.order_date::timestamp >= CAST($1 AS timestamp) AND o.order_date::timestamp < CAST($2 AS timestamp) GROUP BY date_trunc($3, o.order_date::timestamp) ORDER BY order_month",
+        parameters: [...input.candidate.parameters, "month"],
+        result_columns: input.candidate.result_columns.map((column, index) =>
+          index === 0 ? { ...column, semantic_type: "DATETIME" as const } : column,
+        ),
+      },
+      result: await queryResult([
+        { name: "order_month", type: "1114" },
+        { name: "revenue", type: "1700" },
+      ]),
+    });
+
+    expect(binding.time_window).toEqual({
+      dimension_id: "dimension.order_month",
+      start: "2026-01-01",
+      end: "2026-03-01",
+      semantics: "HALF_OPEN",
+      timezone: "Asia/Shanghai",
+    });
+  });
+
   it("rejects date-to-datetime widening without a governed temporal bucket", async () => {
     const input = await fixture("text");
 
