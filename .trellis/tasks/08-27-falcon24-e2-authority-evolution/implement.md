@@ -1016,3 +1016,53 @@ receipt persistence 本身需要新的 frozen-closure 修复，本任务不满�
 - [ ] 唯一E8 diagnostic PASS并通过答案入口Trace UI、五类Artifact与residual=0。
 - [ ] E8-Q1 16/16后E8-C1 30/30；任一首败immutable HOLD并停止。
 - [ ] canonical final audit、production false/HOLD、服务/credential/sandbox/scratch清理、Trellis验证和最终scoped commit。
+
+## 21. E9 execution packages
+
+### E9-W0 — Freeze E8 and prove the resolver mismatch
+
+- [x] 保存 exact E8 diagnostic FAIL receipt；确认 Q1/C1=0，禁止 retry/resume 同 Run。
+- [x] 在 exact backend capability 下证明 public profile=`AVAILABLE/selectable=true`。
+- [x] 证明 certification Run/Artifact 均为 E7，而 generic current Artifact resolver 要求 E8，因此 production
+  `resolveAvailableProfile` 返回 null；排除 credential/provider dispatch 与 semantic projection 问题。
+- [x] 更新 PRD/design/implement，明确 dedicated current-profile authority、v6 atomic activation、崩溃恢复和测试矩阵。
+
+### E9-W1 — Contracts and dedicated resolver
+
+- [ ] 增加 request/result@6 与 predecessor terminal diagnostic receipt strict contract、builder/verifier/negative tests。
+- [ ] 增加 backend-only current provider certification resolver command/result；server 重算 ref/hash/claims，client 不传 payload/digest。
+- [ ] Worker production dispatcher 只用 dedicated resolver 授权 current profile；generic Artifact resolver 保持不变并有回归测试。
+- [ ] 运行 Contracts/Platform/Worker focused tests、typecheck/lint，scoped commit。
+
+### E9-W2 — 10801 and activation authority
+
+- [ ] 新增 10801 source fragments 与 rendered SQL，不修改 10800；演进唯一 activation RPC并新增窄 certification resolver。
+- [ ] fresh PostgreSQL 17、exact E8 populated clone、RLS/grants、idempotent replay、failure injection、双连接 all-old/all-new。
+- [ ] canonical table hash证明 E1-E8、gen1/gen2、E8 failed Run/receipt bytes不变；renderer/registry/inventory PASS。
+- [ ] scoped commit；应用权威库前再次核对 frontier/checksum/protected history。
+
+### E9-W3 — Finalizer and clean build
+
+- [ ] Finalizer E9+ 加载 terminal predecessor diagnostic receipt与fresh stage，构造 request@6；不再误用 E8 closure-failure receipt路径。
+- [ ] post-commit readback同时核对 E9 current、gen2 pointer/runtime/defaults、public AVAILABLE与 dedicated claims resolution。
+- [ ] focused Web/Platform tests、release build integrity、clean web/worker build identity/attestation；scoped commit。
+
+### E9-W4 — Live certification and atomic activation
+
+- [ ] 权威库应用10801并证明 protected history hash不变。
+- [ ] 轮换/解析受控 DeepSeek credential，一次 live E9 certification；E8下 stage不可见。
+- [ ] 一次 Finalizer/request@6原子激活E9；核对 E8 FAIL不变、E9 stage PROMOTED、profile/claims resolver PASS、gen2 unchanged。
+
+### E9-W5 — Formal diagnostic
+
+- [ ] 新建唯一 E9 diagnostic attempt，通过真实 composer提交固定业务问题。
+- [ ] exact answer-entry Trace UI证明动态 Root Tool Loop与 Semantic/Text2SQL/SQL/QueryEvidence/Arrow/Python/Report/Chart 全链，
+  无 BLOCKED/error banner，residual=0。
+- [ ] PASS receipt append-only；若首败，先写 immutable FAIL/HOLD且不 retry，再按内部 frozen closure前进 E10+。
+
+### E9-W6-W7 — Q1, C1 and final audit
+
+- [ ] E9-Q1 16/16；只在同 baseline winning Q1后运行 E9-C1 30/30。
+- [ ] 任一 formal slot首败只写 HOLD，不 resume/跨 attempt拼证据；内部 closure修复走 successor Epoch。
+- [ ] canonical final audit、exact Run Trace UI/evidence index、production false/HOLD、credential/service/browser/sandbox/scratch清理。
+- [ ] Trellis验证、最后 scoped commit；只有全部 acceptance evidence闭合后标记 goal complete。

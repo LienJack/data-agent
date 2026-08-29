@@ -397,3 +397,56 @@ E7 已在一次 request@4 中原子激活：E6 orphan diagnostic 现为 immutabl
 - [x] **AC-E8-02** PostgreSQL 17 fresh/exact E7 upgrade证明迁移前后 E7公开输出相同；all-old/all-new、RLS、replay和双连接并发通过。
 - [ ] **AC-E8-03** exact E8 build真实 certification在 E7不可见；一次request@5后 current E8且exact profile AVAILABLE，gen2/defaults不变。
 - [ ] **AC-E8-04** 唯一 E8 diagnostic PASS，随后 E8-Q1 16/16、E8-C1 30/30；正式首败立即 immutable HOLD并停止。
+
+## 16. E9 current-profile certification authority amendment
+
+E8 已按 request@5 原子激活，公开 `list_provider_execution_profiles()` 在 exact Worker capability 下把目标
+profile 投影为 `AVAILABLE/selectable=true`。唯一正式 E8 diagnostic attempt
+`8e000000-0000-5000-8000-000000000101` / Run
+`f816b823-716d-8648-8b13-f320b76ca6a3` 仍在 Provider 网络调用前以
+`PROVIDER_TRANSPORT_PROFILE_NOT_AVAILABLE` 终止，并已写入 immutable FAIL receipt
+`sha256:27a2458e45986c41f9d1d7e3109fa140885594d59afe0c75285fccc957459747`。E8-Q1/E8-C1 均为零。
+
+只读数据库与源码闭包证明：公开 reader 返回的 certification ref 属于 E7 certification Run/Artifact；生产
+`resolveAvailableProfile` 随后却通过通用 `ArtifactRepository.resolveArtifact/verifyCommitted` 解析该 ref。通用
+resolver 正确要求 Artifact 的 Run、baseline 与 activation 等于 current E8，因此返回 `null`。问题不是 profile
+不可见，也不是 credential/provider 外部失败，而是“current profile authority”错误复用了“current Run Artifact
+authority”。不得放宽通用 Artifact Epoch 隔离，也不得重写 E7/E8 receipt。
+
+### 16.1 Requirements
+
+- **R-E9-01 Immutable E8 failure.** 保留 E8 Run/event/attempt/diagnostic receipt 原字节；不 retry/resume 同一 Run，
+  不在 E8 内替换 Worker 或数据库函数。E9 activation 必须绑定该 exact terminal receipt、E8 current binding 与
+  generation 2 closure。
+- **R-E9-02 Dedicated current-profile resolver.** 演进唯一 Provider execution authority，新增 backend-only
+  PostgreSQL resolver。它只在 certification ref 同时绑定 current epoch 的 `PROMOTED` LLM stage、current
+  activation、exact profile/config/execution hash 与 immutable Artifact 时返回 claims。Worker production dispatcher
+  使用该专用 resolver；通用 Artifact resolver 继续拒绝跨 Epoch Artifact。
+- **R-E9-03 Fresh E9 certification.** clean E9 build 必须重新运行真实 credential certification，生成 target E9、
+  inactive、build-bound stage。E8 runtime 不得看见 E9 candidate；E9 激活后公开 profile 与专用 certification
+  resolver 必须同时闭合为同一 ref/hash。
+- **R-E9-04 Request/result v6.** request@6 绑定 exact E8 diagnostic receipt（attempt/run/manifest/receipt hash/
+  failure class/code）、E9 stage、current E8、retained gen2 与 expected versions。result@6 返回 exact predecessor
+  diagnostic receipt、promoted certification 与 E9 authority；v2-v5 仅保留历史 replay。
+- **R-E9-05 Atomic successor switch.** 10801 继续演进同一个 `activate_falcon24_authority(jsonb)`。单事务按
+  semantic fence -> Falcon activation advisory -> diagnostic advisory -> current -> semantic/runtime/defaults ->
+  predecessor diagnostic receipt -> E9 stage/artifact -> target baseline 的顺序锁定并重验。失败只观察 E8/STAGED/
+  inactive；成功只观察 E9/PROMOTED/active，且 gen2/defaults 不变。
+- **R-E9-06 Dynamic Tool Loop unchanged.** 修复只改变 Provider authority 解析边界；Root 仍逐轮决定当前 Tool Call，
+  Host 不声明业务 DAG，不增加 fixed/keyword route 或 Direct-QA fallback。
+- **R-E9-07 Unattended forward recovery.** 每个 formal diagnostic/Q1/C1 attempt 仍是 one-shot，失败必须先写
+  immutable FAIL/HOLD，禁止 retry/resume/拼接；若修复属于内部 frozen closure，则自动进入 E(n+1)，不等待逐 Epoch
+  审批。只有受保护历史修改、生产/外部发布、不可恢复广泛删除或本地无法安全取得的外部 credential 才停止。
+
+### 16.2 Acceptance
+
+- [ ] **AC-E9-01** 单元/集成负例证明 generic Artifact resolver 仍拒绝 E7 receipt under E9，而 dedicated current-profile
+  resolver 只接受 current PROMOTED stage 的 exact ref/hash/claims；staged、旧 stage、换绑 ref 或越权均失败关闭。
+- [ ] **AC-E9-02** 10801 PostgreSQL 17 fresh + exact E8 populated upgrade、RLS/grants、rollback、replay、failure
+  injection 与双连接 concurrency PASS；E1-E8、gen1/gen2、E8 failed Run/receipt bytes 无漂移。
+- [ ] **AC-E9-03** 一次 live E9 certification + request@6 后 current=E9、stage=PROMOTED、public profile=AVAILABLE，
+  Worker 专用 resolver readback PASS，semantic pointer/runtime/defaults 仍 exact gen2。
+- [ ] **AC-E9-04** 新 E9 diagnostic 通过真实 composer 与答案入口 Trace UI，完整证明 Semantic -> Text2SQL -> SQL ->
+  QueryEvidence -> typed Arrow -> Python -> AnalysisReport -> Chart，residual=0。
+- [ ] **AC-E9-05** E9-Q1=16/16、E9-C1=30/30；最终审计保留真实
+  `production_isolation_proven=false / production_gate=HOLD`，并清理轮换 credential、临时服务、浏览器和沙箱容器。

@@ -1015,3 +1015,91 @@ public reader的E8分支只接受 target=current、status=PROMOTED、stage activ
 
 测试覆盖strict schema/hash domain、receipt server recomputation、E7 behavior byte equality、E8 alias修正、RLS/grants、artifact immutability、
 failure injection、双连接concurrency、v2-v4历史兼容、fresh/exact E7 upgrade，以及post-readback semantic/defaults canonical equality。
+
+## 21. E9 dedicated current-profile certification resolution
+
+### 21.1 Proven boundary mismatch
+
+E8 production capability transaction 返回的 profile 是 exact `AVAILABLE`，但其 certification ref 指向 E7：
+
+```text
+current Falcon: E8 / c988e145-5914-5255-80c0-087256835f26
+profile: 0e9a602e-4af0-5d69-a227-3906a703d28b / config 2 / AVAILABLE
+certification Run: ad93b6e9-5545-55b2-bba3-f46cd0927116 / E7
+certification Artifact: 1dfdece2-4c8c-4a40-b670-3e751a3d36a5 / E7
+execution profile hash: sha256:998dbe7f3020fada0a741b612ae7a8648eca48968f8940cdfff70152af7b7965
+```
+
+`createPostgresModelCertificationReceiptStore.resolve/verify` 委托通用 Repository；该 Repository 的 current-authority
+join 要求 `run.authority_epoch=current` 且 Artifact baseline/activation 与 current 相同。因此 E7 receipt 在 E8 返回
+`null/false`。公开 list 与 transport resolver 使用了不同的 authority predicate，形成读后不可执行裂缝。
+
+### 21.2 Authority split
+
+保留通用 Artifact resolver 的 current-Epoch约束。新增窄 RPC：
+
+```text
+app_data_agent.resolve_current_provider_execution_certification(jsonb) -> jsonb
+```
+
+命令只带 `schema_version + model_profile_id + model_config_version + certification_receipt_ref`。数据库从当前 capability
+重新解析 current epoch、current activation、唯一 `PROMOTED` stage 与 immutable Artifact；重算 ref、content hash、
+execution profile hash、profile/config/provider/model/deployment 闭包后才返回 certification claims。它不接受任意 Artifact
+ID，不返回 credential/URL/header，也不授予通用历史 Artifact 读取能力。
+
+Worker 数据流改为：
+
+```text
+list_provider_execution_profiles
+  -> exact AVAILABLE technical projection
+  -> resolve_current_provider_execution_certification(exact ref)
+  -> verifyModelExecutionCertificationClaims
+  -> authorizeAvailableExecutionModelProfile
+  -> transport authorization
+```
+
+list、claims resolver 与 transport envelope 必须三重核对同一 profile/config/ref/execution hash。任一步失败只返回稳定
+authority reason，不做 provider dispatch。
+
+### 21.3 E9 activation v6
+
+10801 把当前 activation function 重命名为 `activate_falcon24_authority_pre_e9`，新 wrapper 对 v2-v5 原样委托；v6
+只允许 canonical successor E(n+1)，并绑定已终结的 predecessor diagnostic receipt：
+
+```text
+falcon24-activation-request@6.0.0
+  retained v3 fields
+  predecessor_diagnostic_receipt:
+    attempt_id/run_id/manifest_hash/receipt_hash
+    failure_class/failure_code
+  llm_execution_stage_ref
+```
+
+数据库验证 diagnostic=`FAILED`、Run=`FAILED`、receipt=`FAIL`、terminal hash 与 command exact，且 failure class 为
+`FROZEN_CLOSURE_CHANGE_REQUIRED`。随后推广 fresh E9 certification candidate，并调用 frozen retained v3 core 完成
+baseline/session/current 切换。E8 diagnostic 已有 receipt，因此 v6 不再次调用 completion authority。
+
+### 21.4 State and crash windows
+
+| Window | Observable state | Recovery |
+|---|---|---|
+| E9 live smoke 前失败 | current E8，无 E9 stage | 修复外部 credential 后重新 preparation；不触碰 E8 formal Run |
+| E9 stage commit 后崩溃 | E8 + STAGED/inactive | 同 key load/replay；public/dedicated resolver 均不可见 |
+| baseline/activation staging HOLD | E8 + immutable target HOLD | 新 staging/attempt；旧 target 不复用 |
+| request@6 任一步失败 | E8 + STAGED/inactive | 整事务回滚，target attempt HOLD；修复 frozen closure 时前进新 Epoch |
+| request@6 commit | E9 + PROMOTED/active + dedicated resolver PASS | 不回退；下一 frozen change 前进 E10 |
+| formal attempt failure | immutable FAIL/HOLD | 不 retry；内部 closure 缺陷以前向 Epoch继续 |
+
+### 21.5 Files and tests
+
+- Contracts：`packages/contracts/src/runs/authority-epoch.ts` v6 request/result 与 negative matrix。
+- Platform：`packages/platform/src/runs/postgres-authority-epoch.ts` v6 adapter；Provider current-certification resolver port/adapter。
+- Worker：`apps/worker/src/providers/production-run-bound-provider-dispatcher.ts` 改用专用 resolver；测试证明 generic resolver
+  不再参与 production profile authorization。
+- Web：retained finalization/CLI 对 E9+ 使用 terminal diagnostic receipt recovery，post-activation 同时核对 public profile 与
+  dedicated resolver。
+- Database：10801 source/rendered/registry；fresh、exact E8 upgrade、history hash、RLS/grants、rollback/replay/concurrency。
+- Docs：Falcon runbook、Trellis PRD/design/implement 和 evidence index。
+
+负例至少覆盖：wrong current/stage/status/activation、wrong profile/config/ref/hash、inactive artifact、claims tamper、cross-scope/
+principal、v6 old/non-terminal diagnostic、failure hash drift、E9 stage/build mismatch、partial promotion 与 generic Artifact access widening。
