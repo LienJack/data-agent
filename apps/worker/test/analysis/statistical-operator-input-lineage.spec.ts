@@ -191,6 +191,59 @@ describe("statistical operator input lineage", () => {
     });
   });
 
+  it("preserves DateDay identity when recomputing a single-series trend input", () => {
+    const trendObligation = {
+      call_id: "single_series_theil_sen",
+      operator_id: "robust-trend.theil-sen-slope@1",
+      input_lineage_bindings: [
+        {
+          lineage_kind: "SERVER_TRANSFORM_EXACT",
+          operator_input_name: "series",
+          governed_input_name: "query_evidence",
+          transform_id: "analysis.single-series.theil-sen.v1",
+        },
+      ],
+      result_binding: {
+        result_output_name: "result",
+        result_collection_path: "/theil_sen/series",
+        operator_collection_path: "/series",
+        label_fields: ["label"],
+        value_bindings: [
+          {
+            result_field: "slope",
+            operator_field: "slope",
+            comparison: "EXACT",
+            absolute_tolerance: 0,
+            relative_tolerance: 0,
+          },
+        ],
+        require_exact_label_set: true,
+      },
+    } as const satisfies StatisticalOperatorObligation;
+    const trendTable = new Table({
+      order_month: vectorFromArray(
+        [new Date("2024-01-01T00:00:00.000Z"), new Date("2024-02-01T00:00:00.000Z")],
+        new DateDay(),
+      ),
+      order_revenue: vectorFromArray([100, 125], new Float64()),
+    });
+    const governed = {
+      name: "query_evidence",
+      format: "ARROW",
+      content: tableToIPC(trendTable, "file"),
+    } as GovernedAnalysisInput;
+
+    expect(
+      verifyStatisticalOperatorInputLineage({
+        obligation: trendObligation,
+        inputs: {
+          series: [{ label: "order_revenue", x: [0, 1], y: [100, 125] }],
+        },
+        governed_inputs: [governed],
+      }),
+    ).toBeNull();
+  });
+
   it("projects an exact protected operator result and fails closed when it is unavailable", () => {
     const bhObligation = {
       call_id: "q3_bh_all_products",
