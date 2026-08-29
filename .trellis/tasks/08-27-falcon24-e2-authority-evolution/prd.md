@@ -548,3 +548,25 @@ child `task_id`，所以跨 Root turn 的合法新 Tool Call 与旧 Tool Call �
   和 residual=0；随后 E11-Q1=16/16、E11-C1=30/30。
 - [ ] **AC-E11-05** 最终审计保留真实 `production_isolation_proven=false / production_gate=HOLD`，停止本任务服务，
   删除瞬态 credential/sandbox/scratch资源，仅保留既有四个长期容器和 rejected-repair审计 stash。
+
+## 19. E11 Terminal Closure requirement（覆盖 18.1-18.2 的前向恢复条款）
+
+- **R-E11-T01 Terminal scope.** E11是本任务最后一个允许的 Epoch；禁止 E12+、新 migration/RPC/架构阶段和历史回写。
+  Owning-code closure冻结在 `8cefa61a`，E1-E10、gen1/gen2及全部历史证据不可变。
+- **R-E11-T02 Gated sequence.** 唯一顺序为 Scratch Preflight -> 单次 Scratch Vertical Canary -> live E11单次 stage/activation
+  -> 单次 Diagnostic -> Q1 16/16 -> C1 30/30 -> audit/cleanup。上一阶段 exact PASS 是下一阶段 admission条件。
+- **R-E11-T03 Dynamic evidence.** Canary与Diagnostic都必须从 authenticated composer进入，在同一 Run证明 Root读取结构化
+  ToolResult后动态闭合 Semantic、Text2SQL、governed SQL、QueryEvidence、typed Arrow及适用的Analysis/Chart，并从答案入口打开
+  exact可用 Trace UI。Direct QA、固定SQL、关键词路由、业务DAG、API-only、直接Trace URL和BLOCKED渲染全部失败关闭。
+- **R-E11-T04 Exhausted repair budget.** `faa7e2b1`和`8cefa61a`已消费两次局部产品修复；终局方案提交后不得再修改产品代码。
+  同 HEAD/同输入的构建或进程抖动每步最多同构重试2次；第三种产品缺陷、migration、E12、外部 credential或新架构需求直接HOLD。
+- **R-E11-T05 Formal first-failure stop.** Diagnostic/Q1/C1任一首次失败保存 immutable FAIL/HOLD，禁止retry/resume/拼证据，
+  直接审计清理并提交handoff。终态只有 COMPLETE或HOLD。
+
+### 19.1 Terminal acceptance
+
+- [ ] **AC-E11-T01** Scratch clone在clean attestation/fresh certification/request@6后all-new，RLS/replay/history-zero-drift PASS。
+- [ ] **AC-E11-T02** 单次 Scratch Canary满足同Run动态链、typed evidence、答案入口exact Trace UI与residual=0。
+- [ ] **AC-E11-T03** 仅在scratch PASS后，live E11 activation、唯一Diagnostic、Q1 16/16、C1 30/30全部PASS。
+- [ ] **AC-E11-T04** canonical audit、真实production isolation、资源清理、spec/Trellis验证、scoped commit和clean worktree PASS；
+  否则以完整handoff进入HOLD并明确任务未完成。

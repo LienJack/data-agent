@@ -1231,3 +1231,37 @@ E10 current + immutable diagnostic FAIL
 
 测试矩阵必须覆盖同 task replay、跨 task相同 stage、repair index、跨 Run、safe code fallback、E11 request@6 proof splice、
 同时提供/完全缺少 predecessor evidence、E10 v7 regression、v2 readback mismatch、scratch canary和正式 Trace UI。
+
+## 24. E11 Terminal Closure design override
+
+本节覆盖 23.4 中“E11 formal failure进入 E12+”的恢复动作。E11之后无 successor；状态机只允许
+`FREEZE -> SCRATCH_PREFLIGHT -> SCRATCH_CANARY -> LIVE_STAGE -> LIVE_ACTIVATE -> DIAGNOSTIC -> Q1 -> C1 -> AUDIT -> COMPLETE`
+或从任一步进入 `HOLD -> AUDIT`。禁止跳边、回边、重试正式节点或另建业务路径。
+
+### 24.1 Authority and identity fences
+
+- owning-code commit固定 `8cefa61a`；文档证据提交与运行 attestation分别记录，不得借文档提交吸收产品代码变更。
+- Scratch和live都复用现有 request@6、v2 resolver、`activate_falcon24_authority(jsonb)`及固定锁序；没有新schema/RPC。
+- certification stage、candidate baseline/release、Web/Worker identity与attestation必须四方exact。identity mismatch在事务前失败关闭；
+  只读证明确认为同HEAD stale preflight输入时才可用新幂等key重建stage，不能UPDATE旧stage。
+- Scratch Canary和Formal节点使用不同authority域；dev Run永远不能成为Diagnostic/Q1/C1 prerequisite。
+
+### 24.2 Runtime and evidence fence
+
+Root每轮只决定当前Tool Call。Subagent ToolResult以结构化观察返回Root；下一轮只能通过普通`input_artifact_refs`引用已验收
+Artifact。Host只校验当前call，不预排业务DAG。`SemanticQueryContext -> SqlArtifact -> QueryEvidence -> typed Arrow ->
+AnalysisReport/Chart`的每条边必须同Run、同release/datasource/schema、accepted-before-consume。Trace只允许从exact答案入口进入。
+
+### 24.3 Terminal failure matrix
+
+| Failure | Durable evidence | Terminal action |
+|---|---|---|
+| stale stage/build identity | old stage保持inactive；新key同HEAD重建最多2次 | 再次mismatch则HOLD |
+| third product defect/code change required | 当前Run/command/error摘要 | HOLD，无E12/修复 |
+| scratch canary FAIL/crash after submit | 唯一Run、event/artifact/error | HOLD，不重新提交 |
+| live activation rollback/readback mismatch | all-old或严重postcondition evidence | HOLD，不补偿DML |
+| Diagnostic/Q1/C1首次FAIL | immutable FAIL/HOLD receipt | HOLD，不retry/resume |
+| audit/history drift | hash/row/byte diff | HOLD，禁止改历史 |
+
+两种终态都执行凭据、浏览器、Web/Worker、OpenSandbox、scratch container/volume清理；COMPLETE还必须有Diagnostic、16/16、30/30
+和residual=0，任何缺项都只能HOLD并提交可接手handoff。

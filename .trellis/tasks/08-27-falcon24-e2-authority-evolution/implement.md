@@ -1169,3 +1169,139 @@ authority adapter 1 file / 16 tests、Web typecheck和production build PASS；Tu
 - [ ] canonical audit generation1/E1-E3、gen2/E4-E11、各失败receipt、唯一winning diagnostic/Q1/C1与Trace UI receipts；protected bytes零漂移。
 - [ ] production isolation保持真实 false/HOLD；停止服务、关闭浏览器、删除轮换credential temp、sandbox/container/scratch DB。
 - [ ] audit stash保持原样；Trellis check/spec update/validate与最终scoped commit；全部AC闭合后才完成goal。
+
+## 24. E11 Terminal Closure（终局执行方案，覆盖第 23 节未完成步骤）
+
+> 生效时间：2026-08-29。此节覆盖第 23 节中“失败后进入 E12+”以及任何无限前向恢复表述。只允许
+> `COMPLETE` 或 `HOLD` 两种终态；不得以“继续调查”结束。
+
+### 24.1 Freeze 与唯一状态机
+
+- E1-E10、generation 1/generation 2、全部 FAIL、receipt、Run、gate 与 Artifact 字节不可变；审计 stash
+  `audit/rejected-generation1-repair-2026-08-28` 原样保留。
+- E11 owning-code closure 冻结在 `8cefa61a18d60d37bba425fe4006cd1456c30411`。本节文档提交可以前进 Git HEAD，
+  但不得改变该提交后的应用、合同、迁移或测试代码；后续 attestation 必须记录实际 clean Git HEAD，并同时记录 owning-code commit。
+- 禁止 E12+、新 migration、新 authority epoch、新 RPC/架构阶段、Direct QA、固定 SQL、关键词路由、业务 DAG、跳过 UI、
+  跳过 authority gate、手工 DML 修权威数据或回写历史。
+
+```text
+FREEZE
+  -> SCRATCH_PREFLIGHT
+  -> SCRATCH_CANARY
+  -> LIVE_STAGE
+  -> LIVE_ACTIVATE
+  -> FORMAL_DIAGNOSTIC
+  -> Q1_16_OF_16
+  -> C1_30_OF_30
+  -> AUDIT_CLEANUP
+  -> COMPLETE
+
+任一步确定性失败 -> immutable evidence（若该 authority 已存在）+ handoff -> AUDIT_CLEANUP -> HOLD
+```
+
+进入下一状态的唯一输入是上一状态的 exact PASS 证据。`SCRATCH_CANARY` 前不得触碰权威库 E11；scratch 未 PASS 不得
+stage live candidate。Formal Diagnostic、每个 Q1 slot、每个 C1 slot 都是 one-shot；第一次 FAIL 后不 retry、resume、跨 attempt
+拼证据或创建后继 Epoch。
+
+### 24.2 Scratch Preflight
+
+输入：
+
+- exact E10 physical clone；current baseline `da72a26e-c23b-5abf-af32-6393a1495a73`；E10 diagnostic attempt
+  `e1000000-0000-5000-8000-00000000d110` 与 Run `b25484bb-8f9d-870d-bc5c-96212971e83e`；
+- retained gen2 release `18472091-59b1-5d86-b399-9605ca627040`；
+- frozen owning-code commit `8cefa61a`，以及本终局方案的 scoped docs commit。
+
+按顺序执行并保存命令、退出码和摘要：
+
+```bash
+pnpm vitest run <E11-owned focused suites>
+pnpm --filter @data-agent/contracts typecheck
+pnpm --filter @data-agent/platform typecheck
+pnpm --filter @data-agent/worker typecheck
+pnpm --filter @data-agent/web typecheck
+pnpm turbo run build --force --filter=@data-agent/web... --filter=@data-agent/worker...
+python3 ./.trellis/scripts/task.py validate .trellis/tasks/08-27-falcon24-e2-authority-evolution
+git diff --check
+```
+
+使用既有 release identity 工具生成 clean attestation；必须证明 `git_dirty=false`、exact Git commit、Web/Worker build ID 和同一
+generation ID。随后只用既有 E11 certification CLI 创建 fresh request@6 stage（STAGED/inactive），并用既有 Finalizer 在 clone 内
+原子激活。验证：
+
+- activation rollback 只能观察 all-old，commit 后只能观察 all-new；replay 为同结果或 stable conflict；
+- RLS/grants拒绝越权；E10 reader看不到 inactive candidate；
+- E1-E10、gen1/gen2、E10 FAIL receipt 的 canonical row count/hash/bytes 与 clone 前快照相同；
+- activation readback 的 Web/Worker/generation identity 与 fresh stage、attestation完全一致。
+
+本节落盘前的一次 scratch Finalizer 已返回
+`FALCON24_AUTHORITY_RELEASE_BUILD_IDENTITY_MISMATCH`，没有激活 E11、没有提交 canary、没有触碰权威库。执行阶段先以只读
+readback比较 attestation、fresh certification stage、candidate release/baseline三方 identity；只有证明属于同 HEAD/同输入的
+stale stage或进程抖动，才可按同构 preflight重新生成 fresh stage。若需要代码、迁移、历史修改或第三种产品修复，直接 HOLD。
+
+### 24.3 Repair 与 retry 预算
+
+scratch 已消费两次不同的局部产品修复预算：
+
+1. `faa7e2b1`：禁止 `to_char` 时间分桶并引导 typed `date_trunc`；
+2. `8cefa61a`：为 text-backed time column增加受策略允许的显式时间类型转换。
+
+因此从本终局方案提交后起，产品代码修复预算为 **0**。只允许同 HEAD、同配置、同业务输入的构建/进程抖动同构重试，单一步骤
+最多 2 次；认证 stage 必须使用新的幂等 identity，旧 STAGED/inactive历史保留。identity mismatch只有在只读证据证明是 stale
+preflight输入时才能重建；若是代码/合同缺陷则直接 HOLD。任何 external credential无法本地安全轮换、新架构、新 migration、E12+
+需求或第三个不同产品缺陷均直接 HOLD。
+
+### 24.4 Scratch Vertical Canary
+
+仅在 preflight 全 PASS 后启动 exact attested Web/Worker 与瞬态 OpenSandbox。通过 authenticated composer **只提交一次**：
+
+```text
+最近 12 个完整月的订单收入趋势如何？请按月展示，并生成折线图。
+```
+
+唯一 PASS 合同：同一 Run 内 Root 在收到结构化 Tool Result 后进入下一 Root turn，动态完成
+`Semantic -> Text2SQL -> governed SQL -> QueryEvidence -> typed Arrow`；结果形状适合该问题，故还必须产生同源
+`Python operator -> AnalysisReport -> Chart`。普通 `input_artifact_refs` 必须绑定上一轮 accepted Artifact；Host不能预声明后续链路。
+从该答案入口点击进入 exact Run Trace，页面必须可用并显示上述事件/Artifact lineage；API-only、直接 trace URL、BLOCKED页面、
+后端日志或跨 Run证据不通过。记录 Run ID、conversation/answer ref、event counts、artifact IDs/hashes、trace entry ref、residual=0。
+一次提交失败即 HOLD，不得第二次提交。
+
+### 24.5 Formal once
+
+只有 Scratch Canary 完整 PASS 才执行：
+
+1. 在权威库创建 fresh E11 STAGED/inactive certification；保存 request@6 exact input/output，证明 E10 reader不可见；
+2. 通过既有 RPC 原子激活一次；production-port readback核对 current E11、public AVAILABLE、exact build/certification、gen2/defaults
+   不变、E10 receipt不变、E11 formal counts为零；
+3. 从真实 composer提交唯一 E11 Diagnostic；从答案入口检查 exact Trace UI与 residual=0；
+4. Diagnostic PASS后严格串行 Q1：`G1=1, G2=5, G3=5, G4=5`，必须 16/16；
+5. winning Q1后严格串行 C1：5题 × COLD/WARM × 3，必须 30/30。
+
+Diagnostic/Q1/C1任一正式首次失败必须写既有 authority支持的 immutable FAIL/HOLD，并立即进入 cleanup；禁止 retry/resume、
+替换 Run、跨 attempt拼接、把 dev canary冒充 formal evidence或进入 E12。
+
+### 24.6 Crash windows 与恢复
+
+| 窗口 | 可观察状态 | 唯一动作 |
+|---|---|---|
+| build/test中断 | E10 current，scratch未变 | 同 HEAD/同输入最多重跑2次 |
+| certification事务回滚 | E10 + 无半 stage | 新幂等 identity重放同输入 |
+| certification commit后中断 | E10 + STAGED/inactive | exact load；不得改 payload |
+| scratch activation rollback | scratch E10 + inactive stage | 只读分类；同构抖动可重跑 |
+| scratch activation commit | scratch E11 all-new | readback后才启动 canary |
+| canary进行中进程崩溃 | 单次 Run/提交事实可能已存在 | 不重新提交；以持久化 Run判 PASS或HOLD |
+| live activation rollback | live E10 all-old | 不补偿DML；进入HOLD |
+| live activation commit | live E11 all-new | readback；只创建唯一Diagnostic |
+| formal首败 | immutable FAIL/HOLD | cleanup + handoff，任务未完成 |
+
+### 24.7 Evidence、commit boundaries 与终态
+
+- `TC0`：本终局方案只拥有 PRD/design/implement；Trellis validate、Markdown/diff check后 scoped commit。
+- `TC1`：若仅需 fresh stage/同构操作，不产生代码 commit；运行证据写回本节/PRD/design/spec后单独 scoped commit。
+- 产品代码不再允许修改。不得把并行/生成文件、attestation、credential或 runtime log纳入 Git。
+- `COMPLETE` 必须同时证明 exact Run receipts、Artifact lineage、Root/Semantic/Text2SQL/Analysis/Chart事件、residual=0、protected
+  history零漂移、真实 `production_isolation_proven` 值、Diagnostic PASS、Q1 16/16、C1 30/30。
+- `HOLD` handoff必须包含唯一 blocker、最小复现命令、Run/attempt/reason code、已通过门禁、禁止捷径、下一步唯一动作，并明确
+  原任务未完成；不使用“继续调查”作为第三种状态。
+- 两种终态都必须停止本任务 Web/Worker/browser/OpenSandbox，删除 scratch container/volume与临时 credential，只保留既定长期
+  容器，核对 audit stash，更新 Trellis/spec、focused validation、scoped commit并确保 worktree clean。
