@@ -10,7 +10,10 @@ import {
 } from "@data-agent/contracts";
 import { describe, expect, it, vi } from "vitest";
 import type { AnalysisArtifactCommitPort } from "../../src/analysis/executor.js";
-import { createGovernedAnalysisRuntime } from "../../src/analysis/governed-analysis-runtime.js";
+import {
+  createGovernedAnalysisRuntime,
+  projectStagedAnalysisChart,
+} from "../../src/analysis/governed-analysis-runtime.js";
 import type { RunProviderDispatchCapability } from "../../src/runs/run-execution-context.js";
 
 const id = (suffix: number) => `96800000-0000-4000-8000-${String(suffix).padStart(12, "0")}`;
@@ -448,6 +451,69 @@ async function harness(input?: { readonly omitOracle?: boolean }) {
 }
 
 describe("generic governed analysis runtime", () => {
+  it("projects the full semantic column contract emitted by Result Publisher", () => {
+    const content = new TextEncoder().encode(
+      JSON.stringify({
+        schema_version: "analysis-published-chart@1.0.0",
+        chart_id: "monthly-revenue-chart",
+        title_zh: "月度收入趋势",
+        intent: "TREND",
+        template_id: "line.multi-series@1",
+        bindings: {
+          x_field: "month",
+          y_fields: ["revenue"],
+          series_field: null,
+          lower_bound_field: null,
+          upper_bound_field: null,
+        },
+        dataset: {
+          table_id: "monthly-revenue",
+          columns: [
+            {
+              key: "month",
+              label_zh: "月份",
+              data_type: "STRING",
+              nullable: false,
+              semantic_object_id: "dimension.month",
+              semantic_role: "DIMENSION",
+            },
+            {
+              key: "revenue",
+              label_zh: "收入",
+              data_type: "NUMBER",
+              nullable: false,
+              semantic_object_id: "metric.revenue",
+              semantic_role: "METRIC",
+            },
+          ],
+          rows: [{ month: "2024-01-01", revenue: 42 }],
+          total_rows: 1,
+        },
+      }),
+    );
+
+    expect(
+      projectStagedAnalysisChart({
+        artifact_name: "chart:monthly-revenue-chart",
+        artifact_kind: "CHART",
+        media_type: "application/json",
+        content,
+        content_sha256: hash("f"),
+        bytes: content.byteLength,
+      }),
+    ).toMatchObject({
+      chart_id: "monthly-revenue-chart",
+      projection: {
+        table: {
+          columns: [
+            { key: "month", label: "月份", data_type: "STRING" },
+            { key: "revenue", label: "收入", data_type: "NUMBER" },
+          ],
+        },
+      },
+    });
+  });
+
   it("plans from exact semantic authority without exposing rows or benchmark routing", async () => {
     const test = await harness();
     const result = await test.runtime.analyze(test.command);

@@ -550,6 +550,8 @@ const publishedChartSchema = z.strictObject({
             "TIMESTAMP",
           ]),
           nullable: z.boolean(),
+          semantic_object_id: z.string().regex(/^[A-Za-z][A-Za-z0-9._:-]{0,255}$/u),
+          semantic_role: z.enum(["METRIC", "DIMENSION", "DERIVED", "QUALITY"]),
         }),
       )
       .min(1)
