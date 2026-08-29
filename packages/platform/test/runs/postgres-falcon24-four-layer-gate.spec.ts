@@ -242,6 +242,90 @@ describe("PostgreSQL Falcon24 four-layer gate authority", () => {
     });
   });
 
+  it("records an observed empty Agent sequence as an immutable business failure", async () => {
+    const document = await manifest();
+    const frozen = document.turns[0];
+    if (!frozen) throw new Error("turn fixture missing");
+    const receipt = await buildFalcon24FourLayerBusinessReceipt({
+      schema_version: "falcon24-four-layer-business-receipt@1.0.0",
+      gate_id: document.gate_id,
+      attempt_id: document.attempt_id,
+      manifest_hash: document.manifest_hash,
+      turn_ordinal: 0,
+      turn_id: frozen.turn_id,
+      layer: frozen.layer,
+      scenario_id: frozen.scenario_id,
+      scenario_turn_index: 0,
+      conversation_id: ids.conversation,
+      conversation_resource_version: 3,
+      run_id: ids.run,
+      question_hash: frozen.question_hash,
+      worker_build_hash: document.worker_build_hash,
+      worker_generation_hash: document.worker_generation_hash,
+      semantic_release_hash: document.semantic_release_hash,
+      answer_hash: hash("5"),
+      public_event_hash: hash("6"),
+      actual_profile_ids: [],
+      accepted_artifact_refs: [],
+      rubric_results: frozen.rubric.required_checks.map((checkId) => ({
+        check_id: checkId,
+        status: "FAIL" as const,
+        evidence_hash: hash("7"),
+      })),
+      status: "FAIL",
+      failure_code: "AGENT_CONTRACT_MISMATCH",
+      evaluated_at: now,
+    });
+    const auth = authority();
+    const scripted = scriptedPool((text) =>
+      text.includes("record_falcon24_four_layer_business_receipt")
+        ? {
+            attempt: attempt(document, {
+              status: "FAILED",
+              attempt_version: 3,
+              first_failure_turn_ordinal: 0,
+              first_failure_run_id: ids.run,
+              first_failure_code: receipt.failure_code,
+            }),
+            turn: turn(document, {
+              status: "BUSINESS_FAILED",
+              turn_version: 3,
+              conversation_id: ids.conversation,
+              conversation_resource_version: 3,
+              run_id: ids.run,
+              business_receipt_hash: receipt.receipt_hash,
+              business_receipt: receipt,
+              claimed_at: now,
+            }),
+          }
+        : undefined,
+    );
+    const result = await createPostgresFalcon24FourLayerGateAuthority({
+      pool: scripted.pool,
+      authorizer: auth.authorizer,
+    }).recordBusiness(auth.capability, {
+      receipt,
+      expected_attempt_version: 2,
+      expected_turn_version: 2,
+    });
+
+    expect(result).toMatchObject({
+      ok: true,
+      value: {
+        attempt: { status: "FAILED", first_failure_code: "AGENT_CONTRACT_MISMATCH" },
+        turn: { status: "BUSINESS_FAILED", business_receipt: { actual_profile_ids: [] } },
+      },
+    });
+    expect(
+      scripted.calls.find(({ text }) =>
+        text.includes("record_falcon24_four_layer_business_receipt"),
+      )?.values?.[0],
+    ).toMatchObject({
+      schema_version: "falcon24-four-layer-business-record@1.0.0",
+      receipt: { status: "FAIL", actual_profile_ids: [] },
+    });
+  });
+
   it("records business, QA, Trace, and terminal receipts as separate commands", async () => {
     const document = await manifest();
     const frozen = document.turns[0];

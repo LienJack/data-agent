@@ -236,6 +236,68 @@ describe("Falcon24 four-layer gate contracts", () => {
     }
   });
 
+  it("preserves an observed Agent-contract failure without permitting a false PASS", async () => {
+    const document = await manifest();
+    const turn = document.turns[0];
+    if (!turn) throw new Error("turn fixture missing");
+    const common = {
+      schema_version: "falcon24-four-layer-business-receipt@1.0.0",
+      gate_id: document.gate_id,
+      attempt_id: document.attempt_id,
+      manifest_hash: document.manifest_hash,
+      turn_ordinal: turn.ordinal,
+      turn_id: turn.turn_id,
+      layer: turn.layer,
+      scenario_id: turn.scenario_id,
+      scenario_turn_index: turn.scenario_turn_index,
+      conversation_id: id(20),
+      conversation_resource_version: 1,
+      run_id: id(21),
+      question_hash: turn.question_hash,
+      worker_build_hash: document.worker_build_hash,
+      worker_generation_hash: document.worker_generation_hash,
+      semantic_release_hash: document.semantic_release_hash,
+      answer_hash: hash("5"),
+      public_event_hash: hash("6"),
+      actual_profile_ids: [],
+      accepted_artifact_refs: [],
+      rubric_results: turn.rubric.required_checks.map((checkId) => ({
+        check_id: checkId,
+        status: "FAIL" as const,
+        evidence_hash: hash("7"),
+      })),
+      evaluated_at: now,
+    } as const;
+    const failure = await buildFalcon24FourLayerBusinessReceipt({
+      ...common,
+      status: "FAIL",
+      failure_code: "AGENT_CONTRACT_MISMATCH",
+    });
+
+    await expect(
+      verifyFalcon24FourLayerTurnReceiptProgression({
+        manifest: document,
+        business_receipt: failure,
+      }),
+    ).resolves.toEqual({ business: failure, qa: null, trace: null, terminal: null });
+
+    const falsePass = await buildFalcon24FourLayerBusinessReceipt({
+      ...common,
+      rubric_results: common.rubric_results.map((result) => ({
+        ...result,
+        status: "PASS" as const,
+      })),
+      status: "PASS",
+      failure_code: null,
+    });
+    await expect(
+      verifyFalcon24FourLayerTurnReceiptProgression({
+        manifest: document,
+        business_receipt: falsePass,
+      }),
+    ).rejects.toThrow("FALCON24_FOUR_LAYER_AGENT_CONTRACT_MISMATCH");
+  });
+
   it("rejects cross-conversation attempt closure and hashes the exact 15-turn terminal set", async () => {
     const document = await manifest();
     const bindings = document.turns.map((turn, ordinal) => ({

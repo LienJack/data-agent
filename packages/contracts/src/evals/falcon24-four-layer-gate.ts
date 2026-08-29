@@ -692,7 +692,7 @@ const businessReceiptMaterialSchema = z
     ...receiptIdentitySchema.shape,
     answer_hash: contentHashSchema,
     public_event_hash: contentHashSchema,
-    actual_profile_ids: z.array(falcon24FourLayerProfileIdSchema).min(1).max(12),
+    actual_profile_ids: z.array(falcon24FourLayerProfileIdSchema).max(12),
     accepted_artifact_refs: z.array(artifactReferenceSchema).max(64),
     rubric_results: z.array(rubricResultSchema).min(1).max(32),
     status: stagedStatusSchema,
@@ -987,7 +987,10 @@ export async function verifyFalcon24FourLayerTurnReceiptProgression(input: {
   const turn = manifest.turns[business.turn_ordinal];
   if (!turn) throw new TypeError("FALCON24_FOUR_LAYER_TURN_NOT_FOUND");
   assertReceiptIdentity(manifest, turn, business);
-  if (!falcon24FourLayerAgentContractMatches(turn.expected_agents, business.actual_profile_ids)) {
+  if (
+    business.status === "PASS" &&
+    !falcon24FourLayerAgentContractMatches(turn.expected_agents, business.actual_profile_ids)
+  ) {
     throw new TypeError("FALCON24_FOUR_LAYER_AGENT_CONTRACT_MISMATCH");
   }
   const requiredChecks = turn.rubric.required_checks;
