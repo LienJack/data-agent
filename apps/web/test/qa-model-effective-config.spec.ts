@@ -1,5 +1,6 @@
 import { NextRequest } from "next/server";
 import { beforeAll, beforeEach, describe, expect, it, vi } from "vitest";
+import { deriveRunCommandIdentities } from "../src/lib/run-command-identity";
 
 vi.mock("server-only", () => ({}));
 
@@ -26,6 +27,8 @@ const mocks = vi.hoisted(() => ({
   getRun: vi.fn(),
   freezeCatalog: vi.fn(),
   listProfiles: vi.fn(),
+  loadFourLayerAttempt: vi.fn(),
+  loadFourLayerTurn: vi.fn(),
 }));
 
 vi.mock("@/lib/workspace-request", () => ({
@@ -61,6 +64,10 @@ vi.mock("@data-agent/platform/persistence", () => ({
 }));
 
 vi.mock("@data-agent/platform/runs", () => ({
+  createPostgresFalcon24FourLayerGateAuthority: () => ({
+    loadAttempt: mocks.loadFourLayerAttempt,
+    loadTurn: mocks.loadFourLayerTurn,
+  }),
   freezeSubagentCapabilityCatalog: mocks.freezeCatalog,
 }));
 
@@ -151,6 +158,8 @@ beforeEach(() => {
       },
     ],
   });
+  mocks.loadFourLayerAttempt.mockResolvedValue({ ok: true, value: null });
+  mocks.loadFourLayerTurn.mockResolvedValue({ ok: true, value: null });
 });
 
 describe("QA effective model selection", () => {
@@ -280,5 +289,60 @@ describe("startQuestionRun use-case", () => {
     );
     expect(mocks.freezeCatalog).not.toHaveBeenCalled();
     expect(mocks.resolveAndAccept).not.toHaveBeenCalled();
+  });
+
+  it("four-layer submission 必须匹配 server-owned claimed Turn", async () => {
+    const candidate = input();
+    const identities = deriveRunCommandIdentities({
+      workspace_id: candidate.workspace_id,
+      principal_id: candidate.principal_id,
+      idempotency_key: candidate.idempotency_key,
+    });
+    const fence = {
+      gate_id: "E11-FL1",
+      attempt_id: "81000000-0000-4000-8000-000000000011",
+      manifest_hash: H1,
+      turn_ordinal: 0,
+      turn_id: "L1-01",
+      conversation_resource_version: 9,
+      run_id: identities.run_id,
+    } as const;
+    mocks.loadFourLayerAttempt.mockResolvedValueOnce({
+      ok: true,
+      value: {
+        gate_id: fence.gate_id,
+        manifest_hash: fence.manifest_hash,
+        status: "RUNNING",
+      },
+    });
+    mocks.loadFourLayerTurn.mockResolvedValueOnce({
+      ok: true,
+      value: {
+        status: "CLAIMED",
+        turn_id: fence.turn_id,
+        conversation_id: candidate.conversation_id,
+        conversation_resource_version: fence.conversation_resource_version,
+        run_id: fence.run_id,
+        question: candidate.question,
+      },
+    });
+
+    await expect(startQuestionRun({ ...candidate, four_layer_fence: fence })).resolves.toEqual(
+      expect.objectContaining({ kind: "CREATED" }),
+    );
+    expect(mocks.loadFourLayerAttempt).toHaveBeenCalledOnce();
+    expect(mocks.loadFourLayerTurn).toHaveBeenCalledOnce();
+
+    await expect(
+      startQuestionRun({
+        ...candidate,
+        four_layer_fence: { ...fence, conversation_resource_version: 8 },
+      }),
+    ).resolves.toEqual(
+      expect.objectContaining({
+        error: expect.objectContaining({ code: "FALCON24_FOUR_LAYER_SUBMIT_FENCE_MISMATCH" }),
+        kind: "ERROR",
+      }),
+    );
   });
 });

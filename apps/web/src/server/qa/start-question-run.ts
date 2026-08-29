@@ -1,9 +1,13 @@
 import type { AgentProductProfileReferenceV2 } from "@data-agent/contracts/agents";
 import type { AppScope } from "@data-agent/contracts/common";
+import type { Falcon24FourLayerSubmitFence } from "@data-agent/contracts/evals";
 import { buildRunConfigRequestCandidate } from "@data-agent/contracts/runs";
 import type { WorkspaceFileReference } from "@data-agent/contracts/workspaces";
 import { createPostgresRepository } from "@data-agent/platform/persistence";
-import { freezeSubagentCapabilityCatalog } from "@data-agent/platform/runs";
+import {
+  createPostgresFalcon24FourLayerGateAuthority,
+  freezeSubagentCapabilityCatalog,
+} from "@data-agent/platform/runs";
 import { FALCON24_ROOT_CATALOG_POLICY_VERSION } from "@/lib/falcon24-root-authority";
 import { deriveRunCommandIdentities } from "@/lib/run-command-identity";
 import {
@@ -27,6 +31,7 @@ type ListDiscoverableProfiles = ReturnType<typeof getAgentProfileRegistry>["list
 type ResolveAndAccept = ReturnType<typeof getEffectiveConfigResolver>["resolveAndAccept"];
 type GetEffectiveConfig = ReturnType<typeof getEffectiveConfigResolver>["getEffectiveConfig"];
 type GetPersistedRun = ReturnType<typeof createPostgresRepository>["getRun"];
+type FourLayerAuthority = ReturnType<typeof createPostgresFalcon24FourLayerGateAuthority>;
 
 export interface StartQuestionRunDependencies {
   readonly freezeSubagentCatalog: typeof freezeSubagentCapabilityCatalog;
@@ -36,6 +41,8 @@ export interface StartQuestionRunDependencies {
   readonly getPersistedRun: GetPersistedRun;
   readonly getWorkspaceDefaults: GetWorkspaceDefaults;
   readonly listDiscoverableProfiles: ListDiscoverableProfiles;
+  readonly loadFourLayerAttempt: FourLayerAuthority["loadAttempt"];
+  readonly loadFourLayerTurn: FourLayerAuthority["loadTurn"];
   readonly projectRun: typeof workspaceRunProjection;
   readonly resolveAndAccept: ResolveAndAccept;
   readonly resolveConversationRunSelections: ResolveConversationRunSelections;
@@ -51,6 +58,7 @@ export interface StartQuestionRunInput {
   readonly scope: AppScope;
   readonly workspace_id: string;
   readonly expected_subagent_profile_refs?: readonly AgentProductProfileReferenceV2[];
+  readonly four_layer_fence?: Falcon24FourLayerSubmitFence;
   readonly acceptance_fence?:
     | {
         readonly authority_kind: "FINAL_CAMPAIGN";
@@ -86,6 +94,16 @@ function productionDependencies(): StartQuestionRunDependencies {
     getPersistedRun: (...args) => repository.getRun(...args),
     getWorkspaceDefaults: (...args) => resolver.getWorkspaceDefaults(...args),
     listDiscoverableProfiles: (...args) => getAgentProfileRegistry().listDiscoverable(...args),
+    loadFourLayerAttempt: (...args) =>
+      createPostgresFalcon24FourLayerGateAuthority({
+        pool: getWorkspaceSqlPool(),
+        authorizer: getWorkspaceAuthority().authorizer,
+      }).loadAttempt(...args),
+    loadFourLayerTurn: (...args) =>
+      createPostgresFalcon24FourLayerGateAuthority({
+        pool: getWorkspaceSqlPool(),
+        authorizer: getWorkspaceAuthority().authorizer,
+      }).loadTurn(...args),
     projectRun: workspaceRunProjection,
     resolveAndAccept: (...args) => resolver.resolveAndAccept(...args),
     resolveConversationRunSelections: (...args) =>
@@ -127,6 +145,58 @@ export function createStartQuestionRunUseCase(
         },
         kind: "ERROR",
       } as const;
+    }
+    const identities = deriveRunCommandIdentities({
+      workspace_id: input.workspace_id,
+      principal_id: input.principal_id,
+      idempotency_key: input.idempotency_key,
+    });
+    if (input.four_layer_fence) {
+      const fence = input.four_layer_fence;
+      if (
+        fence.run_id !== identities.run_id ||
+        fence.conversation_resource_version !== conversationVersion
+      ) {
+        return {
+          error: {
+            code: "FALCON24_FOUR_LAYER_SUBMIT_FENCE_MISMATCH",
+            message: "Four-layer submit fence 与 Run 或 Conversation version 不一致。",
+            retryable: false,
+          },
+          kind: "ERROR",
+        } as const;
+      }
+      const [attempt, turn] = await Promise.all([
+        dependencies.loadFourLayerAttempt(input.capability, { attempt_id: fence.attempt_id }),
+        dependencies.loadFourLayerTurn(input.capability, {
+          attempt_id: fence.attempt_id,
+          turn_ordinal: fence.turn_ordinal,
+        }),
+      ]);
+      if (!attempt.ok) return { error: attempt.error, kind: "ERROR" } as const;
+      if (!turn.ok) return { error: turn.error, kind: "ERROR" } as const;
+      if (
+        !attempt.value ||
+        !turn.value ||
+        attempt.value.gate_id !== fence.gate_id ||
+        attempt.value.manifest_hash !== fence.manifest_hash ||
+        attempt.value.status !== "RUNNING" ||
+        turn.value.status !== "CLAIMED" ||
+        turn.value.turn_id !== fence.turn_id ||
+        turn.value.conversation_id !== input.conversation_id ||
+        turn.value.conversation_resource_version !== fence.conversation_resource_version ||
+        turn.value.run_id !== fence.run_id ||
+        turn.value.question !== input.question
+      ) {
+        return {
+          error: {
+            code: "FALCON24_FOUR_LAYER_SUBMIT_FENCE_MISMATCH",
+            message: "Four-layer submit fence 未绑定 exact claimed Turn。",
+            retryable: false,
+          },
+          kind: "ERROR",
+        } as const;
+      }
     }
 
     const orderedFiles = [...input.files].sort((left, right) =>
@@ -205,11 +275,6 @@ export function createStartQuestionRunUseCase(
       } as const;
     }
 
-    const identities = deriveRunCommandIdentities({
-      workspace_id: input.workspace_id,
-      principal_id: input.principal_id,
-      idempotency_key: input.idempotency_key,
-    });
     const catalogSnapshot = await dependencies.freezeSubagentCatalog({
       run_id: identities.run_id,
       scope: input.scope,

@@ -8,6 +8,7 @@ import {
   authorityEpochForFalcon24Gate,
   FALCON24_REQUIRED_UI_ARTIFACT_TYPES,
   falcon24AcceptanceCampaignIdSchema,
+  falcon24FourLayerSubmitFenceSchema,
   falcon24GateIdSchema,
   falcon24QualificationGateIdSchema,
 } from "@data-agent/contracts/evals";
@@ -82,22 +83,12 @@ const browserDiagnosticClaimSchema = z.strictObject({
   run_id: z.uuid(),
 });
 
-const browserFourLayerFenceSchema = z.strictObject({
-  gate_id: z.string().regex(/^E[1-9][0-9]*-FL1$/u),
-  attempt_id: z.uuid(),
-  manifest_hash: z.string().regex(/^sha256:[0-9a-f]{64}$/u),
-  turn_ordinal: z.number().int().min(0).max(14),
-  turn_id: z.string().regex(/^L[1-4](?:-[AB])?-0[1-5]$/u),
-  conversation_resource_version: z.number().int().positive().safe(),
-  run_id: z.uuid(),
-});
-
 const browserFourLayerClaimSchema = z.strictObject({
   schema_version: z.literal("falcon24-browser-four-layer-submit-claim@1.0.0"),
   question: z.string().trim().min(1).max(8_000),
   conversation_id: z.uuid(),
   idempotency_key: z.string().min(1).max(256),
-  four_layer_fence: browserFourLayerFenceSchema,
+  four_layer_fence: falcon24FourLayerSubmitFenceSchema,
 });
 
 const browserSubmissionClaimSchema = z.union([
@@ -127,7 +118,7 @@ const browserFourLayerConsumedSchema = z.strictObject({
   run_id: z.uuid(),
   attempt_id: z.uuid(),
   conversation_id: z.uuid(),
-  four_layer_fence: browserFourLayerFenceSchema,
+  four_layer_fence: falcon24FourLayerSubmitFenceSchema,
 });
 
 const browserSubmissionConsumedSchema = z.union([

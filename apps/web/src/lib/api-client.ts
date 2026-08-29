@@ -204,7 +204,9 @@ export async function createQaRun(
         files,
         ...(gateClaim && "acceptance_fence" in gateClaim
           ? { acceptance_fence: gateClaim.acceptance_fence }
-          : {}),
+          : gateClaim && "four_layer_fence" in gateClaim
+            ? { four_layer_fence: gateClaim.four_layer_fence }
+            : {}),
       }),
     },
     resolvedWorkspace,

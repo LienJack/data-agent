@@ -8,6 +8,7 @@ import {
   type Falcon24FourLayerManifestTurn,
   type Falcon24FourLayerQaUiReceipt,
   type Falcon24FourLayerTraceUiReceipt,
+  falcon24FourLayerSubmitFenceSchema,
 } from "@data-agent/contracts/evals";
 import type { ResolutionTrace, ResolutionTraceDetail } from "@data-agent/contracts/runs";
 import { z } from "zod";
@@ -36,15 +37,7 @@ const fourLayerConsumedSchema = z.strictObject({
   run_id: z.uuid(),
   attempt_id: z.uuid(),
   conversation_id: z.uuid(),
-  four_layer_fence: z.strictObject({
-    gate_id: z.string().regex(/^E[1-9][0-9]*-FL1$/u),
-    attempt_id: z.uuid(),
-    manifest_hash: contentHashSchema,
-    turn_ordinal: z.number().int().min(0).max(14),
-    turn_id: z.string().regex(/^L[1-4](?:-[AB])?-0[1-5]$/u),
-    conversation_resource_version: z.number().int().positive().safe(),
-    run_id: z.uuid(),
-  }),
+  four_layer_fence: falcon24FourLayerSubmitFenceSchema,
 });
 const fourLayerPreflightObservationSchema = z.strictObject({
   ready: z.boolean(),

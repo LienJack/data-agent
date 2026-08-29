@@ -34,6 +34,16 @@ export const falcon24FourLayerGateIdSchema = z
     "Falcon24 four-layer gate 必须使用 canonical <epoch>-FL1 identity。",
   );
 
+export const falcon24FourLayerSubmitFenceSchema = z.strictObject({
+  gate_id: falcon24FourLayerGateIdSchema,
+  attempt_id: immutableIdSchema,
+  manifest_hash: contentHashSchema,
+  turn_ordinal: z.number().int().min(0).max(14),
+  turn_id: z.string().regex(/^L[1-4](?:-[AB])?-0[1-5]$/u),
+  conversation_resource_version: z.number().int().positive().safe(),
+  run_id: immutableIdSchema,
+});
+
 const expectedAgentContractSchema = z
   .strictObject({
     mode: z.enum(["EXACT", "DYNAMIC"]),
@@ -1043,6 +1053,7 @@ export async function verifyFalcon24FourLayerTurnReceiptProgression(input: {
 }
 
 export type Falcon24FourLayerManifestTurn = z.infer<typeof manifestTurnSchema>;
+export type Falcon24FourLayerSubmitFence = z.infer<typeof falcon24FourLayerSubmitFenceSchema>;
 export type Falcon24FourLayerGateManifest = z.infer<typeof falcon24FourLayerGateManifestSchema>;
 export type Falcon24FourLayerBusinessReceipt = z.infer<
   typeof falcon24FourLayerBusinessReceiptSchema

@@ -9,6 +9,7 @@ import {
   buildFalcon24FourLayerTraceUiReceipt,
   FALCON24_FOUR_LAYER_LAYER_TURN_COUNTS,
   FALCON24_FOUR_LAYER_TURN_BLUEPRINTS,
+  falcon24FourLayerSubmitFenceSchema,
   verifyFalcon24FourLayerAttemptTerminalReceipt,
   verifyFalcon24FourLayerConversationBindings,
   verifyFalcon24FourLayerGateManifest,
@@ -42,6 +43,22 @@ async function manifest() {
 }
 
 describe("Falcon24 four-layer gate contracts", () => {
+  it("defines a strict submit fence for one claimed Conversation version and Run", () => {
+    const fence = {
+      gate_id: "E11-FL1",
+      attempt_id: id(1),
+      manifest_hash: hash("a"),
+      turn_ordinal: 13,
+      turn_id: "L4-B-02",
+      conversation_resource_version: 7,
+      run_id: id(2),
+    };
+    expect(falcon24FourLayerSubmitFenceSchema.parse(fence)).toEqual(fence);
+    expect(() =>
+      falcon24FourLayerSubmitFenceSchema.parse({ ...fence, legacy_acceptance_fence: true }),
+    ).toThrow();
+  });
+
   it("freezes the 5/2/2/6 order, 15 unique questions, and two L4 conversations", async () => {
     const document = await manifest();
 

@@ -1,6 +1,7 @@
 import {
   authorityEpochForFalcon24Gate,
   falcon24AcceptanceCampaignIdSchema,
+  falcon24FourLayerSubmitFenceSchema,
   falcon24QualificationGateIdSchema,
 } from "@data-agent/contracts/evals";
 import { falcon24AuthorityEpochSchema } from "@data-agent/contracts/runs";
@@ -18,41 +19,51 @@ type RouteContext = {
   params: Promise<{ workspaceId: string; conversationId: string }>;
 };
 
-const effectiveConfigQaRunStartInputSchema = qaRunStartInputSchema.extend({
-  idempotency_key: workspaceIdempotencyKeySchema,
-  files: z.array(workspaceFileReferenceSchema).max(16).default([]),
-  acceptance_fence: z
-    .discriminatedUnion("authority_kind", [
-      z.strictObject({
-        authority_kind: z.literal("QUALIFICATION"),
-        authority_epoch: falcon24AuthorityEpochSchema,
-        qualification_id: falcon24QualificationGateIdSchema,
-        attempt_id: z.uuid(),
-        run_id: z.uuid(),
-        claim_fence_token: z.uuid(),
-      }),
-      z.strictObject({
-        authority_kind: z.literal("FINAL_CAMPAIGN"),
-        authority_epoch: falcon24AuthorityEpochSchema,
-        campaign_id: falcon24AcceptanceCampaignIdSchema,
-        attempt_id: z.uuid(),
-        run_id: z.uuid(),
-        claim_fence_token: z.uuid(),
-      }),
-    ])
-    .superRefine((fence, context) => {
-      const gateId =
-        fence.authority_kind === "QUALIFICATION" ? fence.qualification_id : fence.campaign_id;
-      if (authorityEpochForFalcon24Gate(gateId) !== fence.authority_epoch) {
-        context.addIssue({
-          code: "custom",
-          message: "Falcon24 browser fence authority epoch 与 gate ID 不一致。",
-          path: [fence.authority_kind === "QUALIFICATION" ? "qualification_id" : "campaign_id"],
-        });
-      }
-    })
-    .optional(),
-});
+const effectiveConfigQaRunStartInputSchema = qaRunStartInputSchema
+  .extend({
+    idempotency_key: workspaceIdempotencyKeySchema,
+    files: z.array(workspaceFileReferenceSchema).max(16).default([]),
+    acceptance_fence: z
+      .discriminatedUnion("authority_kind", [
+        z.strictObject({
+          authority_kind: z.literal("QUALIFICATION"),
+          authority_epoch: falcon24AuthorityEpochSchema,
+          qualification_id: falcon24QualificationGateIdSchema,
+          attempt_id: z.uuid(),
+          run_id: z.uuid(),
+          claim_fence_token: z.uuid(),
+        }),
+        z.strictObject({
+          authority_kind: z.literal("FINAL_CAMPAIGN"),
+          authority_epoch: falcon24AuthorityEpochSchema,
+          campaign_id: falcon24AcceptanceCampaignIdSchema,
+          attempt_id: z.uuid(),
+          run_id: z.uuid(),
+          claim_fence_token: z.uuid(),
+        }),
+      ])
+      .superRefine((fence, context) => {
+        const gateId =
+          fence.authority_kind === "QUALIFICATION" ? fence.qualification_id : fence.campaign_id;
+        if (authorityEpochForFalcon24Gate(gateId) !== fence.authority_epoch) {
+          context.addIssue({
+            code: "custom",
+            message: "Falcon24 browser fence authority epoch 与 gate ID 不一致。",
+            path: [fence.authority_kind === "QUALIFICATION" ? "qualification_id" : "campaign_id"],
+          });
+        }
+      })
+      .optional(),
+    four_layer_fence: falcon24FourLayerSubmitFenceSchema.optional(),
+  })
+  .superRefine((input, context) => {
+    if (input.acceptance_fence && input.four_layer_fence) {
+      context.addIssue({
+        code: "custom",
+        message: "QUESTION Run 只能绑定一种 Falcon24 submit fence。",
+      });
+    }
+  });
 
 export interface QuestionRunRouteDependencies {
   readonly authorize: typeof authorizeWorkspaceRequest;
@@ -101,6 +112,7 @@ export function createQuestionRunRoute(
       scope: authorized.value.capability.scope,
       workspace_id: workspaceId,
       ...(input.data.acceptance_fence ? { acceptance_fence: input.data.acceptance_fence } : {}),
+      ...(input.data.four_layer_fence ? { four_layer_fence: input.data.four_layer_fence } : {}),
     });
     if (result.kind === "ERROR") return dependencies.projectError(result.error);
     if (result.kind === "RESOLUTION_REQUIRED") {

@@ -138,6 +138,41 @@ describe("Q&A Run route adapter", () => {
     );
   });
 
+  it("把 four-layer fence 原样传给 use-case", async () => {
+    const execute = vi.fn<QuestionRunRouteDependencies["execute"]>();
+    execute.mockResolvedValue({ kind: "CREATED", projection });
+    const route = createQuestionRunRoute({
+      authorize: vi.fn<QuestionRunRouteDependencies["authorize"]>().mockResolvedValue({
+        ok: true,
+        value: { capability, session },
+      }),
+      execute,
+      projectError: vi.fn<QuestionRunRouteDependencies["projectError"]>(),
+    });
+    const fourLayerFence = {
+      gate_id: "E11-FL1",
+      attempt_id: "10000000-0000-4000-8000-000000000064",
+      manifest_hash: `sha256:${"a".repeat(64)}`,
+      turn_ordinal: 0,
+      turn_id: "L1-01",
+      conversation_resource_version: 3,
+      run_id: "10000000-0000-4000-8000-000000000065",
+    } as const;
+    const response = await route(
+      request({
+        schema_version: "qa-run-start@1.0.0",
+        question: "统计订单数",
+        idempotency_key: "route-adapter-four-layer",
+        four_layer_fence: fourLayerFence,
+      }),
+      { params: Promise.resolve({ conversationId, workspaceId }) },
+    );
+    expect(response.status).toBe(201);
+    expect(execute).toHaveBeenCalledWith(
+      expect.objectContaining({ four_layer_fence: fourLayerFence }),
+    );
+  });
+
   it("拒绝 gate ID 与 authority_epoch 跨纪元混用", async () => {
     const execute = vi.fn<QuestionRunRouteDependencies["execute"]>();
     const projectError = vi

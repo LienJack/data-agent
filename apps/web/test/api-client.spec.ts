@@ -10,6 +10,37 @@ afterEach(() => {
 });
 
 describe("workspace API client errors", () => {
+  it("forwards an exact four-layer fence without converting it to legacy acceptance", async () => {
+    const fetchMock = vi
+      .fn()
+      .mockResolvedValue(
+        Response.json({ runId: "00000000-0000-4000-8000-000000000013" }, { status: 201 }),
+      );
+    vi.stubGlobal("fetch", fetchMock);
+    const fence = {
+      gate_id: "E11-FL1",
+      attempt_id: "00000000-0000-4000-8000-000000000014",
+      manifest_hash: `sha256:${"a".repeat(64)}`,
+      turn_ordinal: 0,
+      turn_id: "L1-01",
+      conversation_resource_version: 3,
+      run_id: "00000000-0000-4000-8000-000000000013",
+    } as const;
+
+    await createQaRun(
+      "four-layer question",
+      "00000000-0000-4000-8000-000000000010",
+      "00000000-0000-4000-8000-000000000011",
+      [],
+      { idempotency_key: "four-layer-idempotency", four_layer_fence: fence },
+    );
+
+    const request = fetchMock.mock.calls[0]?.[1] as RequestInit | undefined;
+    const body = JSON.parse(String(request?.body)) as Record<string, unknown>;
+    expect(body.four_layer_fence).toEqual(fence);
+    expect(body).not.toHaveProperty("acceptance_fence");
+  });
+
   it("projects a diagnostic browser claim to idempotency only", async () => {
     const fetchMock = vi
       .fn()
