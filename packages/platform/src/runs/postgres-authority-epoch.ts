@@ -13,6 +13,7 @@ import {
   falcon24AuthorityBindingSchema,
   falcon24AuthorityBindingV2Schema,
   falcon24LlmExecutionAuthorityProofSchema,
+  falcon24PredecessorDiagnosticFailureSchema,
   falcon24RetainedActivationResultV4Schema,
   falcon24RetainedSemanticReleaseAuthorityProofSchema,
   falcon24RunAuthorityLookupSchema,
@@ -68,6 +69,14 @@ const STABLE_DATABASE_ERRORS = new Set([
   "FALCON24_AUTHORITY_ACTIVATION_HOLD_CONFLICT",
   "FALCON24_AUTHORITY_ACTIVATION_INVALID",
   "FALCON24_AUTHORITY_ACTIVATION_PREFLIGHT_FAILED",
+  "FALCON24_LLM_EXECUTION_STAGE_ID_INVALID",
+  "FALCON24_LLM_EXECUTION_STAGE_NOT_FOUND",
+  "FALCON24_LLM_EXECUTION_STAGE_CORRUPT",
+  "FALCON24_LLM_EXECUTION_STAGE_REJECT_INVALID",
+  "FALCON24_LLM_EXECUTION_STAGE_REJECT_FORBIDDEN",
+  "FALCON24_LLM_EXECUTION_STAGE_REJECT_RACE",
+  "FALCON24_E7_RECOVERY_CONTEXT_INVALID",
+  "FALCON24_E7_RECOVERY_CONTEXT_NOT_ELIGIBLE",
   "FALCON24_AUTHORITY_EPOCH_NOT_SUCCESSOR",
   "FALCON24_CURRENT_AUTHORITY_NOT_FOUND",
   "FALCON24_AUTHORITY_NOT_ACTIVE",
@@ -120,6 +129,49 @@ async function commandWithHash<T extends Record<string, unknown>>(command: T) {
   return { ...command, command_hash: await sha256ContentHash(command) } as const;
 }
 
+const llmExecutionStageDocumentSchema = z.strictObject({
+  schema_version: z.literal("falcon24-llm-execution-stage@1.0.0"),
+  status: z.enum(["STAGED", "PROMOTED", "REJECTED"]),
+  proof_document: falcon24LlmExecutionAuthorityProofSchema,
+  certification_claims: z.unknown(),
+  certification_is_active: z.boolean(),
+  staging_command_hash: z.string().regex(/^sha256:[0-9a-f]{64}$/u),
+  activation_attempt_id: z.uuid().nullable(),
+  rejection_reason_code: z
+    .string()
+    .regex(/^[A-Z][A-Z0-9_]{2,127}$/u)
+    .nullable(),
+  rejection_command_hash: z
+    .string()
+    .regex(/^sha256:[0-9a-f]{64}$/u)
+    .nullable(),
+});
+
+async function verifyLlmExecutionStageDocument(raw: unknown) {
+  const result = llmExecutionStageDocumentSchema.parse(raw);
+  const proof = await verifyFalcon24LlmExecutionAuthorityProof(result.proof_document);
+  if (
+    (result.status === "STAGED" &&
+      (result.certification_is_active ||
+        result.activation_attempt_id !== null ||
+        result.rejection_reason_code !== null ||
+        result.rejection_command_hash !== null)) ||
+    (result.status === "PROMOTED" &&
+      (!result.certification_is_active ||
+        result.activation_attempt_id === null ||
+        result.rejection_reason_code !== null ||
+        result.rejection_command_hash !== null)) ||
+    (result.status === "REJECTED" &&
+      (result.certification_is_active ||
+        result.activation_attempt_id !== null ||
+        result.rejection_reason_code === null ||
+        result.rejection_command_hash === null))
+  ) {
+    throw new TypeError("FALCON24_LLM_EXECUTION_STAGE_CORRUPT");
+  }
+  return Object.freeze({ ...result, proof_document: proof });
+}
+
 export function createPostgresFalcon24AuthorityEpoch(input: {
   readonly pool: SqlPool;
   readonly authorizer: TransactionalCapabilityAuthorizer;
@@ -160,6 +212,55 @@ export function createPostgresFalcon24AuthorityEpoch(input: {
     );
 
   return Object.freeze({
+    async loadLlmExecutionStage(capability: unknown, candidate: unknown) {
+      const request = z.strictObject({ stage_id: z.uuid() }).parse(candidate);
+      return invoke({
+        capability,
+        access: "READ",
+        operation: "falcon24-authority.load-llm-execution-stage",
+        correlation_id: request.stage_id,
+        sql: "select app_data_agent.load_falcon24_llm_execution_certification_stage($1::uuid) as value",
+        command: request.stage_id,
+        parse: verifyLlmExecutionStageDocument,
+      });
+    },
+
+    async rejectLlmExecutionStage(capability: unknown, candidate: unknown) {
+      const request = z
+        .strictObject({
+          stage_id: z.uuid(),
+          proof_hash: z.string().regex(/^sha256:[0-9a-f]{64}$/u),
+          reason_code: z.string().regex(/^[A-Z][A-Z0-9_]{2,127}$/u),
+        })
+        .parse(candidate);
+      const command = await commandWithHash({
+        schema_version: "falcon24-llm-execution-stage-reject@1.0.0" as const,
+        ...request,
+      });
+      return invoke({
+        capability,
+        access: "WRITE",
+        operation: "falcon24-authority.reject-llm-execution-stage",
+        correlation_id: request.stage_id,
+        sql: "select app_data_agent.reject_falcon24_llm_execution_certification_stage($1::jsonb) as value",
+        command,
+        parse: verifyLlmExecutionStageDocument,
+      });
+    },
+
+    async loadRecoveryContext(capability: unknown, candidate: unknown) {
+      const request = z.strictObject({ attempt_id: z.uuid() }).parse(candidate);
+      return invoke({
+        capability,
+        access: "READ",
+        operation: "falcon24-authority.load-recovery-context",
+        correlation_id: request.attempt_id,
+        sql: "select app_data_agent.load_falcon24_e7_recovery_context($1::uuid) as value",
+        command: request.attempt_id,
+        parse: (raw) => falcon24PredecessorDiagnosticFailureSchema.parse(raw),
+      });
+    },
+
     async loadCurrent(capability: unknown) {
       return invoke({
         capability,

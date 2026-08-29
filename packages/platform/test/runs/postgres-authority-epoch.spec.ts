@@ -484,4 +484,157 @@ describe("PostgreSQL Falcon24 versioned authority epoch", () => {
       scripted.calls.find(({ text }) => text.includes("set_config('app.semantic_domain'"))?.values,
     ).toEqual(["falcon24"]);
   });
+
+  it("loads the exact staged E7 LLM proof and eligible predecessor failure", async () => {
+    const auth = authority();
+    const stageId = id(100);
+    const diagnosticAttemptId = id(101);
+    const llmProof = await buildFalcon24LlmExecutionAuthorityProof({
+      schema_version: "falcon24-llm-execution-authority-proof@1.0.0",
+      scope: { ...auth.capability.scope, semantic_domain: "falcon24" },
+      target_authority_epoch: "E7",
+      staging_id: id(102),
+      stage_id: stageId,
+      model_profile_id: id(103),
+      model_config_version: 2,
+      model_resource_hash: hash("1"),
+      provider: "deepseek",
+      model_id: "deepseek-v4-flash",
+      certification_receipt_ref: {
+        artifact_id: id(104),
+        artifact_type: "ModelCertificationReceipt",
+        ...auth.capability.scope,
+        run_id: id(105),
+        revision: 1,
+        content_hash: hash("2"),
+      },
+      execution_profile_hash: hash("3"),
+      deployment_id: ids.deployment,
+      deployment_hash: hash("4"),
+      recovery_capabilities: ["AT_LEAST_ONCE_ONLY"],
+      worker_build: { build_id: hash("5"), generation_id: hash("6") },
+    });
+    const recovery = {
+      attempt_id: diagnosticAttemptId,
+      run_id: id(106),
+      manifest_hash: hash("7"),
+      failure_class: "FROZEN_CLOSURE_CHANGE_REQUIRED",
+      failure_code: "PROVIDER_PROFILE_NOT_AVAILABLE",
+    } as const;
+    const scripted = scriptedPool((text) => {
+      if (text.includes("load_falcon24_llm_execution_certification_stage")) {
+        return {
+          schema_version: "falcon24-llm-execution-stage@1.0.0",
+          status: "STAGED",
+          proof_document: llmProof,
+          certification_claims: { server_validated: true },
+          certification_is_active: false,
+          staging_command_hash: hash("8"),
+          activation_attempt_id: null,
+          rejection_reason_code: null,
+          rejection_command_hash: null,
+        };
+      }
+      if (text.includes("load_falcon24_e7_recovery_context")) return recovery;
+      return undefined;
+    });
+    const port = createPostgresFalcon24AuthorityEpoch({
+      pool: scripted.pool,
+      authorizer: auth.authorizer,
+    });
+
+    await expect(
+      port.loadLlmExecutionStage(auth.capability, { stage_id: stageId }),
+    ).resolves.toEqual({
+      ok: true,
+      value: expect.objectContaining({ status: "STAGED", proof_document: llmProof }),
+    });
+    await expect(
+      port.loadRecoveryContext(auth.capability, { attempt_id: diagnosticAttemptId }),
+    ).resolves.toEqual({ ok: true, value: recovery });
+    expect(
+      scripted.calls.find(({ text }) =>
+        text.includes("load_falcon24_llm_execution_certification_stage"),
+      )?.values,
+    ).toEqual([stageId]);
+  });
+
+  it("rejects a staged E7 LLM candidate through the narrow hashed command", async () => {
+    const auth = authority();
+    const stageId = id(107);
+    const llmProof = await buildFalcon24LlmExecutionAuthorityProof({
+      schema_version: "falcon24-llm-execution-authority-proof@1.0.0",
+      scope: { ...auth.capability.scope, semantic_domain: "falcon24" },
+      target_authority_epoch: "E7",
+      staging_id: id(108),
+      stage_id: stageId,
+      model_profile_id: id(109),
+      model_config_version: 2,
+      model_resource_hash: hash("a"),
+      provider: "deepseek",
+      model_id: "deepseek-v4-flash",
+      certification_receipt_ref: {
+        artifact_id: id(110),
+        artifact_type: "ModelCertificationReceipt",
+        ...auth.capability.scope,
+        run_id: id(111),
+        revision: 1,
+        content_hash: hash("b"),
+      },
+      execution_profile_hash: hash("c"),
+      deployment_id: ids.deployment,
+      deployment_hash: hash("d"),
+      recovery_capabilities: ["AT_LEAST_ONCE_ONLY"],
+      worker_build: { build_id: hash("e"), generation_id: hash("f") },
+    });
+    const proofHash = llmProof.proof_hash;
+    const scripted = scriptedPool((text, values) => {
+      if (!text.includes("reject_falcon24_llm_execution_certification_stage")) return undefined;
+      const command = values?.[0];
+      if (typeof command !== "object" || command === null) {
+        throw new Error("Reject command fixture is missing.");
+      }
+      const rejectCommand = command as Record<string, unknown>;
+      return {
+        schema_version: "falcon24-llm-execution-stage@1.0.0",
+        status: "REJECTED",
+        proof_document: llmProof,
+        certification_claims: { server_validated: true },
+        certification_is_active: false,
+        staging_command_hash: hash("1"),
+        activation_attempt_id: null,
+        rejection_reason_code: "ACTIVATION_ATTEMPT_HELD",
+        rejection_command_hash: rejectCommand.command_hash,
+      };
+    });
+    const port = createPostgresFalcon24AuthorityEpoch({
+      pool: scripted.pool,
+      authorizer: auth.authorizer,
+    });
+
+    const result = await port.rejectLlmExecutionStage(auth.capability, {
+      stage_id: stageId,
+      proof_hash: proofHash,
+      reason_code: "ACTIVATION_ATTEMPT_HELD",
+    });
+
+    expect(result).toMatchObject({
+      ok: true,
+      value: { status: "REJECTED", rejection_reason_code: "ACTIVATION_ATTEMPT_HELD" },
+    });
+    const command = scripted.calls.find(({ text }) =>
+      text.includes("reject_falcon24_llm_execution_certification_stage"),
+    )?.values?.[0];
+    if (typeof command !== "object" || command === null) {
+      throw new Error("Reject command was not issued.");
+    }
+    const rejectCommand = command as Record<string, unknown>;
+    expect(rejectCommand).toMatchObject({
+      schema_version: "falcon24-llm-execution-stage-reject@1.0.0",
+      stage_id: stageId,
+      proof_hash: proofHash,
+      reason_code: "ACTIVATION_ATTEMPT_HELD",
+    });
+    expect(rejectCommand.command_hash).toMatch(/^sha256:[0-9a-f]{64}$/u);
+  });
 });

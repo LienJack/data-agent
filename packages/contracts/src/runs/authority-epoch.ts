@@ -442,7 +442,7 @@ export async function verifyFalcon24LlmExecutionAuthorityProof(input: unknown) {
   return proof;
 }
 
-const predecessorDiagnosticFailureSchema = z.strictObject({
+export const falcon24PredecessorDiagnosticFailureSchema = z.strictObject({
   attempt_id: immutableIdSchema,
   run_id: immutableIdSchema,
   manifest_hash: contentHashSchema,
@@ -467,7 +467,7 @@ export const falcon24ActivationRequestV4MaterialSchema = z
     expected_semantic_release: semanticSuccessorCandidateReleaseReferenceSchema,
     expected_versions: retainedSemanticExpectedVersionsSchema,
     retained_semantic_proof_hash: contentHashSchema,
-    predecessor_diagnostic_failure: predecessorDiagnosticFailureSchema,
+    predecessor_diagnostic_failure: falcon24PredecessorDiagnosticFailureSchema,
     llm_execution_stage_ref: llmExecutionStageReferenceSchema,
   })
   .superRefine((document, context) => {
