@@ -206,6 +206,18 @@ function quotedIdentifierPattern(value: string): string {
   return `(?:\\b${escaped}\\b|"${escaped}")`;
 }
 
+function temporalCastPattern(): string {
+  return `::\\s*(?:pg_catalog\\.)?(?:date|timestamp|timestamptz)\\b`;
+}
+
+function hasExplicitTemporalSourceCast(input: {
+  readonly sql: string;
+  readonly column_name: string;
+}): boolean {
+  const column = quotedIdentifierPattern(input.column_name);
+  return new RegExp(`${column}\\s*${temporalCastPattern()}`, "iu").test(input.sql);
+}
+
 function hasHalfOpenPredicate(input: {
   readonly sql: string;
   readonly column_name: string;
@@ -213,11 +225,18 @@ function hasHalfOpenPredicate(input: {
   readonly end_parameter: number;
 }): boolean {
   const column = quotedIdentifierPattern(input.column_name);
+  const columnExpression = `${column}\\s*(?:${temporalCastPattern()})?`;
   const parameter = (index: number) => `\\$${index}(?!\\d)(?:::[A-Za-z_][A-Za-z0-9_.]*)?`;
   const start = parameter(input.start_parameter);
   const end = parameter(input.end_parameter);
-  const lowerBound = new RegExp(`(?:${column}\\s*>=\\s*${start}|${start}\\s*<=\\s*${column})`, "u");
-  const upperBound = new RegExp(`(?:${column}\\s*<\\s*${end}|${end}\\s*>\\s*${column})`, "u");
+  const lowerBound = new RegExp(
+    `(?:${columnExpression}\\s*>=\\s*${start}|${start}\\s*<=\\s*${columnExpression})`,
+    "iu",
+  );
+  const upperBound = new RegExp(
+    `(?:${columnExpression}\\s*<\\s*${end}|${end}\\s*>\\s*${columnExpression})`,
+    "iu",
+  );
   return lowerBound.test(input.sql) && upperBound.test(input.sql);
 }
 
@@ -401,7 +420,18 @@ export async function buildPostgresqlQueryEvidenceSemanticBinding(
                 : "STRING";
       if (
         column.semantic_type !== expectedType ||
-        sources.some(({ logical_type: logicalType }) => logicalType !== expectedType)
+        sources.some(
+          ({ logical_type: logicalType, column_name: columnName }) =>
+            logicalType !== expectedType &&
+            !(
+              logicalType === "STRING" &&
+              (expectedType === "DATE" || expectedType === "DATETIME") &&
+              hasExplicitTemporalSourceCast({
+                sql: candidate.sql,
+                column_name: columnName,
+              })
+            ),
+        )
       ) {
         reject("QUERY_EVIDENCE_DIMENSION_BINDING_INVALID");
       }
@@ -455,6 +485,7 @@ export const postgresqlQueryEvidenceSemanticBindingInternals = Object.freeze({
   hasHalfOpenPredicate,
   logicalTypeForOid,
   logicalTypeForPhysicalType,
+  hasExplicitTemporalSourceCast,
   physicalSourceIdentity,
   selectedSemanticObjects,
   validTimeValue,

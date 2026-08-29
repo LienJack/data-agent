@@ -56,7 +56,7 @@ function column(
   };
 }
 
-async function physicalSnapshot() {
+async function physicalSnapshot(orderDateType: "date" | "text" = "date") {
   return createPhysicalSchemaSnapshot({
     schema_version: "physical-schema-snapshot-draft@1.0.0",
     snapshot_id: snapshotId,
@@ -76,7 +76,7 @@ async function physicalSnapshot() {
           relation_kind: "TABLE",
           comment: null,
           columns: [
-            column("order_date", 1, "date", "date", false),
+            column("order_date", 1, orderDateType, orderDateType, false),
             column("amount", 2, "numeric", "numeric", true),
           ],
           primary_key: null,
@@ -387,8 +387,8 @@ async function queryResult(
   });
 }
 
-async function fixture() {
-  const snapshot = await physicalSnapshot();
+async function fixture(orderDateType: "date" | "text" = "date") {
+  const snapshot = await physicalSnapshot(orderDateType);
   return {
     candidate: candidate(),
     result: await queryResult(),
@@ -502,6 +502,42 @@ describe("PostgreSQL QueryEvidence semantic binding", () => {
         }),
       ],
     ]);
+  });
+
+  it("binds a text-backed temporal dimension only through explicit governed temporal casts", async () => {
+    const input = await fixture("text");
+    const binding = await buildPostgresqlQueryEvidenceSemanticBinding({
+      ...input,
+      candidate: {
+        ...input.candidate,
+        sql: "select date_trunc('month', o.order_date::pg_catalog.timestamp)::pg_catalog.date as order_month, sum(o.amount) as revenue from public.orders o where o.order_date::pg_catalog.timestamp >= $1::pg_catalog.timestamp and o.order_date::pg_catalog.timestamp < $2::pg_catalog.timestamp group by 1 order by 1",
+      },
+    });
+
+    expect(binding.columns[0]).toMatchObject({
+      logical_type: "DATE",
+      semantic_role: "DIMENSION",
+      semantic_object_id: "dimension.order_month",
+      physical_sources: [
+        expect.objectContaining({
+          schema_name: "public",
+          relation_name: "orders",
+          column_name: "order_date",
+        }),
+      ],
+    });
+    expect(binding.time_window).toMatchObject({
+      dimension_id: "dimension.order_month",
+      semantics: "HALF_OPEN",
+    });
+  });
+
+  it("rejects an uncast text-backed temporal dimension", async () => {
+    const input = await fixture("text");
+
+    await expect(buildPostgresqlQueryEvidenceSemanticBinding(input)).rejects.toMatchObject({
+      code: "QUERY_EVIDENCE_DIMENSION_BINDING_INVALID",
+    });
   });
 
   it("rejects a result OID that contradicts the declared semantic type", async () => {
