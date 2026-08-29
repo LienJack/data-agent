@@ -933,11 +933,18 @@ receipt persistence 本身需要新的 frozen-closure 修复，本任务不满�
 
 ### E7-W4 — Certification, migration and one activation
 
-- [ ] exact committed HEAD clean build/attestation，Web/Worker guard PASS。
-- [ ] 权威库应用 10799；先后核对迁移前后 E1-E6/gen1/gen2/E6 Run/event bytes不变。
-- [ ] 在受控环境注入真实 `DEEPSEEK_API_KEY`，运行一个 preparation Run并提交一个 inactive certification candidate；E6 reader证明不可见。
-- [ ] 使用全新 deterministic E7 staging id只运行一次 Finalizer/request@4。
-- [ ] post-readback：E6 diagnostic FAILED+receipt=1、current E7、certification AVAILABLE、semantic/defaults gen2 unchanged、E7 gates=0。
+- [x] exact commit `bddfbc7c` clean build/attestation：generation `sha256:2b8c3226abd4bca4f55459d0cae37f9f750845647f89d87f53c4ee2c6e3030a0`，
+  Web `sha256:faa0fe3dac628fdd3ac26939010e535dcd94de006ed4b07accdb8686fd5964d9`，Worker
+  `sha256:c27a7fd297b8aa5f37e97cd2ddc73d090b6f5433ff9b482bcf1ac24115c19781`；双guard PASS。
+- [x] 权威库应用10799 checksum `sha256:c01e24c352b0f040e64dff536e587af81f00be45090c11a20f4094691ba8d1d2`；22表
+  pre/post canonical snapshot byte-identical，迁移后仍current E6、stage/E7 rows=0。
+- [x] 受控映射本地 `DeepSeekAPIKey` 为进程内 `DEEPSEEK_API_KEY`；真实preparation Run
+  `4aaeaaf9-024e-5969-8a63-b4df4fdf95d8` PASS，stage `254d67ff-14e8-501e-ae68-4b6b5dc587b2` inactive且E6 reader不可见。
+- [x] staging `e7f809ae-3181-5089-9459-27e3bfd8d408` 的Finalizer/request@4只调用一次并ACTIVE：baseline
+  `b56b8ce2-fc16-572f-a821-30b7d506b90c` / `sha256:fa2170a98f446b63757f2db514a8847ef7d03cdea70b06c379b21dbdb5d37839`，
+  activation `1f3f080c-d1f7-5ad2-a839-37fc5e94cab7`；E6 diagnostic receipt=1，semantic/defaults gen2不变，E7 gates=0。
+- [ ] post-readback FAILED：target profile仍 `STALE/selectable=false`。原始profile与stage七字段全相等；10799 public reader误用未赋值
+  PL/pgSQL record `stage.activation_attempt_id` 而非表别名 `row.activation_attempt_id`，故永远不选中stage。E7 frozen，diagnostic仍0；前进E8。
 
 ### E7-W5 — One non-scoring diagnostic
 
@@ -956,3 +963,39 @@ receipt persistence 本身需要新的 frozen-closure 修复，本任务不满�
 - [ ] canonical audit E1-E7、gen1/gen2、E6 failure receipt、E7 certification/diagnostic/Q1/C1、Trace UI与 residual。
 - [ ] 保留真实 production isolation false/HOLD；停止服务并删除 credential temp、sandbox/container/scratch DB。
 - [ ] trellis-check、spec/runbook/evidence更新、最终 scoped commit；满足全部 AC 后才完成 goal。
+
+## 9. E8 unattended forward execution
+
+### E8-W0 — Freeze E7 post-readback failure
+
+- [x] 只读核对current E7、E6 immutable receipt=1、E7 stage PROMOTED/artifact active、semantic/defaults exact gen2、E7 diagnostic/Q1/C1=0。
+- [x] 定位 public reader alias defect并更新PRD/design/implement/runbook；不修改10799、不原地修E7。
+- [ ] scoped plan commit。
+
+### E8-W1 — Failure receipt and activation v5
+
+- [ ] Contracts新增closure-failure receipt、request/result@5；Platform ports只走唯一authority。
+- [ ] 10800新增append-only receipt与record/load RPC；public reader按epoch dispatch，E7输出不变、E8使用修正alias。
+- [ ] 10800演进唯一activation RPC，原子推广fresh E8 certification并激活E8；v2-v4历史兼容。
+
+### E8-W2 — Finalizer and proof
+
+- [ ] Finalizer target E8加载server-verified E7 failure与fresh E8 stage，构造v5；E7 recovery path保持只读历史。
+- [ ] post-commit生产reader必须 exact AVAILABLE，否则严重故障且不得formal diagnostic。
+
+### E8-W3 — PostgreSQL and code proof
+
+- [ ] PG17 fresh/exact E7、E7 reader equality、receipt负例、all-old/all-new、replay、RLS/security、双连接并发。
+- [ ] full/focused tests、typecheck、Biome、renderer/inventory/secret/diff checks；scoped commits与scratch cleanup。
+
+### E8-W4 — Dedicated migration and activation
+
+- [ ] clean committed build；权威库应用10800且protected history不变；server record E7 immutable closure failure。
+- [ ] 一次真实E8 certification，E7 reader仍STALE；一次Finalizer/request@5原子激活E8。
+- [ ] readback E8/exact AVAILABLE/gen2 unchanged/E8 gates=0；之后才进入唯一formal diagnostic。
+
+### E8-W5-W7 — Formal execution and audit
+
+- [ ] 唯一E8 diagnostic PASS并通过答案入口Trace UI、五类Artifact与residual=0。
+- [ ] E8-Q1 16/16后E8-C1 30/30；任一首败immutable HOLD并停止。
+- [ ] canonical final audit、production false/HOLD、服务/credential/sandbox/scratch清理、Trellis验证和最终scoped commit。

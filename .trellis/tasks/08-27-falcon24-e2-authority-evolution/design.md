@@ -967,3 +967,51 @@ diagnostic/Q1/C1 evidence。
 
 PostgreSQL fixtures必须覆盖：inactive candidate在 E6 不可见；错误 profile/config/deployment/receipt hash失败；activation rollback不写 E6 receipt；
 成功只产生一个标准 diagnostic receipt并推广一个 certification；same-command replay返回同一 result；v3 E5/E6历史 replay语义不变。
+
+## 20. E8 forward-only provider selection repair
+
+### 20.1 Observed defect and state fence
+
+E7 activation binding为 baseline `b56b8ce2-fc16-572f-a821-30b7d506b90c` / activation
+`1f3f080c-d1f7-5ad2-a839-37fc5e94cab7`。E6 receipt、E7 stage与artifact均正确提交，原始 provider profile的七个 identity字段也与 stage完全相等；
+10799 public wrapper只因 record-variable/table-alias混用未选中 stage。10800不得 `create or replace` 后让 current E7立即得到新语义。设计采用
+epoch dispatch：把10799 wrapper保留为 `list_provider_execution_profiles_pre_e8()`；新 public wrapper在 current `<E8` 完整委托它，在 E8+
+才执行使用 `row.activation_attempt_id` 的修正查询。
+
+### 20.2 E7 closure failure receipt
+
+新增表 `app_data_agent.falcon24_epoch_closure_failure_receipts`，identity为 scope + receipt_id，唯一约束 exact authority binding + failure code；
+payload/DELETE不可变。record RPC只接受 expected authority、E7 stage ref和幂等identity，服务端锁 current/stage并读取 original/public profile documents：
+
+```text
+original profile == stage exact seven-field binding
+public reader      == STALE + selectable=false
+current            == exact E7 activation bound to PROMOTED stage
+```
+
+满足后服务器生成 evidence hash与receipt hash，写
+`FROZEN_CLOSURE_CHANGE_REQUIRED / PROVIDER_PROFILE_BINDING_NOT_SELECTED`。load RPC只返回同一canonical document。该 receipt在 E8 staging前
+提交；它不修改E7 baseline、reader、diagnostic或gate。
+
+### 20.3 Activation v5 and lock order
+
+request@5 = retained v3 material + `predecessor_closure_failure_ref` + `llm_execution_stage_ref`。E8使用fresh build-bound live certification stage。
+10800 wrapper锁序固定：semantic fence -> Falcon advisory -> current -> semantic/defaults -> E7 failure receipt -> E8 stage/artifact ->
+target baseline/LLM receipt -> retained activation core。成功前设置transaction-local stage/attempt fence，执行
+STAGED->PROMOTED和artifact inactive->active，然后用重新哈希的v3 command调用已冻结 retained core；全部同事务。
+
+public reader的E8分支只接受 target=current、status=PROMOTED、stage activation attempt=current activation attempt以及七字段完全相等的profile；
+其余历史 AVAILABLE profile统一降级STALE。结果@5回传 exact failure receipt与certification binding供Platform复核。
+
+### 20.4 Crash and test matrix
+
+| Window | Observable state | Recovery |
+|---|---|---|
+| 10800 install | current E7，public reader仍STALE | record immutable E7 failure；不得诊断 |
+| E7 failure record | current E7 + append-only HOLD evidence | stage fresh E8 candidate |
+| E8 certification/staging | E7 + inactive E8 candidate | same-key replay或新stage，非formal |
+| request@5 rollback | E7 + E8 candidate仍STAGED/inactive | 修复未冻结E8代码后重新证明 |
+| request@5 commit | E8 + candidate PROMOTED/active/AVAILABLE | 开始唯一E8 diagnostic |
+
+测试覆盖strict schema/hash domain、receipt server recomputation、E7 behavior byte equality、E8 alias修正、RLS/grants、artifact immutability、
+failure injection、双连接concurrency、v2-v4历史兼容、fresh/exact E7 upgrade，以及post-readback semantic/defaults canonical equality。

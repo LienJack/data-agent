@@ -365,3 +365,35 @@ baseline、semantic generation 2 与所有更早历史保持原字节；不得 r
 真实认证前必须从受控进程环境解析 `DEEPSEEK_API_KEY`，绝不写入参数、日志、数据库或 evidence。变量缺失时 certification CLI 在创建
 Run/candidate 前返回零写入 HOLD；不得用历史 credential ref、认证时间戳、假响应或其他模型代替。该项是外部 secret 前置条件，不授权读取
 shell history、日志或其他非权威残留来恢复密钥。
+
+## 15. E8 provider-reader binding recovery amendment
+
+E7 已在一次 request@4 中原子激活：E6 orphan diagnostic 现为 immutable FAILED 且只有一个 receipt，真实 DeepSeek certification stage
+已 PROMOTED，semantic pointer/runtime/defaults仍为 exact generation 2。提交后 production reader却把 exact target profile降级为
+`STALE/selectable=false`。只读比对证明原始 profile与 stage的 profile/config/execution hash/certification ref七项全部相等；10799 wrapper在
+选择 stage时错误写成 `current_epoch.activation_attempt_id=stage.activation_attempt_id`，其中 `stage` 是尚未赋值的 PL/pgSQL record，表别名实际为
+`row`。因此查询永不选中 candidate。这是 E7 frozen closure缺陷；E7 diagnostic/Q1/C1均为0，禁止原地替换函数。
+
+### 15.1 Requirements
+
+- **R-E8-01 Immutable E7 failure.** 10800新增 append-only `falcon24_epoch_closure_failure_receipts` 与唯一 record/load authority。record RPC
+  必须在 current exact E7 下由服务器同时重算：PROMOTED E7 stage、原始 profile exact match、公开 reader observed STALE；随后写入
+  `FROZEN_CLOSURE_CHANGE_REQUIRED / PROVIDER_PROFILE_BINDING_NOT_SELECTED`。receipt写入必须先于任何 E8 staging/activation。
+- **R-E8-02 No in-place E7 behavior change.** 10800安装后，公开 reader在 current ordinal `<8` 时必须委托 frozen 10799 implementation，
+  因而 E7继续稳定返回 STALE。只有 current原子切到 E8后才选择修正分支；维护窗口不能替代这一 dispatch边界。
+- **R-E8-03 Fresh E8 certification.** 新 E8 build必须重新执行一次真实 credential certification，生成 target E8、inactive、build-bound stage；
+  不复用 E7 proof冒充新 build closure。E7 reader仍不可见该 candidate。
+- **R-E8-04 Request/result v5.** activation request@5绑定 exact E7 failure receipt、exact E8 LLM stage、current E7、gen2与版本；result@5返回
+  failure receipt ref/hash、promoted certification与 E8 authority。v4只读保留E7历史。
+- **R-E8-05 Atomic switch.** 10800演进同一个 `activate_falcon24_authority(jsonb)`；单事务验证 failure receipt、stage/artifact、LLM staging receipt、
+  model/deployment、E8 baseline后，推广 candidate并调用既有 retained activation core切到E8。失败只观察 E7/STAGED/inactive；成功只观察
+  E8/PROMOTED/active/AVAILABLE。
+- **R-E8-06 Formal gates.** E8激活和 post-readback AVAILABLE后才允许创建唯一正式 diagnostic；首败规则与动态 Tool Loop、Trace UI、
+  residual=0、Q1 16/16、C1 30/30要求不变。
+
+### 15.2 Acceptance
+
+- [ ] **AC-E8-01** E7 failure receipt由服务器重算且append-only；伪造stage/ref/readiness/current或重复不同payload全部拒绝。
+- [ ] **AC-E8-02** PostgreSQL 17 fresh/exact E7 upgrade证明迁移前后 E7公开输出相同；all-old/all-new、RLS、replay和双连接并发通过。
+- [ ] **AC-E8-03** exact E8 build真实 certification在 E7不可见；一次request@5后 current E8且exact profile AVAILABLE，gen2/defaults不变。
+- [ ] **AC-E8-04** 唯一 E8 diagnostic PASS，随后 E8-Q1 16/16、E8-C1 30/30；正式首败立即 immutable HOLD并停止。

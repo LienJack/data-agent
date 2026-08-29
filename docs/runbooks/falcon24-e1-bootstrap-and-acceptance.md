@@ -274,3 +274,24 @@ diagnostic/Q1/C1 任一首败仍立即写 immutable FAIL/HOLD并停止。activat
 
 W4开始前必须在新的 clean committed HEAD上重新生成 build/attestation，并安全取得真实 credential；不得复用 W3 mock identity或把
 credential preflight失败写入权威库。
+
+## 9. E7 post-readback HOLD 与 E8 前向门禁
+
+E7 request@4已一次成功提交：current baseline=`b56b8ce2-fc16-572f-a821-30b7d506b90c`，activation=
+`1f3f080c-d1f7-5ad2-a839-37fc5e94cab7`；E6 diagnostic已FAILED且receipt=1，stage=`254d67ff-14e8-501e-ae68-4b6b5dc587b2`
+PROMOTED、certification artifact active，semantic/defaults仍exact gen2，E7 diagnostic/Q1/C1=0。
+
+提交后 production reader仍返回 target profile `STALE/selectable=false`。只读对比证明stage与原始profile七字段完全一致；10799函数把未赋值
+PL/pgSQL record `stage` 当成表别名，导致activation-attempt predicate永为NULL。E7不得原地修复，也不得开始diagnostic。
+
+E8顺序固定：
+
+1. 安装10800；安装后current E7的public reader必须保持同一STALE输出。
+2. 通过唯一RPC让服务器重算并写E7 append-only closure-failure receipt。
+3. 在新clean build上执行一个fresh E8 live certification；candidate在E7必须不可见。
+4. stage E8 supporting authority并只调用一次request@5；rollback只允许E7/all-old，commit必须E8/all-new。
+5. production readback必须看到 exact target profile AVAILABLE、stage PROMOTED/active、gen2/defaults不变、E8 gates=0。
+6. 满足后才创建唯一E8 formal diagnostic；首败立即写immutable FAIL/HOLD并停止，禁止自动进入E9。
+
+10800不得直接改变E7 runtime语义：public reader必须以current epoch dispatch，`<E8`委托冻结的10799实现；修正分支只能随E8 current
+原子可见。E7 failure receipt是append-only evidence，不是对E7 baseline或diagnostic的补写。
