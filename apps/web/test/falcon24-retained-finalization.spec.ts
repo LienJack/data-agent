@@ -90,6 +90,13 @@ const e9Authority = {
   baseline_hash: hash("f"),
   activation_attempt_id: id(49),
 } as const;
+const e10Authority = {
+  schema_version: "falcon24-authority-binding@2.0.0",
+  authority_epoch: "E10",
+  baseline_id: id(58),
+  baseline_hash: hash("0"),
+  activation_attempt_id: id(59),
+} as const;
 const versions = {
   semantic_pointer: 3,
   semantic_runtime: 3,
@@ -172,13 +179,15 @@ async function arrange(
       | typeof e5Authority
       | typeof e6Authority
       | typeof e7Authority
-      | typeof e8Authority;
+      | typeof e8Authority
+      | typeof e9Authority;
     readonly target:
       | typeof e5Authority
       | typeof e6Authority
       | typeof e7Authority
       | typeof e8Authority
-      | typeof e9Authority;
+      | typeof e9Authority
+      | typeof e10Authority;
   } = { current: e4Authority, target: e5Authority },
 ) {
   const published = await promotedEnvelope();
@@ -324,12 +333,48 @@ async function arrange(
       };
     },
   );
+  const activateRetainedWithFinalizationFailureRecovery = vi.fn(
+    async (_capability: unknown, envelope: unknown) => {
+      events.push(
+        `activate-finalization-failure-recovery-${authorities.target.authority_epoch.toLowerCase()}`,
+      );
+      const typed = envelope as {
+        request: { command_hash: `sha256:${string}` };
+        llm_execution_proof: Awaited<ReturnType<typeof buildFalcon24LlmExecutionAuthorityProof>>;
+        predecessor_finalization_failure_receipt: {
+          receipt_id: string;
+          receipt_hash: `sha256:${string}`;
+          failure_code: "CURRENT_PROVIDER_CERTIFICATION_RESOLVER_AMBIGUOUS";
+        };
+      };
+      return {
+        ok: true as const,
+        value: {
+          schema_version: "falcon24-retained-activation-result@7.0.0" as const,
+          activation_command_hash: typed.request.command_hash,
+          authority: authorities.target,
+          predecessor_finalization_failure_receipt: typed.predecessor_finalization_failure_receipt,
+          llm_execution_certification: {
+            stage_id: typed.llm_execution_proof.stage_id,
+            proof_hash: typed.llm_execution_proof.proof_hash,
+            certification_receipt_ref: typed.llm_execution_proof.certification_receipt_ref,
+            execution_profile_hash: typed.llm_execution_proof.execution_profile_hash,
+          },
+        },
+      };
+    },
+  );
   const loadProviderExecutionProfiles = vi.fn(
     async (): Promise<readonly ProviderExecutionProfile[]> => [],
   );
   const resolveCurrentExecutionCertification = vi.fn(
     async (): Promise<ModelExecutionCertificationClaims> => {
       throw new TypeError("UNCONFIGURED_CURRENT_EXECUTION_CERTIFICATION");
+    },
+  );
+  const resolveCurrentExecutionCertificationV2 = vi.fn(
+    async (): Promise<ModelExecutionCertificationClaims> => {
+      throw new TypeError("UNCONFIGURED_CURRENT_EXECUTION_CERTIFICATION_V2");
     },
   );
   const holdActivationAttempt = vi.fn(async () => {
@@ -350,10 +395,12 @@ async function arrange(
         activateRetainedWithRecovery,
         activateRetainedWithClosureRecovery,
         activateRetainedWithTerminalDiagnosticRecovery,
+        activateRetainedWithFinalizationFailureRecovery,
       },
       readback: { loadCurrentClosure, loadPublishedRelease },
       load_provider_execution_profiles: loadProviderExecutionProfiles,
       resolve_current_execution_certification: resolveCurrentExecutionCertification,
+      resolve_current_execution_certification_v2: resolveCurrentExecutionCertificationV2,
       stage_falcon_authority: stageFalconAuthority,
       hold_activation_attempt: holdActivationAttempt,
     },
@@ -365,8 +412,10 @@ async function arrange(
       activateRetainedWithRecovery,
       activateRetainedWithClosureRecovery,
       activateRetainedWithTerminalDiagnosticRecovery,
+      activateRetainedWithFinalizationFailureRecovery,
       loadProviderExecutionProfiles,
       resolveCurrentExecutionCertification,
+      resolveCurrentExecutionCertificationV2,
       holdActivationAttempt,
     },
   };
@@ -709,6 +758,133 @@ describe("Falcon24 retained semantic finalization", () => {
       },
     });
     expect(arranged.calls.resolveCurrentExecutionCertification).toHaveBeenCalledWith({
+      model_profile_id: llmProof.model_profile_id,
+      model_config_version: llmProof.model_config_version,
+      certification_receipt_ref: llmProof.certification_receipt_ref,
+    });
+  });
+
+  it("advances E9 to E10 through request v7 and proves the versioned current reader", async () => {
+    const arranged = await arrange({ current: e9Authority, target: e10Authority });
+    const llmProof = await buildFalcon24LlmExecutionAuthorityProof({
+      schema_version: "falcon24-llm-execution-authority-proof@1.0.0",
+      scope,
+      target_authority_epoch: "E10",
+      staging_id: id(60),
+      stage_id: id(61),
+      model_profile_id: id(62),
+      model_config_version: 5,
+      model_resource_hash: hash("1"),
+      provider: "deepseek",
+      model_id: "deepseek-v4-flash",
+      certification_receipt_ref: {
+        artifact_id: id(63),
+        artifact_type: "ModelCertificationReceipt",
+        app_id: scope.app_id,
+        tenant_id: scope.tenant_id,
+        environment: scope.environment,
+        run_id: id(64),
+        revision: 1,
+        content_hash: hash("2"),
+      },
+      execution_profile_hash: hash("3"),
+      deployment_id: id(65),
+      deployment_hash: hash("4"),
+      recovery_capabilities: ["AT_LEAST_ONCE_ONLY"],
+      worker_build: {
+        build_id: workerBuild.build_id,
+        generation_id: workerBuild.generation_id,
+      },
+    });
+    const failure = {
+      schema_version: "falcon24-finalization-failure-receipt@1.0.0" as const,
+      receipt_id: id(66),
+      authority: e9Authority,
+      stage_ref: { stage_id: id(67), proof_hash: hash("5") },
+      failed_rpc_identity:
+        "app_data_agent.resolve_current_provider_execution_certification(jsonb)" as const,
+      failure_class: "FROZEN_CLOSURE_CHANGE_REQUIRED" as const,
+      failure_code: "CURRENT_PROVIDER_CERTIFICATION_RESOLVER_AMBIGUOUS" as const,
+      observed_sqlstate: "42702" as const,
+      definition_hash: hash("6"),
+      evidence_hash: hash("7"),
+      receipt_hash: hash("8"),
+    };
+    const availableProfile: ProviderExecutionProfile = {
+      model_profile_id: llmProof.model_profile_id,
+      model_config_version: llmProof.model_config_version,
+      resource_hash: llmProof.model_resource_hash,
+      profile_version: `model-profile@${llmProof.model_config_version}` as const,
+      provider: llmProof.provider,
+      model_id: llmProof.model_id,
+      display_name: "DeepSeek Falcon24 E10",
+      adapter_version: "deepseek-adapter@1",
+      certification_receipt_ref: {
+        ...llmProof.certification_receipt_ref,
+        artifact_type: "ModelCertificationReceipt" as const,
+      },
+      execution_profile_hash: llmProof.execution_profile_hash,
+      recovery_capabilities: llmProof.recovery_capabilities,
+      connection: {
+        kind: "SYSTEM_DEPLOYMENT" as const,
+        deployment_id: llmProof.deployment_id,
+        deployment_revision: 1,
+        deployment_hash: llmProof.deployment_hash,
+      },
+      effective_context_ceiling_tokens: 32_768,
+      effective_output_ceiling_tokens: 8_192,
+      readiness: "AVAILABLE" as const,
+      selectable: true as const,
+      unavailable_reason: null,
+    };
+    const certification = {
+      profile_id: llmProof.model_profile_id,
+      model_config_version: llmProof.model_config_version,
+      provider: llmProof.provider,
+      model_id: llmProof.model_id,
+      execution_profile_hash: llmProof.execution_profile_hash,
+      receipt_ref: llmProof.certification_receipt_ref,
+    } as ModelExecutionCertificationClaims;
+    arranged.calls.loadProviderExecutionProfiles.mockResolvedValueOnce([availableProfile]);
+    arranged.calls.resolveCurrentExecutionCertificationV2.mockResolvedValueOnce(certification);
+
+    const result = await finalizeFalcon24RetainedAuthority({
+      ...arranged.input,
+      recovery: {
+        kind: "FINALIZATION_FAILURE",
+        llm_execution_proof: llmProof,
+        predecessor_finalization_failure: failure,
+      },
+    });
+
+    expect(arranged.calls.activateRetainedWithTerminalDiagnosticRecovery).not.toHaveBeenCalled();
+    expect(arranged.calls.activateRetainedWithFinalizationFailureRecovery).toHaveBeenCalledTimes(1);
+    expect(arranged.events).toContain("activate-finalization-failure-recovery-e10");
+    expect(result.authority).toEqual(e10Authority);
+    expect(result.recovery).toMatchObject({
+      kind: "FINALIZATION_FAILURE",
+      predecessor_finalization_failure: failure,
+      provider_execution_profile: availableProfile,
+      current_execution_certification: certification,
+    });
+    expect(
+      arranged.calls.activateRetainedWithFinalizationFailureRecovery.mock.calls[0]?.[1],
+    ).toMatchObject({
+      request: {
+        schema_version: "falcon24-activation-request@7.0.0",
+        predecessor_finalization_failure_receipt: {
+          receipt_id: failure.receipt_id,
+          receipt_hash: failure.receipt_hash,
+          failure_code: failure.failure_code,
+        },
+        llm_execution_stage_ref: {
+          stage_id: llmProof.stage_id,
+          proof_hash: llmProof.proof_hash,
+        },
+      },
+    });
+    expect(arranged.calls.resolveCurrentExecutionCertification).not.toHaveBeenCalled();
+    expect(arranged.calls.resolveCurrentExecutionCertificationV2).toHaveBeenCalledWith({
       model_profile_id: llmProof.model_profile_id,
       model_config_version: llmProof.model_config_version,
       certification_receipt_ref: llmProof.certification_receipt_ref,

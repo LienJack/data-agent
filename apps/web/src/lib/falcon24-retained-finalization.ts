@@ -9,19 +9,23 @@ import {
   buildFalcon24ActivationRequestV4,
   buildFalcon24ActivationRequestV5,
   buildFalcon24ActivationRequestV6,
+  buildFalcon24ActivationRequestV7,
   buildFalcon24RetainedSemanticReleaseAuthorityProof,
   type Falcon24AuthorityBindingV2,
   type Falcon24EpochClosureFailureReceipt,
+  type Falcon24FinalizationFailureReceipt,
   type Falcon24LlmExecutionAuthorityProof,
   type Falcon24RetainedActivationResultV4,
   type Falcon24RetainedActivationResultV5,
   type Falcon24RetainedActivationResultV6,
+  type Falcon24RetainedActivationResultV7,
   type Falcon24RetainedSemanticReleaseAuthorityProof,
   type Falcon24SemanticAuthorityClosure,
   type Falcon24TerminalDiagnosticFailureReceiptRef,
   falcon24AuthorityBindingV2Schema,
   falcon24AuthorityEpochOrdinal,
   falcon24EpochClosureFailureReceiptSchema,
+  falcon24FinalizationFailureReceiptSchema,
   falcon24PredecessorDiagnosticFailureSchema,
   falcon24TerminalDiagnosticFailureReceiptRefSchema,
   verifyFalcon24LlmExecutionAuthorityProof,
@@ -50,6 +54,10 @@ interface RetainedEpochPort {
     capability: unknown,
     input: unknown,
   ): Promise<PortResult<Falcon24RetainedActivationResultV6>>;
+  activateRetainedWithFinalizationFailureRecovery(
+    capability: unknown,
+    input: unknown,
+  ): Promise<PortResult<Falcon24RetainedActivationResultV7>>;
 }
 
 interface RetainedReadback {
@@ -96,6 +104,14 @@ export interface Falcon24RetainedFinalizationResult {
         provider_execution_profile: ProviderExecutionProfile;
         current_execution_certification: ModelExecutionCertificationClaims;
       }>
+    | Readonly<{
+        kind: "FINALIZATION_FAILURE";
+        llm_execution_proof: Falcon24LlmExecutionAuthorityProof;
+        predecessor_finalization_failure: Falcon24FinalizationFailureReceipt;
+        activation_result: Falcon24RetainedActivationResultV7;
+        provider_execution_profile: ProviderExecutionProfile;
+        current_execution_certification: ModelExecutionCertificationClaims;
+      }>
     | null;
 }
 
@@ -114,6 +130,11 @@ type Falcon24RetainedRecoveryInput =
       kind: "TERMINAL_DIAGNOSTIC";
       llm_execution_proof: unknown;
       predecessor_diagnostic_receipt: unknown;
+    }>
+  | Readonly<{
+      kind: "FINALIZATION_FAILURE";
+      llm_execution_proof: unknown;
+      predecessor_finalization_failure: unknown;
     }>;
 
 function exact(left: unknown, right: unknown): boolean {
@@ -189,6 +210,11 @@ export async function finalizeFalcon24RetainedAuthority(input: {
     readonly model_config_version: number;
     readonly certification_receipt_ref: Falcon24LlmExecutionAuthorityProof["certification_receipt_ref"];
   }) => Promise<ModelExecutionCertificationClaims>;
+  readonly resolve_current_execution_certification_v2?: (input: {
+    readonly model_profile_id: string;
+    readonly model_config_version: number;
+    readonly certification_receipt_ref: Falcon24LlmExecutionAuthorityProof["certification_receipt_ref"];
+  }) => Promise<ModelExecutionCertificationClaims>;
   readonly stage_falcon_authority: (input: {
     readonly semantic_release_digest: `sha256:${string}`;
     readonly retained_semantic_proof_hash: `sha256:${string}`;
@@ -247,21 +273,27 @@ export async function finalizeFalcon24RetainedAuthority(input: {
   });
   const diagnosticRecoveryRequired = targetOrdinal === 7n;
   const closureRecoveryRequired = targetOrdinal === 8n;
-  const terminalDiagnosticRecoveryRequired = targetOrdinal >= 9n;
+  const terminalDiagnosticRecoveryRequired = targetOrdinal === 9n;
+  const finalizationFailureRecoveryRequired = targetOrdinal >= 10n;
   const recoveryRequired =
-    diagnosticRecoveryRequired || closureRecoveryRequired || terminalDiagnosticRecoveryRequired;
+    diagnosticRecoveryRequired ||
+    closureRecoveryRequired ||
+    terminalDiagnosticRecoveryRequired ||
+    finalizationFailureRecoveryRequired;
   let llmProof: Falcon24LlmExecutionAuthorityProof | null = null;
   let predecessorFailure: ReturnType<
     typeof falcon24PredecessorDiagnosticFailureSchema.parse
   > | null = null;
   let predecessorClosureFailure: Falcon24EpochClosureFailureReceipt | null = null;
   let predecessorDiagnosticReceipt: Falcon24TerminalDiagnosticFailureReceiptRef | null = null;
+  let predecessorFinalizationFailure: Falcon24FinalizationFailureReceipt | null = null;
   if (recoveryRequired) {
     if (!input.recovery) throw new TypeError("FALCON24_RECOVERY_ACTIVATION_PROOF_REQUIRED");
     if (
       (diagnosticRecoveryRequired && input.recovery.kind !== "DIAGNOSTIC") ||
       (closureRecoveryRequired && input.recovery.kind !== "CLOSURE_FAILURE") ||
-      (terminalDiagnosticRecoveryRequired && input.recovery.kind !== "TERMINAL_DIAGNOSTIC")
+      (terminalDiagnosticRecoveryRequired && input.recovery.kind !== "TERMINAL_DIAGNOSTIC") ||
+      (finalizationFailureRecoveryRequired && input.recovery.kind !== "FINALIZATION_FAILURE")
     ) {
       throw new TypeError("FALCON24_RECOVERY_ACTIVATION_KIND_MISMATCH");
     }
@@ -274,9 +306,13 @@ export async function finalizeFalcon24RetainedAuthority(input: {
       predecessorClosureFailure = falcon24EpochClosureFailureReceiptSchema.parse(
         input.recovery.predecessor_closure_failure,
       );
-    } else {
+    } else if (input.recovery.kind === "TERMINAL_DIAGNOSTIC") {
       predecessorDiagnosticReceipt = falcon24TerminalDiagnosticFailureReceiptRefSchema.parse(
         input.recovery.predecessor_diagnostic_receipt,
+      );
+    } else {
+      predecessorFinalizationFailure = falcon24FinalizationFailureReceiptSchema.parse(
+        input.recovery.predecessor_finalization_failure,
       );
     }
     if (
@@ -294,8 +330,43 @@ export async function finalizeFalcon24RetainedAuthority(input: {
   let recoveryResult: Falcon24RetainedActivationResultV4 | null = null;
   let closureRecoveryResult: Falcon24RetainedActivationResultV5 | null = null;
   let terminalDiagnosticRecoveryResult: Falcon24RetainedActivationResultV6 | null = null;
+  let finalizationFailureRecoveryResult: Falcon24RetainedActivationResultV7 | null = null;
   try {
-    if (llmProof && predecessorDiagnosticReceipt) {
+    if (llmProof && predecessorFinalizationFailure) {
+      const request = await buildFalcon24ActivationRequestV7({
+        schema_version: "falcon24-activation-request@7.0.0",
+        scope: proof.scope,
+        authority_epoch: input.authority_epoch,
+        attempt_id: staged.activation_attempt_ref.activation_attempt_id,
+        baseline_id: staged.baseline_ref.baseline_id,
+        expected_baseline_hash: staged.baseline_ref.baseline_hash,
+        expected_current_authority: proof.expected_current_authority,
+        expected_semantic_release: proof.semantic_release,
+        expected_versions: proof.expected_versions,
+        retained_semantic_proof_hash: proof.proof_hash,
+        predecessor_finalization_failure_receipt: {
+          receipt_id: predecessorFinalizationFailure.receipt_id,
+          receipt_hash: predecessorFinalizationFailure.receipt_hash,
+          failure_code: predecessorFinalizationFailure.failure_code,
+        },
+        llm_execution_stage_ref: {
+          stage_id: llmProof.stage_id,
+          proof_hash: llmProof.proof_hash,
+        },
+      });
+      finalizationFailureRecoveryResult = required(
+        await input.epoch.activateRetainedWithFinalizationFailureRecovery(input.capability, {
+          request,
+          retained_semantic_proof: proof,
+          llm_execution_proof: llmProof,
+          predecessor_finalization_failure_receipt:
+            request.predecessor_finalization_failure_receipt,
+        }),
+      );
+      authority = falcon24AuthorityBindingV2Schema.parse(
+        finalizationFailureRecoveryResult.authority,
+      );
+    } else if (llmProof && predecessorDiagnosticReceipt) {
       const request = await buildFalcon24ActivationRequestV6({
         schema_version: "falcon24-activation-request@6.0.0",
         scope: proof.scope,
@@ -453,7 +524,8 @@ export async function finalizeFalcon24RetainedAuthority(input: {
     if (
       llmProof &&
       ((closureRecoveryResult && predecessorClosureFailure) ||
-        (terminalDiagnosticRecoveryResult && predecessorDiagnosticReceipt))
+        (terminalDiagnosticRecoveryResult && predecessorDiagnosticReceipt) ||
+        (finalizationFailureRecoveryResult && predecessorFinalizationFailure))
     ) {
       if (!input.load_provider_execution_profiles) {
         throw new TypeError("FALCON24_RETAINED_PROVIDER_PROFILE_READBACK_REQUIRED");
@@ -480,11 +552,17 @@ export async function finalizeFalcon24RetainedAuthority(input: {
         throw new TypeError("FALCON24_RETAINED_POST_ACTIVATION_PROVIDER_PROFILE_MISMATCH");
       }
       providerExecutionProfile = profile;
-      if (terminalDiagnosticRecoveryResult && predecessorDiagnosticReceipt) {
-        if (!input.resolve_current_execution_certification) {
+      if (
+        (terminalDiagnosticRecoveryResult && predecessorDiagnosticReceipt) ||
+        (finalizationFailureRecoveryResult && predecessorFinalizationFailure)
+      ) {
+        const resolveCurrentCertification = finalizationFailureRecoveryResult
+          ? input.resolve_current_execution_certification_v2
+          : input.resolve_current_execution_certification;
+        if (!resolveCurrentCertification) {
           throw new TypeError("FALCON24_RETAINED_CURRENT_CERTIFICATION_READBACK_REQUIRED");
         }
-        const certification = await input.resolve_current_execution_certification({
+        const certification = await resolveCurrentCertification({
           model_profile_id: llmProof.model_profile_id,
           model_config_version: llmProof.model_config_version,
           certification_receipt_ref: llmProof.certification_receipt_ref,
@@ -524,32 +602,48 @@ export async function finalizeFalcon24RetainedAuthority(input: {
     published_release: reloaded,
     recovery:
       llmProof &&
-      predecessorDiagnosticReceipt &&
-      terminalDiagnosticRecoveryResult &&
+      predecessorFinalizationFailure &&
+      finalizationFailureRecoveryResult &&
       providerExecutionProfile &&
       currentExecutionCertification
         ? Object.freeze({
-            kind: "TERMINAL_DIAGNOSTIC" as const,
+            kind: "FINALIZATION_FAILURE" as const,
             llm_execution_proof: llmProof,
-            predecessor_diagnostic_receipt: predecessorDiagnosticReceipt,
-            activation_result: terminalDiagnosticRecoveryResult,
+            predecessor_finalization_failure: predecessorFinalizationFailure,
+            activation_result: finalizationFailureRecoveryResult,
             provider_execution_profile: providerExecutionProfile,
             current_execution_certification: currentExecutionCertification,
           })
-        : llmProof && predecessorClosureFailure && closureRecoveryResult && providerExecutionProfile
+        : llmProof &&
+            predecessorDiagnosticReceipt &&
+            terminalDiagnosticRecoveryResult &&
+            providerExecutionProfile &&
+            currentExecutionCertification
           ? Object.freeze({
-              kind: "CLOSURE_FAILURE" as const,
+              kind: "TERMINAL_DIAGNOSTIC" as const,
               llm_execution_proof: llmProof,
-              predecessor_closure_failure: predecessorClosureFailure,
-              activation_result: closureRecoveryResult,
+              predecessor_diagnostic_receipt: predecessorDiagnosticReceipt,
+              activation_result: terminalDiagnosticRecoveryResult,
               provider_execution_profile: providerExecutionProfile,
+              current_execution_certification: currentExecutionCertification,
             })
-          : llmProof && recoveryResult
+          : llmProof &&
+              predecessorClosureFailure &&
+              closureRecoveryResult &&
+              providerExecutionProfile
             ? Object.freeze({
-                kind: "DIAGNOSTIC" as const,
+                kind: "CLOSURE_FAILURE" as const,
                 llm_execution_proof: llmProof,
-                activation_result: recoveryResult,
+                predecessor_closure_failure: predecessorClosureFailure,
+                activation_result: closureRecoveryResult,
+                provider_execution_profile: providerExecutionProfile,
               })
-            : null,
+            : llmProof && recoveryResult
+              ? Object.freeze({
+                  kind: "DIAGNOSTIC" as const,
+                  llm_execution_proof: llmProof,
+                  activation_result: recoveryResult,
+                })
+              : null,
   });
 }

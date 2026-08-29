@@ -111,6 +111,7 @@ const configurationSchema = z
     llm_execution_stage_id: z.uuid().optional(),
     predecessor_diagnostic_attempt_id: z.uuid().optional(),
     predecessor_closure_failure_receipt_id: z.uuid().optional(),
+    predecessor_finalization_failure_receipt_id: z.uuid().optional(),
     environment: z.string().regex(/^[A-Za-z0-9][A-Za-z0-9._-]{0,63}$/u),
     web_build_identity_file: z.string().min(1).max(4_096).refine(isAbsolute),
     worker_build_identity_file: z.string().min(1).max(4_096).refine(isAbsolute),
@@ -149,15 +150,29 @@ const configurationSchema = z
       });
     }
     if (
-      ordinal >= 9n &&
+      ordinal === 9n &&
       (!configuration.llm_execution_stage_id ||
         !configuration.predecessor_diagnostic_attempt_id ||
-        configuration.predecessor_closure_failure_receipt_id)
+        configuration.predecessor_closure_failure_receipt_id ||
+        configuration.predecessor_finalization_failure_receipt_id)
     ) {
       context.addIssue({
         code: "custom",
         message: "FALCON24_TERMINAL_DIAGNOSTIC_RECOVERY_CONFIGURATION_REQUIRED",
         path: ["predecessor_diagnostic_attempt_id"],
+      });
+    }
+    if (
+      ordinal >= 10n &&
+      (!configuration.llm_execution_stage_id ||
+        !configuration.predecessor_finalization_failure_receipt_id ||
+        configuration.predecessor_diagnostic_attempt_id ||
+        configuration.predecessor_closure_failure_receipt_id)
+    ) {
+      context.addIssue({
+        code: "custom",
+        message: "FALCON24_FINALIZATION_FAILURE_RECOVERY_CONFIGURATION_REQUIRED",
+        path: ["predecessor_finalization_failure_receipt_id"],
       });
     }
   });
@@ -883,6 +898,8 @@ export async function runFalcon24AuthorityFinalization(
     predecessor_diagnostic_attempt_id: environment.FALCON24_PREDECESSOR_DIAGNOSTIC_ATTEMPT_ID,
     predecessor_closure_failure_receipt_id:
       environment.FALCON24_PREDECESSOR_CLOSURE_FAILURE_RECEIPT_ID,
+    predecessor_finalization_failure_receipt_id:
+      environment.FALCON24_PREDECESSOR_FINALIZATION_FAILURE_RECEIPT_ID,
   });
   const retainedE1 = await verifyFalcon24RetainedAssetsManifest(
     json(resolve(REPOSITORY_ROOT, "infra/falcon/e1/retained-assets-manifest.json")),
@@ -1019,41 +1036,73 @@ export async function runFalcon24AuthorityFinalization(
               predecessor_closure_failure: predecessorClosureFailure,
             });
           }
-          const diagnosticAttemptId = configuration.predecessor_diagnostic_attempt_id;
-          if (!diagnosticAttemptId) {
-            throw new TypeError("FALCON24_TERMINAL_DIAGNOSTIC_RECOVERY_CONFIGURATION_REQUIRED");
+          if (recoveryOrdinal === 9n) {
+            const diagnosticAttemptId = configuration.predecessor_diagnostic_attempt_id;
+            if (!diagnosticAttemptId) {
+              throw new TypeError("FALCON24_TERMINAL_DIAGNOSTIC_RECOVERY_CONFIGURATION_REQUIRED");
+            }
+            const diagnosticAuthority = createPostgresFalcon24DiagnosticAuthority({
+              pool: sqlPool,
+              authorizer: authority.authorizer,
+            });
+            const predecessorDiagnostic = requireValue(
+              await diagnosticAuthority.load(capability, diagnosticAttemptId),
+            );
+            if (
+              predecessorDiagnostic?.status !== "FAILED" ||
+              predecessorDiagnostic.failure_class !== "FROZEN_CLOSURE_CHANGE_REQUIRED" ||
+              !predecessorDiagnostic.failure_code ||
+              !predecessorDiagnostic.terminal_receipt_hash ||
+              predecessorDiagnostic.authority_epoch !== currentAuthority.authority_epoch ||
+              predecessorDiagnostic.authority_baseline_id !== currentAuthority.baseline_id ||
+              predecessorDiagnostic.authority_baseline_hash !== currentAuthority.baseline_hash ||
+              predecessorDiagnostic.authority_activation_attempt_id !==
+                currentAuthority.activation_attempt_id
+            ) {
+              throw new TypeError("FALCON24_TERMINAL_DIAGNOSTIC_RECOVERY_PREFLIGHT_MISMATCH");
+            }
+            return Object.freeze({
+              kind: "TERMINAL_DIAGNOSTIC" as const,
+              llm_execution_proof: llmExecutionProof,
+              predecessor_diagnostic_receipt: Object.freeze({
+                attempt_id: predecessorDiagnostic.attempt_id,
+                run_id: predecessorDiagnostic.run_id,
+                manifest_hash: predecessorDiagnostic.manifest_hash,
+                receipt_hash: predecessorDiagnostic.terminal_receipt_hash,
+                failure_class: predecessorDiagnostic.failure_class,
+                failure_code: predecessorDiagnostic.failure_code,
+              }),
+            });
           }
-          const diagnosticAuthority = createPostgresFalcon24DiagnosticAuthority({
-            pool: sqlPool,
-            authorizer: authority.authorizer,
-          });
-          const predecessorDiagnostic = requireValue(
-            await diagnosticAuthority.load(capability, diagnosticAttemptId),
+          const finalizationFailureReceiptId =
+            configuration.predecessor_finalization_failure_receipt_id;
+          if (!finalizationFailureReceiptId) {
+            throw new TypeError("FALCON24_FINALIZATION_FAILURE_RECOVERY_CONFIGURATION_REQUIRED");
+          }
+          const predecessorFinalizationFailure = requireValue(
+            await epoch.loadFinalizationFailure(capability, {
+              receipt_id: finalizationFailureReceiptId,
+            }),
           );
           if (
-            predecessorDiagnostic?.status !== "FAILED" ||
-            predecessorDiagnostic.failure_class !== "FROZEN_CLOSURE_CHANGE_REQUIRED" ||
-            !predecessorDiagnostic.failure_code ||
-            !predecessorDiagnostic.terminal_receipt_hash ||
-            predecessorDiagnostic.authority_epoch !== currentAuthority.authority_epoch ||
-            predecessorDiagnostic.authority_baseline_id !== currentAuthority.baseline_id ||
-            predecessorDiagnostic.authority_baseline_hash !== currentAuthority.baseline_hash ||
-            predecessorDiagnostic.authority_activation_attempt_id !==
-              currentAuthority.activation_attempt_id
+            predecessorFinalizationFailure.authority.authority_epoch !==
+              currentAuthority.authority_epoch ||
+            predecessorFinalizationFailure.authority.baseline_id !== currentAuthority.baseline_id ||
+            predecessorFinalizationFailure.authority.baseline_hash !==
+              currentAuthority.baseline_hash ||
+            predecessorFinalizationFailure.authority.activation_attempt_id !==
+              currentAuthority.activation_attempt_id ||
+            predecessorFinalizationFailure.failure_class !== "FROZEN_CLOSURE_CHANGE_REQUIRED" ||
+            predecessorFinalizationFailure.failure_code !==
+              "CURRENT_PROVIDER_CERTIFICATION_RESOLVER_AMBIGUOUS" ||
+            predecessorFinalizationFailure.observed_sqlstate !== "42702"
           ) {
-            throw new TypeError("FALCON24_TERMINAL_DIAGNOSTIC_RECOVERY_PREFLIGHT_MISMATCH");
+            throw new TypeError("FALCON24_FINALIZATION_FAILURE_RECOVERY_PREFLIGHT_MISMATCH");
           }
           return Object.freeze({
-            kind: "TERMINAL_DIAGNOSTIC" as const,
+            kind: "FINALIZATION_FAILURE" as const,
             llm_execution_proof: llmExecutionProof,
-            predecessor_diagnostic_receipt: Object.freeze({
-              attempt_id: predecessorDiagnostic.attempt_id,
-              run_id: predecessorDiagnostic.run_id,
-              manifest_hash: predecessorDiagnostic.manifest_hash,
-              receipt_hash: predecessorDiagnostic.terminal_receipt_hash,
-              failure_class: predecessorDiagnostic.failure_class,
-              failure_code: predecessorDiagnostic.failure_code,
-            }),
+            predecessor_finalization_failure: predecessorFinalizationFailure,
           });
         })()
       : undefined;
@@ -1251,6 +1300,13 @@ export async function runFalcon24AuthorityFinalization(
           providerInvocationStore
             .resolveCurrentExecutionCertification(capability, {
               schema_version: "current-provider-execution-certification-resolve@1.0.0",
+              ...request,
+            })
+            .then(requireValue),
+        resolve_current_execution_certification_v2: (request) =>
+          providerInvocationStore
+            .resolveCurrentExecutionCertificationV2(capability, {
+              schema_version: "current-provider-execution-certification-resolve@2.0.0",
               ...request,
             })
             .then(requireValue),

@@ -17,6 +17,7 @@
     "prepare:falcon24-successor-review": "NODE_OPTIONS=--conditions=react-server tsx src/cli/prepare-falcon24-semantic-successor-review.ts",
     "finalize:falcon24-authority": "NODE_OPTIONS=--conditions=react-server tsx src/cli/finalize-falcon24-authority.ts",
     "record:falcon24-epoch-closure-failure": "NODE_OPTIONS=--conditions=react-server tsx src/cli/record-falcon24-epoch-closure-failure.ts",
+    "record:falcon24-finalization-failure": "NODE_OPTIONS=--conditions=react-server tsx src/cli/record-falcon24-finalization-failure.ts",
     "hold:falcon24-authority-staging": "NODE_OPTIONS=--conditions=react-server tsx src/cli/hold-falcon24-authority-staging.ts",
     "hold:falcon24-authority-activation": "NODE_OPTIONS=--conditions=react-server tsx src/cli/hold-falcon24-authority-activation.ts",
     "falcon24:diagnostic:control": "NODE_OPTIONS=--conditions=react-server tsx src/cli/falcon24-diagnostic.ts",
