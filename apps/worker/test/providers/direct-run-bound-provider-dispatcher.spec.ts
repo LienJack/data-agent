@@ -86,7 +86,12 @@ describe("direct run-bound provider retry policy", () => {
     expect(prompt).toContain("Only these SQL functions are permitted");
     expect(prompt).toContain("Do not use to_char");
     expect(prompt).toContain("return date_trunc as a DATE or DATETIME result column");
+    expect(prompt).toContain("When the frozen snapshot lists a time column as text");
+    expect(prompt).toContain("cast the boundary parameters to the same temporal type");
     expect(prompt).toContain("TEXT2SQL_SQL_DANGEROUS means replace every unlisted function");
+    expect(prompt).toContain(
+      "DATASOURCE_ADAPTER_SQL_TYPE_ERROR means follow the exact listed physical column types",
+    );
   });
 
   it("fails closed unless a tool turn exposes a non-empty unique registered subset", () => {
