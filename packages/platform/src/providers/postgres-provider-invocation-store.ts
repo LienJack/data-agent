@@ -7,6 +7,8 @@ import {
   commitProviderTaskArtifactCommandSchema,
   currentProviderExecutionCertificationRequestSchema,
   currentProviderExecutionCertificationResultSchema,
+  currentProviderExecutionCertificationV2RequestSchema,
+  currentProviderExecutionCertificationV2ResultSchema,
   loadProviderInvocationCommandSchema,
   loadProviderResponseArtifactCommandSchema,
   loadProviderResponseArtifactResultSchema,
@@ -69,6 +71,10 @@ export interface PostgresProviderInvocationStore {
     capability: unknown,
   ): Promise<PortResult<readonly ProviderExecutionProfile[]>>;
   resolveCurrentExecutionCertification(
+    capability: unknown,
+    input: unknown,
+  ): Promise<PortResult<ModelExecutionCertificationClaims>>;
+  resolveCurrentExecutionCertificationV2(
     capability: unknown,
     input: unknown,
   ): Promise<PortResult<ModelExecutionCertificationClaims>>;
@@ -379,6 +385,54 @@ export function createPostgresProviderInvocationStore(
             throw new PersistenceBoundaryError(
               "PROVIDER_CURRENT_CERTIFICATION_DATABASE_CONTRACT_INVALID",
               "Current Provider Certification RPC 返回值未闭合同一 capability/profile/ref。",
+              false,
+            );
+          }
+          return claims;
+        },
+      );
+    },
+    async resolveCurrentExecutionCertificationV2(capabilityInput, inputValue) {
+      const command = currentProviderExecutionCertificationV2RequestSchema.safeParse(inputValue);
+      if (!command.success) {
+        return failure(
+          "PROVIDER_CURRENT_CERTIFICATION_RESOLVE_INVALID",
+          "Current Provider Certification V2 请求不符合严格合同。",
+        );
+      }
+      return withAppTransaction(
+        options.pool,
+        options.authorizer,
+        capabilityInput,
+        {
+          access: "READ",
+          allowed_roles: ["OWNER", "ANALYST", "VIEWER"],
+          operation_name: "provider_invocation.resolve_current_execution_certification_v2",
+          map_database_error: mapDatabaseFailure,
+        },
+        async ({ capability, client }) => {
+          const result = await client.query<JsonValueRow>(
+            "select app_data_agent.resolve_current_provider_execution_certification_v2($1::jsonb) as value",
+            [command.data],
+          );
+          const document = currentProviderExecutionCertificationV2ResultSchema.parse(
+            exactValue(result.rows),
+          );
+          const claims = await verifyRpcResult(() =>
+            verifyModelExecutionCertificationClaims(document.claims),
+          );
+          if (
+            claims.profile_id !== command.data.model_profile_id ||
+            claims.model_config_version !== command.data.model_config_version ||
+            JSON.stringify(claims.receipt_ref) !==
+              JSON.stringify(command.data.certification_receipt_ref) ||
+            claims.execution_profile_snapshot.scope.app_id !== capability.scope.app_id ||
+            claims.execution_profile_snapshot.scope.tenant_id !== capability.scope.tenant_id ||
+            claims.execution_profile_snapshot.scope.environment !== capability.scope.environment
+          ) {
+            throw new PersistenceBoundaryError(
+              "PROVIDER_CURRENT_CERTIFICATION_DATABASE_CONTRACT_INVALID",
+              "Current Provider Certification V2 RPC 返回值未闭合同一 capability/profile/ref。",
               false,
             );
           }

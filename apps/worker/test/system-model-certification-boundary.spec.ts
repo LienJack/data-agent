@@ -41,7 +41,9 @@ describe("system model certification boundary", () => {
       "utf8",
     );
 
-    expect(source).toContain("resolveCurrentExecutionCertification");
+    expect(source).toContain("resolveCurrentExecutionCertificationV2");
+    expect(source).toContain("current-provider-execution-certification-resolve@2.0.0");
+    expect(source).not.toMatch(/resolveCurrentExecutionCertification\s*\(/u);
     expect(source).not.toContain("createPostgresModelCertificationReceiptStore");
     expect(source).not.toContain("repository.resolveArtifact");
   });

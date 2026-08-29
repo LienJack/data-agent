@@ -80,12 +80,15 @@ export function createProductionRunBoundProviderDispatcher(input: {
         profile.model_id === "deepseek-v4-flash",
     );
     if (!technical) return null;
-    const resolved = await invocationStore.resolveCurrentExecutionCertification(input.capability, {
-      schema_version: "current-provider-execution-certification-resolve@1.0.0",
-      model_profile_id: technical.model_profile_id,
-      model_config_version: technical.model_config_version,
-      certification_receipt_ref: technical.certification_receipt_ref,
-    });
+    const resolved = await invocationStore.resolveCurrentExecutionCertificationV2(
+      input.capability,
+      {
+        schema_version: "current-provider-execution-certification-resolve@2.0.0",
+        model_profile_id: technical.model_profile_id,
+        model_config_version: technical.model_config_version,
+        certification_receipt_ref: technical.certification_receipt_ref,
+      },
+    );
     if (!resolved.ok) return null;
     try {
       const claims = await verifyModelExecutionCertificationClaims(resolved.value);

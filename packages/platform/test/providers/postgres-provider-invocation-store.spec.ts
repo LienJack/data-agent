@@ -611,19 +611,31 @@ describe("PostgresProviderInvocationStore conversation selection", () => {
       verdict: "PASS",
     });
     const scripted = scriptedPool((text) =>
-      text.includes("resolve_current_provider_execution_certification")
+      text.includes("resolve_current_provider_execution_certification_v2")
         ? {
             rows: [
               {
                 value: {
-                  schema_version: "current-provider-execution-certification@1.0.0",
+                  schema_version: "current-provider-execution-certification@2.0.0",
                   claims,
                 },
               },
             ],
             rowCount: 1,
           }
-        : undefined,
+        : text.includes("resolve_current_provider_execution_certification")
+          ? {
+              rows: [
+                {
+                  value: {
+                    schema_version: "current-provider-execution-certification@1.0.0",
+                    claims,
+                  },
+                },
+              ],
+              rowCount: 1,
+            }
+          : undefined,
     );
     const store = createPostgresProviderInvocationStore({ pool: scripted.pool, authorizer });
 
@@ -633,12 +645,19 @@ describe("PostgresProviderInvocationStore conversation selection", () => {
       model_config_version: 12,
       certification_receipt_ref: claims.receipt_ref,
     });
+    const v2Result = await store.resolveCurrentExecutionCertificationV2(capability, {
+      schema_version: "current-provider-execution-certification-resolve@2.0.0",
+      model_profile_id: ids.model,
+      model_config_version: 12,
+      certification_receipt_ref: claims.receipt_ref,
+    });
 
     expect(result).toEqual({ ok: true, value: claims });
+    expect(v2Result).toEqual({ ok: true, value: claims });
     const calls = scripted.calls.filter((call) =>
       call.text.includes("resolve_current_provider_execution_certification"),
     );
-    expect(calls).toHaveLength(1);
+    expect(calls).toHaveLength(2);
     expect(calls[0]?.values).toEqual([
       {
         schema_version: "current-provider-execution-certification-resolve@1.0.0",
@@ -648,6 +667,15 @@ describe("PostgresProviderInvocationStore conversation selection", () => {
       },
     ]);
     expect(calls[0]?.text).not.toContain("resolveArtifact");
+    expect(calls[1]?.text).toContain("resolve_current_provider_execution_certification_v2");
+    expect(calls[1]?.values).toEqual([
+      {
+        schema_version: "current-provider-execution-certification-resolve@2.0.0",
+        model_profile_id: ids.model,
+        model_config_version: 12,
+        certification_receipt_ref: claims.receipt_ref,
+      },
+    ]);
   });
 
   it("rejects a response artifact substituted by PostgreSQL", async () => {
