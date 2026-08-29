@@ -22,6 +22,7 @@
     "hold:falcon24-authority-activation": "NODE_OPTIONS=--conditions=react-server tsx src/cli/hold-falcon24-authority-activation.ts",
     "falcon24:diagnostic:control": "NODE_OPTIONS=--conditions=react-server tsx src/cli/falcon24-diagnostic.ts",
     "falcon24:analysis:control": "NODE_OPTIONS=--conditions=react-server tsx src/cli/falcon24-agent-acceptance.ts",
+    "falcon24:four-layer:control": "NODE_OPTIONS=--conditions=react-server tsx src/cli/falcon24-four-layer-gate.ts",
     "falcon24:qualification:control": "NODE_OPTIONS=--conditions=react-server tsx src/cli/falcon24-qualification.ts"
   },
   "dependencies": {
