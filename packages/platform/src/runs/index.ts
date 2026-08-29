@@ -18,6 +18,7 @@ export { freezeSubagentCapabilityCatalog } from "./frozen-subagent-capability-ca
 export * from "./postgres-authority-epoch.js";
 export * from "./postgres-falcon24-acceptance-campaign.js";
 export * from "./postgres-falcon24-diagnostic.js";
+export * from "./postgres-falcon24-four-layer-gate.js";
 export * from "./postgres-falcon24-qualification.js";
 export * from "./postgres-falcon24-semantic-closure.js";
 export * from "./postgres-resolution-trace.js";
