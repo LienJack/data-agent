@@ -2851,6 +2851,25 @@
       "postcondition": {
         "checksum_occurrences": 2
       }
+    },
+    {
+      "id": "10802",
+      "migration_name": "20260725010802_app_data_agent_falcon24_e10_versioned_profile_authority.sql",
+      "source_directory": "infra/supabase/apps/data-agent/migration-sources/10802",
+      "segments": [
+        "00-preamble.sql.inc",
+        "10-finalization-failure-authority.sql.inc",
+        "20-current-profile-certification-v2.sql.inc",
+        "30-e10-activation-rpc.sql.inc",
+        "80-security.sql.inc",
+        "90-postconditions.sql.inc",
+        "99-ledger.sql.inc"
+      ],
+      "placeholder": "__FALCON24_E10_VERSIONED_PROFILE_AUTHORITY_MIGRATION_CHECKSUM__",
+      "checksum_header": "falcon24_e10_versioned_profile_authority_migration_checksum",
+      "postcondition": {
+        "checksum_occurrences": 2
+      }
     }
   ],
   "exceptions": [
