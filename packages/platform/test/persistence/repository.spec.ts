@@ -1858,8 +1858,8 @@ describe("PostgreSQL authoritative repository", () => {
         worker_fence: 5,
       }),
     ).toEqual({ ok: true, value: document.artifact_ref });
-    const referenceChecks = fixture.calls.filter(({ text }) =>
-      text.trimStart().startsWith("select 1"),
+    const referenceChecks = fixture.calls.filter(
+      ({ text }) => text.includes("select 1") && text.includes("from artifacts as artifact"),
     );
     expect(referenceChecks).toHaveLength(4);
     expect(referenceChecks.every(({ values }) => values.at(-1) === ids.principal)).toBe(true);
@@ -2110,6 +2110,18 @@ describe("PostgreSQL authoritative repository", () => {
     const raw = await repository.resolveArtifact(authority.capability, document.artifact_ref);
     expect(raw).toMatchObject({ ok: true });
     expect(raw.ok && Object.isFrozen(raw.value)).toBe(false);
+    const rawRead = fixture.calls.find(({ text }) =>
+      text.includes("select artifact.document_json"),
+    );
+    expect(rawRead?.text).toContain("load_falcon24_current_authority_epoch");
+    expect(rawRead?.text).not.toContain("join falcon24_current_authority_epoch");
+
+    await expect(
+      repository.verifyCommitted(authority.capability, document.artifact_ref),
+    ).resolves.toEqual({ ok: true, value: true });
+    const existenceRead = fixture.calls.find(({ text }) => text.includes("select 1"));
+    expect(existenceRead?.text).toContain("load_falcon24_current_authority_epoch");
+    expect(existenceRead?.text).not.toContain("join falcon24_current_authority_epoch");
 
     const authorized = await repository.resolveGroundingAuthorityArtifact(
       authority.capability,

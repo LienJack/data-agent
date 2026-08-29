@@ -468,17 +468,17 @@ async function referenceExists(
   principalId: string,
 ): Promise<boolean> {
   const result = await client.query(
-    `select 1
+    `with current_authority as materialized (
+       select app_data_agent.load_falcon24_current_authority_epoch() as binding
+     )
+     select 1
      from artifacts as artifact
      join runs as run
        on run.app_id = artifact.app_id
       and run.tenant_id = artifact.tenant_id
       and run.environment = artifact.environment
       and run.run_id = artifact.run_id
-     join falcon24_current_authority_epoch as current_epoch
-       on current_epoch.app_id = artifact.app_id
-      and current_epoch.tenant_id = artifact.tenant_id
-      and current_epoch.environment = artifact.environment
+     cross join current_authority
      where artifact.app_id = $1
        and artifact.tenant_id = $2
        and artifact.environment = $3
@@ -488,14 +488,16 @@ async function referenceExists(
        and artifact.revision = $7
        and artifact.content_hash = $8
        and run.principal_id = $9
-       and run.authority_epoch = current_epoch.authority_epoch
+       and current_authority.binding is not null
+       and run.authority_epoch = current_authority.binding->>'authority_epoch'
        and artifact.authority_epoch = run.authority_epoch
        and artifact.authority_baseline_id = run.authority_baseline_id
        and artifact.authority_baseline_hash = run.authority_baseline_hash
        and artifact.authority_activation_attempt_id = run.authority_activation_attempt_id
-       and run.authority_baseline_id = current_epoch.baseline_id
-       and run.authority_baseline_hash = current_epoch.baseline_hash
-       and run.authority_activation_attempt_id = current_epoch.activation_attempt_id`,
+       and run.authority_baseline_id = (current_authority.binding->>'baseline_id')::uuid
+       and run.authority_baseline_hash = current_authority.binding->>'baseline_hash'
+       and run.authority_activation_attempt_id =
+         (current_authority.binding->>'activation_attempt_id')::uuid`,
     [
       reference.app_id,
       reference.tenant_id,
@@ -517,17 +519,17 @@ async function resolveArtifactDocument(
   principalId: string,
 ): Promise<unknown | null> {
   const result = await client.query<ArtifactDocumentRow>(
-    `select artifact.document_json
+    `with current_authority as materialized (
+       select app_data_agent.load_falcon24_current_authority_epoch() as binding
+     )
+     select artifact.document_json
      from artifacts as artifact
      join runs as run
        on run.app_id = artifact.app_id
       and run.tenant_id = artifact.tenant_id
       and run.environment = artifact.environment
       and run.run_id = artifact.run_id
-     join falcon24_current_authority_epoch as current_epoch
-       on current_epoch.app_id = artifact.app_id
-      and current_epoch.tenant_id = artifact.tenant_id
-      and current_epoch.environment = artifact.environment
+     cross join current_authority
      where artifact.app_id = $1
        and artifact.tenant_id = $2
        and artifact.environment = $3
@@ -537,14 +539,16 @@ async function resolveArtifactDocument(
        and artifact.revision = $7
        and artifact.content_hash = $8
        and run.principal_id = $9
-       and run.authority_epoch = current_epoch.authority_epoch
+       and current_authority.binding is not null
+       and run.authority_epoch = current_authority.binding->>'authority_epoch'
        and artifact.authority_epoch = run.authority_epoch
        and artifact.authority_baseline_id = run.authority_baseline_id
        and artifact.authority_baseline_hash = run.authority_baseline_hash
        and artifact.authority_activation_attempt_id = run.authority_activation_attempt_id
-       and run.authority_baseline_id = current_epoch.baseline_id
-       and run.authority_baseline_hash = current_epoch.baseline_hash
-       and run.authority_activation_attempt_id = current_epoch.activation_attempt_id`,
+       and run.authority_baseline_id = (current_authority.binding->>'baseline_id')::uuid
+       and run.authority_baseline_hash = current_authority.binding->>'baseline_hash'
+       and run.authority_activation_attempt_id =
+         (current_authority.binding->>'activation_attempt_id')::uuid`,
     [
       reference.app_id,
       reference.tenant_id,

@@ -183,6 +183,12 @@ describe.skipIf(!databaseUrl || !adminDatabaseUrl)(
           "select platform.provision_membership($1::uuid, $2::uuid, $3::uuid, 'owner')",
           [DEPLOYMENT_ID, tenantId, principalId],
         );
+        await adminPool.query(
+          `select test_support.activate_falcon24_e1_fixture(
+             $1::uuid, 'test', $2::uuid, $3::uuid, false, 1
+           )`,
+          [tenantId, principalId, DEPLOYMENT_ID],
+        );
         const capabilityResult = await authority.resolveForServerContext({
           deployment_id: DEPLOYMENT_ID,
           tenant_id: tenantId,

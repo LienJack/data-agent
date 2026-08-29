@@ -379,35 +379,44 @@ describe.skipIf(!databaseUrl || !adminDatabaseUrl)(
           descriptor_hash: await computeSnapshotDescriptorHash(descriptorDraft),
         };
 
-        for (const document of [sqlDocument, permitDocument]) {
-          await adminPool.query(
-            `insert into app_data_agent.artifacts (
-             app_id,
-             tenant_id,
-             environment,
-             run_id,
-             artifact_id,
-             artifact_type,
-             revision,
-             content_hash,
-             document_json,
-             worker_fence,
-             is_active
-           )
-           values ($1, $2, $3, $4, $5, $6, $7, $8, $9::jsonb, 0, true)`,
-            [
-              document.envelope.app_id,
-              document.envelope.tenant_id,
-              document.envelope.environment,
-              document.envelope.run_id,
-              document.envelope.artifact_id,
-              document.envelope.artifact_type,
-              document.envelope.revision,
-              document.envelope.content_hash,
-              document,
-            ],
-          );
-        }
+        const artifactFixture = await withAppTransaction(
+          adaptPgPool(adminPool),
+          authorityOne.authorizer,
+          capability.value,
+          { access: "WRITE", operation_name: "test.insert_sandbox_artifact_fixture" },
+          async ({ client }) => {
+            for (const document of [sqlDocument, permitDocument]) {
+              await client.query(
+                `insert into app_data_agent.artifacts (
+                 app_id,
+                 tenant_id,
+                 environment,
+                 run_id,
+                 artifact_id,
+                 artifact_type,
+                 revision,
+                 content_hash,
+                 document_json,
+                 worker_fence,
+                 is_active
+               )
+               values ($1, $2, $3, $4, $5, $6, $7, $8, $9::jsonb, 0, true)`,
+                [
+                  document.envelope.app_id,
+                  document.envelope.tenant_id,
+                  document.envelope.environment,
+                  document.envelope.run_id,
+                  document.envelope.artifact_id,
+                  document.envelope.artifact_type,
+                  document.envelope.revision,
+                  document.envelope.content_hash,
+                  document,
+                ],
+              );
+            }
+          },
+        );
+        if (!artifactFixture.ok) throw new Error(artifactFixture.error.code);
 
         const authorityIdentity = {
           authority_id: randomUUID(),
@@ -834,23 +843,39 @@ describe.skipIf(!databaseUrl || !adminDatabaseUrl)(
       const artifactId = randomUUID();
       const fixtureRun = "00000000-0000-4000-8000-00000000a101";
       const contentHash = `sha256:${"a".repeat(64)}`;
-      await adminPool.query(
-        `insert into app_data_agent.artifacts (
-           app_id,
-           tenant_id,
-           environment,
-           run_id,
-           artifact_id,
-           artifact_type,
-           revision,
-           content_hash,
-           document_json,
-           worker_fence,
-           is_active
-         )
-         values ($1, $2, 'test', $3, $4, 'QuestionFrame', 1, $5, '{}'::jsonb, 0, true)`,
-        [APP_ID, TENANT_ONE, fixtureRun, artifactId, contentHash],
+      const ownerCapability = await authorityOne.resolveForServerContext({
+        deployment_id: DEPLOYMENT_ID,
+        tenant_id: TENANT_ONE,
+        principal_id: OWNER_ONE,
+        access: "WRITE",
+      });
+      if (!ownerCapability.ok) throw new Error(ownerCapability.error.code);
+      const artifactFixture = await withAppTransaction(
+        adaptPgPool(adminPool),
+        authorityOne.authorizer,
+        ownerCapability.value,
+        { access: "WRITE", operation_name: "test.insert_principal_isolation_artifact_fixture" },
+        async ({ client }) => {
+          await client.query(
+            `insert into app_data_agent.artifacts (
+               app_id,
+               tenant_id,
+               environment,
+               run_id,
+               artifact_id,
+               artifact_type,
+               revision,
+               content_hash,
+               document_json,
+               worker_fence,
+               is_active
+             )
+             values ($1, $2, 'test', $3, $4, 'QuestionFrame', 1, $5, '{}'::jsonb, 0, true)`,
+            [APP_ID, TENANT_ONE, fixtureRun, artifactId, contentHash],
+          );
+        },
       );
+      if (!artifactFixture.ok) throw new Error(artifactFixture.error.code);
       const otherPrincipal = randomUUID();
       await adminPool.query(
         "select platform.provision_membership($1::uuid, $2::uuid, $3::uuid, 'analyst')",

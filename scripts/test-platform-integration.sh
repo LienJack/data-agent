@@ -370,11 +370,15 @@ for sql_file in $(find "$infra_dir/apps/data-agent/migrations" -type f -name '*.
     "20260725010600_app_data_agent_u6_research_derivation.sql" ]; then
     prepare_u6_c2_maintenance_binding
     apply_u6_c2_migration "$sql_file"
+  elif [ "$(basename "$sql_file")" = \
+    "20260725010780_app_data_agent_falcon24_e1_runtime_profile.sql" ]; then
+    apply_sql "$sql_file"
+    apply_sql "$support_dir/10-fixtures.sql"
   else
     apply_sql "$sql_file"
   fi
 done
-apply_sql "$support_dir/10-fixtures.sql"
+apply_sql "$support_dir/11-falcon24-e2-fixtures.sql"
 
 docker exec "$container_name" \
   psql -X -v ON_ERROR_STOP=1 -U postgres -d "$database_name" \
@@ -387,7 +391,8 @@ export DATA_AGENT_TEST_ADMIN_DATABASE_URL="postgresql://postgres:$database_passw
 export DATA_AGENT_SANDBOX_DSN="postgresql://sandbox_reader:$sandbox_reader_password@127.0.0.1:$host_port/$database_name"
 export DATA_AGENT_SANDBOX_PROCESS_INTEGRATION=1
 
-uv sync --project "$sandbox_dir" --dev
+uv sync --project "$sandbox_dir" --dev --python 3.12
+pnpm --dir "$repo_dir" --filter @data-agent/platform build
 pnpm --dir "$repo_dir" --filter @data-agent/platform test:integration
 pnpm --dir "$repo_dir" exec vitest run \
   --exclude '**/.next/**' \
