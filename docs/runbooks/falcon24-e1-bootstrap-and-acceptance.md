@@ -256,3 +256,21 @@ E7 不重跑 E6 diagnostic。执行顺序固定为：
 
 credential缺失时 certification preflight 必须在创建 Run 前 HOLD；禁止从 shell history、日志、旧临时文件或数据库 locator恢复 secret。正式
 diagnostic/Q1/C1 任一首败仍立即写 immutable FAIL/HOLD并停止。activation 失败只允许 all-old；成功后不回退，任何新 frozen closure变化前进 E8。
+
+### E7 W1-W3 已完成证据（2026-08-29）
+
+- 10799最终 checksum为
+  `sha256:c01e24c352b0f040e64dff536e587af81f00be45090c11a20f4094691ba8d1d2`；fresh PostgreSQL 17与 exact E6物理克隆均使用同一
+  rendered SQL，专用权威库尚未应用该迁移。
+- exact E6 clone的 all-new执行原子得到一个 ACTIVE E7；故障注入在事务中段失败后只观察到 all-old；两个并发 Finalizer均返回同一
+  E7 baseline/activation，数据库只存在一个 PROMOTED stage和一个 E6 terminal receipt。
+- certification candidate在 stage期间保持 inactive，E6 reader不可见；只有同一 activation transaction先把 exact stage标为
+  PROMOTED后，immutable trigger才允许该 exact certification artifact从 inactive变为 active。该例外绑定 transaction-local
+  stage/attempt identity，其他 artifact payload更新与 DELETE继续拒绝。
+- 最终 HEAD PostgreSQL 17 integration通过：Platform 13 passed/1 skipped、Web schema 1 passed、Worker 11 passed/1 skipped；
+  Contracts/Platform/Worker/Web focused/full、typecheck、Biome、renderer/inventory、public-data/secret和 diff检查均通过。
+- scratch databases、physical backup目录和 W3 transient containers已删除；长期 Docker仍只有专用权威 PostgreSQL、开发 PostgreSQL、
+  ClamAV与 Neo4j。W3使用的 mock/no-network certification只证明合同与原子性，不是 W4要求的真实 Provider execution certification。
+
+W4开始前必须在新的 clean committed HEAD上重新生成 build/attestation，并安全取得真实 credential；不得复用 W3 mock identity或把
+credential preflight失败写入权威库。

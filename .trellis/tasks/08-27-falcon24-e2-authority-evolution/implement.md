@@ -901,25 +901,35 @@ receipt persistence 本身需要新的 frozen-closure 修复，本任务不满�
 
 ### E7-W1 — Diagnostic and activation authority v4
 
-- [ ] 先写 adapter failing regression，再让 `complete` 与 `begin` 使用相同 semantic domain transaction context。
-- [ ] Contracts 增加 activation request@4/result@4，固定 E6 failure binding与 server-owned nested completion hash。
-- [ ] 10799 演进唯一 activation RPC；同事务调用唯一 diagnostic completion并切换 E7，覆盖 all-old/all-new、replay、RLS、并发。
-- [ ] focused/full tests、typecheck、renderer/inventory/static checks；独立 scoped commit。
+- [x] 先写 adapter failing regression，再让 `complete` 与 `begin` 使用相同 semantic domain transaction context；commit
+  `906379ac` 固定 forced-RLS 回归与相同 domain binding。
+- [x] Contracts 增加 activation request@4/result@4，固定 E6 failure binding与 server-owned nested completion hash；commit
+  `722e5b58`。
+- [x] 10799 演进唯一 activation RPC；同事务调用唯一 diagnostic completion并切换 E7；commit `0451d28f` / `048ae13a`，
+  最终 checksum=`sha256:c01e24c352b0f040e64dff536e587af81f00be45090c11a20f4094691ba8d1d2`。
+- [x] focused/full tests、typecheck、renderer/inventory/static checks与 scoped commits完成；真实 PostgreSQL 17 又发现并前向修复
+  artifact revision歧义、staged certification promotion immutability guard和 activation-attempt歧义（`182d711a`、`386d6946`、
+  `02112995`），没有修改既有迁移或历史数据。
 
 ### E7-W2 — Provider execution certification staging
 
-- [ ] 增加 inactive certification candidate table、RLS/grants、stage/load/reject/promote narrow authority；不新增 runtime profile writer。
-- [ ] 演进 ModelCertificationReceipt store 支持 E7 staged commit，继续要求 live-smoke draft与 ACTIVE Run/fence。
-- [ ] execution-profile reader只暴露 current E7 PROMOTED exact binding；E6/staged/rejected candidate均不可见。
-- [ ] E7 LLM proof绑定 certification/deployment/execution-profile/build；Finalizer不再要求 E7 evidence等于 E6 predecessor。
-- [ ] Worker preparation CLI只用既有 Run/Queue/Event/Artifact authority；credential缺失零写入、输出永不含 secret。
-- [ ] focused/full tests与独立 scoped commit。
+- [x] 增加 inactive certification candidate table、RLS/grants、stage/load/reject/promote narrow authority；不新增 runtime profile writer。
+- [x] 演进 ModelCertificationReceipt store 支持 E7 staged commit，继续要求 live-smoke draft与 ACTIVE Run/fence。
+- [x] execution-profile reader只暴露 current E7 PROMOTED exact binding；E6/staged/rejected candidate均不可见。
+- [x] E7 LLM proof绑定 certification/deployment/execution-profile/build；Finalizer不再要求 E7 evidence等于 E6 predecessor。
+- [x] Worker preparation CLI只用既有 Run/Queue/Event/Artifact authority；credential缺失零写入、输出永不含 secret。
+- [x] commits `347ca1fa`、`968ddd06`、`d47ad76b` 完成 focused/full tests；W3 no-network probe只证明 staging合同和
+  inactive/E6-invisible行为，不冒充 W4 真实 Provider certification。
 
 ### E7-W3 — 10799 proof and code validation
 
-- [ ] PostgreSQL 17 clean install、exact E6 populated clone、migration replay/rollback、history hash、RLS/security、failure injection与双连接并发。
-- [ ] Contracts/Platform/Worker/Web full tests + typecheck + Biome + public-data/secret scans + `git diff --check`。
-- [ ] 只提交 owned migration source/rendered/registry/support/evidence files；删除 scratch DB/container。
+- [x] PostgreSQL 17 fresh install与 exact E6 physical clone验证完成；final-code all-new一次得到 exact E7，transaction中段故障注入
+  只观察 all-old，双连接 Finalizer序列化为同一个 exact E7 binding；migration replay/rollback、protected history bytes、RLS/grants/
+  capability和 immutable trigger narrow exception均已核对。
+- [x] Contracts/Platform/Worker/Web focused/full tests、typecheck、Biome、public-data/secret scans、renderer/inventory/static checks和
+  `git diff --check`通过；最终 HEAD 的 PostgreSQL 17 integration为 Platform 13 passed/1 skipped、Web 1 passed、Worker 11 passed/1 skipped。
+- [x] owned source/rendered/registry/support均已 scoped commit；专用权威库仍停在 E6且 10799 count=0；scratch databases、physical
+  backup目录及 `data-agent-falcon24-e7-w3-*` 容器已删除，Docker只保留既有四个长期容器。
 
 ### E7-W4 — Certification, migration and one activation
 
