@@ -352,6 +352,32 @@ describe("generic analysis program host compiler", () => {
     ]);
   });
 
+  it("preserves the published parameter contract for a governed trend method", async () => {
+    const input = await fixture();
+    const obligation = trendObligation();
+    const program = await compileAnalysisProgramCandidate({
+      ...input,
+      candidate: await candidateV2(input, {
+        parameters: {},
+        operator_obligations: [obligation],
+      }),
+      method_registry: [
+        {
+          method_id: "published-monthly-trend@1",
+          skill_id: "trend-change@1",
+          result_contract: input.result_contract,
+          required_operator_obligations: [obligation],
+        },
+      ],
+    });
+
+    expect(program.nodes[0]).toMatchObject({
+      skill_id: "trend-change@1",
+      parameters: {},
+      generated_source_policy: "GOVERNED_OPERATOR_ORCHESTRATION",
+    });
+  });
+
   it("rejects metrics and dimensions outside the published context", async () => {
     const input = await fixture();
     await expect(

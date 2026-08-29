@@ -268,15 +268,19 @@ export async function compileAnalysisProgramCandidate(input: {
       const requiredMethods = [
         ...new Set(requiredOperatorObligations.map(({ operator_id }) => operator_id)),
       ].sort();
-      const parameters = z.json().parse({
-        ...candidateNode.parameters,
-        declared_method:
-          requiredMethods.length > 0
-            ? "governed-operator-orchestration@1"
-            : "open-python-analysis@1",
-        ...(requiredMethods.length > 0 ? { required_methods: requiredMethods } : {}),
-        question: input.brief.question,
-      });
+      const parameters = z.json().parse(
+        skillId === "open-python-analysis@1"
+          ? {
+              ...candidateNode.parameters,
+              declared_method:
+                requiredMethods.length > 0
+                  ? "governed-operator-orchestration@1"
+                  : "open-python-analysis@1",
+              ...(requiredMethods.length > 0 ? { required_methods: requiredMethods } : {}),
+              question: input.brief.question,
+            }
+          : candidateNode.parameters,
+      );
       return {
         node_id: candidateNode.node_id,
         skill_id: skillId,
