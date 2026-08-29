@@ -92,6 +92,20 @@ describe("direct run-bound provider retry policy", () => {
     expect(prompt).toContain(
       "DATASOURCE_ADAPTER_SQL_TYPE_ERROR means follow the exact listed physical column types",
     );
+    expect(prompt).toContain("semantic_context.request_scoped_interpretations");
+    expect(prompt).toContain("aggregates numerator and denominator separately before division");
+  });
+
+  it("allows a missing exact semantic term to close only through governed request-scoped primitives", () => {
+    const prompt = directRunBoundProviderDispatcherInternals.semanticSpecialistSystemPrompt(
+      '{"metrics":[{"metric_id":"metric.order_revenue"}]}',
+    );
+
+    expect(prompt).toContain("request_scoped_operations");
+    expect(prompt).toContain("PERIOD_COMPARISON_RATE");
+    expect(prompt).toContain("SUBTRACT_DENOMINATOR for net ROI");
+    expect(prompt).toContain("must not create, update, approve, or imply a Published formula");
+    expect(prompt).toContain("do not expose index or governance lookup failures");
   });
 
   it("fails closed unless a tool turn exposes a non-empty unique registered subset", () => {

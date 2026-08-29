@@ -91,27 +91,80 @@ function renderArtifactFacts(
     return fields.join("\n");
   }
   if (document.projection.kind === "SEMANTIC_CONTEXT") {
+    const semanticContext = document.projection.context;
     const allowed = new Map<string, unknown>([
-      ["projection.context.datasource", document.projection.context.datasource],
-      ["projection.context.dimensions", document.projection.context.dimensions],
-      ["projection.context.formulas", document.projection.context.formulas],
-      ["projection.context.metrics", document.projection.context.metrics],
-      ["projection.context.physical_bindings", document.projection.context.physical_bindings],
-      ["projection.context.quality_constraints", document.projection.context.quality_constraints],
-      ["projection.context.relationships", document.projection.context.relationships],
-      ["projection.context.requested_object_ids", document.projection.context.requested_object_ids],
-      ["projection.context.schema_snapshot", document.projection.context.schema_snapshot],
-      ["projection.context.semantic_context_ref", document.projection.context.semantic_context_ref],
-      ["projection.context.semantic_release", document.projection.context.semantic_release],
-      ["projection.context.time_semantics", document.projection.context.time_semantics],
+      ["projection.context.datasource", semanticContext.datasource],
+      ["projection.context.dimensions", semanticContext.dimensions],
+      ["projection.context.formulas", semanticContext.formulas],
+      ["projection.context.metrics", semanticContext.metrics],
+      ["projection.context.physical_bindings", semanticContext.physical_bindings],
+      ["projection.context.quality_constraints", semanticContext.quality_constraints],
+      ["projection.context.relationships", semanticContext.relationships],
       [
-        "projection.context.unresolved_ambiguities",
-        document.projection.context.unresolved_ambiguities,
+        "projection.context.request_scoped_interpretations",
+        semanticContext.request_scoped_interpretations ?? [],
       ],
+      ["projection.context.requested_object_ids", semanticContext.requested_object_ids],
+      ["projection.context.schema_snapshot", semanticContext.schema_snapshot],
+      ["projection.context.semantic_context_ref", semanticContext.semantic_context_ref],
+      ["projection.context.semantic_release", semanticContext.semantic_release],
+      ["projection.context.time_semantics", semanticContext.time_semantics],
+      ["projection.context.unresolved_ambiguities", semanticContext.unresolved_ambiguities],
     ]);
     if (selectors.some((selector) => !allowed.has(selector))) return null;
     return selectors
-      .map((selector) => `${selector}=${canonicalizeJson(allowed.get(selector))}`)
+      .map((selector) => {
+        if (selector === "projection.context.metrics") {
+          return semanticContext.metrics
+            .map((metric) => {
+              const formula = metric.formula ? `；正式公式：${metric.formula.expression}` : "";
+              const time = metric.time_domain
+                ? `；时间口径：${metric.time_domain.time_domain_id}（${metric.time_domain.timezone}）`
+                : "";
+              return `指标「${metric.name}」（${metric.metric_id}）：${metric.aggregation} 聚合，粒度 ${metric.grain.granularity}${formula}${time}。`;
+            })
+            .join("\n");
+        }
+        if (selector === "projection.context.dimensions") {
+          return semanticContext.dimensions
+            .map(
+              (dimension) =>
+                `维度「${dimension.name}」（${dimension.dimension_id}）：字段 ${dimension.column_id}，粒度 ${dimension.grain.granularity}。`,
+            )
+            .join("\n");
+        }
+        if (selector === "projection.context.formulas") {
+          return semanticContext.formulas
+            .map(
+              (formula) =>
+                `公式「${formula.name}」（${formula.node_id}）：${canonicalizeJson(formula.expression)}。`,
+            )
+            .join("\n");
+        }
+        if (selector === "projection.context.relationships") {
+          return semanticContext.relationships
+            .map(
+              (relationship) =>
+                `关系「${relationship.name}」（${relationship.relationship_id}）：${relationship.left_table_id}[${relationship.left_column_ids.join(", ")}] → ${relationship.right_table_id}[${relationship.right_column_ids.join(", ")}]，基数 ${relationship.cardinality}。`,
+            )
+            .join("\n");
+        }
+        if (selector === "projection.context.time_semantics") {
+          return semanticContext.time_semantics
+            .map(
+              (time) =>
+                `时间口径 ${time.time_domain_id}：${time.calendar} 日历，时区 ${time.timezone}。`,
+            )
+            .join("\n");
+        }
+        if (selector === "projection.context.request_scoped_interpretations") {
+          return (semanticContext.request_scoped_interpretations ?? [])
+            .map(({ user_explanation: explanation }) => explanation)
+            .join("\n");
+        }
+        return `${selector}=${canonicalizeJson(allowed.get(selector))}`;
+      })
+      .filter((value) => value.length > 0)
       .join("\n");
   }
   return null;
@@ -180,3 +233,5 @@ export function createRootAnswerVerifier(dependencies: RootAnswerVerifierDepende
     },
   });
 }
+
+export const rootAnswerVerifierInternals = Object.freeze({ renderArtifactFacts });

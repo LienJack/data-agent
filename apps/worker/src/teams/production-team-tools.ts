@@ -352,6 +352,62 @@ function semanticSelectionIds(intent: SemanticQuerySelectionIntent): readonly st
   ].sort(stringCompare);
 }
 
+async function buildRequestScopedInterpretations(input: {
+  readonly run_id: string;
+  readonly intent: SemanticQuerySelectionIntent;
+  readonly metric_names: ReadonlyMap<string, string>;
+  readonly dimension_names: ReadonlyMap<string, string>;
+}) {
+  const operations = input.intent.request_scoped_operations ?? [];
+  const interpretations = await Promise.all(
+    operations.map(async (operation) => {
+      const operator = operation.operator;
+      const sourceObjectIds = (
+        operator.kind === "PERIOD_COMPARISON_RATE"
+          ? [operator.metric_id, operator.time_dimension_id]
+          : [operator.denominator_metric_id, operator.numerator_metric_id]
+      ).sort(stringCompare);
+      let userExplanation: string;
+      if (operator.kind === "PERIOD_COMPARISON_RATE") {
+        const metricName = input.metric_names.get(operator.metric_id);
+        const dimensionName = input.dimension_names.get(operator.time_dimension_id);
+        if (!metricName || !dimensionName) {
+          throw new ProductionTeamToolError("TEAM_REQUEST_SCOPED_INTERPRETATION_INVALID");
+        }
+        userExplanation = `${operation.requested_term}按${dimensionName}汇总${metricName}后，与上年同期比较，计算公式为（本期值-上年同期值）/上年同期值；上年同期值为0时返回空值。该解释只用于当前请求，不会发布为全局语义定义。`;
+      } else {
+        const numeratorName = input.metric_names.get(operator.numerator_metric_id);
+        const denominatorName = input.metric_names.get(operator.denominator_metric_id);
+        if (!numeratorName || !denominatorName) {
+          throw new ProductionTeamToolError("TEAM_REQUEST_SCOPED_INTERPRETATION_INVALID");
+        }
+        userExplanation =
+          operator.numerator_adjustment === "SUBTRACT_DENOMINATOR"
+            ? `${operation.requested_term}先分别汇总${numeratorName}与${denominatorName}，再按（${numeratorName}-${denominatorName}）/${denominatorName}计算；分母为0时返回空值。该解释只用于当前请求，不会发布为全局语义定义。`
+            : `${operation.requested_term}先分别汇总${numeratorName}与${denominatorName}，再按${numeratorName}/${denominatorName}计算；分母为0时返回空值。该解释只用于当前请求，不会发布为全局语义定义。`;
+      }
+      const operationHash = await sha256ContentHash({
+        hash_domain: "request-scoped-semantic-interpretation@1.0.0",
+        run_id: input.run_id,
+        requested_term: operation.requested_term,
+        operator,
+      });
+      return {
+        interpretation_id: `request-scoped.${operationHash.slice("sha256:".length, 39)}`,
+        requested_term: operation.requested_term,
+        scope: "REQUEST_ONLY" as const,
+        source_object_ids: sourceObjectIds,
+        operator,
+        user_explanation: userExplanation,
+        publication_effect: "NONE" as const,
+      };
+    }),
+  );
+  return interpretations.sort((left, right) =>
+    stringCompare(left.interpretation_id, right.interpretation_id),
+  );
+}
+
 function requiredSemanticObject<T>(
   objects: ReadonlyMap<string, T>,
   id: string,
@@ -498,6 +554,14 @@ async function projectSemanticQueryContext(input: {
   const qualityConstraints = input.intent.selected_quality_constraint_ids.map((id) =>
     requiredSemanticObject(qualityById, id, "TEAM_SEMANTIC_QUALITY_CLOSURE_INVALID"),
   );
+  const requestScopedInterpretations = await buildRequestScopedInterpretations({
+    run_id: input.factory.lease.run_id,
+    intent: input.intent,
+    metric_names: new Map(metrics.map((metric) => [metric.metric_id, metric.name])),
+    dimension_names: new Map(
+      dimensions.map((dimension) => [dimension.dimension_id, dimension.name]),
+    ),
+  });
 
   const relevantBindingIds = new Set<string>([
     ...metrics.flatMap((metric) => [
@@ -582,6 +646,9 @@ async function projectSemanticQueryContext(input: {
     time_semantics: timeSemantics,
     quality_constraints: qualityConstraints,
     unresolved_ambiguities: input.intent.unresolved_ambiguities,
+    ...(requestScopedInterpretations.length > 0
+      ? { request_scoped_interpretations: requestScopedInterpretations }
+      : {}),
   });
 }
 
@@ -1081,6 +1148,7 @@ export function createProductionTeamTools(
 }
 
 export const productionTeamToolsInternals = Object.freeze({
+  buildRequestScopedInterpretations,
   normalizedQueryEvidenceRows,
   repairableQueryExecutionFailure,
   resolveAcceptedSemanticQueryContext,

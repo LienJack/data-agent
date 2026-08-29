@@ -113,9 +113,26 @@ function text2SqlSpecialistSystemPrompt(contextText: string): string {
     'For a bounded time query, set time_window to {"dimension_id":"exact-time-dimension","start_parameter":1,"end_parameter":2,"semantics":"HALF_OPEN"}; the indices must reference the exact lower and exclusive upper bound parameters used by SQL. Otherwise set time_window to null.',
     "For NONE or TABLE, x_key must be null and y_keys must be empty. For LINE, BAR, or PIE, x_key must name one declared result column and y_keys must contain declared numeric result columns.",
     "Prefer LINE for time trends, BAR for category comparisons, and PIE only for a valid non-negative composition. The Host always keeps the evidence table, so a request for a table does not prevent selecting a useful chart visualization.",
+    "When semantic_context.request_scoped_interpretations is present, execute its exact current-request operator without treating it as a Published formula. PERIOD_COMPARISON_RATE compares the governed aggregate with the same period one year earlier and uses (current-comparison)/NULLIF(comparison,0). AGGREGATE_RATIO aggregates numerator and denominator separately before division; SUBTRACT_DENOMINATOR means (numerator-denominator)/NULLIF(denominator,0).",
     "When Frozen query context is a text2sql-repair-context, replace the rejected candidate. TEXT2SQL_SQL_DANGEROUS means replace every unlisted function or syntax with the permitted typed primitives above; DATASOURCE_ADAPTER_SQL_TYPE_ERROR means follow the exact listed physical column types, adding the safe temporal casts described above for text-backed time columns or removing unsupported overloads; DATASOURCE_ADAPTER_SQL_COLUMN_NOT_FOUND means choose exact listed columns; TEXT2SQL_RESULT_SHAPE_MISMATCH means make SELECT aliases and result_columns identical in order.",
     "Return only the declared candidate JSON. Do not add template identifiers, Markdown, prose outside JSON, or invented schema.",
     `Frozen query context: ${contextText}`,
+  ].join("\n");
+}
+
+function semanticSpecialistSystemPrompt(contextText: string): string {
+  return [
+    "You are the governed semantic-layer specialist.",
+    "Return exactly one semantic-query-selection-intent@1.0.0 JSON object and no prose.",
+    "The only accepted fields are schema_version, selected_metric_ids, selected_dimension_ids, selected_formula_ids, selected_relationship_ids, selected_time_domain_ids, selected_quality_constraint_ids, unresolved_ambiguities, and request_scoped_operations.",
+    "Select only exact IDs present in the frozen retrieval and published catalog supplied below.",
+    "Every selected id array must be unique and sorted. Each unresolved ambiguity must name an object_kind and at least two unique sorted candidate_ids; ambiguities themselves must be sorted by kind and candidate ids.",
+    "Use request_scoped_operations only when the exact requested term or formula is absent but the frozen catalog contains an unambiguous governed primitive closure. Select every referenced metric and dimension ID in the corresponding selected arrays.",
+    "PERIOD_COMPARISON_RATE is limited to the exact one-year offset and formula (current_value - comparison_value) / NULLIF(comparison_value, 0). AGGREGATE_RATIO must aggregate inputs before division; use SUBTRACT_DENOMINATOR for net ROI and NONE for a plain ratio such as ROAS.",
+    "A request-scoped operation is executable only for this Run. It must not create, update, approve, or imply a Published formula, global term, Candidate, or governance decision.",
+    "Do not return definitions, joins, bindings, lineage prose, SQL, data values, or an answer. The Host projects authoritative objects and a user-readable explanation after validating your selection.",
+    "If the request is unambiguous, return an empty unresolved_ambiguities array. Do not use ambiguity to describe an exact-term miss or ordinary missing database values, and do not expose index or governance lookup failures to the user.",
+    `Frozen semantic evidence: ${contextText}`,
   ].join("\n");
 }
 
@@ -473,16 +490,7 @@ export function createDirectRunBoundProviderDispatcher(input: {
                     role: "system" as const,
                     content:
                       specialistTurn.stage === "SEMANTIC"
-                        ? [
-                            "You are the governed semantic-layer specialist.",
-                            "Return exactly one semantic-query-selection-intent@1.0.0 JSON object and no prose.",
-                            "The only accepted fields are schema_version, selected_metric_ids, selected_dimension_ids, selected_formula_ids, selected_relationship_ids, selected_time_domain_ids, selected_quality_constraint_ids, and unresolved_ambiguities.",
-                            "Select only exact IDs present in the frozen retrieval and published catalog supplied below.",
-                            "Every selected id array must be unique and sorted. Each unresolved ambiguity must name an object_kind and at least two unique sorted candidate_ids; ambiguities themselves must be sorted by kind and candidate ids.",
-                            "Do not return definitions, formulas, joins, bindings, lineage prose, SQL, data values, or an answer. The Host projects authoritative objects after validating your selection.",
-                            "If the request is unambiguous, return an empty unresolved_ambiguities array. Do not use ambiguity to describe ordinary missing database values.",
-                            `Frozen semantic evidence: ${specialistTurn.context_text}`,
-                          ].join("\n")
+                        ? semanticSpecialistSystemPrompt(specialistTurn.context_text)
                         : specialistTurn.stage === "TEXT2SQL"
                           ? text2SqlSpecialistSystemPrompt(specialistTurn.context_text)
                           : specialistTurn.stage === "ANALYSIS_PROGRAM"
@@ -690,6 +698,7 @@ export const directRunBoundProviderDispatcherInternals = Object.freeze({
   buildRootLoopMessages,
   text2SqlSpecialistSystemPrompt,
   retryableReason,
+  semanticSpecialistSystemPrompt,
   shouldRetryProviderCall,
   validAnalysisToolAllowlist,
 });

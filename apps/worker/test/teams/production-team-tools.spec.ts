@@ -8,6 +8,7 @@ import {
   DEFAULT_RUN_EXECUTION_POLICY,
   type ProductTeamArtifactDocument,
   type RunWorkLease,
+  semanticQuerySelectionIntentSchema,
   verifyArtifactWorkspaceChartDocumentV2,
 } from "@data-agent/contracts";
 import { describe, expect, it, vi } from "vitest";
@@ -25,6 +26,102 @@ const id = (suffix: number) => `93000000-0000-4000-8000-${String(suffix).padStar
 const hash = (character: string) => `sha256:${character.repeat(64)}`;
 
 describe("Production Team governed chart publication", () => {
+  it("derives a friendly request-scoped YoY interpretation from governed primitives", async () => {
+    const intent = semanticQuerySelectionIntentSchema.parse({
+      schema_version: "semantic-query-selection-intent@1.0.0",
+      selected_metric_ids: ["metric.order_revenue"],
+      selected_dimension_ids: ["dimension.order_month"],
+      selected_formula_ids: [],
+      selected_relationship_ids: [],
+      selected_time_domain_ids: ["time.order_month"],
+      selected_quality_constraint_ids: [],
+      unresolved_ambiguities: [],
+      request_scoped_operations: [
+        {
+          requested_term: "订单收入同比增长",
+          operator: {
+            kind: "PERIOD_COMPARISON_RATE",
+            metric_id: "metric.order_revenue",
+            time_dimension_id: "dimension.order_month",
+            comparison_offset: { unit: "YEAR", value: 1 },
+            formula: "(current_value - comparison_value) / NULLIF(comparison_value, 0)",
+          },
+        },
+      ],
+    });
+
+    const interpretations = await productionTeamToolsInternals.buildRequestScopedInterpretations({
+      run_id: id(1),
+      intent,
+      metric_names: new Map([["metric.order_revenue", "订单收入"]]),
+      dimension_names: new Map([["dimension.order_month", "订单月份"]]),
+    });
+
+    expect(interpretations).toEqual([
+      expect.objectContaining({
+        interpretation_id: expect.stringMatching(/^request-scoped\.[0-9a-f]{32}$/u),
+        scope: "REQUEST_ONLY",
+        source_object_ids: ["dimension.order_month", "metric.order_revenue"],
+        publication_effect: "NONE",
+        user_explanation: expect.stringContaining("（本期值-上年同期值）/上年同期值"),
+      }),
+    ]);
+    expect(JSON.stringify(interpretations)).not.toMatch(/索引|未受治理|Candidate/u);
+  });
+
+  it.each([
+    ["ROAS", "NONE", "营销收入/营销投入"],
+    ["净ROI", "SUBTRACT_DENOMINATOR", "（营销收入-营销投入）/营销投入"],
+  ] as const)(
+    "derives %s after aggregating governed revenue and spend separately",
+    async (requestedTerm, numeratorAdjustment, expectedFormula) => {
+      const intent = semanticQuerySelectionIntentSchema.parse({
+        schema_version: "semantic-query-selection-intent@1.0.0",
+        selected_metric_ids: ["metric.marketing_revenue", "metric.marketing_spend"],
+        selected_dimension_ids: [],
+        selected_formula_ids: [],
+        selected_relationship_ids: [],
+        selected_time_domain_ids: [],
+        selected_quality_constraint_ids: [],
+        unresolved_ambiguities: [],
+        request_scoped_operations: [
+          {
+            requested_term: requestedTerm,
+            operator: {
+              kind: "AGGREGATE_RATIO",
+              numerator_metric_id: "metric.marketing_revenue",
+              denominator_metric_id: "metric.marketing_spend",
+              numerator_adjustment: numeratorAdjustment,
+              aggregation: "SUM_BEFORE_RATIO",
+              zero_denominator: "NULL",
+            },
+          },
+        ],
+      });
+
+      const [interpretation] = await productionTeamToolsInternals.buildRequestScopedInterpretations(
+        {
+          run_id: id(1),
+          intent,
+          metric_names: new Map([
+            ["metric.marketing_revenue", "营销收入"],
+            ["metric.marketing_spend", "营销投入"],
+          ]),
+          dimension_names: new Map(),
+        },
+      );
+
+      expect(interpretation).toMatchObject({
+        requested_term: requestedTerm,
+        scope: "REQUEST_ONLY",
+        publication_effect: "NONE",
+        operator: { aggregation: "SUM_BEFORE_RATIO", numerator_adjustment: numeratorAdjustment },
+        user_explanation: expect.stringContaining(expectedFormula),
+      });
+      expect(interpretation?.user_explanation).toContain("先分别汇总");
+    },
+  );
+
   it("scopes Specialist provider logical calls to the accepted child task", () => {
     const firstTask = productionTeamToolsInternals.specialistProviderLogicalCallId({
       run_id: id(1),
@@ -193,7 +290,7 @@ describe("Production Team governed chart publication", () => {
     }
   });
 
-  it("reads frozen semantic relationships without invoking Text2SQL or table count", async () => {
+  it("projects frozen relationships and request-scoped YoY without invoking Text2SQL", async () => {
     const scope = { app_id: id(1), tenant_id: id(2), environment: "test" } as const;
     const lease = {
       scope,
@@ -224,13 +321,25 @@ describe("Production Team governed chart publication", () => {
       value: {
         output_text: JSON.stringify({
           schema_version: "semantic-query-selection-intent@1.0.0",
-          selected_metric_ids: [],
-          selected_dimension_ids: [],
+          selected_metric_ids: ["metric.order_revenue"],
+          selected_dimension_ids: ["dimension.order_month"],
           selected_formula_ids: [],
           selected_relationship_ids: ["relationship.order_customer"],
-          selected_time_domain_ids: [],
+          selected_time_domain_ids: ["time.order_month"],
           selected_quality_constraint_ids: [],
           unresolved_ambiguities: [],
+          request_scoped_operations: [
+            {
+              requested_term: "订单收入同比增长",
+              operator: {
+                kind: "PERIOD_COMPARISON_RATE",
+                metric_id: "metric.order_revenue",
+                time_dimension_id: "dimension.order_month",
+                comparison_offset: { unit: "YEAR", value: 1 },
+                formula: "(current_value - comparison_value) / NULLIF(comparison_value, 0)",
+              },
+            },
+          ],
         }),
         tool_calls: [],
         projection: { status: "COMPLETED" as const },
@@ -274,7 +383,61 @@ describe("Production Team governed chart publication", () => {
           release_generation: config.semantic_release.semantic_generation,
           datasource_id: config.datasource.resource_id,
         },
-        executable: { metrics: [], dimensions: [], formulas: [], physical_bindings: [] },
+        executable: {
+          metrics: [
+            {
+              metric_id: "metric.order_revenue",
+              name: "订单收入",
+              aliases: ["收入"],
+              table_id: "table.orders",
+              column_id: "orders.amount",
+              aggregation: "sum",
+              formula: null,
+              grain: { grain_id: "grain.order", granularity: "atomic" },
+              unit: null,
+              time_domain: {
+                time_domain_id: "time.order_month",
+                calendar: "gregorian",
+                timezone: "Asia/Shanghai",
+                min_time: null,
+                max_time: null,
+              },
+              time_column_id: "orders.created_at",
+              additivity: "additive",
+              null_policy: "coalesce-zero",
+              fanout_policy: "reject",
+              dependency_column_ids: ["orders.amount"],
+              tags: [],
+              analysis: {
+                primary: true,
+                priority: 1,
+                missing_period_policy: "ZERO_IF_SEMANTICALLY_EMPTY",
+                seasonality: null,
+                allowed_dimension_ids: ["dimension.order_month"],
+                capabilities: ["TREND_CHANGE"],
+                causal_role: "OUTCOME",
+              },
+            },
+          ],
+          dimensions: [
+            {
+              dimension_id: "dimension.order_month",
+              name: "订单月份",
+              aliases: ["月份"],
+              table_id: "table.orders",
+              column_id: "orders.created_at",
+              grain: { grain_id: "grain.month", granularity: "month" },
+              data_type: "timestamp",
+              sensitivity: "PUBLIC",
+              hierarchical: false,
+              parent_dimension_id: null,
+              tags: [],
+              analysis: { groupable: true, pivotable: true, causal_role: null },
+            },
+          ],
+          formulas: [],
+          physical_bindings: [],
+        },
         relationships: {
           relationships: [
             {
@@ -299,7 +462,18 @@ describe("Production Team governed chart publication", () => {
             },
           ],
         },
-        restrictions: { quality_constraints: [], time_semantics: [] },
+        restrictions: {
+          quality_constraints: [],
+          time_semantics: [
+            {
+              time_domain_id: "time.order_month",
+              calendar: "gregorian",
+              timezone: "Asia/Shanghai",
+              min_time: null,
+              max_time: null,
+            },
+          ],
+        },
       },
     }));
     const tools = createProductionTeamTools(
@@ -347,7 +521,11 @@ describe("Production Team governed chart publication", () => {
           route_decision: { route: "GRAPH", state: "READY" },
           retrieval_receipt: {
             route_states: { LEXICON: "READY", SPARSE: "READY", VECTOR: "READY", GRAPH: "READY" },
-            selected_object_ids: ["relationship.order_customer"],
+            selected_object_ids: [
+              "dimension.order_month",
+              "metric.order_revenue",
+              "time.order_month",
+            ],
             pruned_object_ids: [],
             hits: [],
             expansions: [],
@@ -370,7 +548,7 @@ describe("Production Team governed chart publication", () => {
         accepted_semantic_query_context_ref: null,
         delegation: {
           profile: { revision: { profile_id: "semantic-management-agent" } },
-          call: { objective: "订单与客户实体如何关联" },
+          call: { objective: "订单收入同比如何计算，订单与客户实体如何关联" },
         } as ProductionTeamToolFactoryInput["delegation"],
       },
     );
@@ -404,6 +582,15 @@ describe("Production Team governed chart publication", () => {
             expect.objectContaining({
               relationship_id: "relationship.order_customer",
               cardinality: "many-to-one",
+            }),
+          ],
+          request_scoped_interpretations: [
+            expect.objectContaining({
+              requested_term: "订单收入同比增长",
+              scope: "REQUEST_ONLY",
+              source_object_ids: ["dimension.order_month", "metric.order_revenue"],
+              publication_effect: "NONE",
+              user_explanation: expect.stringContaining("与上年同期比较"),
             }),
           ],
         }),

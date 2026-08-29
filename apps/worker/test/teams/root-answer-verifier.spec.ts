@@ -4,7 +4,10 @@ import {
   type RootAgentDecisionCandidate,
 } from "@data-agent/contracts";
 import { describe, expect, it, vi } from "vitest";
-import { createRootAnswerVerifier } from "../../src/teams/root-answer-verifier.js";
+import {
+  createRootAnswerVerifier,
+  rootAnswerVerifierInternals,
+} from "../../src/teams/root-answer-verifier.js";
 
 const id = (suffix: number) => `97000000-0000-4000-8000-${String(suffix).padStart(12, "0")}`;
 const hash = (character: string) => `sha256:${character.repeat(64)}`;
@@ -283,5 +286,72 @@ describe("Root answer verifier", () => {
       status: "ACCEPTED",
       rendered_text: expect.stringContaining(id(31)),
     });
+  });
+
+  it("renders only the friendly current-Run explanation for request-scoped semantics", () => {
+    const explanation =
+      "订单收入同比按月汇总后，与上年同月比较；上年同期为0时返回空值。该解释只用于当前请求。";
+    const rendered = rootAnswerVerifierInternals.renderArtifactFacts(
+      {
+        projection: {
+          kind: "SEMANTIC_CONTEXT",
+          context: {
+            request_scoped_interpretations: [{ user_explanation: explanation }],
+          },
+        },
+      } as never,
+      ["projection.context.request_scoped_interpretations"],
+    );
+
+    expect(rendered).toBe(explanation);
+    expect(rendered).not.toMatch(/索引|未受治理|INDEX_NOT_FOUND/u);
+  });
+
+  it("renders governed metric and relationship facts as readable semantic evidence", () => {
+    const rendered = rootAnswerVerifierInternals.renderArtifactFacts(
+      {
+        projection: {
+          kind: "SEMANTIC_CONTEXT",
+          context: {
+            metrics: [
+              {
+                metric_id: "metric.average_order_value",
+                name: "客单价",
+                aggregation: "avg",
+                grain: { granularity: "order" },
+                formula: { expression: "AVG(orders.amount)" },
+                time_domain: null,
+              },
+              {
+                metric_id: "metric.customer_order_total",
+                name: "客户订单总金额",
+                aggregation: "sum",
+                grain: { granularity: "customer" },
+                formula: { expression: "SUM(orders.amount)" },
+                time_domain: null,
+              },
+            ],
+            relationships: [
+              {
+                relationship_id: "relationship.order_customer",
+                name: "订单客户",
+                left_table_id: "orders",
+                left_column_ids: ["customer_id"],
+                right_table_id: "customers",
+                right_column_ids: ["id"],
+                cardinality: "many-to-one",
+              },
+            ],
+          },
+        },
+      } as never,
+      ["projection.context.metrics", "projection.context.relationships"],
+    );
+
+    expect(rendered).toContain("指标「客单价」");
+    expect(rendered).toContain("正式公式：AVG(orders.amount)");
+    expect(rendered).toContain("指标「客户订单总金额」");
+    expect(rendered).toContain("粒度 customer；正式公式：SUM(orders.amount)");
+    expect(rendered).toContain("orders[customer_id] → customers[id]");
   });
 });

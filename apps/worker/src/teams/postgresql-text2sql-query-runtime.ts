@@ -241,6 +241,7 @@ function semanticProjection(
       semantic_query_context_hash: semanticQueryContext.context_hash,
       requested_object_ids: semanticQueryContext.requested_object_ids,
       unresolved_ambiguities: semanticQueryContext.unresolved_ambiguities,
+      request_scoped_interpretations: semanticQueryContext.request_scoped_interpretations ?? [],
       executable: {
         metrics: semanticQueryContext.metrics,
         dimensions: semanticQueryContext.dimensions,
