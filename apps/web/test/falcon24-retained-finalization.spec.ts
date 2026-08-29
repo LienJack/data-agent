@@ -3,6 +3,7 @@ import {
   type SemanticSuccessorStageEnvelope,
 } from "@data-agent/contracts/artifacts";
 import type { Falcon24SemanticAuthorityClosure } from "@data-agent/contracts/runs";
+import { buildFalcon24LlmExecutionAuthorityProof } from "@data-agent/contracts/runs";
 import type { RuntimeBuildIdentity } from "@data-agent/contracts/server";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 
@@ -65,6 +66,13 @@ const e6Authority = {
   baseline_id: id(18),
   baseline_hash: hash("c"),
   activation_attempt_id: id(19),
+} as const;
+const e7Authority = {
+  schema_version: "falcon24-authority-binding@2.0.0",
+  authority_epoch: "E7",
+  baseline_id: id(20),
+  baseline_hash: hash("d"),
+  activation_attempt_id: id(21),
 } as const;
 const versions = {
   semantic_pointer: 3,
@@ -143,8 +151,8 @@ async function promotedEnvelope(): Promise<SemanticSuccessorStageEnvelope> {
 
 async function arrange(
   authorities: {
-    readonly current: typeof e4Authority | typeof e5Authority;
-    readonly target: typeof e5Authority | typeof e6Authority;
+    readonly current: typeof e4Authority | typeof e5Authority | typeof e6Authority;
+    readonly target: typeof e5Authority | typeof e6Authority | typeof e7Authority;
   } = { current: e4Authority, target: e5Authority },
 ) {
   const published = await promotedEnvelope();
@@ -191,6 +199,38 @@ async function arrange(
     events.push(`activate-${authorities.target.authority_epoch.toLowerCase()}`);
     return { ok: true as const, value: authorities.target };
   });
+  const activateRetainedWithRecovery = vi.fn(async (_capability: unknown, envelope: unknown) => {
+    events.push(`activate-recovery-${authorities.target.authority_epoch.toLowerCase()}`);
+    const request = (envelope as { request: { command_hash: `sha256:${string}` } }).request;
+    return {
+      ok: true as const,
+      value: {
+        schema_version: "falcon24-retained-activation-result@4.0.0" as const,
+        activation_command_hash: request.command_hash,
+        authority: authorities.target,
+        predecessor_diagnostic_receipt: {
+          attempt_id: id(22),
+          run_id: id(23),
+          receipt_hash: hash("e"),
+        },
+        llm_execution_certification: {
+          stage_id: id(24),
+          proof_hash: hash("f"),
+          certification_receipt_ref: {
+            artifact_id: id(25),
+            artifact_type: "ModelCertificationReceipt" as const,
+            app_id: scope.app_id,
+            tenant_id: scope.tenant_id,
+            environment: scope.environment,
+            run_id: id(26),
+            revision: 1,
+            content_hash: hash("0"),
+          },
+          execution_profile_hash: hash("1"),
+        },
+      },
+    };
+  });
   const holdActivationAttempt = vi.fn(async () => {
     events.push(`hold-${authorities.target.authority_epoch.toLowerCase()}`);
   });
@@ -204,7 +244,7 @@ async function arrange(
       authority_epoch: authorities.target.authority_epoch,
       web_build_identity: webBuild,
       worker_build_identity: workerBuild,
-      epoch: { activateRetained },
+      epoch: { activateRetained, activateRetainedWithRecovery },
       readback: { loadCurrentClosure, loadPublishedRelease },
       stage_falcon_authority: stageFalconAuthority,
       hold_activation_attempt: holdActivationAttempt,
@@ -214,6 +254,7 @@ async function arrange(
       loadPublishedRelease,
       stageFalconAuthority,
       activateRetained,
+      activateRetainedWithRecovery,
       holdActivationAttempt,
     },
   };
@@ -275,6 +316,70 @@ describe("Falcon24 retained semantic finalization", () => {
     expect(result.readback.semantic_pointer).toEqual(arranged.before.semantic_pointer);
     expect(result.readback.semantic_runtime).toEqual(arranged.before.semantic_runtime);
     expect(result.readback.workspace_defaults).toEqual(arranged.before.workspace_defaults);
+  });
+
+  it("advances E6 to E7 only through request v4 bound to exact failure and LLM stage", async () => {
+    const arranged = await arrange({ current: e6Authority, target: e7Authority });
+    const llmProof = await buildFalcon24LlmExecutionAuthorityProof({
+      schema_version: "falcon24-llm-execution-authority-proof@1.0.0",
+      scope,
+      target_authority_epoch: "E7",
+      staging_id: id(27),
+      stage_id: id(24),
+      model_profile_id: id(28),
+      model_config_version: 2,
+      model_resource_hash: hash("2"),
+      provider: "deepseek",
+      model_id: "deepseek-v4-flash",
+      certification_receipt_ref: {
+        artifact_id: id(25),
+        artifact_type: "ModelCertificationReceipt",
+        app_id: scope.app_id,
+        tenant_id: scope.tenant_id,
+        environment: scope.environment,
+        run_id: id(26),
+        revision: 1,
+        content_hash: hash("0"),
+      },
+      execution_profile_hash: hash("1"),
+      deployment_id: id(29),
+      deployment_hash: hash("3"),
+      recovery_capabilities: ["AT_LEAST_ONCE_ONLY"],
+      worker_build: {
+        build_id: workerBuild.build_id,
+        generation_id: workerBuild.generation_id,
+      },
+    });
+
+    const result = await finalizeFalcon24RetainedAuthority({
+      ...arranged.input,
+      recovery: {
+        llm_execution_proof: llmProof,
+        predecessor_diagnostic_failure: {
+          attempt_id: id(22),
+          run_id: id(23),
+          manifest_hash: hash("4"),
+          failure_class: "FROZEN_CLOSURE_CHANGE_REQUIRED",
+          failure_code: "PROVIDER_PROFILE_NOT_AVAILABLE",
+        },
+      },
+    });
+
+    expect(arranged.calls.activateRetained).not.toHaveBeenCalled();
+    expect(arranged.calls.activateRetainedWithRecovery).toHaveBeenCalledTimes(1);
+    expect(arranged.events).toContain("activate-recovery-e7");
+    expect(result.authority).toEqual(e7Authority);
+    expect(result.recovery?.llm_execution_proof).toEqual(llmProof);
+    expect(arranged.calls.activateRetainedWithRecovery.mock.calls[0]?.[1]).toMatchObject({
+      request: {
+        schema_version: "falcon24-activation-request@4.0.0",
+        predecessor_diagnostic_failure: {
+          failure_class: "FROZEN_CLOSURE_CHANGE_REQUIRED",
+          failure_code: "PROVIDER_PROFILE_NOT_AVAILABLE",
+        },
+        llm_execution_stage_ref: { stage_id: llmProof.stage_id, proof_hash: llmProof.proof_hash },
+      },
+    });
   });
 
   it("holds the exact E5 attempt once when retained activation fails", async () => {

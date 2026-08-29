@@ -5,12 +5,17 @@ import { canonicalizeJson } from "@data-agent/contracts/common";
 import type { PortResult } from "@data-agent/contracts/ports";
 import {
   buildFalcon24ActivationRequestV3,
+  buildFalcon24ActivationRequestV4,
   buildFalcon24RetainedSemanticReleaseAuthorityProof,
   type Falcon24AuthorityBindingV2,
+  type Falcon24LlmExecutionAuthorityProof,
+  type Falcon24RetainedActivationResultV4,
   type Falcon24RetainedSemanticReleaseAuthorityProof,
   type Falcon24SemanticAuthorityClosure,
   falcon24AuthorityBindingV2Schema,
   falcon24AuthorityEpochOrdinal,
+  falcon24PredecessorDiagnosticFailureSchema,
+  verifyFalcon24LlmExecutionAuthorityProof,
 } from "@data-agent/contracts/runs";
 import type { RuntimeBuildIdentity } from "@data-agent/contracts/server";
 import {
@@ -23,6 +28,10 @@ interface RetainedEpochPort {
     capability: unknown,
     input: unknown,
   ): Promise<PortResult<Falcon24AuthorityBindingV2>>;
+  activateRetainedWithRecovery(
+    capability: unknown,
+    input: unknown,
+  ): Promise<PortResult<Falcon24RetainedActivationResultV4>>;
 }
 
 interface RetainedReadback {
@@ -48,6 +57,10 @@ export interface Falcon24RetainedFinalizationResult {
   readonly authority: Falcon24AuthorityBindingV2;
   readonly readback: Falcon24SemanticAuthorityClosure;
   readonly published_release: SemanticSuccessorStageEnvelope;
+  readonly recovery: Readonly<{
+    llm_execution_proof: Falcon24LlmExecutionAuthorityProof;
+    activation_result: Falcon24RetainedActivationResultV4;
+  }> | null;
 }
 
 function exact(left: unknown, right: unknown): boolean {
@@ -116,6 +129,10 @@ export async function finalizeFalcon24RetainedAuthority(input: {
   readonly worker_build_identity: RuntimeBuildIdentity;
   readonly epoch: RetainedEpochPort;
   readonly readback: RetainedReadback;
+  readonly recovery?: Readonly<{
+    llm_execution_proof: unknown;
+    predecessor_diagnostic_failure: unknown;
+  }>;
   readonly stage_falcon_authority: (input: {
     readonly semantic_release_digest: `sha256:${string}`;
     readonly retained_semantic_proof_hash: `sha256:${string}`;
@@ -172,28 +189,83 @@ export async function finalizeFalcon24RetainedAuthority(input: {
     semantic_release_digest: proof.semantic_release.release_digest as `sha256:${string}`,
     retained_semantic_proof_hash: proof.proof_hash as `sha256:${string}`,
   });
-  const request = await buildFalcon24ActivationRequestV3({
-    schema_version: "falcon24-activation-request@3.0.0",
-    scope: proof.scope,
-    authority_epoch: input.authority_epoch,
-    attempt_id: staged.activation_attempt_ref.activation_attempt_id,
-    baseline_id: staged.baseline_ref.baseline_id,
-    expected_baseline_hash: staged.baseline_ref.baseline_hash,
-    expected_current_authority: proof.expected_current_authority,
-    expected_semantic_release: proof.semantic_release,
-    expected_versions: proof.expected_versions,
-    retained_semantic_proof_hash: proof.proof_hash,
-  });
+  const recoveryRequired = targetOrdinal >= 7n;
+  let llmProof: Falcon24LlmExecutionAuthorityProof | null = null;
+  let predecessorFailure: ReturnType<
+    typeof falcon24PredecessorDiagnosticFailureSchema.parse
+  > | null = null;
+  if (recoveryRequired) {
+    if (!input.recovery) throw new TypeError("FALCON24_RECOVERY_ACTIVATION_PROOF_REQUIRED");
+    [llmProof, predecessorFailure] = await Promise.all([
+      verifyFalcon24LlmExecutionAuthorityProof(input.recovery.llm_execution_proof),
+      Promise.resolve(
+        falcon24PredecessorDiagnosticFailureSchema.parse(
+          input.recovery.predecessor_diagnostic_failure,
+        ),
+      ),
+    ]);
+    if (
+      llmProof.target_authority_epoch !== input.authority_epoch ||
+      !exact(llmProof.scope, proof.scope) ||
+      llmProof.worker_build.build_id !== proof.worker_build.build_id ||
+      llmProof.worker_build.generation_id !== proof.worker_build.generation_id
+    ) {
+      throw new TypeError("FALCON24_RECOVERY_ACTIVATION_PROOF_MISMATCH");
+    }
+  } else if (input.recovery) {
+    throw new TypeError("FALCON24_RECOVERY_ACTIVATION_EPOCH_INVALID");
+  }
   let authority: Falcon24AuthorityBindingV2;
+  let recoveryResult: Falcon24RetainedActivationResultV4 | null = null;
   try {
-    authority = falcon24AuthorityBindingV2Schema.parse(
-      required(
-        await input.epoch.activateRetained(input.capability, {
+    if (llmProof && predecessorFailure) {
+      const request = await buildFalcon24ActivationRequestV4({
+        schema_version: "falcon24-activation-request@4.0.0",
+        scope: proof.scope,
+        authority_epoch: input.authority_epoch,
+        attempt_id: staged.activation_attempt_ref.activation_attempt_id,
+        baseline_id: staged.baseline_ref.baseline_id,
+        expected_baseline_hash: staged.baseline_ref.baseline_hash,
+        expected_current_authority: proof.expected_current_authority,
+        expected_semantic_release: proof.semantic_release,
+        expected_versions: proof.expected_versions,
+        retained_semantic_proof_hash: proof.proof_hash,
+        predecessor_diagnostic_failure: predecessorFailure,
+        llm_execution_stage_ref: {
+          stage_id: llmProof.stage_id,
+          proof_hash: llmProof.proof_hash,
+        },
+      });
+      recoveryResult = required(
+        await input.epoch.activateRetainedWithRecovery(input.capability, {
           request,
           retained_semantic_proof: proof,
+          llm_execution_proof: llmProof,
         }),
-      ),
-    );
+      );
+      authority = falcon24AuthorityBindingV2Schema.parse(recoveryResult.authority);
+    } else {
+      const request = await buildFalcon24ActivationRequestV3({
+        schema_version: "falcon24-activation-request@3.0.0",
+        scope: proof.scope,
+        authority_epoch: input.authority_epoch,
+        attempt_id: staged.activation_attempt_ref.activation_attempt_id,
+        baseline_id: staged.baseline_ref.baseline_id,
+        expected_baseline_hash: staged.baseline_ref.baseline_hash,
+        expected_current_authority: proof.expected_current_authority,
+        expected_semantic_release: proof.semantic_release,
+        expected_versions: proof.expected_versions,
+        retained_semantic_proof_hash: proof.proof_hash,
+      });
+      authority = falcon24AuthorityBindingV2Schema.parse(
+        required(
+          await input.epoch.activateRetained(input.capability, {
+            request,
+            retained_semantic_proof: proof,
+          }),
+        ),
+      );
+    }
   } catch (activationError) {
     try {
       await input.hold_activation_attempt({
@@ -253,5 +325,9 @@ export async function finalizeFalcon24RetainedAuthority(input: {
     authority,
     readback: after,
     published_release: reloaded,
+    recovery:
+      llmProof && recoveryResult
+        ? Object.freeze({ llm_execution_proof: llmProof, activation_result: recoveryResult })
+        : null,
   });
 }

@@ -21,6 +21,7 @@ import {
 import {
   buildFalcon24StagingReceiptV2,
   type Falcon24E1StagingReceipt,
+  type Falcon24LlmExecutionAuthorityProof,
   type Falcon24StagingReceiptV2,
   falcon24AuthorityEpochOrdinal,
   falcon24AuthorityEpochSchema,
@@ -96,19 +97,34 @@ const SEMANTIC_DOMAIN = "falcon24" as const;
 const REPOSITORY_ROOT = fileURLToPath(new URL("../../../../", import.meta.url));
 const execFileAsync = promisify(execFile);
 
-const configurationSchema = z.strictObject({
-  database_url: z.string().min(1),
-  authority_epoch: supportedFinalizationEpochSchema,
-  deployment_id: z.uuid(),
-  workspace_id: z.uuid(),
-  principal_id: z.uuid(),
-  staging_id: z.uuid(),
-  datasource_id: z.uuid(),
-  environment: z.string().regex(/^[A-Za-z0-9][A-Za-z0-9._-]{0,63}$/u),
-  web_build_identity_file: z.string().min(1).max(4_096).refine(isAbsolute),
-  worker_build_identity_file: z.string().min(1).max(4_096).refine(isAbsolute),
-  build_attestation_file: z.string().min(1).max(4_096).refine(isAbsolute),
-});
+const configurationSchema = z
+  .strictObject({
+    database_url: z.string().min(1),
+    authority_epoch: supportedFinalizationEpochSchema,
+    deployment_id: z.uuid(),
+    workspace_id: z.uuid(),
+    principal_id: z.uuid(),
+    staging_id: z.uuid(),
+    datasource_id: z.uuid(),
+    llm_execution_stage_id: z.uuid().optional(),
+    predecessor_diagnostic_attempt_id: z.uuid().optional(),
+    environment: z.string().regex(/^[A-Za-z0-9][A-Za-z0-9._-]{0,63}$/u),
+    web_build_identity_file: z.string().min(1).max(4_096).refine(isAbsolute),
+    worker_build_identity_file: z.string().min(1).max(4_096).refine(isAbsolute),
+    build_attestation_file: z.string().min(1).max(4_096).refine(isAbsolute),
+  })
+  .superRefine((configuration, context) => {
+    if (
+      falcon24AuthorityEpochOrdinal(configuration.authority_epoch) >= 7n &&
+      (!configuration.llm_execution_stage_id || !configuration.predecessor_diagnostic_attempt_id)
+    ) {
+      context.addIssue({
+        code: "custom",
+        message: "FALCON24_E7_RECOVERY_CONFIGURATION_REQUIRED",
+        path: ["llm_execution_stage_id"],
+      });
+    }
+  });
 
 const ACCEPTANCE_CONTRACT_SOURCES = Object.freeze({
   qualification: Object.freeze([
@@ -568,6 +584,7 @@ async function stageModelReceipt(input: {
   readonly principal_id: string;
   readonly capability: unknown;
   readonly epoch: ReturnType<typeof createPostgresFalcon24AuthorityEpoch>;
+  readonly llm_execution_proof?: Falcon24LlmExecutionAuthorityProof;
 }) {
   const llmManifestPath = resolve(REPOSITORY_ROOT, input.retained.llm.manifest_path);
   if (rawHash(llmManifestPath) !== input.retained.llm.manifest_hash) {
@@ -628,7 +645,21 @@ async function stageModelReceipt(input: {
     require_ready: true,
   });
   const predecessor = requirePredecessorReceipt(input.predecessor_receipts, "LLM_CONFIGURATION");
-  if (
+  const recoveryTarget = falcon24AuthorityEpochOrdinal(input.authority_epoch) >= 7n;
+  if (recoveryTarget) {
+    const recovery = input.llm_execution_proof;
+    if (
+      !recovery ||
+      recovery.target_authority_epoch !== input.authority_epoch ||
+      recovery.staging_id !== input.staging_id ||
+      recovery.model_profile_id !== model.model_profile_id ||
+      recovery.model_config_version !== model.config_version ||
+      recovery.provider !== model.provider ||
+      recovery.model_id !== model.model_id
+    ) {
+      throw new TypeError("FALCON24_E7_MODEL_EXECUTION_PROOF_MISMATCH");
+    }
+  } else if (
     proof.subject_hash !== predecessor.subject_hash ||
     proof.evidence_hash !== predecessor.evidence_hash
   ) {
@@ -638,13 +669,17 @@ async function stageModelReceipt(input: {
     authority_epoch: input.authority_epoch,
     staging_id: input.staging_id,
     component: "LLM_CONFIGURATION",
-    subject_hash: proof.subject_hash,
-    evidence_hash: proof.evidence_hash,
+    subject_hash: input.llm_execution_proof?.model_resource_hash ?? proof.subject_hash,
+    evidence_hash: input.llm_execution_proof?.proof_hash ?? proof.evidence_hash,
     production_isolation_proven: false,
     capability: input.capability,
     epoch: input.epoch,
   });
-  return Object.freeze({ receipt, ...proof });
+  return Object.freeze({
+    receipt,
+    ...proof,
+    llm_execution_proof: input.llm_execution_proof ?? null,
+  });
 }
 
 async function stageRuntimeReceipts(input: {
@@ -808,6 +843,8 @@ export async function runFalcon24AuthorityFinalization(
       (webBuildIdentityFile
         ? resolve(dirname(webBuildIdentityFile), "attestation.json")
         : undefined),
+    llm_execution_stage_id: environment.FALCON24_LLM_EXECUTION_STAGE_ID,
+    predecessor_diagnostic_attempt_id: environment.FALCON24_PREDECESSOR_DIAGNOSTIC_ATTEMPT_ID,
   });
   const retainedE1 = await verifyFalcon24RetainedAssetsManifest(
     json(resolve(REPOSITORY_ROOT, "infra/falcon/e1/retained-assets-manifest.json")),
@@ -874,10 +911,45 @@ export async function runFalcon24AuthorityFinalization(
     });
     const currentAuthority = requireValue(await epoch.loadCurrent(capability));
     const retainedTarget = configuration.authority_epoch !== "E4";
+    const recoveryTarget = falcon24AuthorityEpochOrdinal(configuration.authority_epoch) >= 7n;
     const expectedCurrentEpoch = predecessorAuthorityEpoch(configuration.authority_epoch);
     if (currentAuthority?.authority_epoch !== expectedCurrentEpoch) {
       throw new TypeError("FALCON24_AUTHORITY_EPOCH_NOT_SUCCESSOR");
     }
+    const recovery = recoveryTarget
+      ? await (async () => {
+          const stageId = configuration.llm_execution_stage_id;
+          const diagnosticAttemptId = configuration.predecessor_diagnostic_attempt_id;
+          if (!stageId || !diagnosticAttemptId) {
+            throw new TypeError("FALCON24_E7_RECOVERY_CONFIGURATION_REQUIRED");
+          }
+          const [stage, predecessorDiagnosticFailure] = await Promise.all([
+            epoch.loadLlmExecutionStage(capability, { stage_id: stageId }).then(requireValue),
+            epoch
+              .loadRecoveryContext(capability, { attempt_id: diagnosticAttemptId })
+              .then(requireValue),
+          ]);
+          const llmExecutionProof = stage.proof_document;
+          if (
+            stage.status !== "STAGED" ||
+            stage.certification_is_active ||
+            llmExecutionProof.target_authority_epoch !== configuration.authority_epoch ||
+            llmExecutionProof.staging_id !== configuration.staging_id ||
+            llmExecutionProof.worker_build.build_id !== workerBuildIdentity.build_id ||
+            llmExecutionProof.worker_build.generation_id !== workerBuildIdentity.generation_id ||
+            llmExecutionProof.scope.app_id !== capability.scope.app_id ||
+            llmExecutionProof.scope.tenant_id !== capability.scope.tenant_id ||
+            llmExecutionProof.scope.environment !== capability.scope.environment ||
+            llmExecutionProof.scope.semantic_domain !== SEMANTIC_DOMAIN
+          ) {
+            throw new TypeError("FALCON24_E7_RECOVERY_PROOF_PREFLIGHT_MISMATCH");
+          }
+          return Object.freeze({
+            llm_execution_proof: llmExecutionProof,
+            predecessor_diagnostic_failure: predecessorDiagnosticFailure,
+          });
+        })()
+      : undefined;
     const predecessorReceipts = await loadPredecessorStagingReceipts({
       pool,
       scope: capability.scope,
@@ -975,6 +1047,7 @@ export async function runFalcon24AuthorityFinalization(
         principal_id: configuration.principal_id,
         capability,
         epoch,
+        ...(recovery ? { llm_execution_proof: recovery.llm_execution_proof } : {}),
       });
       const runtime = await stageRuntimeReceipts({
         authority_epoch: configuration.authority_epoch,
@@ -1060,6 +1133,7 @@ export async function runFalcon24AuthorityFinalization(
         worker_build_identity: workerBuildIdentity,
         epoch,
         readback,
+        ...(recovery ? { recovery } : {}),
         stage_falcon_authority: async ({
           semantic_release_digest: semanticReleaseDigest,
           retained_semantic_proof_hash: retainedSemanticProofHash,
