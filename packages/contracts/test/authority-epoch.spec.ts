@@ -3,7 +3,9 @@ import {
   buildCombinedFalcon24SemanticActivationCommand,
   buildCombinedFalcon24SemanticActivationReceipt,
   buildFalcon24ActivationRequestV3,
+  buildFalcon24ActivationRequestV4,
   buildFalcon24E1StagingReceipt,
+  buildFalcon24LlmExecutionAuthorityProof,
   buildFalcon24QaE2eReceiptV2,
   buildFalcon24RetainedSemanticReleaseAuthorityProof,
   buildFalcon24SemanticAuthorityClosureLoadCommand,
@@ -20,7 +22,9 @@ import {
   verifyCombinedFalcon24SemanticActivationCommand,
   verifyCombinedFalcon24SemanticActivationReceipt,
   verifyFalcon24ActivationRequestV3,
+  verifyFalcon24ActivationRequestV4,
   verifyFalcon24E1StagingReceipt,
+  verifyFalcon24LlmExecutionAuthorityProof,
   verifyFalcon24RetainedSemanticReleaseAuthorityProof,
   verifyFalcon24SemanticAuthorityClosureLoadCommand,
   verifyFalcon24StagingReceiptV2,
@@ -477,6 +481,99 @@ describe("Falcon24 E1 authority epoch contracts", () => {
       buildFalcon24ActivationRequestV3({
         ...base,
         expected_semantic_release: { ...base.expected_semantic_release, generation: 3 },
+      }),
+    ).rejects.toThrow();
+  });
+
+  it("binds E7 recovery to one exact E6 failure and staged execution certification", async () => {
+    const scope = {
+      app_id: id(100),
+      tenant_id: id(101),
+      environment: "test",
+      semantic_domain: "falcon24",
+    } as const;
+    const current = {
+      schema_version: "falcon24-authority-binding@2.0.0" as const,
+      authority_epoch: "E6",
+      baseline_id: id(102),
+      baseline_hash: hash("a"),
+      activation_attempt_id: id(103),
+    };
+    const release = {
+      release_id: id(104),
+      generation: 2,
+      release_digest: hash("b"),
+      datasource_id: id(105),
+    } as const;
+    const proof = await buildFalcon24LlmExecutionAuthorityProof({
+      schema_version: "falcon24-llm-execution-authority-proof@1.0.0",
+      scope,
+      target_authority_epoch: "E7",
+      staging_id: id(106),
+      stage_id: id(107),
+      model_profile_id: id(108),
+      model_config_version: 2,
+      model_resource_hash: hash("c"),
+      provider: "deepseek",
+      model_id: "deepseek-v4-flash",
+      certification_receipt_ref: {
+        artifact_id: id(109),
+        artifact_type: "ModelCertificationReceipt",
+        app_id: scope.app_id,
+        tenant_id: scope.tenant_id,
+        environment: scope.environment,
+        run_id: id(110),
+        revision: 1,
+        content_hash: hash("d"),
+      },
+      execution_profile_hash: hash("e"),
+      deployment_id: id(111),
+      deployment_hash: hash("f"),
+      recovery_capabilities: ["AT_LEAST_ONCE_ONLY"],
+      worker_build: { build_id: hash("1"), generation_id: hash("2") },
+    });
+    await expect(verifyFalcon24LlmExecutionAuthorityProof(proof)).resolves.toEqual(proof);
+
+    const command = await buildFalcon24ActivationRequestV4({
+      schema_version: "falcon24-activation-request@4.0.0",
+      scope,
+      authority_epoch: "E7",
+      attempt_id: id(112),
+      baseline_id: id(113),
+      expected_baseline_hash: hash("3"),
+      expected_current_authority: current,
+      expected_semantic_release: release,
+      expected_versions: { semantic_pointer: 3, semantic_runtime: 3, workspace_defaults: 4 },
+      retained_semantic_proof_hash: hash("4"),
+      predecessor_diagnostic_failure: {
+        attempt_id: id(114),
+        run_id: id(115),
+        manifest_hash: hash("5"),
+        failure_class: "FROZEN_CLOSURE_CHANGE_REQUIRED",
+        failure_code: "PROVIDER_PROFILE_NOT_AVAILABLE",
+      },
+      llm_execution_stage_ref: { stage_id: proof.stage_id, proof_hash: proof.proof_hash },
+    });
+    await expect(verifyFalcon24ActivationRequestV4(command)).resolves.toEqual(command);
+    await expect(
+      verifyFalcon24ActivationRequestV4({
+        ...command,
+        predecessor_diagnostic_failure: {
+          ...command.predecessor_diagnostic_failure,
+          failure_code: "PROVIDER_UNAVAILABLE",
+        },
+      }),
+    ).rejects.toThrow();
+    await expect(
+      buildFalcon24ActivationRequestV4({ ...command, authority_epoch: "E6" }),
+    ).rejects.toThrow();
+    await expect(
+      buildFalcon24LlmExecutionAuthorityProof({
+        ...proof,
+        certification_receipt_ref: {
+          ...proof.certification_receipt_ref,
+          artifact_type: "QueryEvidence",
+        },
       }),
     ).rejects.toThrow();
   });

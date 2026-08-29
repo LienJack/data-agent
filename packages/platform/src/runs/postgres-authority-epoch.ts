@@ -5,12 +5,15 @@ import {
 } from "@data-agent/contracts/evals";
 import {
   buildFalcon24ActivationRequestV3,
+  buildFalcon24ActivationRequestV4,
   falcon24ActivationAttemptDocumentSchema,
   falcon24ActivationAttemptRequestV2Schema,
   falcon24ActivationHoldRequestV2Schema,
   falcon24ActivationRequestV2Schema,
   falcon24AuthorityBindingSchema,
   falcon24AuthorityBindingV2Schema,
+  falcon24LlmExecutionAuthorityProofSchema,
+  falcon24RetainedActivationResultV4Schema,
   falcon24RetainedSemanticReleaseAuthorityProofSchema,
   falcon24RunAuthorityLookupSchema,
   falcon24StageBaselineRequestV2Schema,
@@ -19,6 +22,7 @@ import {
   falcon24StagingSessionRequestV2Schema,
   falcon24UiReceiptDocumentSchema,
   falcon24UiReceiptV2Schema,
+  verifyFalcon24LlmExecutionAuthorityProof,
   verifyFalcon24RetainedSemanticReleaseAuthorityProof,
   verifyFalcon24StagingReceiptV2,
   verifyFalcon24UiReceiptDocument,
@@ -67,6 +71,10 @@ const STABLE_DATABASE_ERRORS = new Set([
   "FALCON24_AUTHORITY_EPOCH_NOT_SUCCESSOR",
   "FALCON24_CURRENT_AUTHORITY_NOT_FOUND",
   "FALCON24_AUTHORITY_NOT_ACTIVE",
+  "FALCON24_RECOVERY_ACTIVATION_INVALID",
+  "FALCON24_RECOVERY_ACTIVATION_PREDECESSOR_DIAGNOSTIC_INVALID",
+  "FALCON24_RECOVERY_ACTIVATION_LLM_STAGE_INVALID",
+  "FALCON24_RECOVERY_ACTIVATION_RESULT_INVALID",
   "FALCON24_RUN_AUTHORITY_LOAD_INVALID",
   "FALCON24_RUN_NOT_FOUND",
   "FALCON24_UI_RECEIPT_COMMAND_INVALID",
@@ -397,6 +405,98 @@ export function createPostgresFalcon24AuthorityEpoch(input: {
         command,
         semantic_domain: command.scope.semantic_domain,
         parse: (raw) => falcon24AuthorityBindingV2Schema.parse(raw),
+      });
+    },
+
+    async activateRetainedWithRecovery(capability: unknown, candidate: unknown) {
+      const envelope = z
+        .strictObject({
+          request: z.unknown(),
+          retained_semantic_proof: falcon24RetainedSemanticReleaseAuthorityProofSchema,
+          llm_execution_proof: falcon24LlmExecutionAuthorityProofSchema,
+        })
+        .parse(candidate);
+      const [semanticProof, llmProof] = await Promise.all([
+        verifyFalcon24RetainedSemanticReleaseAuthorityProof(envelope.retained_semantic_proof),
+        verifyFalcon24LlmExecutionAuthorityProof(envelope.llm_execution_proof),
+      ]);
+      const command = await buildFalcon24ActivationRequestV4(envelope.request);
+      const sameRelease =
+        command.expected_semantic_release.release_id ===
+          semanticProof.semantic_release.release_id &&
+        command.expected_semantic_release.generation ===
+          semanticProof.semantic_release.generation &&
+        command.expected_semantic_release.release_digest ===
+          semanticProof.semantic_release.release_digest &&
+        command.expected_semantic_release.datasource_id ===
+          semanticProof.semantic_release.datasource_id;
+      const sameScope =
+        command.scope.app_id === semanticProof.scope.app_id &&
+        command.scope.tenant_id === semanticProof.scope.tenant_id &&
+        command.scope.environment === semanticProof.scope.environment &&
+        command.scope.semantic_domain === semanticProof.scope.semantic_domain &&
+        command.scope.app_id === llmProof.scope.app_id &&
+        command.scope.tenant_id === llmProof.scope.tenant_id &&
+        command.scope.environment === llmProof.scope.environment &&
+        command.scope.semantic_domain === llmProof.scope.semantic_domain;
+      if (
+        command.retained_semantic_proof_hash !== semanticProof.proof_hash ||
+        command.authority_epoch !== semanticProof.authority_epoch ||
+        command.authority_epoch !== llmProof.target_authority_epoch ||
+        !sameScope ||
+        !sameRelease ||
+        command.expected_current_authority.authority_epoch !==
+          semanticProof.expected_current_authority.authority_epoch ||
+        command.expected_current_authority.baseline_id !==
+          semanticProof.expected_current_authority.baseline_id ||
+        command.expected_current_authority.baseline_hash !==
+          semanticProof.expected_current_authority.baseline_hash ||
+        command.expected_current_authority.activation_attempt_id !==
+          semanticProof.expected_current_authority.activation_attempt_id ||
+        command.expected_versions.semantic_pointer !==
+          semanticProof.expected_versions.semantic_pointer ||
+        command.expected_versions.semantic_runtime !==
+          semanticProof.expected_versions.semantic_runtime ||
+        command.expected_versions.workspace_defaults !==
+          semanticProof.expected_versions.workspace_defaults ||
+        command.llm_execution_stage_ref.stage_id !== llmProof.stage_id ||
+        command.llm_execution_stage_ref.proof_hash !== llmProof.proof_hash ||
+        semanticProof.worker_build.build_id !== llmProof.worker_build.build_id ||
+        semanticProof.worker_build.generation_id !== llmProof.worker_build.generation_id
+      ) {
+        throw new TypeError("FALCON24_RECOVERY_ACTIVATION_PROOF_MISMATCH");
+      }
+      return invoke({
+        capability,
+        access: "WRITE",
+        operation: "falcon24-authority.activate-retained-recovery",
+        correlation_id: command.attempt_id,
+        sql: "select app_data_agent.activate_falcon24_authority($1::jsonb) as value",
+        command,
+        semantic_domain: command.scope.semantic_domain,
+        parse: (raw) => {
+          const result = falcon24RetainedActivationResultV4Schema.parse(raw);
+          if (
+            result.activation_command_hash !== command.command_hash ||
+            result.authority.authority_epoch !== command.authority_epoch ||
+            result.authority.baseline_id !== command.baseline_id ||
+            result.authority.baseline_hash !== command.expected_baseline_hash ||
+            result.authority.activation_attempt_id !== command.attempt_id ||
+            result.predecessor_diagnostic_receipt.attempt_id !==
+              command.predecessor_diagnostic_failure.attempt_id ||
+            result.predecessor_diagnostic_receipt.run_id !==
+              command.predecessor_diagnostic_failure.run_id ||
+            result.llm_execution_certification.stage_id !== llmProof.stage_id ||
+            result.llm_execution_certification.proof_hash !== llmProof.proof_hash ||
+            result.llm_execution_certification.certification_receipt_ref.content_hash !==
+              llmProof.certification_receipt_ref.content_hash ||
+            result.llm_execution_certification.execution_profile_hash !==
+              llmProof.execution_profile_hash
+          ) {
+            throw new TypeError("FALCON24_RECOVERY_ACTIVATION_RESULT_INVALID");
+          }
+          return result;
+        },
       });
     },
   });
