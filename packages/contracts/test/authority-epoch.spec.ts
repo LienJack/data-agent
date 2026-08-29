@@ -4,6 +4,7 @@ import {
   buildCombinedFalcon24SemanticActivationReceipt,
   buildFalcon24ActivationRequestV3,
   buildFalcon24ActivationRequestV4,
+  buildFalcon24ActivationRequestV5,
   buildFalcon24E1StagingReceipt,
   buildFalcon24LlmExecutionAuthorityProof,
   buildFalcon24QaE2eReceiptV2,
@@ -15,6 +16,7 @@ import {
   falcon24AuthorityBindingV2Schema,
   falcon24AuthorityEpochSchema,
   falcon24AuthorityPersistenceBindingSchema,
+  falcon24EpochClosureFailureReceiptSchema,
   falcon24E1ActivationAttemptSchema,
   falcon24SemanticAuthorityClosureSchema,
   falcon24StagingHoldRequestV2Schema,
@@ -23,6 +25,7 @@ import {
   verifyCombinedFalcon24SemanticActivationReceipt,
   verifyFalcon24ActivationRequestV3,
   verifyFalcon24ActivationRequestV4,
+  verifyFalcon24ActivationRequestV5,
   verifyFalcon24E1StagingReceipt,
   verifyFalcon24LlmExecutionAuthorityProof,
   verifyFalcon24RetainedSemanticReleaseAuthorityProof,
@@ -575,6 +578,71 @@ describe("Falcon24 E1 authority epoch contracts", () => {
           artifact_type: "QueryEvidence",
         },
       }),
+    ).rejects.toThrow();
+  });
+
+  it("binds E8 recovery to an immutable E7 closure failure and fresh certification", async () => {
+    const scope = {
+      app_id: id(120),
+      tenant_id: id(121),
+      environment: "test",
+      semantic_domain: "falcon24",
+    } as const;
+    const current = {
+      schema_version: "falcon24-authority-binding@2.0.0" as const,
+      authority_epoch: "E7",
+      baseline_id: id(122),
+      baseline_hash: hash("a"),
+      activation_attempt_id: id(123),
+    };
+    const failure = falcon24EpochClosureFailureReceiptSchema.parse({
+      schema_version: "falcon24-epoch-closure-failure-receipt@1.0.0",
+      receipt_id: id(124),
+      authority: current,
+      stage_ref: { stage_id: id(125), proof_hash: hash("b") },
+      failure_class: "FROZEN_CLOSURE_CHANGE_REQUIRED",
+      failure_code: "PROVIDER_PROFILE_BINDING_NOT_SELECTED",
+      expected_readiness: "AVAILABLE",
+      observed_readiness: "STALE",
+      observed_selectable: false,
+      evidence_hash: hash("c"),
+      receipt_hash: hash("d"),
+    });
+    const command = await buildFalcon24ActivationRequestV5({
+      schema_version: "falcon24-activation-request@5.0.0",
+      scope,
+      authority_epoch: "E8",
+      attempt_id: id(126),
+      baseline_id: id(127),
+      expected_baseline_hash: hash("e"),
+      expected_current_authority: current,
+      expected_semantic_release: {
+        release_id: id(128),
+        generation: 2,
+        release_digest: hash("f"),
+        datasource_id: id(129),
+      },
+      expected_versions: { semantic_pointer: 3, semantic_runtime: 3, workspace_defaults: 4 },
+      retained_semantic_proof_hash: hash("1"),
+      predecessor_closure_failure_ref: {
+        receipt_id: failure.receipt_id,
+        receipt_hash: failure.receipt_hash,
+        failure_code: failure.failure_code,
+      },
+      llm_execution_stage_ref: { stage_id: id(130), proof_hash: hash("2") },
+    });
+    await expect(verifyFalcon24ActivationRequestV5(command)).resolves.toEqual(command);
+    await expect(
+      verifyFalcon24ActivationRequestV5({
+        ...command,
+        predecessor_closure_failure_ref: {
+          ...command.predecessor_closure_failure_ref,
+          failure_code: "PROVIDER_PROFILE_NOT_AVAILABLE",
+        },
+      }),
+    ).rejects.toThrow();
+    await expect(
+      buildFalcon24ActivationRequestV5({ ...command, authority_epoch: "E7" }),
     ).rejects.toThrow();
   });
 });

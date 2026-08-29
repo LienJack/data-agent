@@ -527,6 +527,94 @@ export const falcon24RetainedActivationResultV4Schema = z.strictObject({
   }),
 });
 
+export const falcon24EpochClosureFailureReceiptSchema = z.strictObject({
+  schema_version: z.literal("falcon24-epoch-closure-failure-receipt@1.0.0"),
+  receipt_id: immutableIdSchema,
+  authority: falcon24AuthorityBindingV2Schema,
+  stage_ref: llmExecutionStageReferenceSchema,
+  failure_class: z.literal("FROZEN_CLOSURE_CHANGE_REQUIRED"),
+  failure_code: z.literal("PROVIDER_PROFILE_BINDING_NOT_SELECTED"),
+  expected_readiness: z.literal("AVAILABLE"),
+  observed_readiness: z.literal("STALE"),
+  observed_selectable: z.literal(false),
+  evidence_hash: contentHashSchema,
+  receipt_hash: contentHashSchema,
+});
+
+export const falcon24PredecessorClosureFailureRefSchema = z.strictObject({
+  receipt_id: immutableIdSchema,
+  receipt_hash: contentHashSchema,
+  failure_code: z.literal("PROVIDER_PROFILE_BINDING_NOT_SELECTED"),
+});
+
+export const falcon24ActivationRequestV5MaterialSchema = z
+  .strictObject({
+    schema_version: z.literal("falcon24-activation-request@5.0.0"),
+    scope: semanticScopeSchema,
+    authority_epoch: falcon24SuccessorAuthorityEpochSchema,
+    attempt_id: immutableIdSchema,
+    baseline_id: immutableIdSchema,
+    expected_baseline_hash: contentHashSchema,
+    expected_current_authority: falcon24AuthorityBindingV2Schema,
+    expected_semantic_release: semanticSuccessorCandidateReleaseReferenceSchema,
+    expected_versions: retainedSemanticExpectedVersionsSchema,
+    retained_semantic_proof_hash: contentHashSchema,
+    predecessor_closure_failure_ref: falcon24PredecessorClosureFailureRefSchema,
+    llm_execution_stage_ref: llmExecutionStageReferenceSchema,
+  })
+  .superRefine((document, context) => {
+    addRetainedSemanticEpochIssues(document, context);
+    if (falcon24AuthorityEpochOrdinal(document.authority_epoch) < 8n) {
+      context.addIssue({
+        code: "custom",
+        message: "FALCON24_CLOSURE_RECOVERY_ACTIVATION_EPOCH_INVALID",
+        path: ["authority_epoch"],
+      });
+    }
+  });
+
+export const falcon24ActivationRequestV5Schema = falcon24ActivationRequestV5MaterialSchema.extend({
+  command_hash: contentHashSchema,
+});
+
+function falcon24ActivationRequestV5Material(input: unknown) {
+  const full = falcon24ActivationRequestV5Schema.safeParse(input);
+  if (!full.success) return falcon24ActivationRequestV5MaterialSchema.parse(input);
+  const { command_hash: _commandHash, ...material } = full.data;
+  return falcon24ActivationRequestV5MaterialSchema.parse(material);
+}
+
+export async function buildFalcon24ActivationRequestV5(input: unknown) {
+  const material = falcon24ActivationRequestV5Material(input);
+  return falcon24ActivationRequestV5Schema.parse({
+    ...material,
+    command_hash: await sha256ContentHash(material),
+  });
+}
+
+export async function verifyFalcon24ActivationRequestV5(input: unknown) {
+  const command = falcon24ActivationRequestV5Schema.parse(input);
+  if (
+    (await sha256ContentHash(falcon24ActivationRequestV5Material(command))) !== command.command_hash
+  ) {
+    throw new TypeError("FALCON24_CLOSURE_RECOVERY_ACTIVATION_COMMAND_HASH_INVALID");
+  }
+  return command;
+}
+
+export const falcon24RetainedActivationResultV5Schema = z.strictObject({
+  schema_version: z.literal("falcon24-retained-activation-result@5.0.0"),
+  activation_command_hash: contentHashSchema,
+  authority: falcon24AuthorityBindingV2Schema,
+  predecessor_closure_failure_receipt: falcon24PredecessorClosureFailureRefSchema,
+  llm_execution_certification: z.strictObject({
+    stage_id: immutableIdSchema,
+    proof_hash: contentHashSchema,
+    certification_receipt_ref: artifactReferenceSchema,
+    execution_profile_hash: contentHashSchema,
+  }),
+});
+
 const combinedFalcon24SemanticActivationExpectedVersionsSchema = z.strictObject({
   semantic_pointer: z.number().int().min(1).max(Number.MAX_SAFE_INTEGER),
   semantic_runtime: z.number().int().min(1).max(Number.MAX_SAFE_INTEGER),
@@ -954,6 +1042,13 @@ export type Falcon24ActivationRequestV3 = z.infer<typeof falcon24ActivationReque
 export type Falcon24ActivationRequestV4 = z.infer<typeof falcon24ActivationRequestV4Schema>;
 export type Falcon24RetainedActivationResultV4 = z.infer<
   typeof falcon24RetainedActivationResultV4Schema
+>;
+export type Falcon24EpochClosureFailureReceipt = z.infer<
+  typeof falcon24EpochClosureFailureReceiptSchema
+>;
+export type Falcon24ActivationRequestV5 = z.infer<typeof falcon24ActivationRequestV5Schema>;
+export type Falcon24RetainedActivationResultV5 = z.infer<
+  typeof falcon24RetainedActivationResultV5Schema
 >;
 export type Falcon24LlmExecutionAuthorityProof = z.infer<
   typeof falcon24LlmExecutionAuthorityProofSchema
