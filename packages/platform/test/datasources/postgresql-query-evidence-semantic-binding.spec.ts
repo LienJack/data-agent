@@ -449,6 +449,61 @@ describe("PostgreSQL QueryEvidence semantic binding", () => {
     );
   });
 
+  it("coalesces object and column bindings that resolve to the same published physical source", async () => {
+    const input = await fixture();
+    const binding = await buildPostgresqlQueryEvidenceSemanticBinding({
+      ...input,
+      semantic_catalog: {
+        ...input.semantic_catalog,
+        executable: {
+          ...input.semantic_catalog.executable,
+          physical_bindings: [
+            ...input.semantic_catalog.executable.physical_bindings,
+            {
+              logical_object_id: "dimension.order_month",
+              logical_object_type: "dimension" as const,
+              datasource_id: datasourceId,
+              schema_name: "public",
+              table_name: "orders",
+              column_name: "order_date",
+              binding_lifecycle: "active" as const,
+              valid_from: null,
+              valid_until: null,
+            },
+            {
+              logical_object_id: "metric.order_revenue",
+              logical_object_type: "metric" as const,
+              datasource_id: datasourceId,
+              schema_name: "public",
+              table_name: "orders",
+              column_name: "amount",
+              binding_lifecycle: "active" as const,
+              valid_from: null,
+              valid_until: null,
+            },
+          ],
+        },
+      },
+    });
+
+    expect(binding.columns.map(({ physical_sources: sources }) => sources)).toEqual([
+      [
+        expect.objectContaining({
+          schema_name: "public",
+          relation_name: "orders",
+          column_name: "order_date",
+        }),
+      ],
+      [
+        expect.objectContaining({
+          schema_name: "public",
+          relation_name: "orders",
+          column_name: "amount",
+        }),
+      ],
+    ]);
+  });
+
   it("rejects a result OID that contradicts the declared semantic type", async () => {
     const input = await fixture();
     await expect(

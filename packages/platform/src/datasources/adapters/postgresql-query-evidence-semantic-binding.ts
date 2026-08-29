@@ -130,7 +130,7 @@ function physicalSources(input: {
     };
   });
   if (declaredColumns.length === 0) reject("QUERY_EVIDENCE_PHYSICAL_BINDING_INVALID");
-  const sources = input.bindings
+  const resolvedSources = input.bindings
     .filter((binding) => {
       const declared = declaredColumns.find(
         (column) =>
@@ -165,13 +165,16 @@ function physicalSources(input: {
         nullable: column.nullable,
         logical_type: logicalTypeForPhysicalType(column.type_identity.type_name),
       };
-    })
-    .sort((left, right) =>
-      physicalSourceIdentity(left).localeCompare(physicalSourceIdentity(right)),
-    );
+    });
+  const sources = [
+    ...new Map(
+      resolvedSources.map((source) => [physicalSourceIdentity(source), source] as const),
+    ).values(),
+  ].sort((left, right) =>
+    physicalSourceIdentity(left).localeCompare(physicalSourceIdentity(right)),
+  );
   if (
     sources.length === 0 ||
-    new Set(sources.map(physicalSourceIdentity)).size !== sources.length ||
     declaredColumns.some(
       (column) =>
         !sources.some(
