@@ -450,3 +450,46 @@ authority”。不得放宽通用 Artifact Epoch 隔离，也不得重写 E7/E8 
   QueryEvidence -> typed Arrow -> Python -> AnalysisReport -> Chart，residual=0。
 - [ ] **AC-E9-05** E9-Q1=16/16、E9-C1=30/30；最终审计保留真实
   `production_isolation_proven=false / production_gate=HOLD`，并清理轮换 credential、临时服务、浏览器和沙箱容器。
+
+## 17. E10 versioned resolver recovery amendment
+
+E9 request@6 已原子提交为 all-new：current baseline
+`7d2e476b-81e0-5390-8604-540009cfd717`、activation
+`55d3a881-8fd7-5c54-abbc-3f158f0f79c9`，fresh certification stage
+`e9000000-0000-5000-8000-000000000902` 已 `PROMOTED` 且 Artifact active。Finalizer 随后的 dedicated
+readback 失败；在 exact backend context 下调用 10801 resolver 得到 PostgreSQL `42702`：PL/pgSQL record
+变量 `stage` 与查询表别名 `stage` 令 `stage.app_id` ambiguous。E9 尚无 diagnostic/Q1/C1，禁止修改 10801、
+重放 request@6 或在 current E9 下替换原 resolver。
+
+### 17.1 Requirements
+
+- **R-E10-01 Immutable E9 finalization failure.** 10802 新增 append-only finalization-failure authority。record RPC
+  只接受 expected E9 authority、已推广的 E9 stage ref 与幂等 identity；服务器必须在同一事务内重构 exact
+  resolver command、实际观察旧 resolver 的 `42702`、哈希旧函数定义并生成
+  `FROZEN_CLOSURE_CHANGE_REQUIRED / CURRENT_PROVIDER_CERTIFICATION_RESOLVER_AMBIGUOUS` receipt。receipt 必须在
+  E10 certification/staging 前提交，E9 baseline/stage/Artifact 和 E8 diagnostic bytes 不变。
+- **R-E10-02 Versioned resolver fence.** 10802 不 `CREATE OR REPLACE` 10801 resolver。新增 backend-only
+  `resolve_current_provider_execution_certification_v2(jsonb)`，使用无歧义 alias，并在 current ordinal `<10`
+  时 fail closed。Worker E10 build 改用 v2；旧 v1 只保留 E9 失败现场与历史验证。
+- **R-E10-03 Fresh successor proof.** clean E10 build 必须执行新的 live credential certification；candidate 在
+  E9 为 STAGED/inactive，v2 resolver 不可见。不得复用 E9 stage 或旧 Artifact 冒充 E10 closure。
+- **R-E10-04 Request/result v7.** request@7 绑定 exact E9 finalization-failure receipt、fresh E10 stage、current
+  E9、generation 2 与 expected versions；result@7 返回 exact receipt ref、promoted certification 与 E10 authority。
+  v2-v6 继续委托 frozen pre-E10 activation。
+- **R-E10-05 Atomic switch and readback.** 唯一 activation RPC 在一个事务内按 semantic fence -> Falcon advisory ->
+  current -> semantic/runtime/defaults -> E9 failure receipt -> E10 stage/artifact -> target baseline 顺序锁定，推广
+  candidate 并切到 E10。提交后必须通过 public profile 与 v2 claims resolver 双 readback；失败不得重放同一
+  activation。
+- **R-E10-06 Formal gates unchanged.** 只有 E10 post-readback PASS 后才能创建唯一 formal diagnostic。动态 Root
+  Tool Loop、答案入口 Trace UI、residual=0、Q1 16/16、C1 30/30 与正式首败停止规则不变。
+
+### 17.2 Acceptance
+
+- [ ] **AC-E10-01** E9 failure receipt 由服务器通过真实 `42702` 重算且 append-only；伪造 current/stage/ref、旧函数
+  不再失败、不同 payload 重放或越权全部拒绝。
+- [ ] **AC-E10-02** 10802 PostgreSQL 17 fresh + exact E9 populated upgrade、RLS/grants、rollback/replay/concurrency
+  PASS；v1 在 E9 保持原失败，v2 在 E9 fail closed，E1-E9/gen1/gen2/E8 receipt bytes 无漂移。
+- [ ] **AC-E10-03** 一次 live E10 certification + request@7 后 current=E10、stage=PROMOTED、public profile=AVAILABLE、
+  v2 claims exact PASS，semantic pointer/runtime/defaults 仍指向同一 generation 2。
+- [ ] **AC-E10-04** 唯一 E10 diagnostic 经真实 composer 和答案入口 Trace UI 证明完整动态 Tool Loop、五类 Artifact
+  与 residual=0；随后 E10-Q1=16/16、E10-C1=30/30。

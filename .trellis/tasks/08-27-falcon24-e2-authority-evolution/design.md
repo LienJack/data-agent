@@ -1103,3 +1103,45 @@ baseline/session/current 切换。E8 diagnostic 已有 receipt，因此 v6 不�
 
 负例至少覆盖：wrong current/stage/status/activation、wrong profile/config/ref/hash、inactive artifact、claims tamper、cross-scope/
 principal、v6 old/non-terminal diagnostic、failure hash drift、E9 stage/build mismatch、partial promotion 与 generic Artifact access widening。
+
+## 22. E10 versioned current-certification resolver
+
+### 22.1 Frozen E9 boundary
+
+10801 activation 已成功提交，故 v1 resolver 的 ambiguous alias 已属于 E9 frozen closure。10802 不能替换它。新增
+`falcon24_finalization_failure_receipts` 保存 exact E9 authority、PROMOTED E9 stage、旧 resolver identity、observed
+SQLSTATE `42702`、definition/evidence/receipt hashes。record RPC 在 advisory lock 与 current/stage row locks 下由服务器
+构造 certification ref，并在嵌套 exception block 中调用 v1；只有捕获 `ambiguous_column` 才能写 receipt。表级
+UPDATE/DELETE trigger、forced RLS、scope unique key 与 idempotency conflict 保证 append-only。
+
+### 22.2 Versioned read authority
+
+新增 `resolve_current_provider_execution_certification_v2(jsonb)`；命令/结果 schema 前进到 `@2.0.0`，payload 仍只含
+profile/config/exact receipt ref。函数使用 `cert_stage_row`、`cert_artifact_row` 等互不重名 alias，并重算 stage/current/
+Artifact/claims/deployment 闭包。current ordinal `<10` 返回 NOT_AVAILABLE，因此安装 10802 后 E9 的可观察执行语义仍由
+失败的 v1 冻结；只有 E10 原子切换后 v2 才可返回 claims。Worker production dispatcher 只调用 v2，通用 Artifact
+resolver与 v1 均不作为 fallback。
+
+### 22.3 Activation v7
+
+request@7 = retained v3 material + `predecessor_finalization_failure_receipt` + `llm_execution_stage_ref`。10802 将 10801
+wrapper冻结为 `activate_falcon24_authority_pre_e10`，v2-v6完整委托；v7 锁定并重验 E9 failure receipt、fresh E10
+stage/artifact、model/deployment和 E10 baseline/LLM receipt，transaction-local fence 后推广 candidate，再以重新哈希的
+v3 command调用 retained core。结果@7返回 failure ref与 certification binding。锁序固定为 semantic fence -> Falcon
+activation advisory -> current -> semantic/runtime/defaults -> failure receipt -> candidate -> target baseline，所有失败只观察
+E9/STAGED/inactive或 E10/PROMOTED/active，不存在混合状态。
+
+### 22.4 Crash and test matrix
+
+| Window | Observable state | Recovery |
+|---|---|---|
+| 10802 install | current E9；v1仍42702，v2 NOT_AVAILABLE | record exact E9 finalization failure |
+| failure receipt commit | E9 + append-only receipt | fresh E10 certification；不得改 receipt |
+| E10 stage commit | E9 + STAGED/inactive | same-key preparation replay；v2仍不可见 |
+| request@7 rollback | E9 + candidate STAGED/inactive | 修复未冻结 E10 candidate代码后新 target attempt |
+| request@7 commit | E10 + PROMOTED/active + v2 PASS | 开始唯一 E10 diagnostic；不回退 |
+| formal diagnostic/Q1/C1 首败 | immutable FAIL/HOLD | 立即停止，不 retry/resume |
+
+测试覆盖 v1 E9 exact failure、v2 E9 fence/E10 success、server-observed 42702 receipt、strict v7 hash domain、RLS/grants、
+history snapshots、fresh/exact E9 upgrade、failure injection、replay与双连接 all-old/all-new。文件边界为 Contracts provider/
+epoch contracts、Platform provider/epoch adapters、Worker dispatcher、Web recorder/Finalizer、10802 source/rendered/manifest与对应测试。

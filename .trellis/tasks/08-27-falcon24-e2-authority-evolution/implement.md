@@ -1029,29 +1029,30 @@ receipt persistence 本身需要新的 frozen-closure 修复，本任务不满�
 
 ### E9-W1 — Contracts and dedicated resolver
 
-- [ ] 增加 request/result@6 与 predecessor terminal diagnostic receipt strict contract、builder/verifier/negative tests。
-- [ ] 增加 backend-only current provider certification resolver command/result；server 重算 ref/hash/claims，client 不传 payload/digest。
-- [ ] Worker production dispatcher 只用 dedicated resolver 授权 current profile；generic Artifact resolver 保持不变并有回归测试。
-- [ ] 运行 Contracts/Platform/Worker focused tests、typecheck/lint，scoped commit。
+- [x] 增加 request/result@6 与 predecessor terminal diagnostic receipt strict contract、builder/verifier/negative tests。
+- [x] 增加 backend-only current provider certification resolver command/result；server 重算 ref/hash/claims，client 不传 payload/digest。
+- [x] Worker production dispatcher 只用 dedicated resolver 授权 current profile；generic Artifact resolver 保持不变并有回归测试。
+- [x] Contracts/Platform/Worker focused tests、typecheck/lint与 scoped commits完成（`aac4d85f`）。
 
 ### E9-W2 — 10801 and activation authority
 
-- [ ] 新增 10801 source fragments 与 rendered SQL，不修改 10800；演进唯一 activation RPC并新增窄 certification resolver。
-- [ ] fresh PostgreSQL 17、exact E8 populated clone、RLS/grants、idempotent replay、failure injection、双连接 all-old/all-new。
-- [ ] canonical table hash证明 E1-E8、gen1/gen2、E8 failed Run/receipt bytes不变；renderer/registry/inventory PASS。
-- [ ] scoped commit；应用权威库前再次核对 frontier/checksum/protected history。
+- [x] 新增 10801 source fragments 与 rendered SQL，不修改 10800；演进唯一 activation RPC并新增窄 certification resolver。
+- [x] fresh PostgreSQL 17、exact E8 populated clone、RLS/grants、idempotent replay、failure injection、双连接 all-old/all-new。
+- [x] canonical table hash证明 E1-E8、gen1/gen2、E8 failed Run/receipt bytes不变；renderer/registry/inventory PASS。
+- [x] scoped commit `beb8cb62`；权威库应用前再次核对 frontier/checksum/protected history。
 
 ### E9-W3 — Finalizer and clean build
 
-- [ ] Finalizer E9+ 加载 terminal predecessor diagnostic receipt与fresh stage，构造 request@6；不再误用 E8 closure-failure receipt路径。
-- [ ] post-commit readback同时核对 E9 current、gen2 pointer/runtime/defaults、public AVAILABLE与 dedicated claims resolution。
-- [ ] focused Web/Platform tests、release build integrity、clean web/worker build identity/attestation；scoped commit。
+- [x] Finalizer E9 加载 terminal predecessor diagnostic receipt与fresh stage，构造 request@6；不再误用 E8 closure-failure receipt路径。
+- [x] post-commit readback同时核对 E9 current、gen2 pointer/runtime/defaults、public AVAILABLE与 dedicated claims resolution。
+- [x] focused Web/Platform tests、release build integrity、clean web/worker build identity/attestation；scoped commit `8ff79ea7`。
 
 ### E9-W4 — Live certification and atomic activation
 
-- [ ] 权威库应用10801并证明 protected history hash不变。
-- [ ] 轮换/解析受控 DeepSeek credential，一次 live E9 certification；E8下 stage不可见。
-- [ ] 一次 Finalizer/request@6原子激活E9；核对 E8 FAIL不变、E9 stage PROMOTED、profile/claims resolver PASS、gen2 unchanged。
+- [x] 权威库应用10801 checksum `sha256:3e02122c78486eb2743b1b23c4387a7b363172335a27af5663d829085d2d7099`，25表 history guard PASS。
+- [x] clean generation `sha256:31f9e03509badc73456eb0098010ca5d45104dc168d46a451cc096bce2316bc6` 下一次 live E9 certification PASS；E8时 stage STAGED/inactive。
+- [ ] request@6 已原子激活 E9 baseline `7d2e476b-81e0-5390-8604-540009cfd717` / activation
+  `55d3a881-8fd7-5c54-abbc-3f158f0f79c9`，但 post-readback 捕获 v1 resolver `42702` ambiguous alias。E9冻结、gates=0；前进 E10。
 
 ### E9-W5 — Formal diagnostic
 
@@ -1066,3 +1067,36 @@ receipt persistence 本身需要新的 frozen-closure 修复，本任务不满�
 - [ ] 任一 formal slot首败只写 HOLD，不 resume/跨 attempt拼证据；内部 closure修复走 successor Epoch。
 - [ ] canonical final audit、exact Run Trace UI/evidence index、production false/HOLD、credential/service/browser/sandbox/scratch清理。
 - [ ] Trellis验证、最后 scoped commit；只有全部 acceptance evidence闭合后标记 goal complete。
+
+## 22. E10 unattended forward execution
+
+### E10-W0 — Freeze E9 post-commit readback failure
+
+- [x] 证明 request@6 为 all-new：current E9、stage PROMOTED、Artifact active、E8 diagnostic receipt未变；未重放 Finalizer。
+- [x] exact backend-context SQL 捕获 `42702 / stage.app_id ambiguous`，定位10801 v1 resolver变量/alias冲突；E9 diagnostic/Q1/C1均为0。
+- [ ] 更新 PRD/design/implement并 scoped commit；10801和 E9历史保持不变。
+
+### E10-W1 — Failure receipt, contracts and versioned resolver
+
+- [ ] Contracts增加 finalization-failure receipt、provider resolver request/result@2、activation request/result@7与负例。
+- [ ] 10802新增 append-only failure authority；server实际观察旧 v1 `42702`后才可record。
+- [ ] 新增 v2 resolver并要求current>=E10；Worker production dispatcher无fallback改用v2。
+- [ ] focused tests/typecheck/Biome、scoped commits。
+
+### E10-W2 — Atomic E10 activation authority
+
+- [ ] 10802演进唯一activation RPC：v2-v6历史委托，v7绑定 E9 failure receipt + fresh E10 stage并原子切换。
+- [ ] PG17 fresh/exact E9 upgrade、history hash、RLS/security、rollback/replay/concurrency、renderer/inventory PASS。
+- [ ] Finalizer/record CLI E10路径与post-readback v2；focused tests、clean build、scoped commit。
+
+### E10-W3 — Live record, certification and activation
+
+- [ ] 权威库应用10802；record immutable E9 finalization failure receipt。
+- [ ] 一次 live E10 certification，E9下 v2不可见；一次 request@7 原子激活 E10。
+- [ ] readback E10/public AVAILABLE/v2 exact claims/gen2 unchanged/E10 gates=0。
+
+### E10-W4-W6 — Formal diagnostic, gates and audit
+
+- [ ] 唯一 E10 diagnostic经真实 composer与答案入口Trace UI完整PASS、residual=0。
+- [ ] E10-Q1 16/16；winning Q1后 E10-C1 30/30；任一formal首败immutable HOLD并停止。
+- [ ] canonical final audit、production false/HOLD、credential/service/browser/sandbox/scratch清理、Trellis验证与最终scoped commit。
