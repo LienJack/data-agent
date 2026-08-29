@@ -63,5 +63,12 @@ begin
     or pg_catalog.strpos(definition,'PROVIDER_PROFILE_NOT_AVAILABLE')=0
   then raise exception using errcode='P0001',
     message='FALCON24_E7_ACTIVATION_POSTCONDITION_FAILED'; end if;
+  select pg_catalog.pg_get_functiondef(
+    'app_data_agent.reject_artifact_payload_mutation()'::regprocedure) into strict definition;
+  if pg_catalog.strpos(definition,'app.falcon24_e7_activation_stage_id')=0
+    or pg_catalog.strpos(definition,'app.falcon24_e7_activation_attempt_id')=0
+    or pg_catalog.strpos(definition,'stage.status=''PROMOTED''')=0
+  then raise exception using errcode='P0001',
+    message='FALCON24_E7_ARTIFACT_PROMOTION_GUARD_POSTCONDITION_FAILED'; end if;
 end
 $postconditions$;

@@ -91,6 +91,13 @@ describe("10799 Falcon24 E7 recovery authority", () => {
     expect(activation).toContain("update app_data_agent.artifacts artifact_row set is_active=true");
     expect(activation).toContain("artifact_row.revision=certification.revision");
     expect(activation).not.toContain("\n  revision app_data_agent.model_config_versions%rowtype");
+    expect(migration).toContain("app.falcon24_e7_activation_stage_id");
+    expect(migration).toContain("app.falcon24_e7_activation_attempt_id");
+    expect(migration).toContain("old.artifact_type='ModelCertificationReceipt'");
+    expect(migration).toContain("stage.status='PROMOTED'");
+    expect(activation.indexOf("status='PROMOTED',activation_attempt_id")).toBeLessThan(
+      activation.indexOf("update app_data_agent.artifacts artifact_row"),
+    );
   });
 
   it("keeps request v2/v3 behavior and binds E7 reads to the promoted stage", () => {

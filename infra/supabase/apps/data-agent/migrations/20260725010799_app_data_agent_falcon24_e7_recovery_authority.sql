@@ -1,4 +1,4 @@
--- falcon24_e7_recovery_authority_migration_checksum: sha256:7e95d44477dac87d7840ed30c2bbe1138abd25619ef36a921efb265aac974564
+-- falcon24_e7_recovery_authority_migration_checksum: sha256:892ce282473821200a2015ea709eda439ff31ed14fdf3c648d6d586fab09914d
 begin;
 
 select platform.acquire_migration_lock(
@@ -474,6 +474,40 @@ $function$;
 alter function app_data_agent.activate_falcon24_authority(jsonb)
   rename to activate_falcon24_authority_pre_e7;
 
+create or replace function app_data_agent.reject_artifact_payload_mutation()
+returns trigger language plpgsql set search_path='' as $function$
+declare activation_stage_id text;
+  activation_attempt_id text;
+begin
+  if tg_op='DELETE' then raise exception using errcode='P0001',
+    message='DA_ARTIFACT_REVISION_IMMUTABLE'; end if;
+  if old.is_active and not new.is_active
+    and (pg_catalog.to_jsonb(new)-'is_active')=(pg_catalog.to_jsonb(old)-'is_active')
+  then return new; end if;
+  activation_stage_id:=nullif(pg_catalog.current_setting(
+    'app.falcon24_e7_activation_stage_id',true),'');
+  activation_attempt_id:=nullif(pg_catalog.current_setting(
+    'app.falcon24_e7_activation_attempt_id',true),'');
+  if not old.is_active and new.is_active and old.artifact_type='ModelCertificationReceipt'
+    and (pg_catalog.to_jsonb(new)-'is_active')=(pg_catalog.to_jsonb(old)-'is_active')
+    and activation_stage_id~
+      '^[0-9a-f]{8}-[0-9a-f]{4}-[1-8][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$'
+    and activation_attempt_id~
+      '^[0-9a-f]{8}-[0-9a-f]{4}-[1-8][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$'
+    and exists(select 1 from app_data_agent.falcon24_llm_execution_certification_stage stage
+      where stage.app_id=old.app_id and stage.tenant_id=old.tenant_id
+        and stage.environment=old.environment and stage.certification_run_id=old.run_id
+        and stage.certification_artifact_id=old.artifact_id
+        and stage.certification_revision=old.revision
+        and stage.certification_content_hash=old.content_hash
+        and stage.stage_id=activation_stage_id::uuid
+        and stage.activation_attempt_id=activation_attempt_id::uuid
+        and stage.status='PROMOTED')
+  then return new; end if;
+  raise exception using errcode='P0001',message='DA_ARTIFACT_REVISION_IMMUTABLE';
+end
+$function$;
+
 create function app_data_agent.activate_falcon24_authority(command jsonb)
 returns jsonb language plpgsql volatile security definer set search_path='' as $function$
 #variable_conflict use_variable
@@ -689,6 +723,17 @@ begin
       and row.environment=diagnostic.environment and row.attempt_id=diagnostic.attempt_id;
 
   if not is_replay then
+    now_at:=pg_catalog.clock_timestamp();
+    perform pg_catalog.set_config(
+      'app.falcon24_e7_activation_stage_id',stage.stage_id::text,true);
+    perform pg_catalog.set_config(
+      'app.falcon24_e7_activation_attempt_id',command->>'attempt_id',true);
+    update app_data_agent.falcon24_llm_execution_certification_stage set
+      status='PROMOTED',activation_attempt_id=(command->>'attempt_id')::uuid,promoted_at=now_at
+      where app_id=stage.app_id and tenant_id=stage.tenant_id and environment=stage.environment
+        and stage_id=stage.stage_id and status='STAGED';
+    if not found then raise exception using errcode='40001',
+      message='FALCON24_RECOVERY_LLM_STAGE_PROMOTION_RACE'; end if;
     update app_data_agent.artifacts artifact_row set is_active=true
       where artifact_row.app_id=certification.app_id
         and artifact_row.tenant_id=certification.tenant_id
@@ -700,13 +745,6 @@ begin
         and not artifact_row.is_active;
     if not found then raise exception using errcode='40001',
       message='FALCON24_RECOVERY_CERTIFICATION_PROMOTION_RACE'; end if;
-    now_at:=pg_catalog.clock_timestamp();
-    update app_data_agent.falcon24_llm_execution_certification_stage set
-      status='PROMOTED',activation_attempt_id=(command->>'attempt_id')::uuid,promoted_at=now_at
-      where app_id=stage.app_id and tenant_id=stage.tenant_id and environment=stage.environment
-        and stage_id=stage.stage_id and status='STAGED';
-    if not found then raise exception using errcode='40001',
-      message='FALCON24_RECOVERY_LLM_STAGE_PROMOTION_RACE'; end if;
   end if;
 
   v3_command:=(command-array[
@@ -941,11 +979,18 @@ begin
     or pg_catalog.strpos(definition,'PROVIDER_PROFILE_NOT_AVAILABLE')=0
   then raise exception using errcode='P0001',
     message='FALCON24_E7_ACTIVATION_POSTCONDITION_FAILED'; end if;
+  select pg_catalog.pg_get_functiondef(
+    'app_data_agent.reject_artifact_payload_mutation()'::regprocedure) into strict definition;
+  if pg_catalog.strpos(definition,'app.falcon24_e7_activation_stage_id')=0
+    or pg_catalog.strpos(definition,'app.falcon24_e7_activation_attempt_id')=0
+    or pg_catalog.strpos(definition,'stage.status=''PROMOTED''')=0
+  then raise exception using errcode='P0001',
+    message='FALCON24_E7_ARTIFACT_PROMOTION_GUARD_POSTCONDITION_FAILED'; end if;
 end
 $postconditions$;
 select platform.assert_migration_checksum(
   'app','00000000-0000-4000-8000-00000000da01'::uuid,
   '20260725010799_app_data_agent_falcon24_e7_recovery_authority',
-  'sha256:7e95d44477dac87d7840ed30c2bbe1138abd25619ef36a921efb265aac974564');
+  'sha256:892ce282473821200a2015ea709eda439ff31ed14fdf3c648d6d586fab09914d');
 
 commit;
