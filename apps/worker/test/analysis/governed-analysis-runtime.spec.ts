@@ -460,6 +460,32 @@ describe("generic governed analysis runtime", () => {
     expect(test.providerContext()).not.toContain("SENSITIVE_ROW_VALUE");
     expect(test.providerContext()).not.toContain("private_schema");
     expect(test.providerContext()).not.toMatch(/case_id|acceptance|raw_rows|stdout|credential/u);
+    const planningAuthority = JSON.parse(test.providerContext()) as {
+      method_registry: {
+        entries: Array<{
+          method_id: string;
+          parameter_schema: {
+            type?: string;
+            additionalProperties?: boolean;
+            properties?: Record<string, unknown>;
+          };
+        }>;
+      };
+    };
+    expect(planningAuthority.method_registry.entries[0]).toMatchObject({
+      method_id: "published-monthly-revenue@1",
+      parameter_schema: {
+        type: "object",
+        additionalProperties: false,
+        properties: expect.objectContaining({
+          result_schema_version: expect.any(Object),
+          claim_strength: expect.any(Object),
+        }),
+      },
+    });
+    expect(
+      planningAuthority.method_registry.entries[0]?.parameter_schema.properties,
+    ).not.toHaveProperty("acceptance_case_id");
     expect(test.execute).toHaveBeenCalledOnce();
   });
 

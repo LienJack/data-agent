@@ -136,6 +136,22 @@ function semanticSpecialistSystemPrompt(contextText: string): string {
   ].join("\n");
 }
 
+function analysisProgramSpecialistSystemPrompt(contextText: string): string {
+  return [
+    "You are the governed analysis-program planner.",
+    "Return exactly one analysis-program-candidate@2.0.0 JSON object and no prose.",
+    "Bind objective_hash to the exact Host-provided objective hash and return a nodes DAG.",
+    "Select only metric_ids and dimension_ids present in the frozen Published AnalysisContext.",
+    "Use the exact approved half-open time window. Never invent or widen a time range.",
+    "Do not return ResultContract, semantic hashes, physical lineage, limits, generated-source policy, benchmark-case identity, acceptance metadata, Python source, SQL, or chart data; those are Host-owned.",
+    "Choose only statistical operator obligations from the frozen registry and exact host-required operator ids. Every operator input must bind exact governed input, an approved server transform, or a preceding governed operator result.",
+    "Do not implement BH-FDR, Theil-Sen, Mann-Kendall, HAC, Shapley, cohort retention, or any other registered operator in generated Python.",
+    "For every node, parameters must validate exactly against the parameter_schema of every selected frozen method registry entry. Unknown parameter keys are forbidden. Use {} when the selected method needs no parameters.",
+    "The top-level shape is strict: schema_version, objective_hash, nodes. Each node is strict: node_id, method_registry_entry_ids, metric_ids, dimension_ids, time_window, comparison_window, parameters, operator_obligations, dependency_node_ids, activation_rule, criticality.",
+    `Frozen analysis authority: ${contextText}`,
+  ].join("\n");
+}
+
 interface DirectRunReader {
   getRun(
     capability: unknown,
@@ -494,18 +510,7 @@ export function createDirectRunBoundProviderDispatcher(input: {
                         : specialistTurn.stage === "TEXT2SQL"
                           ? text2SqlSpecialistSystemPrompt(specialistTurn.context_text)
                           : specialistTurn.stage === "ANALYSIS_PROGRAM"
-                            ? [
-                                "You are the governed analysis-program planner.",
-                                "Return exactly one analysis-program-candidate@2.0.0 JSON object and no prose.",
-                                "Bind objective_hash to the exact Host-provided objective hash and return a nodes DAG.",
-                                "Select only metric_ids and dimension_ids present in the frozen Published AnalysisContext.",
-                                "Use the exact approved half-open time window. Never invent or widen a time range.",
-                                "Do not return ResultContract, semantic hashes, physical lineage, limits, generated-source policy, benchmark-case identity, acceptance metadata, Python source, SQL, or chart data; those are Host-owned.",
-                                "Choose only statistical operator obligations from the frozen registry and exact host-required operator ids. Every operator input must bind exact governed input, an approved server transform, or a preceding governed operator result.",
-                                "Do not implement BH-FDR, Theil-Sen, Mann-Kendall, HAC, Shapley, cohort retention, or any other registered operator in generated Python.",
-                                "The top-level shape is strict: schema_version, objective_hash, nodes. Each node is strict: node_id, method_registry_entry_ids, metric_ids, dimension_ids, time_window, comparison_window, parameters, operator_obligations, dependency_node_ids, activation_rule, criticality.",
-                                `Frozen analysis authority: ${specialistTurn.context_text}`,
-                              ].join("\n")
+                            ? analysisProgramSpecialistSystemPrompt(specialistTurn.context_text)
                             : [
                                 "You are the governed report-writing specialist.",
                                 "Return exactly one JSON object with a non-empty answer field.",
@@ -694,6 +699,7 @@ export function createDirectRunBoundProviderDispatcher(input: {
 }
 
 export const directRunBoundProviderDispatcherInternals = Object.freeze({
+  analysisProgramSpecialistSystemPrompt,
   projectToolCallCandidate,
   buildRootLoopMessages,
   text2SqlSpecialistSystemPrompt,

@@ -43,6 +43,7 @@ import type { GovernedAgentAnalysisPort } from "./governed-agent-analysis-port.j
 import type { ProductTeamAnalysisArtifactAuthority } from "./product-team-query-port.js";
 import type { buildAnalysisResearchArtifactCommit } from "./research-artifact-port.js";
 import type { AnalysisResultClosureArtifact } from "./result-publisher.js";
+import { DEFAULT_ANALYSIS_SKILL_CATALOG } from "./skill-catalog.js";
 
 type GovernedAnalysisCommand = Parameters<GovernedAgentAnalysisPort["analyze"]>[0];
 
@@ -423,6 +424,9 @@ export function createGovernedAnalysisRuntime(input: {
                   entries: methods.map((method) => ({
                     method_id: method.method_id,
                     skill_id: method.skill_id,
+                    parameter_schema: DEFAULT_ANALYSIS_SKILL_CATALOG.projectPlanningParameterSchema(
+                      method.skill_id,
+                    ),
                     result_contract_hash: method.result_contract.contract_hash,
                     required_operator_obligations: method.required_operator_obligations,
                   })),

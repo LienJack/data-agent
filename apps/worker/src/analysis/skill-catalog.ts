@@ -79,14 +79,17 @@ const storyParameters = z.strictObject({
   max_charts: z.number().int().positive().max(6).default(3),
 });
 
-const generatedParameters = z.strictObject({
+const generatedCandidateParameters = z.strictObject({
+  result_schema_version: versionIdentifierSchema.optional(),
+  required_output_fields: z.array(versionIdentifierSchema).min(1).max(64).optional(),
+  claim_strength: z.enum(["DESCRIPTIVE", "ASSOCIATION_ONLY", "HOLD_WITH_SENSITIVITY"]).optional(),
+});
+
+const generatedParameters = generatedCandidateParameters.extend({
   declared_method: versionIdentifierSchema,
   acceptance_case_id: versionIdentifierSchema.optional(),
   question: z.string().trim().min(1).max(8_000).optional(),
   required_methods: z.array(versionIdentifierSchema).min(1).max(32).optional(),
-  result_schema_version: versionIdentifierSchema.optional(),
-  required_output_fields: z.array(versionIdentifierSchema).min(1).max(64).optional(),
-  claim_strength: z.enum(["DESCRIPTIVE", "ASSOCIATION_ONLY", "HOLD_WITH_SENSITIVITY"]).optional(),
 });
 
 const commonLimits = Object.freeze({
@@ -233,6 +236,15 @@ export class AnalysisSkillCatalog {
     const parsed = this.resolve(skillId).parameter_schema.safeParse(input);
     if (!parsed.success) throw new AnalysisSkillCatalogError("ANALYSIS_SKILL_PARAMETER_INVALID");
     return parsed.data;
+  }
+
+  projectPlanningParameterSchema(skillId: string): Readonly<Record<string, unknown>> {
+    const descriptor = this.resolve(skillId);
+    const schema =
+      descriptor.skill_id === "open-python-analysis@1"
+        ? generatedCandidateParameters
+        : descriptor.parameter_schema;
+    return Object.freeze(z.toJSONSchema(schema) as Record<string, unknown>);
   }
 
   list(): readonly AnalysisSkillDescriptor[] {

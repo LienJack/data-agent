@@ -107,6 +107,17 @@ describe("direct run-bound provider retry policy", () => {
     expect(prompt).toContain("aggregates numerator and denominator separately before division");
   });
 
+  it("binds analysis-program parameters to the frozen method schema", () => {
+    const prompt = directRunBoundProviderDispatcherInternals.analysisProgramSpecialistSystemPrompt(
+      '{"method_registry":{"entries":[{"method_id":"published-trend@1","parameter_schema":{"type":"object","properties":{},"additionalProperties":false}}]}}',
+    );
+
+    expect(prompt).toContain("parameters must validate exactly");
+    expect(prompt).toContain("parameter_schema");
+    expect(prompt).toContain("Unknown parameter keys are forbidden");
+    expect(prompt).toContain("Use {} when the selected method needs no parameters");
+  });
+
   it("allows a missing exact semantic term to close only through governed request-scoped primitives", () => {
     const prompt = directRunBoundProviderDispatcherInternals.semanticSpecialistSystemPrompt(
       '{"metrics":[{"metric_id":"metric.order_revenue"}]}',
