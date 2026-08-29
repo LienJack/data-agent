@@ -127,23 +127,30 @@ describe.skipIf(!databaseUrl)("Falcon24 E7 LLM certification stage", () => {
 
   it("stages one invisible exact DeepSeek certification and replays without provider I/O", async () => {
     if (!databaseUrl || !pool) throw new Error("Probe database URL is required.");
-    const temporaryDirectory = await mkdtemp(join(tmpdir(), "falcon24-e7-stage-"));
-    const buildIdentityPath = join(temporaryDirectory, "worker-build.json");
-    const stageId = randomUUID();
-    const stagingId = randomUUID();
-    await writeFile(
-      buildIdentityPath,
-      JSON.stringify({
-        schema_version: "runtime-build-identity@1.0.0",
-        consumer_role: "worker",
-        generation_id: `sha256:${"a".repeat(64)}`,
-        build_id: `sha256:${"b".repeat(64)}`,
-        built_at: "2026-08-29T00:00:00.000Z",
-        git_commit: "c".repeat(40),
-        git_dirty: true,
-      }),
-      "utf8",
-    );
+    const configuredBuildIdentityPath = process.env.FALCON24_E7_PROBE_WORKER_BUILD_IDENTITY_FILE;
+    const temporaryDirectory = configuredBuildIdentityPath
+      ? null
+      : await mkdtemp(join(tmpdir(), "falcon24-e7-stage-"));
+    const buildIdentityPath =
+      configuredBuildIdentityPath ?? join(temporaryDirectory ?? tmpdir(), "worker-build.json");
+    const stageId = process.env.FALCON24_E7_PROBE_STAGE_ID ?? randomUUID();
+    const stagingId = process.env.FALCON24_E7_PROBE_STAGING_ID ?? randomUUID();
+    const keepStaged = process.env.FALCON24_E7_PROBE_KEEP_STAGED === "YES";
+    if (!configuredBuildIdentityPath) {
+      await writeFile(
+        buildIdentityPath,
+        JSON.stringify({
+          schema_version: "runtime-build-identity@1.0.0",
+          consumer_role: "worker",
+          generation_id: `sha256:${"a".repeat(64)}`,
+          build_id: `sha256:${"b".repeat(64)}`,
+          built_at: "2026-08-29T00:00:00.000Z",
+          git_commit: "c".repeat(40),
+          git_dirty: true,
+        }),
+        "utf8",
+      );
+    }
     const previousExitCode = process.exitCode;
     const writes: string[] = [];
     const write = vi.spyOn(process.stdout, "write").mockImplementation((chunk) => {
@@ -320,55 +327,59 @@ describe.skipIf(!databaseUrl)("Falcon24 E7 LLM certification stage", () => {
         stage_id: stageId,
       });
 
-      const rejectMaterial = {
-        schema_version: "falcon24-llm-execution-stage-reject@1.0.0",
-        stage_id: stageId,
-        proof_hash: (commandMaterial.proof_document as { proof_hash: string }).proof_hash,
-        reason_code: "INTEGRATION_PROBE_COMPLETE",
-      };
-      const rejectHash = await pool.query<{ value: string }>(
-        "select app_data_agent.u2_canonical_sha256($1::jsonb) as value",
-        [rejectMaterial],
-      );
-      const rejectClient = await pool.connect();
-      try {
-        await rejectClient.query("begin");
-        await rejectClient.query("set local role data_agent_backend");
-        await rejectClient.query(
-          `select pg_catalog.set_config('data_agent.app_id',$1,true),
-                  pg_catalog.set_config('data_agent.tenant_id',$2,true),
-                  pg_catalog.set_config('data_agent.environment','local',true),
-                  pg_catalog.set_config('data_agent.principal_id',$3,true),
-                  pg_catalog.set_config('data_agent.role','owner',true),
-                  pg_catalog.set_config('data_agent.deployment_id',$4,true)`,
-          [appId, tenantId, principalId, deploymentId],
+      if (!keepStaged) {
+        const rejectMaterial = {
+          schema_version: "falcon24-llm-execution-stage-reject@1.0.0",
+          stage_id: stageId,
+          proof_hash: (commandMaterial.proof_document as { proof_hash: string }).proof_hash,
+          reason_code: "INTEGRATION_PROBE_COMPLETE",
+        };
+        const rejectHash = await pool.query<{ value: string }>(
+          "select app_data_agent.u2_canonical_sha256($1::jsonb) as value",
+          [rejectMaterial],
         );
-        const rejectCommand = { ...rejectMaterial, command_hash: rejectHash.rows[0]?.value };
-        const rejected = await rejectClient.query<{ value: Record<string, unknown> }>(
-          "select app_data_agent.reject_falcon24_llm_execution_certification_stage($1::jsonb) as value",
-          [rejectCommand],
-        );
-        expect(rejected.rows[0]?.value).toMatchObject({
-          status: "REJECTED",
-          certification_is_active: false,
-          rejection_reason_code: "INTEGRATION_PROBE_COMPLETE",
-          rejection_command_hash: rejectHash.rows[0]?.value,
-        });
-        const replayedRejection = await rejectClient.query<{ value: Record<string, unknown> }>(
-          "select app_data_agent.reject_falcon24_llm_execution_certification_stage($1::jsonb) as value",
-          [rejectCommand],
-        );
-        expect(replayedRejection.rows[0]?.value).toEqual(rejected.rows[0]?.value);
-        await rejectClient.query("commit");
-      } finally {
-        rejectClient.release();
+        const rejectClient = await pool.connect();
+        try {
+          await rejectClient.query("begin");
+          await rejectClient.query("set local role data_agent_backend");
+          await rejectClient.query(
+            `select pg_catalog.set_config('data_agent.app_id',$1,true),
+                    pg_catalog.set_config('data_agent.tenant_id',$2,true),
+                    pg_catalog.set_config('data_agent.environment','local',true),
+                    pg_catalog.set_config('data_agent.principal_id',$3,true),
+                    pg_catalog.set_config('data_agent.role','owner',true),
+                    pg_catalog.set_config('data_agent.deployment_id',$4,true)`,
+            [appId, tenantId, principalId, deploymentId],
+          );
+          const rejectCommand = { ...rejectMaterial, command_hash: rejectHash.rows[0]?.value };
+          const rejected = await rejectClient.query<{ value: Record<string, unknown> }>(
+            "select app_data_agent.reject_falcon24_llm_execution_certification_stage($1::jsonb) as value",
+            [rejectCommand],
+          );
+          expect(rejected.rows[0]?.value).toMatchObject({
+            status: "REJECTED",
+            certification_is_active: false,
+            rejection_reason_code: "INTEGRATION_PROBE_COMPLETE",
+            rejection_command_hash: rejectHash.rows[0]?.value,
+          });
+          const replayedRejection = await rejectClient.query<{ value: Record<string, unknown> }>(
+            "select app_data_agent.reject_falcon24_llm_execution_certification_stage($1::jsonb) as value",
+            [rejectCommand],
+          );
+          expect(replayedRejection.rows[0]?.value).toEqual(rejected.rows[0]?.value);
+          await rejectClient.query("commit");
+        } finally {
+          rejectClient.release();
+        }
       }
     } finally {
       process.exitCode = previousExitCode;
       write.mockRestore();
       vi.unstubAllGlobals();
       vi.unstubAllEnvs();
-      await rm(temporaryDirectory, { recursive: true, force: true });
+      if (temporaryDirectory) {
+        await rm(temporaryDirectory, { recursive: true, force: true });
+      }
     }
   });
 });
