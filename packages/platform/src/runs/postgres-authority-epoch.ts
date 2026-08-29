@@ -6,15 +6,18 @@ import {
 import {
   buildFalcon24ActivationRequestV3,
   buildFalcon24ActivationRequestV4,
+  buildFalcon24ActivationRequestV5,
   falcon24ActivationAttemptDocumentSchema,
   falcon24ActivationAttemptRequestV2Schema,
   falcon24ActivationHoldRequestV2Schema,
   falcon24ActivationRequestV2Schema,
   falcon24AuthorityBindingSchema,
   falcon24AuthorityBindingV2Schema,
+  falcon24EpochClosureFailureReceiptSchema,
   falcon24LlmExecutionAuthorityProofSchema,
   falcon24PredecessorDiagnosticFailureSchema,
   falcon24RetainedActivationResultV4Schema,
+  falcon24RetainedActivationResultV5Schema,
   falcon24RetainedSemanticReleaseAuthorityProofSchema,
   falcon24RunAuthorityLookupSchema,
   falcon24StageBaselineRequestV2Schema,
@@ -84,6 +87,19 @@ const STABLE_DATABASE_ERRORS = new Set([
   "FALCON24_RECOVERY_ACTIVATION_PREDECESSOR_DIAGNOSTIC_INVALID",
   "FALCON24_RECOVERY_ACTIVATION_LLM_STAGE_INVALID",
   "FALCON24_RECOVERY_ACTIVATION_RESULT_INVALID",
+  "FALCON24_EPOCH_CLOSURE_FAILURE_ID_INVALID",
+  "FALCON24_EPOCH_CLOSURE_FAILURE_NOT_FOUND",
+  "FALCON24_EPOCH_CLOSURE_FAILURE_COMMAND_INVALID",
+  "FALCON24_EPOCH_CLOSURE_FAILURE_NOT_PROVEN",
+  "FALCON24_EPOCH_CLOSURE_FAILURE_IDEMPOTENCY_CONFLICT",
+  "FALCON24_CLOSURE_RECOVERY_ACTIVATION_INVALID",
+  "FALCON24_CLOSURE_RECOVERY_ACTIVATION_SCOPE_FORBIDDEN",
+  "FALCON24_CLOSURE_RECOVERY_PREDECESSOR_MISMATCH",
+  "FALCON24_CLOSURE_RECOVERY_FAILURE_RECEIPT_MISMATCH",
+  "FALCON24_CLOSURE_RECOVERY_LLM_STAGE_MISMATCH",
+  "FALCON24_CLOSURE_RECOVERY_LLM_CATALOG_DRIFT",
+  "FALCON24_CLOSURE_RECOVERY_LLM_STAGE_PROMOTION_RACE",
+  "FALCON24_CLOSURE_RECOVERY_CERTIFICATION_PROMOTION_RACE",
   "FALCON24_RUN_AUTHORITY_LOAD_INVALID",
   "FALCON24_RUN_NOT_FOUND",
   "FALCON24_UI_RECEIPT_COMMAND_INVALID",
@@ -212,6 +228,46 @@ export function createPostgresFalcon24AuthorityEpoch(input: {
     );
 
   return Object.freeze({
+    async recordEpochClosureFailure(capability: unknown, candidate: unknown) {
+      const request = z
+        .strictObject({
+          receipt_id: z.uuid(),
+          idempotency_key: z.string().trim().min(1).max(256),
+          expected_authority: falcon24AuthorityBindingV2Schema,
+          stage_ref: z.strictObject({
+            stage_id: z.uuid(),
+            proof_hash: z.string().regex(/^sha256:[0-9a-f]{64}$/u),
+          }),
+        })
+        .parse(candidate);
+      const command = await commandWithHash({
+        schema_version: "falcon24-epoch-closure-failure-record@1.0.0" as const,
+        ...request,
+      });
+      return invoke({
+        capability,
+        access: "WRITE",
+        operation: "falcon24-authority.record-epoch-closure-failure",
+        correlation_id: request.receipt_id,
+        sql: "select app_data_agent.record_falcon24_epoch_closure_failure($1::jsonb) as value",
+        command,
+        parse: (raw) => falcon24EpochClosureFailureReceiptSchema.parse(raw),
+      });
+    },
+
+    async loadEpochClosureFailure(capability: unknown, candidate: unknown) {
+      const request = z.strictObject({ receipt_id: z.uuid() }).parse(candidate);
+      return invoke({
+        capability,
+        access: "READ",
+        operation: "falcon24-authority.load-epoch-closure-failure",
+        correlation_id: request.receipt_id,
+        sql: "select app_data_agent.load_falcon24_epoch_closure_failure($1::uuid) as value",
+        command: request.receipt_id,
+        parse: (raw) => falcon24EpochClosureFailureReceiptSchema.parse(raw),
+      });
+    },
+
     async loadLlmExecutionStage(capability: unknown, candidate: unknown) {
       const request = z.strictObject({ stage_id: z.uuid() }).parse(candidate);
       return invoke({
@@ -595,6 +651,107 @@ export function createPostgresFalcon24AuthorityEpoch(input: {
               llmProof.execution_profile_hash
           ) {
             throw new TypeError("FALCON24_RECOVERY_ACTIVATION_RESULT_INVALID");
+          }
+          return result;
+        },
+      });
+    },
+
+    async activateRetainedWithClosureRecovery(capability: unknown, candidate: unknown) {
+      const envelope = z
+        .strictObject({
+          request: z.unknown(),
+          retained_semantic_proof: falcon24RetainedSemanticReleaseAuthorityProofSchema,
+          llm_execution_proof: falcon24LlmExecutionAuthorityProofSchema,
+          predecessor_closure_failure: falcon24EpochClosureFailureReceiptSchema,
+        })
+        .parse(candidate);
+      const [semanticProof, llmProof] = await Promise.all([
+        verifyFalcon24RetainedSemanticReleaseAuthorityProof(envelope.retained_semantic_proof),
+        verifyFalcon24LlmExecutionAuthorityProof(envelope.llm_execution_proof),
+      ]);
+      const command = await buildFalcon24ActivationRequestV5(envelope.request);
+      const failure = envelope.predecessor_closure_failure;
+      const sameRelease =
+        command.expected_semantic_release.release_id ===
+          semanticProof.semantic_release.release_id &&
+        command.expected_semantic_release.generation ===
+          semanticProof.semantic_release.generation &&
+        command.expected_semantic_release.release_digest ===
+          semanticProof.semantic_release.release_digest &&
+        command.expected_semantic_release.datasource_id ===
+          semanticProof.semantic_release.datasource_id;
+      const sameScope =
+        command.scope.app_id === semanticProof.scope.app_id &&
+        command.scope.tenant_id === semanticProof.scope.tenant_id &&
+        command.scope.environment === semanticProof.scope.environment &&
+        command.scope.semantic_domain === semanticProof.scope.semantic_domain &&
+        command.scope.app_id === llmProof.scope.app_id &&
+        command.scope.tenant_id === llmProof.scope.tenant_id &&
+        command.scope.environment === llmProof.scope.environment &&
+        command.scope.semantic_domain === llmProof.scope.semantic_domain;
+      if (
+        command.retained_semantic_proof_hash !== semanticProof.proof_hash ||
+        command.authority_epoch !== semanticProof.authority_epoch ||
+        command.authority_epoch !== llmProof.target_authority_epoch ||
+        !sameScope ||
+        !sameRelease ||
+        command.expected_current_authority.authority_epoch !==
+          semanticProof.expected_current_authority.authority_epoch ||
+        command.expected_current_authority.baseline_id !==
+          semanticProof.expected_current_authority.baseline_id ||
+        command.expected_current_authority.baseline_hash !==
+          semanticProof.expected_current_authority.baseline_hash ||
+        command.expected_current_authority.activation_attempt_id !==
+          semanticProof.expected_current_authority.activation_attempt_id ||
+        command.expected_versions.semantic_pointer !==
+          semanticProof.expected_versions.semantic_pointer ||
+        command.expected_versions.semantic_runtime !==
+          semanticProof.expected_versions.semantic_runtime ||
+        command.expected_versions.workspace_defaults !==
+          semanticProof.expected_versions.workspace_defaults ||
+        command.llm_execution_stage_ref.stage_id !== llmProof.stage_id ||
+        command.llm_execution_stage_ref.proof_hash !== llmProof.proof_hash ||
+        semanticProof.worker_build.build_id !== llmProof.worker_build.build_id ||
+        semanticProof.worker_build.generation_id !== llmProof.worker_build.generation_id ||
+        command.predecessor_closure_failure_ref.receipt_id !== failure.receipt_id ||
+        command.predecessor_closure_failure_ref.receipt_hash !== failure.receipt_hash ||
+        command.predecessor_closure_failure_ref.failure_code !== failure.failure_code ||
+        command.expected_current_authority.authority_epoch !== failure.authority.authority_epoch ||
+        command.expected_current_authority.baseline_id !== failure.authority.baseline_id ||
+        command.expected_current_authority.baseline_hash !== failure.authority.baseline_hash ||
+        command.expected_current_authority.activation_attempt_id !==
+          failure.authority.activation_attempt_id
+      ) {
+        throw new TypeError("FALCON24_CLOSURE_RECOVERY_ACTIVATION_PROOF_MISMATCH");
+      }
+      return invoke({
+        capability,
+        access: "WRITE",
+        operation: "falcon24-authority.activate-retained-closure-recovery",
+        correlation_id: command.attempt_id,
+        sql: "select app_data_agent.activate_falcon24_authority($1::jsonb) as value",
+        command,
+        semantic_domain: command.scope.semantic_domain,
+        parse: (raw) => {
+          const result = falcon24RetainedActivationResultV5Schema.parse(raw);
+          if (
+            result.activation_command_hash !== command.command_hash ||
+            result.authority.authority_epoch !== command.authority_epoch ||
+            result.authority.baseline_id !== command.baseline_id ||
+            result.authority.baseline_hash !== command.expected_baseline_hash ||
+            result.authority.activation_attempt_id !== command.attempt_id ||
+            result.predecessor_closure_failure_receipt.receipt_id !== failure.receipt_id ||
+            result.predecessor_closure_failure_receipt.receipt_hash !== failure.receipt_hash ||
+            result.predecessor_closure_failure_receipt.failure_code !== failure.failure_code ||
+            result.llm_execution_certification.stage_id !== llmProof.stage_id ||
+            result.llm_execution_certification.proof_hash !== llmProof.proof_hash ||
+            result.llm_execution_certification.certification_receipt_ref.content_hash !==
+              llmProof.certification_receipt_ref.content_hash ||
+            result.llm_execution_certification.execution_profile_hash !==
+              llmProof.execution_profile_hash
+          ) {
+            throw new TypeError("FALCON24_CLOSURE_RECOVERY_ACTIVATION_RESULT_INVALID");
           }
           return result;
         },

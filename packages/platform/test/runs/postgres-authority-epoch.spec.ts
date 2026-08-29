@@ -485,6 +485,210 @@ describe("PostgreSQL Falcon24 versioned authority epoch", () => {
     ).toEqual(["falcon24"]);
   });
 
+  it("records and loads the exact server-owned E7 closure failure receipt", async () => {
+    const auth = authority();
+    const receipt = {
+      schema_version: "falcon24-epoch-closure-failure-receipt@1.0.0" as const,
+      receipt_id: id(120),
+      authority: {
+        schema_version: "falcon24-authority-binding@2.0.0" as const,
+        authority_epoch: "E7",
+        baseline_id: id(121),
+        baseline_hash: hash("a"),
+        activation_attempt_id: id(122),
+      },
+      stage_ref: { stage_id: id(123), proof_hash: hash("b") },
+      failure_class: "FROZEN_CLOSURE_CHANGE_REQUIRED" as const,
+      failure_code: "PROVIDER_PROFILE_BINDING_NOT_SELECTED" as const,
+      expected_readiness: "AVAILABLE" as const,
+      observed_readiness: "STALE" as const,
+      observed_selectable: false as const,
+      evidence_hash: hash("c"),
+      receipt_hash: hash("d"),
+    };
+    const scripted = scriptedPool((text) =>
+      text.includes("falcon24_epoch_closure_failure") ? receipt : undefined,
+    );
+    const port = createPostgresFalcon24AuthorityEpoch({
+      pool: scripted.pool,
+      authorizer: auth.authorizer,
+    });
+
+    await expect(
+      port.recordEpochClosureFailure(auth.capability, {
+        receipt_id: receipt.receipt_id,
+        idempotency_key: "falcon24:e7:provider-binding-not-selected",
+        expected_authority: receipt.authority,
+        stage_ref: receipt.stage_ref,
+      }),
+    ).resolves.toEqual({ ok: true, value: receipt });
+    await expect(
+      port.loadEpochClosureFailure(auth.capability, { receipt_id: receipt.receipt_id }),
+    ).resolves.toEqual({ ok: true, value: receipt });
+
+    const recordCall = scripted.calls.find(({ text }) =>
+      text.includes("record_falcon24_epoch_closure_failure"),
+    );
+    expect(recordCall?.values).toEqual([
+      expect.objectContaining({
+        schema_version: "falcon24-epoch-closure-failure-record@1.0.0",
+        receipt_id: receipt.receipt_id,
+        command_hash: expect.stringMatching(/^sha256:[0-9a-f]{64}$/u),
+      }),
+    ]);
+    expect(
+      scripted.calls.find(({ text }) => text.includes("load_falcon24_epoch_closure_failure"))
+        ?.values,
+    ).toEqual([receipt.receipt_id]);
+  });
+
+  it("activates E8 closure recovery through request v5 and the existing RPC", async () => {
+    const auth = authority();
+    const scope = {
+      app_id: ids.app,
+      tenant_id: ids.tenant,
+      environment: "test",
+      semantic_domain: "falcon24",
+    } as const;
+    const current = {
+      schema_version: "falcon24-authority-binding@2.0.0" as const,
+      authority_epoch: "E7",
+      baseline_id: id(130),
+      baseline_hash: hash("a"),
+      activation_attempt_id: id(131),
+    };
+    const release = {
+      release_id: id(132),
+      generation: 2,
+      release_digest: hash("b"),
+      datasource_id: id(133),
+    } as const;
+    const semanticProof = await buildFalcon24RetainedSemanticReleaseAuthorityProof({
+      schema_version: "falcon24-retained-semantic-release-authority-proof@1.0.0",
+      scope,
+      authority_epoch: "E8",
+      expected_current_authority: current,
+      semantic_release: release,
+      projections: {
+        executable: { projection_id: id(134), projection_digest: hash("c") },
+        relationship: { projection_id: id(135), projection_digest: hash("d") },
+        runtime_restriction: { projection_id: id(136), projection_digest: hash("e") },
+        graph: { projection_id: id(137), projection_digest: hash("f") },
+      },
+      expected_versions: { semantic_pointer: 3, semantic_runtime: 3, workspace_defaults: 4 },
+      web_build: { build_id: hash("1"), generation_id: hash("2") },
+      worker_build: { build_id: hash("3"), generation_id: hash("4") },
+    });
+    const llmProof = await buildFalcon24LlmExecutionAuthorityProof({
+      schema_version: "falcon24-llm-execution-authority-proof@1.0.0",
+      scope,
+      target_authority_epoch: "E8",
+      staging_id: id(138),
+      stage_id: id(139),
+      model_profile_id: id(140),
+      model_config_version: 3,
+      model_resource_hash: hash("5"),
+      provider: "deepseek",
+      model_id: "deepseek-v4-flash",
+      certification_receipt_ref: {
+        artifact_id: id(141),
+        artifact_type: "ModelCertificationReceipt",
+        app_id: scope.app_id,
+        tenant_id: scope.tenant_id,
+        environment: scope.environment,
+        run_id: id(142),
+        revision: 1,
+        content_hash: hash("6"),
+      },
+      execution_profile_hash: hash("7"),
+      deployment_id: ids.deployment,
+      deployment_hash: hash("8"),
+      recovery_capabilities: ["AT_LEAST_ONCE_ONLY"],
+      worker_build: semanticProof.worker_build,
+    });
+    const failure = {
+      schema_version: "falcon24-epoch-closure-failure-receipt@1.0.0" as const,
+      receipt_id: id(143),
+      authority: current,
+      stage_ref: { stage_id: id(144), proof_hash: hash("9") },
+      failure_class: "FROZEN_CLOSURE_CHANGE_REQUIRED" as const,
+      failure_code: "PROVIDER_PROFILE_BINDING_NOT_SELECTED" as const,
+      expected_readiness: "AVAILABLE" as const,
+      observed_readiness: "STALE" as const,
+      observed_selectable: false as const,
+      evidence_hash: hash("0"),
+      receipt_hash: hash("a"),
+    };
+    const binding = {
+      schema_version: "falcon24-authority-binding@2.0.0" as const,
+      authority_epoch: "E8",
+      baseline_id: id(145),
+      baseline_hash: hash("b"),
+      activation_attempt_id: id(146),
+    };
+    const scripted = scriptedPool((text, values) => {
+      if (!text.includes("activate_falcon24_authority")) return undefined;
+      const command = values?.[0] as { readonly command_hash?: string } | undefined;
+      return {
+        schema_version: "falcon24-retained-activation-result@5.0.0",
+        activation_command_hash: command?.command_hash,
+        authority: binding,
+        predecessor_closure_failure_receipt: {
+          receipt_id: failure.receipt_id,
+          receipt_hash: failure.receipt_hash,
+          failure_code: failure.failure_code,
+        },
+        llm_execution_certification: {
+          stage_id: llmProof.stage_id,
+          proof_hash: llmProof.proof_hash,
+          certification_receipt_ref: llmProof.certification_receipt_ref,
+          execution_profile_hash: llmProof.execution_profile_hash,
+        },
+      };
+    });
+
+    const result = await createPostgresFalcon24AuthorityEpoch({
+      pool: scripted.pool,
+      authorizer: auth.authorizer,
+    }).activateRetainedWithClosureRecovery(auth.capability, {
+      request: {
+        schema_version: "falcon24-activation-request@5.0.0",
+        scope,
+        authority_epoch: "E8",
+        attempt_id: binding.activation_attempt_id,
+        baseline_id: binding.baseline_id,
+        expected_baseline_hash: binding.baseline_hash,
+        expected_current_authority: current,
+        expected_semantic_release: release,
+        expected_versions: semanticProof.expected_versions,
+        retained_semantic_proof_hash: semanticProof.proof_hash,
+        predecessor_closure_failure_ref: {
+          receipt_id: failure.receipt_id,
+          receipt_hash: failure.receipt_hash,
+          failure_code: failure.failure_code,
+        },
+        llm_execution_stage_ref: {
+          stage_id: llmProof.stage_id,
+          proof_hash: llmProof.proof_hash,
+        },
+      },
+      retained_semantic_proof: semanticProof,
+      llm_execution_proof: llmProof,
+      predecessor_closure_failure: failure,
+    });
+
+    expect(result).toMatchObject({
+      ok: true,
+      value: {
+        authority: binding,
+        predecessor_closure_failure_receipt: { receipt_id: failure.receipt_id },
+      },
+    });
+    expect(
+      scripted.calls.find(({ text }) => text.includes("set_config('app.semantic_domain'"))?.values,
+    ).toEqual(["falcon24"]);
+  });
+
   it("loads the exact staged E7 LLM proof and eligible predecessor failure", async () => {
     const auth = authority();
     const stageId = id(100);
