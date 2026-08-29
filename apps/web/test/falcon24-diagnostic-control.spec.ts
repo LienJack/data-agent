@@ -95,4 +95,33 @@ describe("Falcon24 diagnostic control surface", () => {
       ),
     ).toThrow("FALCON24_BROWSER_DIAGNOSTIC_CLAIM_INVALID");
   });
+
+  it("projects an exact four-layer claim without inventing a legacy acceptance fence", () => {
+    const question = "其中下降最明显的3个月，按客户类型拆开看看，主要差异来自哪里？";
+    const conversationId = "00000000-0000-4000-8000-000000000211";
+    const runId = "00000000-0000-4000-8000-000000000212";
+    const fence = {
+      gate_id: "E11-FL1",
+      attempt_id: "00000000-0000-4000-8000-000000000213",
+      manifest_hash: `sha256:${"a".repeat(64)}`,
+      turn_ordinal: 10,
+      turn_id: "L4-A-02",
+      conversation_resource_version: 5,
+      run_id: runId,
+    };
+
+    expect(
+      parseFalcon24BrowserSubmissionClaim(
+        JSON.stringify({
+          schema_version: "falcon24-browser-four-layer-submit-claim@1.0.0",
+          question,
+          conversation_id: conversationId,
+          idempotency_key: "four-layer-idempotency",
+          four_layer_fence: fence,
+        }),
+        question,
+        conversationId,
+      ),
+    ).toEqual({ idempotency_key: "four-layer-idempotency", four_layer_fence: fence });
+  });
 });

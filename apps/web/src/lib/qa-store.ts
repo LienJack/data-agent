@@ -60,6 +60,15 @@ export function parseFalcon24BrowserSubmissionClaim(
     idempotency_key?: unknown;
     diagnostic_attempt_id?: unknown;
     run_id?: unknown;
+    four_layer_fence?: {
+      gate_id?: unknown;
+      attempt_id?: unknown;
+      manifest_hash?: unknown;
+      turn_ordinal?: unknown;
+      turn_id?: unknown;
+      conversation_resource_version?: unknown;
+      run_id?: unknown;
+    };
     acceptance_fence?: {
       authority_kind?: unknown;
       authority_epoch?: unknown;
@@ -84,6 +93,42 @@ export function parseFalcon24BrowserSubmissionClaim(
       idempotency_key: candidate.idempotency_key,
       diagnostic_attempt_id: candidate.diagnostic_attempt_id,
       run_id: candidate.run_id,
+    } as const;
+  }
+  const fourLayerFence = candidate.four_layer_fence;
+  if (candidate.schema_version === "falcon24-browser-four-layer-submit-claim@1.0.0") {
+    if (
+      candidate.question !== question ||
+      candidate.conversation_id !== conversationId ||
+      typeof candidate.idempotency_key !== "string" ||
+      typeof fourLayerFence?.gate_id !== "string" ||
+      !/^E[1-9][0-9]*-FL1$/u.test(fourLayerFence.gate_id) ||
+      typeof fourLayerFence.attempt_id !== "string" ||
+      typeof fourLayerFence.manifest_hash !== "string" ||
+      !/^sha256:[0-9a-f]{64}$/u.test(fourLayerFence.manifest_hash) ||
+      !Number.isInteger(fourLayerFence.turn_ordinal) ||
+      typeof fourLayerFence.turn_ordinal !== "number" ||
+      fourLayerFence.turn_ordinal < 0 ||
+      fourLayerFence.turn_ordinal > 14 ||
+      typeof fourLayerFence.turn_id !== "string" ||
+      !Number.isSafeInteger(fourLayerFence.conversation_resource_version) ||
+      typeof fourLayerFence.conversation_resource_version !== "number" ||
+      fourLayerFence.conversation_resource_version < 1 ||
+      typeof fourLayerFence.run_id !== "string"
+    ) {
+      throw new Error("FALCON24_BROWSER_FOUR_LAYER_CLAIM_INVALID");
+    }
+    return {
+      idempotency_key: candidate.idempotency_key,
+      four_layer_fence: {
+        gate_id: fourLayerFence.gate_id,
+        attempt_id: fourLayerFence.attempt_id,
+        manifest_hash: fourLayerFence.manifest_hash,
+        turn_ordinal: fourLayerFence.turn_ordinal,
+        turn_id: fourLayerFence.turn_id,
+        conversation_resource_version: fourLayerFence.conversation_resource_version,
+        run_id: fourLayerFence.run_id,
+      },
     } as const;
   }
   const fence = candidate.acceptance_fence;
@@ -1078,7 +1123,9 @@ export const useQAStore = create<QAStore>((set, get) => ({
       const expectedRunId = submissionClaim
         ? "acceptance_fence" in submissionClaim
           ? submissionClaim.acceptance_fence.run_id
-          : submissionClaim.run_id
+          : "four_layer_fence" in submissionClaim && submissionClaim.four_layer_fence
+            ? submissionClaim.four_layer_fence.run_id
+            : submissionClaim.run_id
         : null;
       if (expectedRunId && run.runId !== expectedRunId) {
         throw new Error("FALCON24_BROWSER_GATE_RUN_ID_MISMATCH");
@@ -1092,6 +1139,21 @@ export const useQAStore = create<QAStore>((set, get) => ({
             attempt_id: submissionClaim.acceptance_fence.attempt_id,
             conversation_id: conversationId,
             acceptance_fence: submissionClaim.acceptance_fence,
+          }),
+        );
+      } else if (
+        submissionClaim &&
+        "four_layer_fence" in submissionClaim &&
+        submissionClaim.four_layer_fence
+      ) {
+        window.sessionStorage.setItem(
+          FALCON24_GATE_CONSUMED_KEY,
+          JSON.stringify({
+            schema_version: "falcon24-browser-four-layer-submit-consumed@1.0.0",
+            run_id: run.runId,
+            attempt_id: submissionClaim.four_layer_fence.attempt_id,
+            conversation_id: conversationId,
+            four_layer_fence: submissionClaim.four_layer_fence,
           }),
         );
       } else if (submissionClaim) {

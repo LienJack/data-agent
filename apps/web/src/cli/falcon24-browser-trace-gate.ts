@@ -82,9 +82,28 @@ const browserDiagnosticClaimSchema = z.strictObject({
   run_id: z.uuid(),
 });
 
+const browserFourLayerFenceSchema = z.strictObject({
+  gate_id: z.string().regex(/^E[1-9][0-9]*-FL1$/u),
+  attempt_id: z.uuid(),
+  manifest_hash: z.string().regex(/^sha256:[0-9a-f]{64}$/u),
+  turn_ordinal: z.number().int().min(0).max(14),
+  turn_id: z.string().regex(/^L[1-4](?:-[AB])?-0[1-5]$/u),
+  conversation_resource_version: z.number().int().positive().safe(),
+  run_id: z.uuid(),
+});
+
+const browserFourLayerClaimSchema = z.strictObject({
+  schema_version: z.literal("falcon24-browser-four-layer-submit-claim@1.0.0"),
+  question: z.string().trim().min(1).max(8_000),
+  conversation_id: z.uuid(),
+  idempotency_key: z.string().min(1).max(256),
+  four_layer_fence: browserFourLayerFenceSchema,
+});
+
 const browserSubmissionClaimSchema = z.union([
   browserGateClaimSchema,
   browserDiagnosticClaimSchema,
+  browserFourLayerClaimSchema,
 ]);
 
 const browserGateConsumedSchema = z.strictObject({
@@ -103,9 +122,18 @@ const browserDiagnosticConsumedSchema = z.strictObject({
   submission_kind: z.literal("DIAGNOSTIC"),
 });
 
+const browserFourLayerConsumedSchema = z.strictObject({
+  schema_version: z.literal("falcon24-browser-four-layer-submit-consumed@1.0.0"),
+  run_id: z.uuid(),
+  attempt_id: z.uuid(),
+  conversation_id: z.uuid(),
+  four_layer_fence: browserFourLayerFenceSchema,
+});
+
 const browserSubmissionConsumedSchema = z.union([
   browserGateConsumedSchema,
   browserDiagnosticConsumedSchema,
+  browserFourLayerConsumedSchema,
 ]);
 
 const agentBrowserOutputSchema = z.strictObject({
@@ -258,6 +286,7 @@ export interface Falcon24BrowserTraceGateInput {
 
 export type Falcon24BrowserGateClaim = Readonly<z.infer<typeof browserGateClaimSchema>>;
 export type Falcon24BrowserDiagnosticClaim = Readonly<z.infer<typeof browserDiagnosticClaimSchema>>;
+export type Falcon24BrowserFourLayerClaim = Readonly<z.infer<typeof browserFourLayerClaimSchema>>;
 export type Falcon24BrowserSubmissionClaim = Readonly<z.infer<typeof browserSubmissionClaimSchema>>;
 
 export function verifyFalcon24UiReceiptPair(input: {
@@ -349,11 +378,15 @@ export async function submitFalcon24QuestionFromBrowser(input: {
   const claimRunId =
     claim.schema_version === "falcon24-browser-submit-claim@2.0.0"
       ? claim.acceptance_fence.run_id
-      : claim.run_id;
+      : claim.schema_version === "falcon24-browser-four-layer-submit-claim@1.0.0"
+        ? claim.four_layer_fence.run_id
+        : claim.run_id;
   const claimAttemptId =
     claim.schema_version === "falcon24-browser-submit-claim@2.0.0"
       ? claim.acceptance_fence.attempt_id
-      : claim.diagnostic_attempt_id;
+      : claim.schema_version === "falcon24-browser-four-layer-submit-claim@1.0.0"
+        ? claim.four_layer_fence.attempt_id
+        : claim.diagnostic_attempt_id;
   const startUrl = falcon24QaStartUrl(input);
   if (
     claim.question !== input.question ||
@@ -404,8 +437,11 @@ export async function submitFalcon24QuestionFromBrowser(input: {
     (claim.schema_version === "falcon24-browser-submit-claim@2.0.0"
       ? consumed.schema_version !== "falcon24-browser-submit-consumed@2.0.0" ||
         JSON.stringify(consumed.acceptance_fence) !== JSON.stringify(claim.acceptance_fence)
-      : consumed.schema_version !== "falcon24-browser-diagnostic-submit-consumed@1.0.0" ||
-        consumed.submission_kind !== "DIAGNOSTIC")
+      : claim.schema_version === "falcon24-browser-four-layer-submit-claim@1.0.0"
+        ? consumed.schema_version !== "falcon24-browser-four-layer-submit-consumed@1.0.0" ||
+          JSON.stringify(consumed.four_layer_fence) !== JSON.stringify(claim.four_layer_fence)
+        : consumed.schema_version !== "falcon24-browser-diagnostic-submit-consumed@1.0.0" ||
+          consumed.submission_kind !== "DIAGNOSTIC")
   ) {
     throw new Error("FALCON24_BROWSER_GATE_CONSUMPTION_INVALID");
   }

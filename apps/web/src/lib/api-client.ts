@@ -173,6 +173,18 @@ export async function createQaRun(
       }>
     | Readonly<{
         idempotency_key: string;
+        four_layer_fence: Readonly<{
+          gate_id: string;
+          attempt_id: string;
+          manifest_hash: string;
+          turn_ordinal: number;
+          turn_id: string;
+          conversation_resource_version: number;
+          run_id: string;
+        }>;
+      }>
+    | Readonly<{
+        idempotency_key: string;
         diagnostic_attempt_id: string;
         run_id: string;
       }>,
