@@ -1340,12 +1340,28 @@ Diagnostic/Q1/C1任一正式首次失败必须写既有 authority支持的 immut
 
 ### F3 — Web gate controller 与页面验收
 
-- [ ] Gate controller每个 turn只提交一次，terminal后先 business rubric；FAIL不执行深度UI/Trace，PASS才继续同Run浏览器检查。
-- [ ] Q&A Agent页面覆盖 composer、activity、answer、table/chart、error/loading、refresh/reconnect、不重复Run。
-- [ ] Trace必须从答案入口进入 exact Run，覆盖Root/Subagent/Tool、Artifact lineage/preview、Run切换、返回与刷新。
-- [ ] L4两个browser session各保留一个Conversation连续三轮；验证resource version、三个Run与纠正后的口径。
-- [ ] 1440px逐Run正式检查；全部PASS后复用已有Conversation做390px smoke，不重新调用模型。
-- [ ] Web focused/browser contract tests、typecheck/build/Biome；scoped commit。
+- [x] Gate controller每个 turn只提交一次，terminal后先 business rubric；FAIL不执行深度UI/Trace，PASS才继续同Run浏览器检查。
+- [x] Q&A Agent页面覆盖 composer、activity、answer、table/chart、error/loading、refresh/reconnect、不重复Run。
+- [x] Trace必须从答案入口进入 exact Run，覆盖Root/Subagent/Tool、Artifact lineage/preview、Run切换、返回与刷新。
+- [x] L4两个browser session各保留一个Conversation连续三轮；验证resource version、三个Run与纠正后的口径。
+- [x] 1440px逐Run正式检查；全部PASS后复用已有Conversation做390px smoke，不重新调用模型。
+- [x] Web focused/browser contract tests、typecheck/build/Biome；scoped commit。
+
+**F3 evidence（2026-08-30）**
+
+- `4c5936be`、`249c2cb4`、`962f765d`、`64983c7a`、`1020c395` 与 `78b80e8f` 依次闭合 browser claim、可恢复
+  controller、QA/Trace 页面 evidence、submit fence、业务失败 receipt 与 exact Run business evidence；`3ed30c2a` 新增
+  `begin/status/advance/finalize/smoke-390` 可执行控制入口和 15 个 deterministic Run/Conversation identity。
+- Controller 在 durable terminal 后先验证公开事件、answer、实际 Specialist、Artifact 与独立 rubric evidence；business FAIL 直接固化失败并
+  跳过 QA/Trace，PASS 才恢复同一 Run 的 1440px 页面检查。claim 后浏览器中断可从 authority/Run 状态恢复，已存在 Run 时不再提交。
+- QA receipt 核对真实 composer 消费、terminal answer、table/chart rubric、error/loading、刷新前后 exact Run count=1 与 frozen Web build；
+  Trace receipt 只能从答案入口进入，逐节点核对 Root/Subagent/Tool、accepted Artifact lineage/preview、Run 切换、返回与刷新。
+- L4-A/L4-B 分别使用固定 browser session 与单一 deterministic Conversation，三轮使用不同 Run 且每轮冻结当时的 resource version；
+  业务 evidence 绑定每轮 rubric，包含指代、趋势拆解与 ROAS 到净 ROI 纠正检查。390px 入口只在 attempt PASSED 后读取 L4 最终 Run，
+  复用既有 Conversation，不调用 composer/model，并只申请 READ capability。
+- Web 相关 9 个 focused/browser 文件 44/44 tests PASS；Web typecheck 与 production build PASS（仅保留两条既有 Turbopack 动态文件
+  tracing warning）；F3 全部 22 个 Web owned files Biome、commit diff check PASS。正式浏览器运行与真实 15 回合仍只在 F5 执行，
+  此处没有创建 Run、调用模型或写 scratch/live authority。
 
 ### F4 — 无模型的低成本预检
 
