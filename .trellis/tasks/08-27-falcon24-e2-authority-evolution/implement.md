@@ -1322,12 +1322,12 @@ Diagnostic/Q1/C1任一正式首次失败必须写既有 authority支持的 immut
 
 ### F1 — 四层 gate contract 与 authority
 
-- [ ] 先写 Contracts/Evals failing tests：5/2/2/6 顺序、L4 Conversation 分组、15 次唯一问题、期望 Agent 范围、business/UI/Trace
+- [x] 先写 Contracts/Evals failing tests：5/2/2/6 顺序、L4 Conversation 分组、15 次唯一问题、期望 Agent 范围、business/UI/Trace
   分阶段 receipt、旧 build/跨 attempt/跨 Conversation拒绝。
-- [ ] 新增 four-layer manifest/receipt v1 与 deterministic rubric；旧 qualification/campaign contract只读保留。
-- [ ] 在验证后的下一 frontier（预计10803）新增 append-only attempt/turn authority与 server RPC；不修改10774/10779或历史行。
-- [ ] Platform adapter、RLS/grants、fresh/populated upgrade、rollback/replay/concurrency、renderer/inventory全部 PASS。
-- [ ] Contracts/Platform focused + typecheck/Biome；分别创建 scoped commits。
+- [x] 新增 four-layer manifest/receipt v1 与 deterministic rubric；旧 qualification/campaign contract只读保留。
+- [x] 在验证后的下一 frontier（10803）新增 append-only attempt/turn authority与 server RPC；不修改10774/10779或历史行。
+- [x] Platform adapter、RLS/grants、fresh/populated upgrade、rollback/replay/concurrency、renderer/inventory全部 PASS。
+- [x] Contracts/Platform focused + typecheck/Biome；分别创建 scoped commits（`c2de9f93`、`c5a94a8e`、`d050d319`、`87bfa271`）。
 
 ### F2 — Semantic UX 与 Root/Conversation 闭环
 
