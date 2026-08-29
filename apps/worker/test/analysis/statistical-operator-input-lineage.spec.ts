@@ -2,7 +2,15 @@ import {
   type StatisticalOperatorObligation,
   statisticalOperatorObligationSchema,
 } from "@data-agent/contracts/statistical-operators";
-import { DateDay, Float64, Table, tableToIPC, Utf8, vectorFromArray } from "apache-arrow";
+import {
+  DateDay,
+  Float64,
+  Table,
+  TimestampMillisecond,
+  tableToIPC,
+  Utf8,
+  vectorFromArray,
+} from "apache-arrow";
 import { describe, expect, it } from "vitest";
 import type { GovernedAnalysisInput } from "../../src/analysis/governed-analysis-input.js";
 import { verifyStatisticalOperatorInputLineage } from "../../src/analysis/statistical-operator-input-lineage.js";
@@ -191,7 +199,7 @@ describe("statistical operator input lineage", () => {
     });
   });
 
-  it("preserves DateDay identity when recomputing a single-series trend input", () => {
+  it("preserves Arrow date and timestamp identity for single-series trend inputs", () => {
     const trendObligation = {
       call_id: "single_series_theil_sen",
       operator_id: "robust-trend.theil-sen-slope@1",
@@ -240,6 +248,29 @@ describe("statistical operator input lineage", () => {
           series: [{ label: "order_revenue", x: [0, 1], y: [100, 125] }],
         },
         governed_inputs: [governed],
+      }),
+    ).toBeNull();
+
+    const timestampTable = new Table({
+      order_month: vectorFromArray(
+        [new Date("2023-12-01T00:00:00.000Z"), new Date("2024-01-01T00:00:00.000Z")],
+        new TimestampMillisecond(),
+      ),
+      order_revenue: vectorFromArray([100, 125], new Float64()),
+    });
+    const timestampGoverned = {
+      name: "query_evidence",
+      format: "ARROW",
+      content: tableToIPC(timestampTable, "file"),
+    } as GovernedAnalysisInput;
+
+    expect(
+      verifyStatisticalOperatorInputLineage({
+        obligation: trendObligation,
+        inputs: {
+          series: [{ label: "order_revenue", x: [0, 1], y: [100, 125] }],
+        },
+        governed_inputs: [timestampGoverned],
       }),
     ).toBeNull();
   });

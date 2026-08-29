@@ -3,7 +3,7 @@ import {
   STATISTICAL_OPERATOR_MANIFEST,
   type StatisticalOperatorObligation,
 } from "@data-agent/contracts/statistical-operators";
-import { DateDay, tableFromIPC } from "apache-arrow";
+import { DateDay, TimestampMillisecond, tableFromIPC } from "apache-arrow";
 import type { GovernedAnalysisInput } from "./governed-analysis-input.js";
 import type { StatisticalOperatorInputIssue } from "./statistical-operator-input-preflight.js";
 import { recomputeStatisticalOperatorServerTransform } from "./statistical-operator-server-transforms.js";
@@ -65,7 +65,7 @@ function isObject(value: unknown): value is JsonObject {
 function governedRows(governed: GovernedAnalysisInput): readonly JsonObject[] {
   const table = tableFromIPC(governed.content);
   const fields = table.schema.fields;
-  const dateDayType = String(new DateDay());
+  const temporalTypes = new Set([String(new DateDay()), String(new TimestampMillisecond())]);
   return Object.freeze(
     Array.from({ length: table.numRows }, (_, rowIndex) =>
       Object.freeze(
@@ -74,7 +74,7 @@ function governedRows(governed: GovernedAnalysisInput): readonly JsonObject[] {
             const observed = table.getChild(field.name)?.get(rowIndex);
             return [
               field.name,
-              String(field.type) === dateDayType ? (dateKey(observed) ?? observed) : observed,
+              temporalTypes.has(String(field.type)) ? (dateKey(observed) ?? observed) : observed,
             ];
           }),
         ),
