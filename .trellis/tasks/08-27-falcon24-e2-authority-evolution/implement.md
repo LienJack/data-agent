@@ -1317,7 +1317,7 @@ Diagnostic/Q1/C1任一正式首次失败必须写既有 authority支持的 immut
 - [x] 固定 L1-L4 的 9 个单轮问题与 2 组三轮 Conversation，共 15 个用户回合。
 - [x] 固定 Semantic 缺失定义的友好 fallback，不向用户展示索引/治理命中失败。
 - [x] 固定“业务 PASS 后复用同 Run 做 QA/Trace E2E”，不重复模型回答。
-- [x] 固定无人值班软失败恢复与 `EXTERNAL_BLOCKED` 硬边界。
+- [x] 固定无人值班软失败恢复，以及非终态 `WAITING_EXTERNAL` 持续复查；不因审批/credential等待结束任务。
 - [x] 更新 PRD/design/implement，Trellis validate、Markdown/diff check；docs-only scoped commit 在本轮完成。
 
 ### F1 — 四层 gate contract 与 authority
@@ -1368,8 +1368,10 @@ Diagnostic/Q1/C1任一正式首次失败必须写既有 authority支持的 immut
 - [ ] 对内部缺陷执行TDD修复、focused validation、scoped commit、clean build、scratch canary；若live已激活则以前向Epoch保留失败历史。
 - [ ] 新build创建fresh attempt并从L1重跑；禁止resume旧Run、跨attempt/build拼PASS或手工DML修权威。
 - [ ] 同一瞬态错误最多同构重放2次；第三次转 deeper diagnostic，而不是继续盲重试或静默停止。
-- [ ] 只有外部credential、真人治理/安全审批、长期外部服务不可达或未授权破坏性生产变更进入`EXTERNAL_BLOCKED`；先清理、
-  scoped handoff commit并记录唯一恢复命令。
+- [ ] 外部credential、外部系统强制审批、长期服务不可达或额外生产授权进入非终态`WAITING_EXTERNAL`：先清空独立backlog，
+  再关闭昂贵瞬态服务，以5/15/30分钟无模型探针复查；条件恢复后自动重建环境并从checkpoint续跑。
+- [ ] 四层门禁不得因同比等缺失术语创建全局Semantic Candidate；若未来出现治理DRAFT，只准备review packet，不冒充真人审批，
+  同时继续所有不依赖该审批的工作。
 
 ### F7 — 最终审计、页面证据与闭环
 
@@ -1378,7 +1380,7 @@ Diagnostic/Q1/C1任一正式首次失败必须写既有 authority支持的 immut
 - [ ] 核对protected history零漂移、最新authority/build/release/profile exact、sandbox residual=0、production isolation真实状态。
 - [ ] 停止本任务Web/Worker/browser/OpenSandbox，删除scratch/container/volume和临时credential；保留既定长期容器和audit stash。
 - [ ] 更新spec/runbook/Trellis，运行final focused/full/validate/diff checks；每个完成小任务scoped commit，最终worktree clean。
-- [ ] 只有全部AC-FL/UI/AUTO/FINAL闭合才标记COMPLETE；若为`EXTERNAL_BLOCKED`必须明确任务未完成且可从checkpoint恢复。
+- [ ] 只有全部AC-FL/UI/AUTO/FINAL闭合才标记COMPLETE；任何外部等待都保持任务`in_progress`，不得标记blocked或结束。
 
 ### 验证命令族
 

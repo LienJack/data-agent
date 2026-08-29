@@ -1363,14 +1363,22 @@ business/internal failure
   -> CLASSIFY -> MINIMAL_REPRO -> TDD_FIX -> FOCUSED_CHECK -> SCOPED_COMMIT
   -> CLEAN_BUILD -> SCRATCH_CANARY -> fresh epoch/attempt -> L1
 
-external authority blocker
-  -> CHECKPOINT -> CLEANUP -> EXTERNAL_BLOCKED
+external condition unavailable
+  -> CHECKPOINT -> RUN_INDEPENDENT_BACKLOG
+  -> WAITING_EXTERNAL (ACTIVE, non-terminal)
+  -> deterministic backoff probe -> condition ready -> RESTORE -> resume checkpoint
 ```
 
 同一可重试基础设施错误最多同构重放两次；第三次相同 fingerprint 自动转为最小复现和代码/配置诊断，而不是继续盲重试或结束。
 每个独立修复都有 focused test 与 scoped commit，staging 只包含任务拥有文件。服务、浏览器或上下文中断后读取 attempt/Run/checkpoint
-恢复。只有外部 credential、真人治理/安全审批、长期外部服务不可达或需要未授权的受保护历史/生产破坏性变更进入
-`EXTERNAL_BLOCKED`；这类阻断不能靠伪造 Secret、自动审批、手工 DML 或降低安全门禁绕过。
+恢复。外部 credential、外部系统强制审批、长期服务不可达或需要额外生产授权时进入非终态 `WAITING_EXTERNAL`：先扫描并完成
+所有不依赖该条件的 backlog；没有独立工作后关闭昂贵的瞬态 Web/Worker/Sandbox，以 `5m -> 15m -> 30m`、最高 30 分钟的确定性
+backoff 探针复查 Secret Resolver、审批 document 或服务 health。探针不调用模型、不创建 Run、不写正式 gate；条件满足后自动重建
+环境并从 exact checkpoint 继续。
+
+四层门禁的 request-scoped Semantic fallback 不产生全局 Candidate，因此不要求真人语义批准。如果未来工作确实产生治理 Candidate，
+Agent 只可准备 DRAFT/review packet，不能冒充 reviewer；该分支等待期间主控制器仍继续其他工作。受保护历史、Secret 和安全门禁不能
+靠自动审批、手工 DML、日志取密或降低校验绕过。任务状态始终保持 `in_progress`，直到全部验收进入 `COMPLETE`。
 
 ### 25.6 Crash windows
 

@@ -671,9 +671,17 @@ attempt”自动前进。正式 Run 本身不得 retry/resume，也不得跨 bui
 证据、形成新的 failing test，再继续修复。上下文压缩、进程退出或浏览器断开后按持久化 checkpoint 恢复，不重复已提交的
 Provider、SQL、Sandbox 或 Artifact side effect。
 
-只有以下硬阻断允许无人值班任务停止在 `EXTERNAL_BLOCKED`，且必须先完成清理、提交 handoff 并留下唯一恢复命令：本地无法
-安全取得/轮换的外部 credential；必须由真人完成的语义发布或安全审批；目标服务长期不可达；需要删除/回写受保护历史或扩大到
-用户未授权的生产变更。普通测试失败、SQL/路由/页面缺陷、构建错误和可恢复进程故障都不是停止理由。
+无人值班任务的生命周期只允许从 `ACTIVE` 前进到唯一终态 `COMPLETE`；`WAITING_EXTERNAL` 只是 `ACTIVE` 下的非终态子状态，不能提交阻断结论、
+结束任务或要求用户第二天手工恢复。遇到本地暂时无法安全取得的 credential、外部系统强制审批、目标服务不可达或需要额外授权的
+生产操作时，先保存 checkpoint 和 exact unmet condition，继续所有不依赖该条件的实现、测试、页面修复、证据整理与审计工作。
+
+当前四层门禁使用 request-scoped Semantic fallback，不发布全局语义 Candidate，因此“同比”等缺失术语不产生真人语义审批边界。
+如果未来实现意外产生需要真人治理的 Candidate，它保持 DRAFT，不能由 Agent 冒充真人批准，但也不能停止主任务：控制器继续其他
+可运行工作；确实只剩该条件时，关闭昂贵的临时 Web/Worker/Sandbox，使用不调用模型的递增间隔探针持续复查审批/credential/服务状态，
+条件满足后自动重建运行环境并从 checkpoint 继续。受保护历史和安全门禁仍不能通过手工 DML、伪造 Secret 或自动批准绕过。
+
+普通测试失败、SQL/路由/页面缺陷、构建错误和可恢复进程故障都必须进入修复循环。外部等待期间也必须保留状态、最近探针时间、
+下一次复查时间和唯一恢复步骤，任务保持 `in_progress`，不发送“已阻断/已结束”的最终结论。
 
 ### 20.6 Final acceptance
 
@@ -683,6 +691,8 @@ Provider、SQL、Sandbox 或 Artifact side effect。
 - [ ] **AC-FL-04** L4 两个三轮 Conversation 全部 PASS，正确处理指代、筛选、口径纠正、跨 Run 历史与证据边界。
 - [ ] **AC-UI-01** 15 个正式用户回合的 Q&A Agent 页面均从真实 composer 提交并可见终态结果；刷新不重复 Run/调用。
 - [ ] **AC-UI-02** 每个通过的 Run 都能从答案入口打开 exact 可用轨迹；Agent、Tool、Artifact、表格/图表/报告预览与返回交互正常。
-- [ ] **AC-AUTO-01** 内部失败可自动修复并在新 build/attempt 上重启；crash/replay 不重复已提交副作用；硬阻断有明确 handoff。
+- [ ] **AC-AUTO-01** 内部失败可自动修复并在新 build/attempt 上重启；crash/replay 不重复已提交副作用。
+- [ ] **AC-AUTO-02** 外部条件缺失时任务保持 `ACTIVE/WAITING_EXTERNAL`，先继续独立工作，再以无模型探针持续复查并自动续跑；
+  不因“需要真人审批”或 credential 暂不可用结束任务。
 - [ ] **AC-FINAL-01** PostgreSQL authority、protected history、credential、安全边界、sandbox residual、服务/浏览器/scratch 清理、
   focused/full checks、scoped commits 与 clean worktree 全部闭合；production isolation 仍按真实证据单独声明。
