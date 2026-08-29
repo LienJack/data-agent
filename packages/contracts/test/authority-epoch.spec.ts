@@ -6,6 +6,7 @@ import {
   buildFalcon24ActivationRequestV4,
   buildFalcon24ActivationRequestV5,
   buildFalcon24ActivationRequestV6,
+  buildFalcon24ActivationRequestV7,
   buildFalcon24E1StagingReceipt,
   buildFalcon24LlmExecutionAuthorityProof,
   buildFalcon24QaE2eReceiptV2,
@@ -19,6 +20,7 @@ import {
   falcon24AuthorityPersistenceBindingSchema,
   falcon24E1ActivationAttemptSchema,
   falcon24EpochClosureFailureReceiptSchema,
+  falcon24FinalizationFailureReceiptSchema,
   falcon24SemanticAuthorityClosureSchema,
   falcon24StagingHoldRequestV2Schema,
   falcon24StagingSessionRequestV2Schema,
@@ -28,6 +30,7 @@ import {
   verifyFalcon24ActivationRequestV4,
   verifyFalcon24ActivationRequestV5,
   verifyFalcon24ActivationRequestV6,
+  verifyFalcon24ActivationRequestV7,
   verifyFalcon24E1StagingReceipt,
   verifyFalcon24LlmExecutionAuthorityProof,
   verifyFalcon24RetainedSemanticReleaseAuthorityProof,
@@ -710,5 +713,76 @@ describe("Falcon24 E1 authority epoch contracts", () => {
         },
       }),
     ).rejects.toThrow();
+  });
+
+  it("binds E10 recovery to an immutable server-observed E9 finalization failure", async () => {
+    const current = {
+      schema_version: "falcon24-authority-binding@2.0.0" as const,
+      authority_epoch: "E9",
+      baseline_id: id(142),
+      baseline_hash: hash("b"),
+      activation_attempt_id: id(143),
+    };
+    const failure = falcon24FinalizationFailureReceiptSchema.parse({
+      schema_version: "falcon24-finalization-failure-receipt@1.0.0",
+      receipt_id: id(144),
+      authority: current,
+      stage_ref: { stage_id: id(145), proof_hash: hash("c") },
+      failed_rpc_identity: "app_data_agent.resolve_current_provider_execution_certification(jsonb)",
+      failure_class: "FROZEN_CLOSURE_CHANGE_REQUIRED",
+      failure_code: "CURRENT_PROVIDER_CERTIFICATION_RESOLVER_AMBIGUOUS",
+      observed_sqlstate: "42702",
+      definition_hash: hash("d"),
+      evidence_hash: hash("e"),
+      receipt_hash: hash("f"),
+    });
+    const command = await buildFalcon24ActivationRequestV7({
+      schema_version: "falcon24-activation-request@7.0.0",
+      scope: {
+        app_id: id(146),
+        tenant_id: id(147),
+        environment: "test",
+        semantic_domain: "falcon24",
+      },
+      authority_epoch: "E10",
+      attempt_id: id(148),
+      baseline_id: id(149),
+      expected_baseline_hash: hash("1"),
+      expected_current_authority: current,
+      expected_semantic_release: {
+        release_id: id(150),
+        generation: 2,
+        release_digest: hash("2"),
+        datasource_id: id(151),
+      },
+      expected_versions: { semantic_pointer: 3, semantic_runtime: 3, workspace_defaults: 4 },
+      retained_semantic_proof_hash: hash("3"),
+      predecessor_finalization_failure_receipt: {
+        receipt_id: failure.receipt_id,
+        receipt_hash: failure.receipt_hash,
+        failure_code: failure.failure_code,
+      },
+      llm_execution_stage_ref: { stage_id: id(152), proof_hash: hash("4") },
+    });
+
+    await expect(verifyFalcon24ActivationRequestV7(command)).resolves.toEqual(command);
+    await expect(
+      verifyFalcon24ActivationRequestV7({
+        ...command,
+        predecessor_finalization_failure_receipt: {
+          ...command.predecessor_finalization_failure_receipt,
+          receipt_hash: hash("5"),
+        },
+      }),
+    ).rejects.toThrow("FALCON24_FINALIZATION_FAILURE_RECOVERY_COMMAND_HASH_INVALID");
+    await expect(
+      buildFalcon24ActivationRequestV7({ ...command, authority_epoch: "E9" }),
+    ).rejects.toThrow();
+    expect(() =>
+      falcon24FinalizationFailureReceiptSchema.parse({
+        ...failure,
+        observed_sqlstate: "P0001",
+      }),
+    ).toThrow();
   });
 });

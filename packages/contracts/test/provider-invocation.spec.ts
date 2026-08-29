@@ -19,6 +19,8 @@ import {
   configureAvailableModelProfile,
   currentProviderExecutionCertificationRequestSchema,
   currentProviderExecutionCertificationResultSchema,
+  currentProviderExecutionCertificationV2RequestSchema,
+  currentProviderExecutionCertificationV2ResultSchema,
   isAvailableModelProfile,
   modelExecutionProfileSchema,
   projectModelExecutionProfileSnapshot,
@@ -647,6 +649,29 @@ describe("U3 provider invocation contracts", () => {
       currentProviderExecutionCertificationResultSchema.parse({
         schema_version: "current-provider-execution-certification@1.0.0",
         claims: { ...claims, profile_id: ids.config },
+      }),
+    ).toThrow();
+    const v2Request = currentProviderExecutionCertificationV2RequestSchema.parse({
+      ...request,
+      schema_version: "current-provider-execution-certification-resolve@2.0.0",
+    });
+    expect(v2Request).toEqual({
+      ...request,
+      schema_version: "current-provider-execution-certification-resolve@2.0.0",
+    });
+    expect(
+      currentProviderExecutionCertificationV2ResultSchema.parse({
+        schema_version: "current-provider-execution-certification@2.0.0",
+        claims,
+      }),
+    ).toEqual({
+      schema_version: "current-provider-execution-certification@2.0.0",
+      claims,
+    });
+    expect(() =>
+      currentProviderExecutionCertificationV2RequestSchema.parse({
+        ...v2Request,
+        schema_version: "current-provider-execution-certification-resolve@1.0.0",
       }),
     ).toThrow();
   });

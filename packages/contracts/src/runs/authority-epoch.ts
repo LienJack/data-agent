@@ -692,6 +692,96 @@ export const falcon24RetainedActivationResultV6Schema = z.strictObject({
   }),
 });
 
+export const falcon24FinalizationFailureReceiptSchema = z.strictObject({
+  schema_version: z.literal("falcon24-finalization-failure-receipt@1.0.0"),
+  receipt_id: immutableIdSchema,
+  authority: falcon24AuthorityBindingV2Schema,
+  stage_ref: llmExecutionStageReferenceSchema,
+  failed_rpc_identity: z.literal(
+    "app_data_agent.resolve_current_provider_execution_certification(jsonb)",
+  ),
+  failure_class: z.literal("FROZEN_CLOSURE_CHANGE_REQUIRED"),
+  failure_code: z.literal("CURRENT_PROVIDER_CERTIFICATION_RESOLVER_AMBIGUOUS"),
+  observed_sqlstate: z.literal("42702"),
+  definition_hash: contentHashSchema,
+  evidence_hash: contentHashSchema,
+  receipt_hash: contentHashSchema,
+});
+
+export const falcon24PredecessorFinalizationFailureRefSchema = z.strictObject({
+  receipt_id: immutableIdSchema,
+  receipt_hash: contentHashSchema,
+  failure_code: z.literal("CURRENT_PROVIDER_CERTIFICATION_RESOLVER_AMBIGUOUS"),
+});
+
+export const falcon24ActivationRequestV7MaterialSchema = z
+  .strictObject({
+    schema_version: z.literal("falcon24-activation-request@7.0.0"),
+    scope: semanticScopeSchema,
+    authority_epoch: falcon24SuccessorAuthorityEpochSchema,
+    attempt_id: immutableIdSchema,
+    baseline_id: immutableIdSchema,
+    expected_baseline_hash: contentHashSchema,
+    expected_current_authority: falcon24AuthorityBindingV2Schema,
+    expected_semantic_release: semanticSuccessorCandidateReleaseReferenceSchema,
+    expected_versions: retainedSemanticExpectedVersionsSchema,
+    retained_semantic_proof_hash: contentHashSchema,
+    predecessor_finalization_failure_receipt: falcon24PredecessorFinalizationFailureRefSchema,
+    llm_execution_stage_ref: llmExecutionStageReferenceSchema,
+  })
+  .superRefine((document, context) => {
+    addRetainedSemanticEpochIssues(document, context);
+    if (falcon24AuthorityEpochOrdinal(document.authority_epoch) < 10n) {
+      context.addIssue({
+        code: "custom",
+        message: "FALCON24_FINALIZATION_FAILURE_RECOVERY_EPOCH_INVALID",
+        path: ["authority_epoch"],
+      });
+    }
+  });
+
+export const falcon24ActivationRequestV7Schema = falcon24ActivationRequestV7MaterialSchema.extend({
+  command_hash: contentHashSchema,
+});
+
+function falcon24ActivationRequestV7Material(input: unknown) {
+  const full = falcon24ActivationRequestV7Schema.safeParse(input);
+  if (!full.success) return falcon24ActivationRequestV7MaterialSchema.parse(input);
+  const { command_hash: _commandHash, ...material } = full.data;
+  return falcon24ActivationRequestV7MaterialSchema.parse(material);
+}
+
+export async function buildFalcon24ActivationRequestV7(input: unknown) {
+  const material = falcon24ActivationRequestV7Material(input);
+  return falcon24ActivationRequestV7Schema.parse({
+    ...material,
+    command_hash: await sha256ContentHash(material),
+  });
+}
+
+export async function verifyFalcon24ActivationRequestV7(input: unknown) {
+  const command = falcon24ActivationRequestV7Schema.parse(input);
+  if (
+    (await sha256ContentHash(falcon24ActivationRequestV7Material(command))) !== command.command_hash
+  ) {
+    throw new TypeError("FALCON24_FINALIZATION_FAILURE_RECOVERY_COMMAND_HASH_INVALID");
+  }
+  return command;
+}
+
+export const falcon24RetainedActivationResultV7Schema = z.strictObject({
+  schema_version: z.literal("falcon24-retained-activation-result@7.0.0"),
+  activation_command_hash: contentHashSchema,
+  authority: falcon24AuthorityBindingV2Schema,
+  predecessor_finalization_failure_receipt: falcon24PredecessorFinalizationFailureRefSchema,
+  llm_execution_certification: z.strictObject({
+    stage_id: immutableIdSchema,
+    proof_hash: contentHashSchema,
+    certification_receipt_ref: artifactReferenceSchema,
+    execution_profile_hash: contentHashSchema,
+  }),
+});
+
 const combinedFalcon24SemanticActivationExpectedVersionsSchema = z.strictObject({
   semantic_pointer: z.number().int().min(1).max(Number.MAX_SAFE_INTEGER),
   semantic_runtime: z.number().int().min(1).max(Number.MAX_SAFE_INTEGER),
@@ -1133,6 +1223,16 @@ export type Falcon24TerminalDiagnosticFailureReceiptRef = z.infer<
 >;
 export type Falcon24RetainedActivationResultV6 = z.infer<
   typeof falcon24RetainedActivationResultV6Schema
+>;
+export type Falcon24FinalizationFailureReceipt = z.infer<
+  typeof falcon24FinalizationFailureReceiptSchema
+>;
+export type Falcon24ActivationRequestV7 = z.infer<typeof falcon24ActivationRequestV7Schema>;
+export type Falcon24PredecessorFinalizationFailureRef = z.infer<
+  typeof falcon24PredecessorFinalizationFailureRefSchema
+>;
+export type Falcon24RetainedActivationResultV7 = z.infer<
+  typeof falcon24RetainedActivationResultV7Schema
 >;
 export type Falcon24LlmExecutionAuthorityProof = z.infer<
   typeof falcon24LlmExecutionAuthorityProofSchema
