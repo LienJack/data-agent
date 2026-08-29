@@ -185,6 +185,110 @@ describe("SemanticQueryContext", () => {
     expect(context.context_hash).toMatch(/^sha256:[0-9a-f]{64}$/u);
   });
 
+  it("seals request-scoped executable interpretations without publishing a global formula", async () => {
+    const selection = semanticQuerySelectionIntentSchema.parse({
+      schema_version: "semantic-query-selection-intent@1.0.0",
+      selected_metric_ids: ["metric.order_revenue"],
+      selected_dimension_ids: ["dimension.order_month"],
+      selected_formula_ids: [],
+      selected_relationship_ids: [],
+      selected_time_domain_ids: ["time.order_month"],
+      selected_quality_constraint_ids: [],
+      unresolved_ambiguities: [],
+      request_scoped_operations: [
+        {
+          requested_term: "订单收入同比增长",
+          operator: {
+            kind: "PERIOD_COMPARISON_RATE",
+            metric_id: "metric.order_revenue",
+            time_dimension_id: "dimension.order_month",
+            comparison_offset: { unit: "YEAR", value: 1 },
+            formula: "(current_value - comparison_value) / NULLIF(comparison_value, 0)",
+          },
+        },
+      ],
+    });
+    expect(selection.request_scoped_operations).toHaveLength(1);
+
+    const input = contextInput() as ReturnType<typeof contextInput> & {
+      request_scoped_interpretations: unknown[];
+    };
+    input.request_scoped_interpretations = [
+      {
+        interpretation_id: "request-scoped.yoy-order-revenue",
+        requested_term: "订单收入同比增长",
+        scope: "REQUEST_ONLY",
+        source_object_ids: ["dimension.order_month", "metric.order_revenue"],
+        operator: selection.request_scoped_operations?.[0]?.operator,
+        user_explanation:
+          "订单收入同比按月汇总后，与上年同月比较：(本期收入-上年同期收入)/上年同期收入；上年同期为0时返回空值。",
+        publication_effect: "NONE",
+      },
+    ];
+    const context = await buildSemanticQueryContext(input);
+    await expect(verifySemanticQueryContext(context)).resolves.toEqual(context);
+    expect(context.request_scoped_interpretations).toEqual(input.request_scoped_interpretations);
+    expect(context.formulas).toHaveLength(1);
+    expect(context.formulas[0]?.node_id).toBe("formula.order_revenue");
+  });
+
+  it("rejects request-scoped interpretations that escape their governed primitive closure", async () => {
+    const input = contextInput() as ReturnType<typeof contextInput> & {
+      request_scoped_interpretations: unknown[];
+    };
+    input.request_scoped_interpretations = [
+      {
+        interpretation_id: "request-scoped.yoy-order-revenue",
+        requested_term: "订单收入同比增长",
+        scope: "REQUEST_ONLY",
+        source_object_ids: ["dimension.unpublished", "metric.order_revenue"],
+        operator: {
+          kind: "PERIOD_COMPARISON_RATE",
+          metric_id: "metric.order_revenue",
+          time_dimension_id: "dimension.order_month",
+          comparison_offset: { unit: "YEAR", value: 1 },
+          formula: "(current_value - comparison_value) / NULLIF(comparison_value, 0)",
+        },
+        user_explanation: "按上年同期比较。",
+        publication_effect: "NONE",
+      },
+    ];
+    await expect(buildSemanticQueryContext(input)).rejects.toThrow();
+  });
+
+  it("binds a net ROI correction to governed aggregate inputs without reusing ROAS", () => {
+    const selection = semanticQuerySelectionIntentSchema.parse({
+      schema_version: "semantic-query-selection-intent@1.0.0",
+      selected_metric_ids: ["metric.marketing_revenue", "metric.marketing_spend"],
+      selected_dimension_ids: ["dimension.marketing_channel"],
+      selected_formula_ids: [],
+      selected_relationship_ids: [],
+      selected_time_domain_ids: [],
+      selected_quality_constraint_ids: [],
+      unresolved_ambiguities: [],
+      request_scoped_operations: [
+        {
+          requested_term: "净ROI",
+          operator: {
+            kind: "AGGREGATE_RATIO",
+            numerator_metric_id: "metric.marketing_revenue",
+            denominator_metric_id: "metric.marketing_spend",
+            numerator_adjustment: "SUBTRACT_DENOMINATOR",
+            aggregation: "SUM_BEFORE_RATIO",
+            zero_denominator: "NULL",
+          },
+        },
+      ],
+    });
+    expect(selection.request_scoped_operations?.[0]).toMatchObject({
+      requested_term: "净ROI",
+      operator: {
+        numerator_adjustment: "SUBTRACT_DENOMINATOR",
+        aggregation: "SUM_BEFORE_RATIO",
+      },
+    });
+  });
+
   it("rejects model-authored fields and non-canonical selection intent", () => {
     expect(() =>
       semanticQuerySelectionIntentSchema.parse({

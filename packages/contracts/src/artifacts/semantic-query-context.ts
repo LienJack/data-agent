@@ -54,6 +54,72 @@ const canonicalIdsSchema = (max: number) =>
       });
     });
 
+export const semanticRequestScopedOperatorSchema = z.discriminatedUnion("kind", [
+  z.strictObject({
+    kind: z.literal("PERIOD_COMPARISON_RATE"),
+    metric_id: versionIdentifierSchema,
+    time_dimension_id: versionIdentifierSchema,
+    comparison_offset: z.strictObject({ unit: z.literal("YEAR"), value: z.literal(1) }),
+    formula: z.literal("(current_value - comparison_value) / NULLIF(comparison_value, 0)"),
+  }),
+  z.strictObject({
+    kind: z.literal("AGGREGATE_RATIO"),
+    numerator_metric_id: versionIdentifierSchema,
+    denominator_metric_id: versionIdentifierSchema,
+    numerator_adjustment: z.enum(["NONE", "SUBTRACT_DENOMINATOR"]),
+    aggregation: z.literal("SUM_BEFORE_RATIO"),
+    zero_denominator: z.literal("NULL"),
+  }),
+]);
+
+const semanticRequestScopedOperationSchema = z.strictObject({
+  requested_term: z.string().trim().min(1).max(256),
+  operator: semanticRequestScopedOperatorSchema,
+});
+
+function requestScopedOperatorObjectIds(
+  operator: z.infer<typeof semanticRequestScopedOperatorSchema>,
+): readonly string[] {
+  return operator.kind === "PERIOD_COMPARISON_RATE"
+    ? [operator.metric_id, operator.time_dimension_id].sort()
+    : [operator.denominator_metric_id, operator.numerator_metric_id].sort();
+}
+
+export const semanticRequestScopedInterpretationSchema = z
+  .strictObject({
+    interpretation_id: versionIdentifierSchema.regex(/^request-scoped\./u),
+    requested_term: z.string().trim().min(1).max(256),
+    scope: z.literal("REQUEST_ONLY"),
+    source_object_ids: canonicalIdsSchema(16).min(2),
+    operator: semanticRequestScopedOperatorSchema,
+    user_explanation: z.string().trim().min(1).max(2_048),
+    publication_effect: z.literal("NONE"),
+  })
+  .superRefine((interpretation, ctx) => {
+    const expectedIds = requestScopedOperatorObjectIds(interpretation.operator);
+    if (
+      interpretation.source_object_ids.length !== expectedIds.length ||
+      interpretation.source_object_ids.some((id, index) => id !== expectedIds[index])
+    ) {
+      ctx.addIssue({
+        code: "custom",
+        message: "Request-scoped interpretation sources must exactly match its governed operator.",
+        path: ["source_object_ids"],
+      });
+    }
+    if (
+      /(?:索引.*(?:未找到|未命中)|未受治理定义|INDEX_NOT_FOUND|NOT_GOVERNED)/iu.test(
+        interpretation.user_explanation,
+      )
+    ) {
+      ctx.addIssue({
+        code: "custom",
+        message: "Request-scoped interpretation must not expose internal retrieval failures.",
+        path: ["user_explanation"],
+      });
+    }
+  });
+
 export const semanticQueryAmbiguitySchema = z.strictObject({
   object_kind: semanticQueryObjectKindSchema,
   candidate_ids: canonicalIdsSchema(32).min(2),
@@ -69,6 +135,7 @@ const semanticQuerySelectionIntentDraftSchema = z
     selected_time_domain_ids: canonicalIdsSchema(64),
     selected_quality_constraint_ids: canonicalIdsSchema(64),
     unresolved_ambiguities: z.array(semanticQueryAmbiguitySchema).max(16),
+    request_scoped_operations: z.array(semanticRequestScopedOperationSchema).max(16).optional(),
   })
   .superRefine((intent, ctx) => {
     const selectedCount =
@@ -93,6 +160,37 @@ const semanticQuerySelectionIntentDraftSchema = z
           code: "custom",
           message: "Semantic query ambiguities must be unique and canonically sorted.",
           path: ["unresolved_ambiguities", index],
+        });
+      }
+    });
+    const operationKeys = (intent.request_scoped_operations ?? []).map((operation) =>
+      JSON.stringify(operation),
+    );
+    operationKeys.forEach((key, index) => {
+      if (index > 0 && key <= (operationKeys[index - 1] ?? "")) {
+        ctx.addIssue({
+          code: "custom",
+          message: "Request-scoped operations must be unique and canonically sorted.",
+          path: ["request_scoped_operations", index],
+        });
+      }
+    });
+    (intent.request_scoped_operations ?? []).forEach((operation, index) => {
+      const operator = operation.operator;
+      const metricIds =
+        operator.kind === "PERIOD_COMPARISON_RATE"
+          ? [operator.metric_id]
+          : [operator.numerator_metric_id, operator.denominator_metric_id];
+      const dimensionIds =
+        operator.kind === "PERIOD_COMPARISON_RATE" ? [operator.time_dimension_id] : [];
+      if (
+        metricIds.some((id) => !intent.selected_metric_ids.includes(id)) ||
+        dimensionIds.some((id) => !intent.selected_dimension_ids.includes(id))
+      ) {
+        ctx.addIssue({
+          code: "custom",
+          message: "Request-scoped operations must bind selected governed primitives.",
+          path: ["request_scoped_operations", index],
         });
       }
     });
@@ -185,6 +283,10 @@ const semanticQueryContextDraftSchema = z
       256,
     ),
     unresolved_ambiguities: z.array(semanticQueryAmbiguitySchema).max(16),
+    request_scoped_interpretations: z
+      .array(semanticRequestScopedInterpretationSchema)
+      .max(16)
+      .optional(),
   })
   .superRefine((context, ctx) => {
     if (
@@ -266,6 +368,26 @@ const semanticQueryContextDraftSchema = z
           code: "custom",
           message: "Semantic query ambiguities must be unique and canonically sorted.",
           path: ["unresolved_ambiguities", index],
+        });
+      }
+    });
+    const interpretations = context.request_scoped_interpretations ?? [];
+    interpretations.forEach((interpretation, index) => {
+      if (
+        index > 0 &&
+        interpretation.interpretation_id <= (interpretations[index - 1]?.interpretation_id ?? "")
+      ) {
+        ctx.addIssue({
+          code: "custom",
+          message: "Request-scoped interpretations must be unique and canonically sorted.",
+          path: ["request_scoped_interpretations", index],
+        });
+      }
+      if (interpretation.source_object_ids.some((id) => !projectedIds.has(id))) {
+        ctx.addIssue({
+          code: "custom",
+          message: "Request-scoped interpretation escaped the projected governed closure.",
+          path: ["request_scoped_interpretations", index, "source_object_ids"],
         });
       }
     });
