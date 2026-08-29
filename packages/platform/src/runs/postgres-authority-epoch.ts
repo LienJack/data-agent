@@ -7,6 +7,7 @@ import {
   buildFalcon24ActivationRequestV3,
   buildFalcon24ActivationRequestV4,
   buildFalcon24ActivationRequestV5,
+  buildFalcon24ActivationRequestV6,
   falcon24ActivationAttemptDocumentSchema,
   falcon24ActivationAttemptRequestV2Schema,
   falcon24ActivationHoldRequestV2Schema,
@@ -18,12 +19,14 @@ import {
   falcon24PredecessorDiagnosticFailureSchema,
   falcon24RetainedActivationResultV4Schema,
   falcon24RetainedActivationResultV5Schema,
+  falcon24RetainedActivationResultV6Schema,
   falcon24RetainedSemanticReleaseAuthorityProofSchema,
   falcon24RunAuthorityLookupSchema,
   falcon24StageBaselineRequestV2Schema,
   falcon24StagingHoldRequestV2Schema,
   falcon24StagingHoldResultV2Schema,
   falcon24StagingSessionRequestV2Schema,
+  falcon24TerminalDiagnosticFailureReceiptRefSchema,
   falcon24UiReceiptDocumentSchema,
   falcon24UiReceiptV2Schema,
   verifyFalcon24LlmExecutionAuthorityProof,
@@ -100,6 +103,14 @@ const STABLE_DATABASE_ERRORS = new Set([
   "FALCON24_CLOSURE_RECOVERY_LLM_CATALOG_DRIFT",
   "FALCON24_CLOSURE_RECOVERY_LLM_STAGE_PROMOTION_RACE",
   "FALCON24_CLOSURE_RECOVERY_CERTIFICATION_PROMOTION_RACE",
+  "FALCON24_TERMINAL_DIAGNOSTIC_RECOVERY_ACTIVATION_INVALID",
+  "FALCON24_TERMINAL_DIAGNOSTIC_RECOVERY_SCOPE_FORBIDDEN",
+  "FALCON24_TERMINAL_DIAGNOSTIC_RECOVERY_PREDECESSOR_MISMATCH",
+  "FALCON24_TERMINAL_DIAGNOSTIC_RECOVERY_RECEIPT_MISMATCH",
+  "FALCON24_TERMINAL_DIAGNOSTIC_RECOVERY_LLM_STAGE_MISMATCH",
+  "FALCON24_TERMINAL_DIAGNOSTIC_RECOVERY_LLM_CATALOG_DRIFT",
+  "FALCON24_TERMINAL_DIAGNOSTIC_RECOVERY_STAGE_PROMOTION_RACE",
+  "FALCON24_TERMINAL_DIAGNOSTIC_RECOVERY_CERTIFICATION_PROMOTION_RACE",
   "FALCON24_RUN_AUTHORITY_LOAD_INVALID",
   "FALCON24_RUN_NOT_FOUND",
   "FALCON24_UI_RECEIPT_COMMAND_INVALID",
@@ -752,6 +763,98 @@ export function createPostgresFalcon24AuthorityEpoch(input: {
               llmProof.execution_profile_hash
           ) {
             throw new TypeError("FALCON24_CLOSURE_RECOVERY_ACTIVATION_RESULT_INVALID");
+          }
+          return result;
+        },
+      });
+    },
+
+    async activateRetainedWithTerminalDiagnosticRecovery(capability: unknown, candidate: unknown) {
+      const envelope = z
+        .strictObject({
+          request: z.unknown(),
+          retained_semantic_proof: falcon24RetainedSemanticReleaseAuthorityProofSchema,
+          llm_execution_proof: falcon24LlmExecutionAuthorityProofSchema,
+          predecessor_diagnostic_receipt: falcon24TerminalDiagnosticFailureReceiptRefSchema,
+        })
+        .parse(candidate);
+      const [semanticProof, llmProof] = await Promise.all([
+        verifyFalcon24RetainedSemanticReleaseAuthorityProof(envelope.retained_semantic_proof),
+        verifyFalcon24LlmExecutionAuthorityProof(envelope.llm_execution_proof),
+      ]);
+      const command = await buildFalcon24ActivationRequestV6(envelope.request);
+      const failure = envelope.predecessor_diagnostic_receipt;
+      const sameRelease =
+        command.expected_semantic_release.release_id ===
+          semanticProof.semantic_release.release_id &&
+        command.expected_semantic_release.generation ===
+          semanticProof.semantic_release.generation &&
+        command.expected_semantic_release.release_digest ===
+          semanticProof.semantic_release.release_digest &&
+        command.expected_semantic_release.datasource_id ===
+          semanticProof.semantic_release.datasource_id;
+      const sameScope =
+        command.scope.app_id === semanticProof.scope.app_id &&
+        command.scope.tenant_id === semanticProof.scope.tenant_id &&
+        command.scope.environment === semanticProof.scope.environment &&
+        command.scope.semantic_domain === semanticProof.scope.semantic_domain &&
+        command.scope.app_id === llmProof.scope.app_id &&
+        command.scope.tenant_id === llmProof.scope.tenant_id &&
+        command.scope.environment === llmProof.scope.environment &&
+        command.scope.semantic_domain === llmProof.scope.semantic_domain;
+      if (
+        command.retained_semantic_proof_hash !== semanticProof.proof_hash ||
+        command.authority_epoch !== semanticProof.authority_epoch ||
+        command.authority_epoch !== llmProof.target_authority_epoch ||
+        !sameScope ||
+        !sameRelease ||
+        command.expected_current_authority.authority_epoch !==
+          semanticProof.expected_current_authority.authority_epoch ||
+        command.expected_current_authority.baseline_id !==
+          semanticProof.expected_current_authority.baseline_id ||
+        command.expected_current_authority.baseline_hash !==
+          semanticProof.expected_current_authority.baseline_hash ||
+        command.expected_current_authority.activation_attempt_id !==
+          semanticProof.expected_current_authority.activation_attempt_id ||
+        command.expected_versions.semantic_pointer !==
+          semanticProof.expected_versions.semantic_pointer ||
+        command.expected_versions.semantic_runtime !==
+          semanticProof.expected_versions.semantic_runtime ||
+        command.expected_versions.workspace_defaults !==
+          semanticProof.expected_versions.workspace_defaults ||
+        command.llm_execution_stage_ref.stage_id !== llmProof.stage_id ||
+        command.llm_execution_stage_ref.proof_hash !== llmProof.proof_hash ||
+        semanticProof.worker_build.build_id !== llmProof.worker_build.build_id ||
+        semanticProof.worker_build.generation_id !== llmProof.worker_build.generation_id ||
+        JSON.stringify(command.predecessor_diagnostic_receipt) !== JSON.stringify(failure)
+      ) {
+        throw new TypeError("FALCON24_TERMINAL_DIAGNOSTIC_RECOVERY_PROOF_MISMATCH");
+      }
+      return invoke({
+        capability,
+        access: "WRITE",
+        operation: "falcon24-authority.activate-retained-terminal-diagnostic-recovery",
+        correlation_id: command.attempt_id,
+        sql: "select app_data_agent.activate_falcon24_authority($1::jsonb) as value",
+        command,
+        semantic_domain: command.scope.semantic_domain,
+        parse: (raw) => {
+          const result = falcon24RetainedActivationResultV6Schema.parse(raw);
+          if (
+            result.activation_command_hash !== command.command_hash ||
+            result.authority.authority_epoch !== command.authority_epoch ||
+            result.authority.baseline_id !== command.baseline_id ||
+            result.authority.baseline_hash !== command.expected_baseline_hash ||
+            result.authority.activation_attempt_id !== command.attempt_id ||
+            JSON.stringify(result.predecessor_diagnostic_receipt) !== JSON.stringify(failure) ||
+            result.llm_execution_certification.stage_id !== llmProof.stage_id ||
+            result.llm_execution_certification.proof_hash !== llmProof.proof_hash ||
+            result.llm_execution_certification.certification_receipt_ref.content_hash !==
+              llmProof.certification_receipt_ref.content_hash ||
+            result.llm_execution_certification.execution_profile_hash !==
+              llmProof.execution_profile_hash
+          ) {
+            throw new TypeError("FALCON24_TERMINAL_DIAGNOSTIC_RECOVERY_RESULT_INVALID");
           }
           return result;
         },

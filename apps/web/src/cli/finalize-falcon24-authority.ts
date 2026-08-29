@@ -39,6 +39,7 @@ import { createPostgresProviderInvocationStore } from "@data-agent/platform/prov
 import {
   createPostgresEffectiveConfigResolver,
   createPostgresFalcon24AuthorityEpoch,
+  createPostgresFalcon24DiagnosticAuthority,
   createPostgresFalcon24SemanticClosureReader,
 } from "@data-agent/platform/runs";
 import { loadRuntimeEnvironment } from "@data-agent/platform/runtime-config";
@@ -136,7 +137,7 @@ const configurationSchema = z
       });
     }
     if (
-      ordinal >= 8n &&
+      ordinal === 8n &&
       (!configuration.llm_execution_stage_id ||
         !configuration.predecessor_closure_failure_receipt_id ||
         configuration.predecessor_diagnostic_attempt_id)
@@ -145,6 +146,18 @@ const configurationSchema = z
         code: "custom",
         message: "FALCON24_E8_RECOVERY_CONFIGURATION_REQUIRED",
         path: ["predecessor_closure_failure_receipt_id"],
+      });
+    }
+    if (
+      ordinal >= 9n &&
+      (!configuration.llm_execution_stage_id ||
+        !configuration.predecessor_diagnostic_attempt_id ||
+        configuration.predecessor_closure_failure_receipt_id)
+    ) {
+      context.addIssue({
+        code: "custom",
+        message: "FALCON24_TERMINAL_DIAGNOSTIC_RECOVERY_CONFIGURATION_REQUIRED",
+        path: ["predecessor_diagnostic_attempt_id"],
       });
     }
   });
@@ -979,29 +992,68 @@ export async function runFalcon24AuthorityFinalization(
               predecessor_diagnostic_failure: predecessorDiagnosticFailure,
             });
           }
-          const failureReceiptId = configuration.predecessor_closure_failure_receipt_id;
-          if (!failureReceiptId) {
-            throw new TypeError("FALCON24_E8_RECOVERY_CONFIGURATION_REQUIRED");
+          if (recoveryOrdinal === 8n) {
+            const failureReceiptId = configuration.predecessor_closure_failure_receipt_id;
+            if (!failureReceiptId) {
+              throw new TypeError("FALCON24_E8_RECOVERY_CONFIGURATION_REQUIRED");
+            }
+            const predecessorClosureFailure = requireValue(
+              await epoch.loadEpochClosureFailure(capability, { receipt_id: failureReceiptId }),
+            );
+            if (
+              predecessorClosureFailure.authority.authority_epoch !==
+                currentAuthority.authority_epoch ||
+              predecessorClosureFailure.authority.baseline_id !== currentAuthority.baseline_id ||
+              predecessorClosureFailure.authority.baseline_hash !==
+                currentAuthority.baseline_hash ||
+              predecessorClosureFailure.authority.activation_attempt_id !==
+                currentAuthority.activation_attempt_id ||
+              predecessorClosureFailure.failure_class !== "FROZEN_CLOSURE_CHANGE_REQUIRED" ||
+              predecessorClosureFailure.failure_code !== "PROVIDER_PROFILE_BINDING_NOT_SELECTED"
+            ) {
+              throw new TypeError("FALCON24_E8_CLOSURE_FAILURE_PREFLIGHT_MISMATCH");
+            }
+            return Object.freeze({
+              kind: "CLOSURE_FAILURE" as const,
+              llm_execution_proof: llmExecutionProof,
+              predecessor_closure_failure: predecessorClosureFailure,
+            });
           }
-          const predecessorClosureFailure = requireValue(
-            await epoch.loadEpochClosureFailure(capability, { receipt_id: failureReceiptId }),
+          const diagnosticAttemptId = configuration.predecessor_diagnostic_attempt_id;
+          if (!diagnosticAttemptId) {
+            throw new TypeError("FALCON24_TERMINAL_DIAGNOSTIC_RECOVERY_CONFIGURATION_REQUIRED");
+          }
+          const diagnosticAuthority = createPostgresFalcon24DiagnosticAuthority({
+            pool: sqlPool,
+            authorizer: authority.authorizer,
+          });
+          const predecessorDiagnostic = requireValue(
+            await diagnosticAuthority.load(capability, diagnosticAttemptId),
           );
           if (
-            predecessorClosureFailure.authority.authority_epoch !==
-              currentAuthority.authority_epoch ||
-            predecessorClosureFailure.authority.baseline_id !== currentAuthority.baseline_id ||
-            predecessorClosureFailure.authority.baseline_hash !== currentAuthority.baseline_hash ||
-            predecessorClosureFailure.authority.activation_attempt_id !==
-              currentAuthority.activation_attempt_id ||
-            predecessorClosureFailure.failure_class !== "FROZEN_CLOSURE_CHANGE_REQUIRED" ||
-            predecessorClosureFailure.failure_code !== "PROVIDER_PROFILE_BINDING_NOT_SELECTED"
+            predecessorDiagnostic?.status !== "FAILED" ||
+            predecessorDiagnostic.failure_class !== "FROZEN_CLOSURE_CHANGE_REQUIRED" ||
+            !predecessorDiagnostic.failure_code ||
+            !predecessorDiagnostic.terminal_receipt_hash ||
+            predecessorDiagnostic.authority_epoch !== currentAuthority.authority_epoch ||
+            predecessorDiagnostic.authority_baseline_id !== currentAuthority.baseline_id ||
+            predecessorDiagnostic.authority_baseline_hash !== currentAuthority.baseline_hash ||
+            predecessorDiagnostic.authority_activation_attempt_id !==
+              currentAuthority.activation_attempt_id
           ) {
-            throw new TypeError("FALCON24_E8_CLOSURE_FAILURE_PREFLIGHT_MISMATCH");
+            throw new TypeError("FALCON24_TERMINAL_DIAGNOSTIC_RECOVERY_PREFLIGHT_MISMATCH");
           }
           return Object.freeze({
-            kind: "CLOSURE_FAILURE" as const,
+            kind: "TERMINAL_DIAGNOSTIC" as const,
             llm_execution_proof: llmExecutionProof,
-            predecessor_closure_failure: predecessorClosureFailure,
+            predecessor_diagnostic_receipt: Object.freeze({
+              attempt_id: predecessorDiagnostic.attempt_id,
+              run_id: predecessorDiagnostic.run_id,
+              manifest_hash: predecessorDiagnostic.manifest_hash,
+              receipt_hash: predecessorDiagnostic.terminal_receipt_hash,
+              failure_class: predecessorDiagnostic.failure_class,
+              failure_code: predecessorDiagnostic.failure_code,
+            }),
           });
         })()
       : undefined;
@@ -1195,6 +1247,13 @@ export async function runFalcon24AuthorityFinalization(
         ...(recovery ? { recovery } : {}),
         load_provider_execution_profiles: () =>
           providerInvocationStore.listExecutionProfiles(capability).then(requireValue),
+        resolve_current_execution_certification: (request) =>
+          providerInvocationStore
+            .resolveCurrentExecutionCertification(capability, {
+              schema_version: "current-provider-execution-certification-resolve@1.0.0",
+              ...request,
+            })
+            .then(requireValue),
         stage_falcon_authority: async ({
           semantic_release_digest: semanticReleaseDigest,
           retained_semantic_proof_hash: retainedSemanticProofHash,
