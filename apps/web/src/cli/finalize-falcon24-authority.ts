@@ -35,6 +35,7 @@ import { adaptPgCatalogPool, verifyFalcon24CatalogInventory } from "@data-agent/
 import { createPostgresSkillRegistry } from "@data-agent/platform/extensions";
 import { createPostgresModelControlRepository } from "@data-agent/platform/models";
 import { adaptPgPool } from "@data-agent/platform/persistence";
+import { createPostgresProviderInvocationStore } from "@data-agent/platform/providers";
 import {
   createPostgresEffectiveConfigResolver,
   createPostgresFalcon24AuthorityEpoch,
@@ -108,20 +109,42 @@ const configurationSchema = z
     datasource_id: z.uuid(),
     llm_execution_stage_id: z.uuid().optional(),
     predecessor_diagnostic_attempt_id: z.uuid().optional(),
+    predecessor_closure_failure_receipt_id: z.uuid().optional(),
     environment: z.string().regex(/^[A-Za-z0-9][A-Za-z0-9._-]{0,63}$/u),
     web_build_identity_file: z.string().min(1).max(4_096).refine(isAbsolute),
     worker_build_identity_file: z.string().min(1).max(4_096).refine(isAbsolute),
     build_attestation_file: z.string().min(1).max(4_096).refine(isAbsolute),
   })
   .superRefine((configuration, context) => {
-    if (
-      falcon24AuthorityEpochOrdinal(configuration.authority_epoch) >= 7n &&
-      (!configuration.llm_execution_stage_id || !configuration.predecessor_diagnostic_attempt_id)
-    ) {
+    const ordinal = falcon24AuthorityEpochOrdinal(configuration.authority_epoch);
+    if (ordinal === 7n && !configuration.llm_execution_stage_id) {
       context.addIssue({
         code: "custom",
         message: "FALCON24_E7_RECOVERY_CONFIGURATION_REQUIRED",
         path: ["llm_execution_stage_id"],
+      });
+    }
+    if (
+      ordinal === 7n &&
+      (!configuration.predecessor_diagnostic_attempt_id ||
+        configuration.predecessor_closure_failure_receipt_id)
+    ) {
+      context.addIssue({
+        code: "custom",
+        message: "FALCON24_E7_RECOVERY_CONFIGURATION_REQUIRED",
+        path: ["predecessor_diagnostic_attempt_id"],
+      });
+    }
+    if (
+      ordinal >= 8n &&
+      (!configuration.llm_execution_stage_id ||
+        !configuration.predecessor_closure_failure_receipt_id ||
+        configuration.predecessor_diagnostic_attempt_id)
+    ) {
+      context.addIssue({
+        code: "custom",
+        message: "FALCON24_E8_RECOVERY_CONFIGURATION_REQUIRED",
+        path: ["predecessor_closure_failure_receipt_id"],
       });
     }
   });
@@ -845,6 +868,8 @@ export async function runFalcon24AuthorityFinalization(
         : undefined),
     llm_execution_stage_id: environment.FALCON24_LLM_EXECUTION_STAGE_ID,
     predecessor_diagnostic_attempt_id: environment.FALCON24_PREDECESSOR_DIAGNOSTIC_ATTEMPT_ID,
+    predecessor_closure_failure_receipt_id:
+      environment.FALCON24_PREDECESSOR_CLOSURE_FAILURE_RECEIPT_ID,
   });
   const retainedE1 = await verifyFalcon24RetainedAssetsManifest(
     json(resolve(REPOSITORY_ROOT, "infra/falcon/e1/retained-assets-manifest.json")),
@@ -911,7 +936,8 @@ export async function runFalcon24AuthorityFinalization(
     });
     const currentAuthority = requireValue(await epoch.loadCurrent(capability));
     const retainedTarget = configuration.authority_epoch !== "E4";
-    const recoveryTarget = falcon24AuthorityEpochOrdinal(configuration.authority_epoch) >= 7n;
+    const recoveryOrdinal = falcon24AuthorityEpochOrdinal(configuration.authority_epoch);
+    const recoveryTarget = recoveryOrdinal >= 7n;
     const expectedCurrentEpoch = predecessorAuthorityEpoch(configuration.authority_epoch);
     if (currentAuthority?.authority_epoch !== expectedCurrentEpoch) {
       throw new TypeError("FALCON24_AUTHORITY_EPOCH_NOT_SUCCESSOR");
@@ -919,20 +945,15 @@ export async function runFalcon24AuthorityFinalization(
     const recovery = recoveryTarget
       ? await (async () => {
           const stageId = configuration.llm_execution_stage_id;
-          const diagnosticAttemptId = configuration.predecessor_diagnostic_attempt_id;
-          if (!stageId || !diagnosticAttemptId) {
-            throw new TypeError("FALCON24_E7_RECOVERY_CONFIGURATION_REQUIRED");
-          }
-          const [stage, predecessorDiagnosticFailure] = await Promise.all([
-            epoch.loadLlmExecutionStage(capability, { stage_id: stageId }).then(requireValue),
-            epoch
-              .loadRecoveryContext(capability, { attempt_id: diagnosticAttemptId })
-              .then(requireValue),
-          ]);
+          if (!stageId) throw new TypeError("FALCON24_RECOVERY_CONFIGURATION_REQUIRED");
+          const stage = requireValue(
+            await epoch.loadLlmExecutionStage(capability, { stage_id: stageId }),
+          );
           const llmExecutionProof = stage.proof_document;
           if (
             stage.status !== "STAGED" ||
             stage.certification_is_active ||
+            stage.activation_attempt_id !== null ||
             llmExecutionProof.target_authority_epoch !== configuration.authority_epoch ||
             llmExecutionProof.staging_id !== configuration.staging_id ||
             llmExecutionProof.worker_build.build_id !== workerBuildIdentity.build_id ||
@@ -942,11 +963,45 @@ export async function runFalcon24AuthorityFinalization(
             llmExecutionProof.scope.environment !== capability.scope.environment ||
             llmExecutionProof.scope.semantic_domain !== SEMANTIC_DOMAIN
           ) {
-            throw new TypeError("FALCON24_E7_RECOVERY_PROOF_PREFLIGHT_MISMATCH");
+            throw new TypeError("FALCON24_RECOVERY_PROOF_PREFLIGHT_MISMATCH");
+          }
+          if (recoveryOrdinal === 7n) {
+            const diagnosticAttemptId = configuration.predecessor_diagnostic_attempt_id;
+            if (!diagnosticAttemptId) {
+              throw new TypeError("FALCON24_E7_RECOVERY_CONFIGURATION_REQUIRED");
+            }
+            const predecessorDiagnosticFailure = requireValue(
+              await epoch.loadRecoveryContext(capability, { attempt_id: diagnosticAttemptId }),
+            );
+            return Object.freeze({
+              kind: "DIAGNOSTIC" as const,
+              llm_execution_proof: llmExecutionProof,
+              predecessor_diagnostic_failure: predecessorDiagnosticFailure,
+            });
+          }
+          const failureReceiptId = configuration.predecessor_closure_failure_receipt_id;
+          if (!failureReceiptId) {
+            throw new TypeError("FALCON24_E8_RECOVERY_CONFIGURATION_REQUIRED");
+          }
+          const predecessorClosureFailure = requireValue(
+            await epoch.loadEpochClosureFailure(capability, { receipt_id: failureReceiptId }),
+          );
+          if (
+            predecessorClosureFailure.authority.authority_epoch !==
+              currentAuthority.authority_epoch ||
+            predecessorClosureFailure.authority.baseline_id !== currentAuthority.baseline_id ||
+            predecessorClosureFailure.authority.baseline_hash !== currentAuthority.baseline_hash ||
+            predecessorClosureFailure.authority.activation_attempt_id !==
+              currentAuthority.activation_attempt_id ||
+            predecessorClosureFailure.failure_class !== "FROZEN_CLOSURE_CHANGE_REQUIRED" ||
+            predecessorClosureFailure.failure_code !== "PROVIDER_PROFILE_BINDING_NOT_SELECTED"
+          ) {
+            throw new TypeError("FALCON24_E8_CLOSURE_FAILURE_PREFLIGHT_MISMATCH");
           }
           return Object.freeze({
+            kind: "CLOSURE_FAILURE" as const,
             llm_execution_proof: llmExecutionProof,
-            predecessor_diagnostic_failure: predecessorDiagnosticFailure,
+            predecessor_closure_failure: predecessorClosureFailure,
           });
         })()
       : undefined;
@@ -1126,6 +1181,10 @@ export async function runFalcon24AuthorityFinalization(
       ]);
     };
     if (retainedTarget) {
+      const providerInvocationStore = createPostgresProviderInvocationStore({
+        pool: sqlPool,
+        authorizer: authority.authorizer,
+      });
       const result = await finalizeFalcon24RetainedAuthority({
         capability,
         authority_epoch: configuration.authority_epoch,
@@ -1134,6 +1193,8 @@ export async function runFalcon24AuthorityFinalization(
         epoch,
         readback,
         ...(recovery ? { recovery } : {}),
+        load_provider_execution_profiles: () =>
+          providerInvocationStore.listExecutionProfiles(capability).then(requireValue),
         stage_falcon_authority: async ({
           semantic_release_digest: semanticReleaseDigest,
           retained_semantic_proof_hash: retainedSemanticProofHash,

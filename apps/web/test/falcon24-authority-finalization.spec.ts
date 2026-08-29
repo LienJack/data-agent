@@ -50,7 +50,7 @@ describe("Falcon24 versioned authority finalization", () => {
     });
   });
 
-  it.each(["E5", "E6"])(
+  it.each(["E5", "E6", "E7", "E8"])(
     "recognizes %s as an explicit retained-authority target before confirmation",
     async (authorityEpoch) => {
       await expect(
@@ -86,6 +86,9 @@ describe("Falcon24 versioned authority finalization", () => {
     expect(source).toContain("stageFalcon24E4SuccessorAuthority");
     expect(source).toContain("finalizeFalcon24RetainedAuthority");
     expect(source).toContain("stageFalcon24RetainedAuthority");
+    expect(source).toContain("FALCON24_PREDECESSOR_CLOSURE_FAILURE_RECEIPT_ID");
+    expect(source).toContain("loadEpochClosureFailure");
+    expect(source).toContain("createPostgresProviderInvocationStore");
     expect(source).toContain("createPostgresSemanticPublicationAuthority");
     expect(source).toContain("buildFalcon24SuccessorChangeSet");
     expect(source).toContain("prepareSuccessorReview");
