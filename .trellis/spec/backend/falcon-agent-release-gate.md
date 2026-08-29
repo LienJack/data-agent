@@ -55,6 +55,11 @@ ordered/unordered 语义仍严格比较。
 门禁外排障；若 baseline bytes 未变，以新 attempt 从 G1 或 G5 slot 1 全量重跑；若代码、合同、Web build 或 frozen component 改变，
 必须进入 E2。
 
+E5+ 同样采用 canonical epoch identity。若唯一 diagnostic 首败且修复会改变 frozen closure，当前 epoch立即 HOLD；只有新 successor epoch可继续。
+若旧 diagnostic Run已 FAILED、但 terminal receipt因 authority adapter/transaction context缺陷未提交，禁止用新 build直接补写。恢复必须通过
+前向 activation transaction调用唯一 diagnostic completion authority，并与 successor frozen closure同时切换；否则会产生“旧失败已改写、
+successor尚未激活”的不可审计窗口。
+
 - batch checkpoint 只把 `PASS` 和 `SUBMITTED` 当作完成；`FAIL`、`AGENT_FAILED` 和中断会续跑。
 - `--run-label` 隔离稳定性批次；`--fresh=true` 显式忽略旧 checkpoint。
 - blind reflection 的两个候选都必须在 Oracle 前冻结。若修订版不可执行而首选可执行，保留首选；

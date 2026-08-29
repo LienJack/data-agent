@@ -240,3 +240,19 @@ transaction semantic-domain context与 exact provider profile，又保持 E6 Run
 
 本次任务启动的 Web、Worker、OpenSandbox server均已停止；sandbox residual=0；轮换 credential/auth profile、临时 secret/config/DB与 build
 备份已删除。长期 Docker只保留既有四个容器。
+
+## 8. E7 前向恢复执行门禁
+
+E7 不重跑 E6 diagnostic。执行顺序固定为：
+
+1. 在 clean commit 上构建并验证 Web/Worker identity。
+2. 在 exact E6 clone 证明 10799 fresh/populated、history hash、RLS、replay、rollback 和 concurrency；删除 scratch。
+3. 对权威库应用同一 checksum 的 10799；迁移本身不得改变任何 E1-E6/semantic/Run/diagnostic bytes。
+4. 只在 `DEEPSEEK_API_KEY` 已安全注入时创建一个非计分 certification preparation Run；真实 smoke 成功后写 inactive E7 candidate。
+5. E6 execution-profile read 必须仍为不可用；candidate 泄漏即严重故障并停止。
+6. 用全新 E7 staging id 只运行一次 Finalizer。request@4 同事务终结 E6 orphan、推广 certification并激活 E7。
+7. readback 必须同时看到：E6 attempt FAILED + receipt=1、current E7、exact DeepSeek profile AVAILABLE、gen2 pointer/runtime/defaults不变。
+8. 之后才可创建唯一 E7 diagnostic；PASS 后才按顺序运行 E7-Q1 与 E7-C1。
+
+credential缺失时 certification preflight 必须在创建 Run 前 HOLD；禁止从 shell history、日志、旧临时文件或数据库 locator恢复 secret。正式
+diagnostic/Q1/C1 任一首败仍立即写 immutable FAIL/HOLD并停止。activation 失败只允许 all-old；成功后不回退，任何新 frozen closure变化前进 E8。

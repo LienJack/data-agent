@@ -311,3 +311,57 @@ E1-E5 历史没有被修改。
 `semantic_runtime_activation` 对 RPC owner 不可见，而数据库中 pointer/runtime/attempt 的 exact generation 2 值实际一致。当前 attempt
 因而仍为 `ACTIVE` 且 receipt count=0。不得用手工 SQL、临时调用面或非 E6 build 绕过；这是新的 frozen-closure 缺陷。根据首次正式诊断失败
 stop condition，本轮在此停止，不能声称 AC-E5-05 或总任务完成。
+
+## 14. E7 forward recovery amendment
+
+用户在 E6 首败现场冻结并完成清理后明确授权继续。E7 只允许前向修复两个已证实的缺口：Diagnostic completion 的
+`semantic_domain` 事务上下文遗漏，以及 exact Effective Model 缺少 `AVAILABLE` execution certification。E6 Run、event、attempt、
+baseline、semantic generation 2 与所有更早历史保持原字节；不得 resume E6 Run、制造第二个 E6 diagnostic、直接 DML 或把失败改判为
+外部依赖。
+
+### 14.1 Requirements
+
+- **R-E7-01 Single diagnostic authority.** Platform `complete` 与 `begin` 一样在同一 capability transaction 设置
+  `app.semantic_domain=falcon24`。E6 orphan 不由新 CLI 或手工 SQL关闭；唯一 `complete_falcon24_diagnostic(jsonb)` 由 E7 activation
+  request@4 在同一事务内调用。
+- **R-E7-02 Exact predecessor failure.** request@4 必须绑定 E6 attempt/run/manifest、exact current E6 authority、gen2 release、Run terminal
+  event `PROVIDER_PROFILE_NOT_AVAILABLE` 与 `retryable=false`。只允许
+  `FROZEN_CLOSURE_CHANGE_REQUIRED / PROVIDER_PROFILE_NOT_AVAILABLE`；已有 receipt、非 ACTIVE attempt、非 FAILED Run 或任何 E6 Q1/C1
+  均失败关闭。
+- **R-E7-03 All-old/all-new recovery.** 10799 的单一 `activate_falcon24_authority(jsonb)` 在一个 PostgreSQL transaction 中调用既有
+  diagnostic completion、推广 E7 provider certification、激活 E7 baseline/session/current。失败时保持 E6 attempt ACTIVE + current E6；
+  成功时只观察 E6 attempt FAILED + immutable receipt + current E7。
+- **R-E7-04 Real execution certification.** E7 不把历史 API authentication 当作 execution certification。必须以真实 DeepSeek credential
+  smoke 生成 `model-execution-certification@1.0.0`，精确绑定 system-default profile/config、deployment、context window、
+  `AT_LEAST_ONCE_ONLY` 与 canonical receipt hash。
+- **R-E7-05 Candidate visibility fence.** certification 先通过演进后的唯一 ModelCertificationReceipt store 写成非 active candidate，并绑定
+  exact E7 staging id。`list_provider_execution_profiles()` 只读取 active、由 current E7 binding 推广且与 LLM staging proof exact 的 receipt；
+  候选在 E6、崩溃窗口或错误 target 下不可见。
+- **R-E7-06 LLM proof evolution.** E5/E6 historical LLM predecessor-equality 只读保留。E7 LLM supporting proof 的 subject 继续绑定相同
+  model/provider authority，evidence 前进并加入 exact certification ref/hash/execution-profile hash/build/deployment；不得伪称新 evidence 与
+  E6 相等。
+- **R-E7-07 Dynamic Tool Loop unchanged.** E7 只修 authority closure。Root 每轮仍只决定当前 Tool Call；不存在业务 DAG、固定路由、
+  keyword dispatch 或 Host 预声明未来链路。
+- **R-E7-08 Formal first-failure rule.** E7 只允许一个非计分 diagnostic。PASS 后才可依次 E7-Q1 16/16、E7-C1 30/30；任一正式阶段首败
+  必须写 immutable FAIL/HOLD 并停止，禁止 retry/resume/跨 attempt 拼证据。
+
+### 14.2 Acceptance
+
+- [ ] **AC-E7-01** Adapter regression 证明 begin/complete 均设置 exact semantic domain；forced-RLS PostgreSQL 负例不再把一致的 pointer/runtime
+  误报为 release mismatch。
+- [ ] **AC-E7-02** 10799 fresh + exact E6 populated upgrade、RLS/security、failure injection、replay 与双连接 concurrency PASS；E1-E6、gen1/gen2
+  和原 E6 Run/event bytes 在迁移前后不变。
+- [ ] **AC-E7-03** 真实 DeepSeek certification candidate 在 E6 不可被 execution-profile reader 选中；E7 原子激活后 exact profile 为
+  `AVAILABLE`，且回执、LLM proof、baseline 和 current binding 完整闭合。
+- [ ] **AC-E7-04** E7 activation 后 E6 attempt=`FAILED` 且恰好一个 receipt，current=E7，semantic pointer/runtime/defaults 仍 exact gen2，
+  不存在中间混合状态。
+- [ ] **AC-E7-05** 唯一 E7 diagnostic 通过真实 composer 与答案入口 Trace UI 证明
+  Semantic -> Text2SQL -> SQL -> QueryEvidence -> typed Arrow -> Python -> AnalysisReport -> Chart，五类 Artifact 可用且 residual=0。
+- [ ] **AC-E7-06** E7-Q1=16/16、E7-C1=30/30；最终审计仍如实保留
+  `production_isolation_proven=false / production_gate=HOLD`。
+
+### 14.3 Operational preflight
+
+真实认证前必须从受控进程环境解析 `DEEPSEEK_API_KEY`，绝不写入参数、日志、数据库或 evidence。变量缺失时 certification CLI 在创建
+Run/candidate 前返回零写入 HOLD；不得用历史 credential ref、认证时间戳、假响应或其他模型代替。该项是外部 secret 前置条件，不授权读取
+shell history、日志或其他非权威残留来恢复密钥。

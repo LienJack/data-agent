@@ -429,3 +429,49 @@ try {
 }
 return verifyAndReadback(activationResult);
 ```
+
+## 18. Scenario: Frozen Diagnostic Orphan and Provider Certification Successor
+
+### 18.1 Scope / Trigger
+
+- 当前 Falcon epoch 的唯一正式 diagnostic Run 已不可重试地 FAILED，但 completion adapter 因事务上下文缺失未能写终态 receipt，留下
+  `ACTIVE` orphan attempt。
+- 同一失败还证明 current frozen model closure 缺少 exact `AVAILABLE` execution certification；修复必须进入 successor epoch。
+- 该场景禁止直接完成旧 attempt、在旧 epoch 暴露新 profile、resume旧 Run或新建同 epoch diagnostic。
+
+### 18.2 Contracts
+
+- `complete_falcon24_diagnostic` 仍是唯一 diagnostic terminal writer；successor activation 只能在同 transaction 内以 server-built exact
+  FAIL command调用它。
+- successor activation command必须绑定 predecessor attempt/run/manifest、FAILED Run terminal code与 `retryable=false`，并限制固定
+  failure class/code。数据库从 append-only event重算，不相信 CLI 自报。
+- live provider smoke receipt先写成 inactive candidate并绑定 successor staging。execution-profile reader只接受 current epoch推广的 binding；
+  STAGED/REJECTED candidate与旧 current均不可见。
+- successor LLM proof绑定 exact certification Artifact、execution profile、deployment、recovery capabilities、model config与 build identity；旧
+  predecessor-equality proof只读保留。
+- activation锁序固定为
+  `semantic fence -> Falcon activation advisory -> diagnostic advisory -> current -> semantic pointer/runtime -> defaults -> predecessor diagnostic -> provider candidate -> target authority`。
+- activation失败必须整笔保持 old diagnostic ACTIVE、candidate inactive、old current；成功必须同时得到 predecessor FAILED receipt、candidate
+  active/PROMOTED、successor current。不得用维护窗口代替该原子性。
+
+### 18.3 Validation and recovery
+
+| Condition | Result |
+|---|---|
+| credential缺失 | 创建 preparation Run前零写入 HOLD |
+| live smoke/Run/fence失败 | candidate不存在或REJECTED；正式 diagnostic不重试 |
+| candidate已STAGED但激活失败 | old current + orphan ACTIVE + candidate不可见 |
+| predecessor event/code/run不闭合 | activation rollback，稳定 authority error |
+| activation commit | old diagnostic FAILED receipt恰好一条 + successor/profile all-new |
+| 同命令重放 | 返回同一 activation/diagnostic/certification refs，不追加 receipt |
+
+Migration必须 snapshot E1-current、semantic release/projection、Run/event、diagnostic与provider artifact历史；除新 candidate、function/ACL/ledger外
+迁移前后 count/hash不变。测试必须覆盖 forced RLS semantic-domain context、inactive visibility、错误 profile/deployment/hash、failure injection、
+双连接锁序与 v3 historical replay。
+
+### 18.4 Wrong vs Correct
+
+```text
+Wrong: 新代码直接 complete 旧 attempt，再另一次事务激活 profile/E7。
+Correct: provider receipt先处于不可见 candidate；唯一 activation transaction调用唯一 completion并推广 candidate与E7。
+```

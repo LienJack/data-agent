@@ -888,3 +888,61 @@ Preconditions：前三包已提交、worktree clean、专用容器仍唯一、E4
 
 正式诊断第一次失败已触发 hard stop。E6-Q1/E6-C1保持 0；`production_isolation_proven=false`、production gate=`HOLD`。由于终态
 receipt persistence 本身需要新的 frozen-closure 修复，本任务不满足完成判定，不能继续门禁或声称完成。
+
+## 8. E7 unattended forward execution
+
+用户已在上述 terminal audit 后明确“授权”，批准按 PRD §14 / Design §19 前进；E6 首败和既有历史仍不可改写。
+
+### E7-W0 — Plan and evidence freeze
+
+- [x] 核对 current E6/gen2、唯一 E6 Run FAILED、diagnostic ACTIVE/receipt=0、E6-Q1/C1=0、frontier=10798、worktree clean。
+- [x] 证明 Platform complete 漏传 semantic domain；证明 exact model profile/config/authentication存在但 ModelCertificationReceipt=0。
+- [x] 更新 PRD/design/implement/runbook，校验 schema/RPC/锁序/状态机/恢复/文件/测试一致；本包验证后 scoped commit。
+
+### E7-W1 — Diagnostic and activation authority v4
+
+- [ ] 先写 adapter failing regression，再让 `complete` 与 `begin` 使用相同 semantic domain transaction context。
+- [ ] Contracts 增加 activation request@4/result@4，固定 E6 failure binding与 server-owned nested completion hash。
+- [ ] 10799 演进唯一 activation RPC；同事务调用唯一 diagnostic completion并切换 E7，覆盖 all-old/all-new、replay、RLS、并发。
+- [ ] focused/full tests、typecheck、renderer/inventory/static checks；独立 scoped commit。
+
+### E7-W2 — Provider execution certification staging
+
+- [ ] 增加 inactive certification candidate table、RLS/grants、stage/load/reject/promote narrow authority；不新增 runtime profile writer。
+- [ ] 演进 ModelCertificationReceipt store 支持 E7 staged commit，继续要求 live-smoke draft与 ACTIVE Run/fence。
+- [ ] execution-profile reader只暴露 current E7 PROMOTED exact binding；E6/staged/rejected candidate均不可见。
+- [ ] E7 LLM proof绑定 certification/deployment/execution-profile/build；Finalizer不再要求 E7 evidence等于 E6 predecessor。
+- [ ] Worker preparation CLI只用既有 Run/Queue/Event/Artifact authority；credential缺失零写入、输出永不含 secret。
+- [ ] focused/full tests与独立 scoped commit。
+
+### E7-W3 — 10799 proof and code validation
+
+- [ ] PostgreSQL 17 clean install、exact E6 populated clone、migration replay/rollback、history hash、RLS/security、failure injection与双连接并发。
+- [ ] Contracts/Platform/Worker/Web full tests + typecheck + Biome + public-data/secret scans + `git diff --check`。
+- [ ] 只提交 owned migration source/rendered/registry/support/evidence files；删除 scratch DB/container。
+
+### E7-W4 — Certification, migration and one activation
+
+- [ ] exact committed HEAD clean build/attestation，Web/Worker guard PASS。
+- [ ] 权威库应用 10799；先后核对迁移前后 E1-E6/gen1/gen2/E6 Run/event bytes不变。
+- [ ] 在受控环境注入真实 `DEEPSEEK_API_KEY`，运行一个 preparation Run并提交一个 inactive certification candidate；E6 reader证明不可见。
+- [ ] 使用全新 deterministic E7 staging id只运行一次 Finalizer/request@4。
+- [ ] post-readback：E6 diagnostic FAILED+receipt=1、current E7、certification AVAILABLE、semantic/defaults gen2 unchanged、E7 gates=0。
+
+### E7-W5 — One non-scoring diagnostic
+
+- [ ] 轮换应用账号；启动 exact E7 Web/Worker和瞬态 OpenSandbox；提交前 residual=0。
+- [ ] 只创建一个 E7 diagnostic；真实 composer只提交固定问题一次，从答案入口打开 exact Run Trace UI。
+- [ ] 核对完整动态 Tool Loop、五类 Artifact、chart和 residual=0；写 immutable PASS。首败写 FAIL/HOLD并立即停止。
+
+### E7-W6 — Formal gates
+
+- [ ] exact E7 diagnostic PASS 后创建唯一 E7-Q1，严格串行完成 G1=1/G2=5/G3=5/G4=5。
+- [ ] winning Q1 后才创建 E7-C1，5题 x cold/warm x3；每 slot同源 UI evidence/residual=0。
+- [ ] 任一阶段首败 HOLD并停止，不 retry/resume/跨 attempt拼接。
+
+### E7-W7 — Audit and cleanup
+
+- [ ] canonical audit E1-E7、gen1/gen2、E6 failure receipt、E7 certification/diagnostic/Q1/C1、Trace UI与 residual。
+- [ ] 保留真实 production isolation false/HOLD；停止服务并删除 credential temp、sandbox/container/scratch DB。
+- [ ] trellis-check、spec/runbook/evidence更新、最终 scoped commit；满足全部 AC 后才完成 goal。

@@ -885,3 +885,85 @@ orphan ACTIVE attempt；不能 resume 原 Run。
 
 首次正式诊断失败触发 hard stop。Web、Worker 与本任务 OpenSandbox server 已停止；OpenSandbox list 和 Worker sweep 均为 residual=0；
 轮换 auth profile、临时 secret、OpenSandbox DB/config 和本地 build 备份已删除。Docker 只保留既有四个长期容器。
+
+## 19. E7 atomic diagnostic recovery and provider execution closure
+
+### 19.1 State and storage
+
+10799 是 10798 之后的唯一 forward migration，不修改已发布 SQL。新增候选域：
+
+```text
+falcon24_llm_execution_certification_stage
+  S + target_epoch + staging_id + stage_id
+  profile/config/resource/provider/model
+  certification Artifact ref + receipt hash + execution_profile_hash
+  deployment id/hash + recovery capabilities
+  proof_hash + status(STAGED|PROMOTED|REJECTED)
+```
+
+身份字段插入后不可变；只有窄 RPC 可做 `STAGED -> PROMOTED|REJECTED`。认证 store 的 E7 staging method 仍验证权威 live-smoke draft、
+ACTIVE certification Run/fence、scope 和 canonical content，但把 Artifact 写为 `is_active=false` 并在同事务写 stage binding。普通 commit 路径
+保持原语义。execution-profile reader 对 Falcon current E7+ 只接受 current epoch 的 PROMOTED binding、active Artifact、exact LLM receipt
+proof 三者闭包；因此候选不会改变 E6 runtime。
+
+### 19.2 Contracts and ports
+
+- `falcon24-llm-execution-authority-proof@1.0.0`：服务器从 staged certification、model catalog、deployment 与 build identity构造。
+- `falcon24-activation-request@4.0.0`：保留 v3 retained material，并增加 exact
+  `predecessor_diagnostic_failure` 与 `llm_execution_stage_ref`。CLI 不提交 receipt bytes、projection payload、credential 或自报 digest。
+- `falcon24-retained-activation-result@4.0.0`：返回 E7 authority binding、E6 diagnostic receipt ref/hash 与 promoted certification ref/hash。
+- `PostgresFalcon24AuthorityEpoch.activateRetainedWithRecovery` 演进现有 adapter 并仍调用
+  `app_data_agent.activate_falcon24_authority(jsonb)`；不创建平行 activation RPC。
+- `ModelCertificationReceiptStore.stageFalcon24Successor` 是现有权威 store 的候选写阶段；live smoke draft brand 与 generic commit 相同，不能由 CLI
+  结构化对象伪造。
+
+### 19.3 Lock order and transaction
+
+全局顺序固定为：
+
+```text
+semantic fence
+-> Falcon activation advisory
+-> Falcon diagnostic advisory
+-> Falcon current
+-> semantic pointer/runtime
+-> workspace defaults pointer/revision
+-> predecessor E6 diagnostic attempt/run/events
+-> E7 certification stage/artifact
+-> E7 baseline/activation attempt/session/receipts
+```
+
+request@4 在锁内重验 E6 exact current、gen2、stage/baseline、零 E7 Run/gate污染，以及 E6 Run 的唯一失败事件。随后由同 transaction 构造标准
+`falcon24-diagnostic-complete@1.0.0` FAIL command并调用唯一 completion function；验证其 receipt 后推广 certification、激活 E7。任一步失败
+整笔回滚。成功后 postcondition 再验证 E6 receipt、current E7、profile binding 和 semantic/defaults unchanged。
+
+### 19.4 Provider certification flow
+
+一个非计分、非 diagnostic 的 E7 preparation Run 只用于 live certification。专用 Worker CLI 通过现有 repository/queue/event/fence authority
+完成 accept -> lease -> leased event -> live DeepSeek smoke -> staged receipt -> terminal Run；不直接 INSERT/UPDATE Run/Artifact。CLI 先验证 credential
+存在、target=E7、current=E6、正式 E6 diagnostic 已失败但尚无 receipt、E7 target zero-pollution；任一 preflight 失败时零写入。该 Run 不得作为
+diagnostic/Q1/C1 evidence。
+
+### 19.5 Crash recovery
+
+| Window | Observable state | Recovery |
+|---|---|---|
+| credential/config preflight fail | E6 orphan ACTIVE，无 preparation Run | 补齐 secret 后用同 deterministic operation；不算 formal retry |
+| live smoke fail | certification Run terminal FAIL，无 staged candidate | 修复外部 credential/profile；新 preparation Run，E6 formal diagnostic不重试 |
+| staged certification commit 后崩溃 | E6 current，inactive candidate STAGED | same-key load/replay；reader仍不可见 |
+| E7 stage/baseline fail | E6 current + terminal HOLD target；candidate仍不可见 | 新 staging id；旧 candidate可受控 REJECT |
+| request@4 任一步失败 | E6 diagnostic仍 ACTIVE，certification仍 inactive，current E6 | exact target attempt HOLD；修复代码后前进新 epoch/staging |
+| request@4 commit | E6 diagnostic FAILED + E7/profile all-new | 不回退；后续 frozen change前进 E8 |
+| E7 diagnostic/Q1/C1 首败 | exact immutable FAIL/HOLD | 立即停止，不 retry |
+
+### 19.6 Tests and file boundary
+
+- Contracts：request/result/proof strict schema、hash domain、epoch+1、错误 failure class/code/ref。
+- Platform：diagnostic domain context、activation v4 proof correlation、certification staging adapter；错误不得泄漏 SQL/secret。
+- Worker：credential zero-write preflight、live-smoke brand、Run/fence、candidate replay/conflict、secret redaction。
+- Web：E7 Finalizer 顺序、LLM proof lineage、v4 commit/readback、pre/post-commit error boundary。
+- Database 10799：candidate table/RLS/grants、list reader visibility、unique RPC evolution、populated history snapshot、all-old/all-new concurrency。
+- Runbook/Trellis：E7 exact identities、single-run evidence、Trace UI、residual 和 cleanup。
+
+PostgreSQL fixtures必须覆盖：inactive candidate在 E6 不可见；错误 profile/config/deployment/receipt hash失败；activation rollback不写 E6 receipt；
+成功只产生一个标准 diagnostic receipt并推广一个 certification；same-command replay返回同一 result；v3 E5/E6历史 replay语义不变。
