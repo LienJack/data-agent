@@ -1214,12 +1214,21 @@ export async function executeAnalysisToolLoop(input: {
         contract: input.result_contract,
         manifest: candidate.arguments,
         governed_operator_outputs: operatorObservations.map(
-          ({ call_id, operator_id, governed_result }) => ({
-            call_id,
-            operator_id,
-            result_sha256: governed_result.result_sha256 as `sha256:${string}`,
-            governed_result,
-          }),
+          ({ call_id, operator_id, governed_result }) => {
+            const obligation = input.operator_obligations.find(
+              (candidate) => candidate.call_id === call_id && candidate.operator_id === operator_id,
+            );
+            if (!obligation) {
+              throw new TypeError("ANALYSIS_RESULT_PUBLISH_OPERATOR_BINDING_MISMATCH");
+            }
+            return {
+              call_id,
+              operator_id,
+              result_sha256: governed_result.result_sha256 as `sha256:${string}`,
+              governed_result,
+              result_binding: obligation.result_binding,
+            };
+          },
         ),
         extractor: createOpenSandboxAnalysisResultSymbolExtractor(input.session),
       });

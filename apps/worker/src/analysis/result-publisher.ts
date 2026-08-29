@@ -13,6 +13,7 @@ import {
   analysisResultPublishObservationSchema,
   analysisResultPublishToolArgumentsSchema,
 } from "@data-agent/contracts/ports";
+import type { StatisticalOperatorObligation } from "@data-agent/contracts/statistical-operators";
 import { z } from "zod";
 
 const encoder = new TextEncoder();
@@ -181,6 +182,7 @@ export interface GovernedOperatorPublishedValue {
   readonly operator_id: string;
   readonly result_sha256: `sha256:${string}`;
   readonly governed_result: GovernedOperatorResultRef;
+  readonly result_binding?: StatisticalOperatorObligation["result_binding"];
 }
 
 export interface PublishedAnalysisResult {
@@ -228,6 +230,101 @@ function decodeWireValue(value: WireValue): unknown {
 
 function isRecord(value: unknown): value is Readonly<Record<string, unknown>> {
   return typeof value === "object" && value !== null && !Array.isArray(value);
+}
+
+function jsonPointerTokens(pointer: string): readonly string[] {
+  if (!pointer.startsWith("/") || pointer === "/") {
+    throw new TypeError("ANALYSIS_RESULT_PUBLISH_OPERATOR_BINDING_PATH_INVALID");
+  }
+  return pointer
+    .slice(1)
+    .split("/")
+    .map((token) => token.replaceAll("~1", "/").replaceAll("~0", "~"));
+}
+
+function readJsonPointer(value: unknown, pointer: string): unknown {
+  let current = value;
+  for (const token of jsonPointerTokens(pointer)) {
+    if (isRecord(current) && Object.hasOwn(current, token)) {
+      current = current[token];
+      continue;
+    }
+    if (Array.isArray(current) && /^(?:0|[1-9][0-9]*)$/u.test(token)) {
+      const index = Number(token);
+      if (index < current.length) {
+        current = current[index];
+        continue;
+      }
+    }
+    throw new TypeError("ANALYSIS_RESULT_PUBLISH_OPERATOR_BINDING_PATH_INVALID");
+  }
+  return current;
+}
+
+function canonicalClone(value: unknown): unknown {
+  return JSON.parse(canonicalizeJson(value)) as unknown;
+}
+
+function materializeOperatorBoundResult(input: {
+  readonly model_result: Readonly<Record<string, unknown>>;
+  readonly bindings: readonly {
+    readonly result_binding: StatisticalOperatorObligation["result_binding"];
+    readonly authoritative_output: Readonly<Record<string, unknown>>;
+  }[];
+}): Readonly<Record<string, unknown>> {
+  const authoritativeRoots = new Map<string, unknown>();
+  for (const { result_binding: binding, authoritative_output: output } of input.bindings) {
+    const resultTokens = jsonPointerTokens(binding.result_collection_path);
+    const rootName = resultTokens[0];
+    if (!rootName) {
+      throw new TypeError("ANALYSIS_RESULT_PUBLISH_OPERATOR_BINDING_PATH_INVALID");
+    }
+    const authoritativeCollection = readJsonPointer(output, binding.operator_collection_path);
+    if (!Array.isArray(authoritativeCollection)) {
+      throw new TypeError("ANALYSIS_RESULT_PUBLISH_OPERATOR_BINDING_PATH_INVALID");
+    }
+    const tail = resultTokens.slice(1);
+    if (tail.length === 0) {
+      if (authoritativeRoots.has(rootName)) {
+        throw new TypeError("ANALYSIS_RESULT_PUBLISH_OPERATOR_BINDING_PATH_CONFLICT");
+      }
+      authoritativeRoots.set(rootName, canonicalClone(authoritativeCollection));
+      continue;
+    }
+    let root = authoritativeRoots.get(rootName);
+    if (root === undefined) {
+      root = Object.create(null) as Record<string, unknown>;
+      authoritativeRoots.set(rootName, root);
+    }
+    if (!isRecord(root)) {
+      throw new TypeError("ANALYSIS_RESULT_PUBLISH_OPERATOR_BINDING_PATH_CONFLICT");
+    }
+    let parent = root as Record<string, unknown>;
+    for (const [index, token] of tail.entries()) {
+      if (/^(?:0|[1-9][0-9]*)$/u.test(token)) {
+        throw new TypeError("ANALYSIS_RESULT_PUBLISH_OPERATOR_BINDING_PATH_INVALID");
+      }
+      const isLeaf = index === tail.length - 1;
+      if (isLeaf) {
+        if (Object.hasOwn(parent, token)) {
+          throw new TypeError("ANALYSIS_RESULT_PUBLISH_OPERATOR_BINDING_PATH_CONFLICT");
+        }
+        parent[token] = canonicalClone(authoritativeCollection);
+        continue;
+      }
+      const existing = parent[token];
+      if (existing === undefined) {
+        const child = Object.create(null) as Record<string, unknown>;
+        parent[token] = child;
+        parent = child;
+      } else if (isRecord(existing)) {
+        parent = existing as Record<string, unknown>;
+      } else {
+        throw new TypeError("ANALYSIS_RESULT_PUBLISH_OPERATOR_BINDING_PATH_CONFLICT");
+      }
+    }
+  }
+  return Object.freeze({ ...input.model_result, ...Object.fromEntries(authoritativeRoots) });
 }
 
 export function decodeAnalysisExtractedMappingSymbol(
@@ -512,25 +609,47 @@ export async function prepareAnalysisResult(input: {
   if (resultSymbol?.symbol_kind !== "MAPPING") {
     throw new TypeError("ANALYSIS_RESULT_DOCUMENT_SYMBOL_INVALID");
   }
-  const resultValue = validateResultDocument(decodeWireValue(resultSymbol.value), contract);
-  const resultBytes = encoder.encode(canonicalizeJson(resultValue)).byteLength;
-  if (resultBytes > contract.limits.max_result_bytes) {
-    throw new TypeError("ANALYSIS_RESULT_DOCUMENT_SIZE_EXCEEDED");
+  const decodedResultValue = decodeWireValue(resultSymbol.value);
+  if (!isRecord(decodedResultValue)) {
+    throw new TypeError("ANALYSIS_RESULT_DOCUMENT_INVALID");
   }
-
+  const authoritativeBindings: {
+    result_binding: StatisticalOperatorObligation["result_binding"];
+    authoritative_output: Readonly<Record<string, unknown>>;
+  }[] = [];
   for (const binding of manifest.operator_bindings) {
     const symbol = symbols.get(binding.result_symbol);
     const governed = input.governed_operator_outputs.find(
       ({ call_id, operator_id }) =>
         call_id === binding.call_id && operator_id === binding.operator_id,
     );
+    if (symbol?.symbol_kind !== "MAPPING" || !governed) {
+      throw new TypeError("ANALYSIS_RESULT_PUBLISH_OPERATOR_VALUE_MISMATCH");
+    }
+    const authoritativeOutput = decodeWireValue(symbol.value);
     if (
-      symbol?.symbol_kind !== "MAPPING" ||
-      !governed ||
-      (await sha256ContentHash(decodeWireValue(symbol.value))) !== governed.result_sha256
+      !isRecord(authoritativeOutput) ||
+      (await sha256ContentHash(authoritativeOutput)) !== governed.result_sha256
     ) {
       throw new TypeError("ANALYSIS_RESULT_PUBLISH_OPERATOR_VALUE_MISMATCH");
     }
+    if (governed.result_binding) {
+      authoritativeBindings.push({
+        result_binding: governed.result_binding,
+        authoritative_output: authoritativeOutput,
+      });
+    }
+  }
+  const resultValue = validateResultDocument(
+    materializeOperatorBoundResult({
+      model_result: decodedResultValue,
+      bindings: authoritativeBindings,
+    }),
+    contract,
+  );
+  const resultBytes = encoder.encode(canonicalizeJson(resultValue)).byteLength;
+  if (resultBytes > contract.limits.max_result_bytes) {
+    throw new TypeError("ANALYSIS_RESULT_DOCUMENT_SIZE_EXCEEDED");
   }
 
   const tableRows = new Map<string, readonly Readonly<Record<string, unknown>>[]>();
@@ -642,12 +761,14 @@ export async function prepareAnalysisResult(input: {
       .map(async (symbol) => ({
         symbol_name: symbol.symbol_name,
         value_hash: await sha256ContentHash(
-          symbol.symbol_kind === "MAPPING"
-            ? decodeWireValue(symbol.value)
-            : {
-                columns: symbol.columns,
-                rows: symbol.rows.map((row) => row.map(decodeWireValue)),
-              },
+          symbol.symbol_name === manifest.result_symbol
+            ? resultValue
+            : symbol.symbol_kind === "MAPPING"
+              ? decodeWireValue(symbol.value)
+              : {
+                  columns: symbol.columns,
+                  rows: symbol.rows.map((row) => row.map(decodeWireValue)),
+                },
         ),
       })),
   );
@@ -745,4 +866,5 @@ export const resultPublisherInternals = Object.freeze({
   validateResultDocument,
   validateTable,
   validateTableProjection,
+  materializeOperatorBoundResult,
 });

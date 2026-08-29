@@ -209,6 +209,84 @@ async function inventoryProjectionContract() {
   });
 }
 
+async function operatorBoundResultContract() {
+  return buildAnalysisResultContract({
+    schema_version: "analysis-result-contract@2.0.0",
+    contract_id: "falcon24.operator-bound.result",
+    semantic_context_hash: hash("a"),
+    result_fields: [
+      {
+        field: "operator_summary",
+        data_type: "JSON",
+        nullable: false,
+        semantic_role: "DERIVED",
+      },
+      { field: "summary", data_type: "STRING", nullable: false, semantic_role: "DERIVED" },
+    ],
+    metric_bindings: [],
+    dimension_bindings: [],
+    grain: { dimension_ids: [], time_dimension_id: null, time_grain: "NONE" },
+    lineage: [
+      {
+        field: "operator_summary",
+        source_semantic_object_ids: ["metric.order_revenue"],
+        source_physical_fields: ["orders.total_amount"],
+        transformation: "STATISTICAL_OPERATOR",
+      },
+      {
+        field: "summary",
+        source_semantic_object_ids: ["metric.order_revenue"],
+        source_physical_fields: ["orders.total_amount"],
+        transformation: "STATISTICAL_OPERATOR",
+      },
+    ],
+    collection_constraints: [],
+    tables: [
+      {
+        table_id: "operator_bound_table",
+        title_zh: "算子结果",
+        required: true,
+        columns: [
+          {
+            key: "label",
+            label_zh: "指标",
+            data_type: "STRING",
+            nullable: false,
+            semantic_object_id: "dimension.metric_label",
+            semantic_role: "DIMENSION",
+          },
+          {
+            key: "value",
+            label_zh: "数值",
+            data_type: "NUMBER",
+            nullable: false,
+            semantic_object_id: "metric.order_revenue",
+            semantic_role: "METRIC",
+          },
+        ],
+        projection: { mode: "MODEL_DERIVED" },
+        max_rows: 1,
+      },
+    ],
+    charts: [
+      {
+        chart_id: "operator_bound_chart",
+        title_zh: "算子结果",
+        required: true,
+        intent: "TREND",
+        table_id: "operator_bound_table",
+        allowed_template_ids: ["line.multi-series@1"],
+      },
+    ],
+    limits: {
+      max_result_bytes: 1_048_576,
+      max_table_rows: 1,
+      max_table_columns: 2,
+      max_closure_bytes: 4_194_304,
+    },
+  });
+}
+
 function manifest() {
   return {
     schema_version: "analysis-result-publish-tool@1.0.0" as const,
@@ -529,6 +607,147 @@ describe("server-owned Result Publisher", () => {
       template_id: "line.multi-series@1",
       dataset: { total_rows: 2 },
     });
+  });
+
+  it("materializes declared operator result paths from the protected server binding", async () => {
+    const authoritativeOutput = {
+      series: [{ label: "metric_value", slope: 10, sample_size: 12 }],
+    };
+    const governed = await governedOutput();
+    const prepared = await prepareAnalysisResult({
+      contract: await operatorBoundResultContract(),
+      manifest: {
+        schema_version: "analysis-result-publish-tool@1.0.0",
+        publish_id: "operator-bound-final",
+        result_symbol: "result_document",
+        table_bindings: [{ table_id: "operator_bound_table", data_symbol: "operator_bound_table" }],
+        chart_bindings: [
+          {
+            chart_id: "operator_bound_chart",
+            intent: "TREND",
+            template_id: "line.multi-series@1",
+            data_symbol: "operator_bound_table",
+            x_field: "label",
+            y_fields: ["value"],
+            series_field: "",
+            lower_bound_field: "",
+            upper_bound_field: "",
+          },
+        ],
+        operator_bindings: [
+          {
+            call_id: governed.call_id,
+            operator_id: governed.operator_id,
+            result_symbol: "protected_operator_result",
+          },
+        ],
+      },
+      governed_operator_outputs: [
+        {
+          ...governed,
+          result_sha256: await sha256ContentHash(authoritativeOutput),
+          governed_result: {
+            ...governed.governed_result,
+            result_sha256: await sha256ContentHash(authoritativeOutput),
+          },
+          result_binding: {
+            result_output_name: "result",
+            result_collection_path: "/operator_summary/series",
+            operator_collection_path: "/series",
+            label_fields: ["label"],
+            value_bindings: [
+              {
+                result_field: "slope",
+                operator_field: "slope",
+                comparison: "EXACT",
+                absolute_tolerance: 0,
+                relative_tolerance: 0,
+              },
+            ],
+            require_exact_label_set: true,
+          },
+        },
+      ],
+      extractor: {
+        async extract() {
+          return {
+            schema_version: "analysis-extracted-symbols@1.0.0",
+            symbols: [
+              {
+                symbol_name: "result_document",
+                symbol_kind: "MAPPING",
+                value: {
+                  kind: "OBJECT",
+                  entries: [
+                    {
+                      key: "operator_summary",
+                      value: {
+                        kind: "OBJECT",
+                        entries: [
+                          { key: "slope", value: { kind: "NUMBER", value: 9.5 } },
+                          { key: "sample_size", value: { kind: "INTEGER", value: "12" } },
+                        ],
+                      },
+                    },
+                    { key: "summary", value: { kind: "STRING", value: "模型解释" } },
+                  ],
+                },
+              },
+              {
+                symbol_name: "protected_operator_result",
+                symbol_kind: "MAPPING",
+                value: {
+                  kind: "OBJECT",
+                  entries: [
+                    {
+                      key: "series",
+                      value: {
+                        kind: "ARRAY",
+                        items: [
+                          {
+                            kind: "OBJECT",
+                            entries: [
+                              { key: "label", value: { kind: "STRING", value: "metric_value" } },
+                              { key: "slope", value: { kind: "NUMBER", value: 10 } },
+                              { key: "sample_size", value: { kind: "INTEGER", value: "12" } },
+                            ],
+                          },
+                        ],
+                      },
+                    },
+                  ],
+                },
+              },
+              {
+                symbol_name: "operator_bound_table",
+                symbol_kind: "TABLE",
+                columns: ["label", "value"],
+                rows: [
+                  [
+                    { kind: "STRING", value: "metric_value" },
+                    { kind: "NUMBER", value: 10 },
+                  ],
+                ],
+              },
+            ],
+          };
+        },
+      },
+    });
+    const resultArtifact = prepared.closure.artifacts.find(
+      ({ artifact_kind }) => artifact_kind === "RESULT",
+    );
+    if (!resultArtifact) throw new Error("result artifact missing");
+    const result = JSON.parse(decoder.decode(resultArtifact.content)) as {
+      data: { operator_summary: unknown; summary: string };
+    };
+
+    expect(result.data).toEqual({ operator_summary: authoritativeOutput, summary: "模型解释" });
+    expect(
+      prepared.closure.analytical_value_hashes.find(
+        ({ symbol_name }) => symbol_name === "result_document",
+      )?.value_hash,
+    ).toBe(await sha256ContentHash(result.data));
   });
 
   it("enforces bounded literal text policy before any result is staged", async () => {
