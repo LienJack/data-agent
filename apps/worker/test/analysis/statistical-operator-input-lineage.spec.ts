@@ -13,7 +13,10 @@ import {
 } from "apache-arrow";
 import { describe, expect, it } from "vitest";
 import type { GovernedAnalysisInput } from "../../src/analysis/governed-analysis-input.js";
-import { verifyStatisticalOperatorInputLineage } from "../../src/analysis/statistical-operator-input-lineage.js";
+import {
+  bindStatisticalOperatorServerTransformInputs,
+  verifyStatisticalOperatorInputLineage,
+} from "../../src/analysis/statistical-operator-input-lineage.js";
 
 const obligation = {
   call_id: "q1_segment_drivers",
@@ -273,6 +276,89 @@ describe("statistical operator input lineage", () => {
         governed_inputs: [timestampGoverned],
       }),
     ).toBeNull();
+  });
+
+  it("replaces model-prepared server-transform rows with the authoritative projection", () => {
+    const mannKendallObligation = {
+      call_id: "single_series_mann_kendall",
+      operator_id: "trend.mann-kendall-original@1",
+      input_lineage_bindings: [
+        {
+          lineage_kind: "SERVER_TRANSFORM_EXACT",
+          operator_input_name: "series",
+          governed_input_name: "query_evidence",
+          transform_id: "analysis.single-series.mann-kendall.v1",
+        },
+      ],
+      result_binding: {
+        result_output_name: "result",
+        result_collection_path: "/mann_kendall/series",
+        operator_collection_path: "/series",
+        label_fields: ["label"],
+        value_bindings: [
+          {
+            result_field: "p_value",
+            operator_field: "p_value",
+            comparison: "EXACT",
+            absolute_tolerance: 0,
+            relative_tolerance: 0,
+          },
+        ],
+        require_exact_label_set: true,
+      },
+    } as const satisfies StatisticalOperatorObligation;
+    const timestampTable = new Table({
+      order_month: vectorFromArray(
+        [
+          new Date("2023-12-01T00:00:00.000Z"),
+          new Date("2024-01-01T00:00:00.000Z"),
+          new Date("2024-02-01T00:00:00.000Z"),
+        ],
+        new TimestampMillisecond(),
+      ),
+      order_revenue: vectorFromArray([100, 125, 110], new Float64()),
+    });
+    const governed = {
+      name: "query_evidence",
+      format: "ARROW",
+      content: tableToIPC(timestampTable, "file"),
+    } as GovernedAnalysisInput;
+    const modelPrepared = {
+      series: [
+        {
+          label: "order_revenue",
+          order: ["2023-12-01 00:00:00", "2024-01-01 00:00:00", "2024-02-01 00:00:00"],
+          value: [100, 125, 110],
+        },
+      ],
+    };
+
+    expect(
+      verifyStatisticalOperatorInputLineage({
+        obligation: mannKendallObligation,
+        inputs: modelPrepared,
+        governed_inputs: [governed],
+      }),
+    ).toMatchObject({ code: "ANALYSIS_OPERATOR_ARGUMENT_LINEAGE_MISMATCH" });
+
+    expect(
+      bindStatisticalOperatorServerTransformInputs({
+        obligation: mannKendallObligation,
+        inputs: modelPrepared,
+        governed_inputs: [governed],
+      }),
+    ).toEqual({
+      ok: true,
+      inputs: {
+        series: [
+          {
+            label: "order_revenue",
+            order: ["2023-12-01", "2024-01-01", "2024-02-01"],
+            value: [100, 125, 110],
+          },
+        ],
+      },
+    });
   });
 
   it("projects an exact protected operator result and fails closed when it is unavailable", () => {

@@ -46,7 +46,10 @@ import {
   prepareAnalysisResult,
   stagePreparedAnalysisResult,
 } from "./result-publisher.js";
-import { verifyStatisticalOperatorInputLineage } from "./statistical-operator-input-lineage.js";
+import {
+  bindStatisticalOperatorServerTransformInputs,
+  verifyStatisticalOperatorInputLineage,
+} from "./statistical-operator-input-lineage.js";
 import { preflightStatisticalOperatorArguments } from "./statistical-operator-input-preflight.js";
 
 const encoder = new TextEncoder();
@@ -1076,28 +1079,27 @@ export async function executeAnalysisToolLoop(input: {
         repair("CELL_EXECUTION", error.message, turnIndex, candidate.tool_name, "CELL_FAILED");
         continue;
       }
-      const requestDocument = {
-        schema_version: "statistical-operator-tool-call@1.0.0",
-        call_id: args.call_id,
-        operator_id: args.operator_id,
-        operator_registry_digest: STATISTICAL_OPERATOR_REGISTRY_DIGEST,
-        runtime_profile: input.runtime_profile,
+      const lineageBoundInputs = bindStatisticalOperatorServerTransformInputs({
         obligation,
         inputs: extractedArguments.inputs,
-        parameters: extractedArguments.parameters,
-      } as const;
-      const preflightIssue =
-        preflightStatisticalOperatorArguments({
-          operator_id: obligation.operator_id,
-          inputs: extractedArguments.inputs,
-          parameters: extractedArguments.parameters,
-        }) ??
-        verifyStatisticalOperatorInputLineage({
-          obligation,
-          inputs: extractedArguments.inputs,
-          governed_inputs: input.governed_inputs,
-          protected_operator_outputs: protectedOperatorOutputs,
-        });
+        governed_inputs: input.governed_inputs,
+      });
+      const operatorInputs = lineageBoundInputs.ok
+        ? lineageBoundInputs.inputs
+        : extractedArguments.inputs;
+      const preflightIssue = lineageBoundInputs.ok
+        ? (preflightStatisticalOperatorArguments({
+            operator_id: obligation.operator_id,
+            inputs: operatorInputs,
+            parameters: extractedArguments.parameters,
+          }) ??
+          verifyStatisticalOperatorInputLineage({
+            obligation,
+            inputs: operatorInputs,
+            governed_inputs: input.governed_inputs,
+            protected_operator_outputs: protectedOperatorOutputs,
+          }))
+        : lineageBoundInputs.issue;
       if (preflightIssue) {
         messages.push(
           ...serverToolMessage({
@@ -1120,6 +1122,16 @@ export async function executeAnalysisToolLoop(input: {
         );
         continue;
       }
+      const requestDocument = {
+        schema_version: "statistical-operator-tool-call@1.0.0",
+        call_id: args.call_id,
+        operator_id: args.operator_id,
+        operator_registry_digest: STATISTICAL_OPERATOR_REGISTRY_DIGEST,
+        runtime_profile: input.runtime_profile,
+        obligation,
+        inputs: operatorInputs,
+        parameters: extractedArguments.parameters,
+      } as const;
       const request = encoder.encode(JSON.stringify(requestDocument));
       await input.governed_result_bridge.recordOperatorIntent({
         call_id: args.call_id,

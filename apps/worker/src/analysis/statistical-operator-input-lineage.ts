@@ -102,6 +102,64 @@ function canonicalExact(left: unknown, right: unknown): boolean {
 }
 
 /**
+ * SERVER_TRANSFORM_EXACT means the Host owns the transformed operator rows,
+ * not merely their validation. Replace model-prepared copies before preflight
+ * and durable operator intent so representation drift cannot become authority.
+ */
+export function bindStatisticalOperatorServerTransformInputs(input: {
+  readonly obligation: StatisticalOperatorObligation;
+  readonly inputs: Readonly<Record<string, unknown>>;
+  readonly governed_inputs: readonly GovernedAnalysisInput[];
+}):
+  | { readonly ok: true; readonly inputs: Readonly<Record<string, unknown>> }
+  | { readonly ok: false; readonly issue: StatisticalOperatorInputIssue } {
+  const operator = STATISTICAL_OPERATOR_MANIFEST.operators.find(
+    ({ operator_id: operatorId }) => operatorId === input.obligation.operator_id,
+  );
+  if (!operator) {
+    return {
+      ok: false,
+      issue: issue("ANALYSIS_OPERATOR_ARGUMENT_LINEAGE_BINDING_INVALID", null, null),
+    };
+  }
+  const boundInputs: Record<string, unknown> = { ...input.inputs };
+  for (const binding of input.obligation.input_lineage_bindings) {
+    if (binding.lineage_kind !== "SERVER_TRANSFORM_EXACT") continue;
+    const operatorInput = operator.inputs.find(({ name }) => name === binding.operator_input_name);
+    const expectedFields = operatorInput ? Object.keys(operatorInput.record_shape) : [];
+    const governed = input.governed_inputs.find(({ name }) => name === binding.governed_input_name);
+    if (!operatorInput || governed?.format !== "ARROW") {
+      return {
+        ok: false,
+        issue: issue(
+          "ANALYSIS_OPERATOR_ARGUMENT_LINEAGE_BINDING_INVALID",
+          binding.operator_input_name,
+          null,
+          expectedFields,
+        ),
+      };
+    }
+    try {
+      boundInputs[binding.operator_input_name] = recomputeStatisticalOperatorServerTransform({
+        transform_id: binding.transform_id,
+        governed_rows: governedRows(governed),
+      });
+    } catch {
+      return {
+        ok: false,
+        issue: issue(
+          "ANALYSIS_OPERATOR_ARGUMENT_LINEAGE_BINDING_INVALID",
+          binding.operator_input_name,
+          null,
+          expectedFields,
+        ),
+      };
+    }
+  }
+  return { ok: true, inputs: Object.freeze(boundInputs) };
+}
+
+/**
  * Verifies direct, all-row operator inputs against the authoritative governed
  * Arrow materialization. This closes semantic column identity before an
  * operator intent can become durable; equal runtime types are not sufficient.
