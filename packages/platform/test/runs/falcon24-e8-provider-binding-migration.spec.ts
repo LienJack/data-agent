@@ -37,6 +37,10 @@ describe("10800 Falcon24 E8 provider binding recovery", () => {
     expect(migration).toContain("expected_readiness','AVAILABLE'");
     expect(migration).toContain("observed_readiness','STALE'");
     expect(migration).toContain("DA_FALCON24_EPOCH_CLOSURE_FAILURE_IMMUTABLE");
+    expect(migration).toContain(
+      "grant select,insert,update on table app_data_agent.falcon24_epoch_closure_failure_receipts",
+    );
+    expect(migration).toContain("'SELECT,INSERT,UPDATE'");
     expect(migration).toContain("list_provider_execution_profiles_pre_e7()");
     expect(migration).toContain("list_provider_execution_profiles_pre_e8()");
   });

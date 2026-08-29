@@ -23,7 +23,9 @@ using(platform.backend_context_matches(app_id,tenant_id,environment,false)
 with check(platform.backend_context_matches(app_id,tenant_id,environment,true)
   and principal_id=(select principal_id from platform.current_backend_authority(true)));
 
-grant select,insert on table app_data_agent.falcon24_epoch_closure_failure_receipts
+-- SELECT ... FOR SHARE requires UPDATE privilege even though the immutable
+-- trigger rejects every actual UPDATE/DELETE attempt.
+grant select,insert,update on table app_data_agent.falcon24_epoch_closure_failure_receipts
   to data_agent_u6_rpc_owner;
 grant execute on function
   app_data_agent.list_provider_execution_profiles_pre_e7(),

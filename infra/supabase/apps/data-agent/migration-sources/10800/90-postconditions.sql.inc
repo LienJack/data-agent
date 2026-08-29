@@ -10,6 +10,10 @@ begin
         'app_data_agent.falcon24_epoch_closure_failure_receipts'::regclass
         and trigger_row.tgname='falcon24_epoch_closure_failure_immutable'
         and not trigger_row.tgisinternal)
+    or not pg_catalog.has_table_privilege(
+      'data_agent_u6_rpc_owner',
+      'app_data_agent.falcon24_epoch_closure_failure_receipts',
+      'SELECT,INSERT,UPDATE')
   then raise exception using errcode='P0001',
     message='FALCON24_E8_CLOSURE_FAILURE_STORAGE_POSTCONDITION_FAILED'; end if;
   foreach definition in array array[

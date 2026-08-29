@@ -1,4 +1,4 @@
--- falcon24_e8_provider_binding_migration_checksum: sha256:1d2c1e31d023991bbf9237c74f8b5432e1c0b485826c70c17c6191da299f57e1
+-- falcon24_e8_provider_binding_migration_checksum: sha256:f388b153ccc9264b5f68fb4b7d718860331370ce144625ffd2bb24c61f66e307
 begin;
 
 select platform.acquire_migration_lock(
@@ -535,7 +535,9 @@ using(platform.backend_context_matches(app_id,tenant_id,environment,false)
 with check(platform.backend_context_matches(app_id,tenant_id,environment,true)
   and principal_id=(select principal_id from platform.current_backend_authority(true)));
 
-grant select,insert on table app_data_agent.falcon24_epoch_closure_failure_receipts
+-- SELECT ... FOR SHARE requires UPDATE privilege even though the immutable
+-- trigger rejects every actual UPDATE/DELETE attempt.
+grant select,insert,update on table app_data_agent.falcon24_epoch_closure_failure_receipts
   to data_agent_u6_rpc_owner;
 grant execute on function
   app_data_agent.list_provider_execution_profiles_pre_e7(),
@@ -572,6 +574,10 @@ begin
         'app_data_agent.falcon24_epoch_closure_failure_receipts'::regclass
         and trigger_row.tgname='falcon24_epoch_closure_failure_immutable'
         and not trigger_row.tgisinternal)
+    or not pg_catalog.has_table_privilege(
+      'data_agent_u6_rpc_owner',
+      'app_data_agent.falcon24_epoch_closure_failure_receipts',
+      'SELECT,INSERT,UPDATE')
   then raise exception using errcode='P0001',
     message='FALCON24_E8_CLOSURE_FAILURE_STORAGE_POSTCONDITION_FAILED'; end if;
   foreach definition in array array[
@@ -623,6 +629,6 @@ $postconditions$;
 select platform.assert_migration_checksum(
   'app','00000000-0000-4000-8000-00000000da01'::uuid,
   '20260725010800_app_data_agent_falcon24_e8_provider_binding',
-  'sha256:1d2c1e31d023991bbf9237c74f8b5432e1c0b485826c70c17c6191da299f57e1');
+  'sha256:f388b153ccc9264b5f68fb4b7d718860331370ce144625ffd2bb24c61f66e307');
 
 commit;
