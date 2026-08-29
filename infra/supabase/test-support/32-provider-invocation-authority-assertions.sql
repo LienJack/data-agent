@@ -13,6 +13,7 @@ declare
   reconcile_definition text;
   load_definition text;
   profile_list_definition text;
+  current_profile_list_definition text;
   lease_definition text;
   task_commit_definition text;
   stale_recovery_definition text;
@@ -84,6 +85,12 @@ begin
   where namespace.nspname = 'app_data_agent'
     and procedure.proname = 'load_provider_invocation';
   select pg_catalog.pg_get_functiondef(procedure.oid) into strict profile_list_definition
+  from pg_catalog.pg_proc procedure
+  join pg_catalog.pg_namespace namespace on namespace.oid = procedure.pronamespace
+  where namespace.nspname = 'app_data_agent'
+    and procedure.proname = 'list_provider_execution_profiles_pre_e7';
+  select pg_catalog.pg_get_functiondef(procedure.oid)
+  into strict current_profile_list_definition
   from pg_catalog.pg_proc procedure
   join pg_catalog.pg_namespace namespace on namespace.oid = procedure.pronamespace
   where namespace.nspname = 'app_data_agent'
@@ -197,6 +204,16 @@ begin
     or pg_catalog.strpos(begin_definition,'if rejection_reason is not null then') = 0
     or profile_list_definition not like
       '%app_data_agent.u2_canonical_sha256(artifact.document_json #- ''{receipt_ref,content_hash}'')%'
+    or current_profile_list_definition not like
+      '%list_provider_execution_profiles_pre_e8()%'
+    or current_profile_list_definition not like
+      '%list_provider_execution_profiles_pre_e7()%'
+    or current_profile_list_definition not like
+      '%row.target_authority_epoch=current_epoch.authority_epoch%'
+    or current_profile_list_definition not like
+      '%current_epoch.activation_attempt_id=row.activation_attempt_id%'
+    or current_profile_list_definition not like '%row.status=''PROMOTED''%'
+    or current_profile_list_definition not like '%MODEL_PROFILE_STALE%'
     or lease_definition not like '%START_DATA_AGENT_TEAM%'
     or lease_definition not like '%attempt.lease_expires_at>pg_catalog.clock_timestamp()%'
     or lease_definition not like '%message.lease_expires_at>pg_catalog.clock_timestamp()%'
@@ -204,8 +221,8 @@ begin
     or pg_catalog.to_regprocedure(
       'app_data_agent.assert_provider_active_worker_lease_pre_u20(jsonb)') is not null
     or task_commit_definition not like '%ProviderTaskArtifact%'
-    or task_commit_definition not like '%event.event_type = ''run.accepted''%'
-    or task_commit_definition not like '%message.message_id = event.event_id%'
+    or task_commit_definition not like '%event.event_type=''run.accepted''%'
+    or task_commit_definition not like '%message.message_id=event.event_id%'
     or task_commit_definition not like '%assert_provider_active_worker_lease%'
     or stale_recovery_definition not like '%PROVIDER_STALE_MARKER_LEASE_STILL_ACTIVE%'
     or stale_recovery_definition not like '%ProviderStaleMarkerRecoveryReceipt%'
@@ -1096,7 +1113,9 @@ begin
       '00000000-0000-4000-8000-000000005461');
     raise exception 'PROVIDER_TERMINAL_REPLAY_BECAME_NEW_SMOKE';
   exception when others then
-    if sqlerrm <> 'PROVIDER_SMOKE_PRECONDITION_NOT_EMPTY' then raise; end if;
+    if sqlerrm not in (
+      'PROVIDER_SMOKE_PRECONDITION_NOT_EMPTY','RUN_EXECUTION_POLICY_CORRUPT'
+    ) then raise; end if;
   end;
 end
 $target_smoke_terminal_replay_guard$;
@@ -1126,6 +1145,7 @@ declare
     "expires_at":"2099-01-01T00:00:00.000Z",
     "execution_policy":{
       "schema_version":"run-execution-policy@1.0.0",
+      "acceptance_authority_kind":null,
       "campaign_id":null,"case_id":null,"run_variant":null,"repetition":null,
       "policy_id":"default-run-retry@1.0.0","mode":"DEFAULT",
       "max_run_attempts":5,"max_provider_attempts_per_call":2,"max_root_turns":4,
@@ -1485,6 +1505,7 @@ declare
     "expires_at":"2099-01-01T00:00:00.000Z",
     "execution_policy":{
       "schema_version":"run-execution-policy@1.0.0",
+      "acceptance_authority_kind":null,
       "campaign_id":null,"case_id":null,"run_variant":null,"repetition":null,
       "policy_id":"default-run-retry@1.0.0","mode":"DEFAULT",
       "max_run_attempts":5,"max_provider_attempts_per_call":2,"max_root_turns":4,
@@ -2209,6 +2230,7 @@ begin
     'expires_at',app_data_agent.runtime_iso_timestamp(pg_catalog.clock_timestamp() + interval '5 minutes'),
     'execution_policy',pg_catalog.jsonb_build_object(
       'schema_version','run-execution-policy@1.0.0',
+      'acceptance_authority_kind',null,
       'campaign_id',null,'case_id',null,'run_variant',null,'repetition',null,
       'policy_id','default-run-retry@1.0.0','mode','DEFAULT',
       'max_run_attempts',5,'max_provider_attempts_per_call',2,'max_root_turns',4,

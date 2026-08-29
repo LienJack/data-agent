@@ -139,6 +139,10 @@ const databaseMarkers = new Map<string, { readonly retryable: boolean; readonly 
     { retryable: false, message: "Conversation 选择的 Model Profile 当前不可执行。" },
   ],
   [
+    "PROVIDER_CURRENT_CERTIFICATION_NOT_AVAILABLE",
+    { retryable: false, message: "当前 Falcon authority 没有可执行的 Profile Certification。" },
+  ],
+  [
     "DATASOURCE_NOT_FOUND_OR_DENIED",
     { retryable: false, message: "Conversation 选择的 Datasource 当前不可执行。" },
   ],
@@ -176,6 +180,8 @@ for (const marker of [
   "PROVIDER_CONTEXT_LIMIT_EXCEEDED",
   "PROVIDER_CONTEXT_RECEIPT_MISMATCH",
   "PROVIDER_CONTEXT_WINDOW_UNVERIFIED",
+  "PROVIDER_CURRENT_CERTIFICATION_INVALID",
+  "PROVIDER_CURRENT_CERTIFICATION_RESOLVE_INVALID",
   "PROVIDER_CREDENTIAL_UNAVAILABLE",
   "PROVIDER_DISPATCH_ENVELOPE_INVALID",
   "PROVIDER_DISPATCH_HASH_MISMATCH",
