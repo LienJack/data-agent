@@ -9,6 +9,7 @@ import {
   buildFalcon24FourLayerTraceUiReceipt,
   FALCON24_FOUR_LAYER_LAYER_TURN_COUNTS,
   FALCON24_FOUR_LAYER_TURN_BLUEPRINTS,
+  verifyFalcon24FourLayerAttemptTerminalReceipt,
   verifyFalcon24FourLayerConversationBindings,
   verifyFalcon24FourLayerGateManifest,
   verifyFalcon24FourLayerTurnReceiptProgression,
@@ -255,5 +256,6 @@ describe("Falcon24 four-layer gate contracts", () => {
       finalized_at: now,
     });
     expect(receipt.receipt_hash).toMatch(/^sha256:[0-9a-f]{64}$/u);
+    await expect(verifyFalcon24FourLayerAttemptTerminalReceipt(receipt)).resolves.toEqual(receipt);
   });
 });

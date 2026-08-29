@@ -843,6 +843,21 @@ export async function buildFalcon24FourLayerAttemptTerminalReceipt(input: unknow
     await buildReceipt(attemptTerminalReceiptMaterialSchema, input),
   );
 }
+export async function verifyFalcon24FourLayerBusinessReceipt(input: unknown) {
+  return verifyReceipt(falcon24FourLayerBusinessReceiptSchema, input);
+}
+export async function verifyFalcon24FourLayerQaUiReceipt(input: unknown) {
+  return verifyReceipt(falcon24FourLayerQaUiReceiptSchema, input);
+}
+export async function verifyFalcon24FourLayerTraceUiReceipt(input: unknown) {
+  return verifyReceipt(falcon24FourLayerTraceUiReceiptSchema, input);
+}
+export async function verifyFalcon24FourLayerTerminalReceipt(input: unknown) {
+  return verifyReceipt(falcon24FourLayerTerminalReceiptSchema, input);
+}
+export async function verifyFalcon24FourLayerAttemptTerminalReceipt(input: unknown) {
+  return verifyReceipt(falcon24FourLayerAttemptTerminalReceiptSchema, input);
+}
 
 const conversationBindingSchema = z.strictObject({
   turn_ordinal: z.number().int().min(0).max(14),
