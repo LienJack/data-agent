@@ -34,4 +34,15 @@ describe("system model certification boundary", () => {
     expect(source).toContain("runCredentialedProviderCertification");
     expect(source).not.toContain("MOONSHOT_API_KEY");
   });
+
+  it("authorizes production profiles through the dedicated current-profile resolver", async () => {
+    const source = await readFile(
+      new URL("../src/providers/production-run-bound-provider-dispatcher.ts", import.meta.url),
+      "utf8",
+    );
+
+    expect(source).toContain("resolveCurrentExecutionCertification");
+    expect(source).not.toContain("createPostgresModelCertificationReceiptStore");
+    expect(source).not.toContain("repository.resolveArtifact");
+  });
 });

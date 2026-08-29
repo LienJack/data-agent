@@ -17,6 +17,8 @@ import {
   buildModelExecutionCertificationClaims,
   computeModelExecutionProfileHash,
   configureAvailableModelProfile,
+  currentProviderExecutionCertificationRequestSchema,
+  currentProviderExecutionCertificationResultSchema,
   isAvailableModelProfile,
   modelExecutionProfileSchema,
   projectModelExecutionProfileSnapshot,
@@ -614,6 +616,40 @@ async function persistedInvocationFixture() {
 }
 
 describe("U3 provider invocation contracts", () => {
+  it("keeps current profile certification resolution strict and reference-only", async () => {
+    const { claims } = await availableExecutionProfileFixture({
+      profile_id: ids.profile,
+      certification_id: ids.certification,
+      deployment_id: ids.deployment,
+    });
+    const request = currentProviderExecutionCertificationRequestSchema.parse({
+      schema_version: "current-provider-execution-certification-resolve@1.0.0",
+      model_profile_id: ids.profile,
+      model_config_version: 7,
+      certification_receipt_ref: claims.receipt_ref,
+    });
+    expect(
+      currentProviderExecutionCertificationResultSchema.parse({
+        schema_version: "current-provider-execution-certification@1.0.0",
+        claims,
+      }),
+    ).toEqual({
+      schema_version: "current-provider-execution-certification@1.0.0",
+      claims,
+    });
+    expect(() =>
+      currentProviderExecutionCertificationRequestSchema.parse({
+        ...request,
+        execution_profile_hash: claims.execution_profile_hash,
+      }),
+    ).toThrow();
+    expect(() =>
+      currentProviderExecutionCertificationResultSchema.parse({
+        schema_version: "current-provider-execution-certification@1.0.0",
+        claims: { ...claims, profile_id: ids.config },
+      }),
+    ).toThrow();
+  });
   it("admits a configured model profile without a certification receipt", () => {
     const profile = configureAvailableModelProfile({
       profile_id: ids.profile,

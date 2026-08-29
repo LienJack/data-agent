@@ -20,7 +20,6 @@ import {
   type PostgresProviderInvocationStoreOptions,
 } from "@data-agent/platform/providers";
 import type { AppCapability } from "@data-agent/platform/tenancy";
-import { createPostgresModelCertificationReceiptStore } from "../postgres-model-certification-receipt-store.js";
 import type { RunBoundProviderDispatcher } from "../runs/run-execution-context.js";
 import { createAuditedModelProvider } from "./audited-model-provider.js";
 import { createPersistedModelProviderTransport } from "./persisted-model-provider-transport.js";
@@ -46,11 +45,6 @@ export function createProductionRunBoundProviderDispatcher(input: {
   const invocationStore = createPostgresProviderInvocationStore({
     pool: input.pool,
     authorizer: input.authorizer,
-  });
-  const certificationStore = createPostgresModelCertificationReceiptStore({
-    pool: input.pool,
-    authorizer: input.authorizer,
-    capability: input.capability,
   });
   const projectionStore = createPostgresAgentDataProjectionReceiptStore({
     pool: input.pool,
@@ -86,9 +80,13 @@ export function createProductionRunBoundProviderDispatcher(input: {
         profile.model_id === "deepseek-v4-flash",
     );
     if (!technical) return null;
-    const resolved = await certificationStore.resolve(technical.certification_receipt_ref);
-    const committed = await certificationStore.verify(technical.certification_receipt_ref);
-    if (!resolved.ok || !resolved.value || !committed.ok || !committed.value) return null;
+    const resolved = await invocationStore.resolveCurrentExecutionCertification(input.capability, {
+      schema_version: "current-provider-execution-certification-resolve@1.0.0",
+      model_profile_id: technical.model_profile_id,
+      model_config_version: technical.model_config_version,
+      certification_receipt_ref: technical.certification_receipt_ref,
+    });
+    if (!resolved.ok) return null;
     try {
       const claims = await verifyModelExecutionCertificationClaims(resolved.value);
       const snapshot = claims.execution_profile_snapshot;
@@ -130,18 +128,13 @@ export function createProductionRunBoundProviderDispatcher(input: {
           ) {
             return null;
           }
-          const current = await certificationStore.resolve(reference);
-          return current.ok ? current.value : null;
+          return claims;
         },
         verifyCommitted: async (reference) => {
-          if (
-            artifactReferenceIdentity(reference) !==
+          return (
+            artifactReferenceIdentity(reference) ===
             artifactReferenceIdentity(technical.certification_receipt_ref)
-          ) {
-            return false;
-          }
-          const current = await certificationStore.verify(reference);
-          return current.ok && current.value;
+          );
         },
       });
     } catch {

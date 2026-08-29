@@ -615,6 +615,83 @@ export const falcon24RetainedActivationResultV5Schema = z.strictObject({
   }),
 });
 
+export const falcon24TerminalDiagnosticFailureReceiptRefSchema = z.strictObject({
+  attempt_id: immutableIdSchema,
+  run_id: immutableIdSchema,
+  manifest_hash: contentHashSchema,
+  receipt_hash: contentHashSchema,
+  failure_class: z.literal("FROZEN_CLOSURE_CHANGE_REQUIRED"),
+  failure_code: stableFailureCodeSchema,
+});
+
+export const falcon24ActivationRequestV6MaterialSchema = z
+  .strictObject({
+    schema_version: z.literal("falcon24-activation-request@6.0.0"),
+    scope: semanticScopeSchema,
+    authority_epoch: falcon24SuccessorAuthorityEpochSchema,
+    attempt_id: immutableIdSchema,
+    baseline_id: immutableIdSchema,
+    expected_baseline_hash: contentHashSchema,
+    expected_current_authority: falcon24AuthorityBindingV2Schema,
+    expected_semantic_release: semanticSuccessorCandidateReleaseReferenceSchema,
+    expected_versions: retainedSemanticExpectedVersionsSchema,
+    retained_semantic_proof_hash: contentHashSchema,
+    predecessor_diagnostic_receipt: falcon24TerminalDiagnosticFailureReceiptRefSchema,
+    llm_execution_stage_ref: llmExecutionStageReferenceSchema,
+  })
+  .superRefine((document, context) => {
+    addRetainedSemanticEpochIssues(document, context);
+    if (falcon24AuthorityEpochOrdinal(document.authority_epoch) < 9n) {
+      context.addIssue({
+        code: "custom",
+        message: "FALCON24_TERMINAL_DIAGNOSTIC_RECOVERY_EPOCH_INVALID",
+        path: ["authority_epoch"],
+      });
+    }
+  });
+
+export const falcon24ActivationRequestV6Schema = falcon24ActivationRequestV6MaterialSchema.extend({
+  command_hash: contentHashSchema,
+});
+
+function falcon24ActivationRequestV6Material(input: unknown) {
+  const full = falcon24ActivationRequestV6Schema.safeParse(input);
+  if (!full.success) return falcon24ActivationRequestV6MaterialSchema.parse(input);
+  const { command_hash: _commandHash, ...material } = full.data;
+  return falcon24ActivationRequestV6MaterialSchema.parse(material);
+}
+
+export async function buildFalcon24ActivationRequestV6(input: unknown) {
+  const material = falcon24ActivationRequestV6Material(input);
+  return falcon24ActivationRequestV6Schema.parse({
+    ...material,
+    command_hash: await sha256ContentHash(material),
+  });
+}
+
+export async function verifyFalcon24ActivationRequestV6(input: unknown) {
+  const command = falcon24ActivationRequestV6Schema.parse(input);
+  if (
+    (await sha256ContentHash(falcon24ActivationRequestV6Material(command))) !== command.command_hash
+  ) {
+    throw new TypeError("FALCON24_TERMINAL_DIAGNOSTIC_RECOVERY_COMMAND_HASH_INVALID");
+  }
+  return command;
+}
+
+export const falcon24RetainedActivationResultV6Schema = z.strictObject({
+  schema_version: z.literal("falcon24-retained-activation-result@6.0.0"),
+  activation_command_hash: contentHashSchema,
+  authority: falcon24AuthorityBindingV2Schema,
+  predecessor_diagnostic_receipt: falcon24TerminalDiagnosticFailureReceiptRefSchema,
+  llm_execution_certification: z.strictObject({
+    stage_id: immutableIdSchema,
+    proof_hash: contentHashSchema,
+    certification_receipt_ref: artifactReferenceSchema,
+    execution_profile_hash: contentHashSchema,
+  }),
+});
+
 const combinedFalcon24SemanticActivationExpectedVersionsSchema = z.strictObject({
   semantic_pointer: z.number().int().min(1).max(Number.MAX_SAFE_INTEGER),
   semantic_runtime: z.number().int().min(1).max(Number.MAX_SAFE_INTEGER),
@@ -1049,6 +1126,13 @@ export type Falcon24EpochClosureFailureReceipt = z.infer<
 export type Falcon24ActivationRequestV5 = z.infer<typeof falcon24ActivationRequestV5Schema>;
 export type Falcon24RetainedActivationResultV5 = z.infer<
   typeof falcon24RetainedActivationResultV5Schema
+>;
+export type Falcon24ActivationRequestV6 = z.infer<typeof falcon24ActivationRequestV6Schema>;
+export type Falcon24TerminalDiagnosticFailureReceiptRef = z.infer<
+  typeof falcon24TerminalDiagnosticFailureReceiptRefSchema
+>;
+export type Falcon24RetainedActivationResultV6 = z.infer<
+  typeof falcon24RetainedActivationResultV6Schema
 >;
 export type Falcon24LlmExecutionAuthorityProof = z.infer<
   typeof falcon24LlmExecutionAuthorityProofSchema

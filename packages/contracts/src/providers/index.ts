@@ -319,6 +319,40 @@ export const modelExecutionCertificationClaimsSchema =
     receipt_ref: modelCertificationReceiptReferenceSchema,
   });
 
+export const currentProviderExecutionCertificationRequestSchema = z.strictObject({
+  schema_version: z.literal("current-provider-execution-certification-resolve@1.0.0"),
+  model_profile_id: immutableIdSchema,
+  model_config_version: z.number().int().positive().safe(),
+  certification_receipt_ref: modelCertificationReceiptReferenceSchema,
+});
+
+export const currentProviderExecutionCertificationResultSchema = z
+  .strictObject({
+    schema_version: z.literal("current-provider-execution-certification@1.0.0"),
+    claims: modelExecutionCertificationClaimsSchema,
+  })
+  .superRefine((result, context) => {
+    const claims = result.claims;
+    if (
+      claims.profile_id !== claims.execution_profile_snapshot.profile_id ||
+      claims.model_config_version !== claims.execution_profile_snapshot.model_config_version ||
+      claims.provider !== claims.execution_profile_snapshot.provider ||
+      claims.model_id !== claims.execution_profile_snapshot.model_id ||
+      claims.profile_version !== claims.execution_profile_snapshot.profile_version ||
+      claims.adapter_version !== claims.execution_profile_snapshot.adapter_version ||
+      JSON.stringify(claims.recovery_capabilities) !==
+        JSON.stringify(claims.execution_profile_snapshot.recovery_capabilities) ||
+      JSON.stringify(claims.connection) !==
+        JSON.stringify(claims.execution_profile_snapshot.connection)
+    ) {
+      context.addIssue({
+        code: "custom",
+        message: "Current Provider Certification claims identity 不闭合。",
+        path: ["claims"],
+      });
+    }
+  });
+
 function projectModelExecutionCertificationClaimsDraft(input: unknown) {
   const claims = modelExecutionCertificationClaimsSchema.safeParse(input);
   if (claims.success) {
@@ -632,6 +666,12 @@ export const externalAgentProfileSchema = z.strictObject({
 export type ModelProvider = z.infer<typeof modelProviderSchema>;
 export type ModelProfile = z.infer<typeof modelProfileSchema>;
 export type ModelExecutionProfile = z.infer<typeof modelExecutionProfileSchema>;
+export type ModelExecutionCertificationClaims = z.infer<
+  typeof modelExecutionCertificationClaimsSchema
+>;
+export type CurrentProviderExecutionCertificationRequest = z.infer<
+  typeof currentProviderExecutionCertificationRequestSchema
+>;
 export type ExternalAgentProfile = z.infer<typeof externalAgentProfileSchema>;
 
 export * from "./provider-invocation.js";

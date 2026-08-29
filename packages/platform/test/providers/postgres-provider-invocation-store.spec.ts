@@ -1,9 +1,13 @@
 import {
+  buildModelExecutionCertificationClaims,
   buildProviderDispatchEnvelopeCandidate,
   buildProviderResponseArtifactDocument,
   buildProviderTaskArtifactDocument,
+  computeModelExecutionProfileHash,
   computeProviderTaskContextSelectionHash,
   computeProviderTaskVisibleMessageHash,
+  modelExecutionProfileSchema,
+  projectModelExecutionProfileSnapshot,
 } from "@data-agent/contracts/providers";
 import { DEFAULT_RUN_EXECUTION_POLICY } from "@data-agent/contracts/runs";
 import { describe, expect, it } from "vitest";
@@ -542,6 +546,108 @@ describe("PostgresProviderInvocationStore conversation selection", () => {
     expect(rpc).toHaveLength(1);
     expect(rpc[0]?.values).toEqual([]);
     expect(rpc[0]?.text).not.toMatch(/billing|pricing|credit|settlement/iu);
+  });
+
+  it("resolves current certification only through the dedicated scope-bound RPC", async () => {
+    const { capability, authorizer } = authority();
+    const receiptRef = {
+      artifact_id: ids.certification,
+      artifact_type: "ModelCertificationReceipt" as const,
+      app_id: ids.app,
+      tenant_id: ids.workspace,
+      environment: "test",
+      run_id: ids.run,
+      revision: 1,
+    };
+    const profile = modelExecutionProfileSchema.parse({
+      profile_id: ids.model,
+      scope: { app_id: ids.app, tenant_id: ids.workspace, environment: "test" },
+      provider: "deepseek",
+      model_id: "deepseek-v4-flash",
+      model_config_version: 12,
+      profile_version: "model-profile@12",
+      adapter_version: "1.0.0",
+      recovery_capabilities: ["AT_LEAST_ONCE_ONLY"],
+      connection: {
+        kind: "SYSTEM_DEPLOYMENT",
+        deployment_id: ids.deployment,
+        deployment_revision: 1,
+        deployment_hash: hash("1"),
+      },
+      capabilities: {
+        structured_output: true,
+        tool_calling: true,
+        streaming: true,
+        reasoning: true,
+        vision: false,
+      },
+      operational_constraints: {
+        context_window: {
+          verification_status: "VERIFIED",
+          max_context_tokens: 100_000,
+          max_output_tokens: 8_000,
+        },
+        region_privacy: { verification_status: "UNVERIFIED" },
+        fallback_compatibility: { verification_status: "UNVERIFIED" },
+      },
+      certification_status: "AVAILABLE",
+      certification_receipt_ref: { ...receiptRef, content_hash: hash("0") },
+      certified_model_id: "deepseek-v4-flash",
+    });
+    const claims = await buildModelExecutionCertificationClaims({
+      schema_version: "model-execution-certification@1.0.0",
+      receipt_ref: receiptRef,
+      profile_id: ids.model,
+      model_config_version: 12,
+      provider: "deepseek",
+      model_id: "deepseek-v4-flash",
+      profile_version: "model-profile@12",
+      adapter_version: "1.0.0",
+      execution_profile_hash: await computeModelExecutionProfileHash(profile),
+      execution_profile_snapshot: projectModelExecutionProfileSnapshot(profile),
+      recovery_capabilities: ["AT_LEAST_ONCE_ONLY"],
+      connection: profile.connection,
+      certification_basis: { kind: "CREDENTIAL_SMOKE", probe_hash: hash("2") },
+      verdict: "PASS",
+    });
+    const scripted = scriptedPool((text) =>
+      text.includes("resolve_current_provider_execution_certification")
+        ? {
+            rows: [
+              {
+                value: {
+                  schema_version: "current-provider-execution-certification@1.0.0",
+                  claims,
+                },
+              },
+            ],
+            rowCount: 1,
+          }
+        : undefined,
+    );
+    const store = createPostgresProviderInvocationStore({ pool: scripted.pool, authorizer });
+
+    const result = await store.resolveCurrentExecutionCertification(capability, {
+      schema_version: "current-provider-execution-certification-resolve@1.0.0",
+      model_profile_id: ids.model,
+      model_config_version: 12,
+      certification_receipt_ref: claims.receipt_ref,
+    });
+
+    expect(result).toEqual({ ok: true, value: claims });
+    const calls = scripted.calls.filter((call) =>
+      call.text.includes("resolve_current_provider_execution_certification"),
+    );
+    expect(calls).toHaveLength(1);
+    expect(calls[0]?.values).toEqual([
+      {
+        schema_version: "current-provider-execution-certification-resolve@1.0.0",
+        model_profile_id: ids.model,
+        model_config_version: 12,
+        certification_receipt_ref: claims.receipt_ref,
+      },
+    ]);
+    expect(calls[0]?.text).not.toContain("resolveArtifact");
   });
 
   it("rejects a response artifact substituted by PostgreSQL", async () => {

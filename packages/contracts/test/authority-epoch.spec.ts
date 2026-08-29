@@ -5,6 +5,7 @@ import {
   buildFalcon24ActivationRequestV3,
   buildFalcon24ActivationRequestV4,
   buildFalcon24ActivationRequestV5,
+  buildFalcon24ActivationRequestV6,
   buildFalcon24E1StagingReceipt,
   buildFalcon24LlmExecutionAuthorityProof,
   buildFalcon24QaE2eReceiptV2,
@@ -16,8 +17,8 @@ import {
   falcon24AuthorityBindingV2Schema,
   falcon24AuthorityEpochSchema,
   falcon24AuthorityPersistenceBindingSchema,
-  falcon24EpochClosureFailureReceiptSchema,
   falcon24E1ActivationAttemptSchema,
+  falcon24EpochClosureFailureReceiptSchema,
   falcon24SemanticAuthorityClosureSchema,
   falcon24StagingHoldRequestV2Schema,
   falcon24StagingSessionRequestV2Schema,
@@ -26,6 +27,7 @@ import {
   verifyFalcon24ActivationRequestV3,
   verifyFalcon24ActivationRequestV4,
   verifyFalcon24ActivationRequestV5,
+  verifyFalcon24ActivationRequestV6,
   verifyFalcon24E1StagingReceipt,
   verifyFalcon24LlmExecutionAuthorityProof,
   verifyFalcon24RetainedSemanticReleaseAuthorityProof,
@@ -643,6 +645,70 @@ describe("Falcon24 E1 authority epoch contracts", () => {
     ).rejects.toThrow();
     await expect(
       buildFalcon24ActivationRequestV5({ ...command, authority_epoch: "E7" }),
+    ).rejects.toThrow();
+  });
+
+  it("binds E9 recovery to an immutable terminal E8 diagnostic receipt", async () => {
+    const current = {
+      schema_version: "falcon24-authority-binding@2.0.0" as const,
+      authority_epoch: "E8",
+      baseline_id: id(131),
+      baseline_hash: hash("3"),
+      activation_attempt_id: id(132),
+    };
+    const command = await buildFalcon24ActivationRequestV6({
+      schema_version: "falcon24-activation-request@6.0.0",
+      scope: {
+        app_id: id(133),
+        tenant_id: id(134),
+        environment: "test",
+        semantic_domain: "falcon24",
+      },
+      authority_epoch: "E9",
+      attempt_id: id(135),
+      baseline_id: id(136),
+      expected_baseline_hash: hash("4"),
+      expected_current_authority: current,
+      expected_semantic_release: {
+        release_id: id(137),
+        generation: 2,
+        release_digest: hash("5"),
+        datasource_id: id(138),
+      },
+      expected_versions: { semantic_pointer: 3, semantic_runtime: 3, workspace_defaults: 4 },
+      retained_semantic_proof_hash: hash("6"),
+      predecessor_diagnostic_receipt: {
+        attempt_id: id(139),
+        run_id: id(140),
+        manifest_hash: hash("7"),
+        receipt_hash: hash("8"),
+        failure_class: "FROZEN_CLOSURE_CHANGE_REQUIRED",
+        failure_code: "PROVIDER_TRANSPORT_PROFILE_NOT_AVAILABLE",
+      },
+      llm_execution_stage_ref: { stage_id: id(141), proof_hash: hash("9") },
+    });
+
+    await expect(verifyFalcon24ActivationRequestV6(command)).resolves.toEqual(command);
+    await expect(
+      verifyFalcon24ActivationRequestV6({
+        ...command,
+        predecessor_diagnostic_receipt: {
+          ...command.predecessor_diagnostic_receipt,
+          receipt_hash: hash("a"),
+        },
+      }),
+    ).rejects.toThrow("FALCON24_TERMINAL_DIAGNOSTIC_RECOVERY_COMMAND_HASH_INVALID");
+    await expect(
+      buildFalcon24ActivationRequestV6({ ...command, authority_epoch: "E8" }),
+    ).rejects.toThrow();
+    await expect(
+      buildFalcon24ActivationRequestV6({
+        ...command,
+        predecessor_diagnostic_receipt: {
+          ...command.predecessor_diagnostic_receipt,
+          failure_class: "EXTERNAL_DEPENDENCY",
+        },
+      }),
     ).rejects.toThrow();
   });
 });
