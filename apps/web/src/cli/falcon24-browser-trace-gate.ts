@@ -672,3 +672,10 @@ export async function runFalcon24BrowserTraceGate(input: Falcon24BrowserTraceGat
     }),
   });
 }
+
+export {
+  agentBrowser as executeFalcon24AgentBrowser,
+  browserEval as evaluateFalcon24Browser,
+  selectorValue as falcon24BrowserSelectorValue,
+  sha256Bytes as sha256Falcon24BrowserBytes,
+};
