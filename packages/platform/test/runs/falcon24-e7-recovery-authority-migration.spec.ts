@@ -54,6 +54,14 @@ describe("10799 Falcon24 E7 recovery authority", () => {
   });
 
   it("completes the exact E6 orphan and activates E7 in one transaction", () => {
+    const activationStart = migration.indexOf(
+      "create function app_data_agent.activate_falcon24_authority(command jsonb)",
+    );
+    const activationEnd = migration.indexOf(
+      "alter function app_data_agent.list_provider_execution_profiles()",
+      activationStart,
+    );
+    const activation = migration.slice(activationStart, activationEnd);
     const orderedTokens = [
       "semantic.lock_semantic_authority_fence",
       "'falcon24-authority-activation:'",
@@ -79,6 +87,10 @@ describe("10799 Falcon24 E7 recovery authority", () => {
     expect(migration).toContain("app_data_agent.complete_falcon24_diagnostic");
     expect(migration).toContain("app_data_agent.activate_falcon24_authority_pre_e7");
     expect(migration).toContain("falcon24-retained-activation-result@4.0.0");
+    expect(activation).toContain("model_revision app_data_agent.model_config_versions%rowtype");
+    expect(activation).toContain("update app_data_agent.artifacts artifact_row set is_active=true");
+    expect(activation).toContain("artifact_row.revision=certification.revision");
+    expect(activation).not.toContain("\n  revision app_data_agent.model_config_versions%rowtype");
   });
 
   it("keeps request v2/v3 behavior and binds E7 reads to the promoted stage", () => {

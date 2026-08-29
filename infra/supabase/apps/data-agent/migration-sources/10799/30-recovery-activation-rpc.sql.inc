@@ -16,7 +16,7 @@ declare authority record;scope_json jsonb;expected_authority jsonb;failure jsonb
   stage app_data_agent.falcon24_llm_execution_certification_stage%rowtype;
   certification app_data_agent.artifacts%rowtype;
   catalog app_data_agent.model_catalog_entries%rowtype;
-  revision app_data_agent.model_config_versions%rowtype;
+  model_revision app_data_agent.model_config_versions%rowtype;
   deployment platform.deployment_mappings%rowtype;
   target_baseline app_data_agent.falcon24_authority_baselines%rowtype;
   llm_receipt app_data_agent.falcon24_authority_staging_receipts%rowtype;
@@ -124,7 +124,7 @@ begin
       and row.model_profile_id=stage.model_profile_id
       and row.config_version=stage.model_config_version
       and row.provider=stage.provider and row.model_id=stage.model_id for share;
-  select * into revision from app_data_agent.model_config_versions row
+  select * into model_revision from app_data_agent.model_config_versions row
     where row.app_id=stage.app_id and row.environment=stage.environment
       and row.model_profile_id=stage.model_profile_id
       and row.config_version=stage.model_config_version for share;
@@ -193,8 +193,8 @@ begin
   then raise exception using errcode='55000',
     message='FALCON24_RECOVERY_LLM_STAGE_MISMATCH'; end if;
   if catalog.model_profile_id is null or catalog.status<>'ACTIVE' or not catalog.is_system_default
-    or revision.model_profile_id is null
-    or platform.canonical_sha256(revision.snapshot)<>stage.model_resource_hash
+    or model_revision.model_profile_id is null
+    or platform.canonical_sha256(model_revision.snapshot)<>stage.model_resource_hash
     or deployment.deployment_id is null or not deployment.is_active
     or app_data_agent.u2_canonical_sha256(pg_catalog.jsonb_build_object(
       'deployment_id',deployment.deployment_id,'app_id',deployment.app_id,
@@ -216,11 +216,15 @@ begin
       and row.environment=diagnostic.environment and row.attempt_id=diagnostic.attempt_id;
 
   if not is_replay then
-    update app_data_agent.artifacts set is_active=true
-      where app_id=certification.app_id and tenant_id=certification.tenant_id
-        and environment=certification.environment and run_id=certification.run_id
-        and artifact_id=certification.artifact_id and revision=certification.revision
-        and content_hash=certification.content_hash and not is_active;
+    update app_data_agent.artifacts artifact_row set is_active=true
+      where artifact_row.app_id=certification.app_id
+        and artifact_row.tenant_id=certification.tenant_id
+        and artifact_row.environment=certification.environment
+        and artifact_row.run_id=certification.run_id
+        and artifact_row.artifact_id=certification.artifact_id
+        and artifact_row.revision=certification.revision
+        and artifact_row.content_hash=certification.content_hash
+        and not artifact_row.is_active;
     if not found then raise exception using errcode='40001',
       message='FALCON24_RECOVERY_CERTIFICATION_PROMOTION_RACE'; end if;
     now_at:=pg_catalog.clock_timestamp();
