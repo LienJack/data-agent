@@ -209,6 +209,98 @@ async function inventoryProjectionContract() {
   });
 }
 
+async function directSeriesProjectionContract() {
+  return buildAnalysisResultContract({
+    schema_version: "analysis-result-contract@2.0.0",
+    contract_id: "falcon24.direct-series.result",
+    semantic_context_hash: hash("a"),
+    result_fields: [
+      { field: "series", data_type: "JSON", nullable: false, semantic_role: "DERIVED" },
+      { field: "summary", data_type: "STRING", nullable: false, semantic_role: "DERIVED" },
+    ],
+    metric_bindings: [
+      {
+        semantic_metric_id: "metric.order_revenue",
+        field: "series",
+        unit: "CNY",
+        aggregation: "NONE",
+        formula_hash: hash("b"),
+      },
+    ],
+    dimension_bindings: [{ semantic_dimension_id: "dimension.order_month", field: "series" }],
+    grain: {
+      dimension_ids: ["dimension.order_month"],
+      time_dimension_id: "dimension.order_month",
+      time_grain: "MONTH",
+    },
+    lineage: [
+      {
+        field: "series",
+        source_semantic_object_ids: ["dimension.order_month", "metric.order_revenue"],
+        source_physical_fields: ["orders.created_at", "orders.total_amount"],
+        transformation: "DIRECT",
+      },
+      {
+        field: "summary",
+        source_semantic_object_ids: ["metric.order_revenue"],
+        source_physical_fields: ["orders.total_amount"],
+        transformation: "STATISTICAL_OPERATOR",
+      },
+    ],
+    collection_constraints: [],
+    tables: [
+      {
+        table_id: "monthly_series",
+        title_zh: "月度收入趋势",
+        required: true,
+        columns: [
+          {
+            key: "period",
+            label_zh: "月份",
+            data_type: "STRING",
+            nullable: false,
+            semantic_object_id: "dimension.order_month",
+            semantic_role: "DIMENSION",
+          },
+          {
+            key: "value",
+            label_zh: "订单收入",
+            data_type: "NUMBER",
+            nullable: false,
+            semantic_object_id: "metric.order_revenue",
+            semantic_role: "METRIC",
+          },
+        ],
+        projection: {
+          mode: "RESULT_COLLECTION",
+          collection_field: "series",
+          column_mappings: [
+            { result_field: "period", table_column: "period" },
+            { result_field: "value", table_column: "value" },
+          ],
+        },
+        max_rows: 2,
+      },
+    ],
+    charts: [
+      {
+        chart_id: "monthly_series_chart",
+        title_zh: "月度收入趋势",
+        required: true,
+        intent: "TREND",
+        table_id: "monthly_series",
+        allowed_template_ids: ["line.multi-series@1"],
+      },
+    ],
+    limits: {
+      max_result_bytes: 1_048_576,
+      max_table_rows: 2,
+      max_table_columns: 2,
+      max_closure_bytes: 4_194_304,
+    },
+  });
+}
+
 async function operatorBoundResultContract() {
   return buildAnalysisResultContract({
     schema_version: "analysis-result-contract@2.0.0",
@@ -748,6 +840,111 @@ describe("server-owned Result Publisher", () => {
         ({ symbol_name }) => symbol_name === "result_document",
       )?.value_hash,
     ).toBe(await sha256ContentHash(result.data));
+  });
+
+  it("publishes Host-projected direct series across result, table, chart and hashes", async () => {
+    const modelPeriods = ["2024-01-01T00:00:00.000Z", "2024-02-01T00:00:00.000Z"];
+    const hostRows = [
+      { period: "2024-01-01", value: 100 },
+      { period: "2024-02-01", value: 120 },
+    ];
+    const prepared = await prepareAnalysisResult({
+      contract: await directSeriesProjectionContract(),
+      manifest: {
+        schema_version: "analysis-result-publish-tool@1.0.0",
+        publish_id: "direct-series-final",
+        result_symbol: "result_document",
+        table_bindings: [{ table_id: "monthly_series", data_symbol: "monthly_table" }],
+        chart_bindings: [
+          {
+            chart_id: "monthly_series_chart",
+            intent: "TREND",
+            template_id: "line.multi-series@1",
+            data_symbol: "monthly_table",
+            x_field: "period",
+            y_fields: ["value"],
+            series_field: "",
+            lower_bound_field: "",
+            upper_bound_field: "",
+          },
+        ],
+        operator_bindings: [],
+      },
+      governed_operator_outputs: [],
+      governed_result_projections: [
+        {
+          table_id: "monthly_series",
+          collection_field: "series",
+          result_rows: hostRows,
+          table_rows: hostRows,
+        },
+      ],
+      extractor: {
+        async extract() {
+          const modelRows = modelPeriods.map((period, index) => [
+            { kind: "STRING" as const, value: period },
+            { kind: "NUMBER" as const, value: index === 0 ? 999 : 1_000 },
+          ]);
+          return {
+            schema_version: "analysis-extracted-symbols@1.0.0",
+            symbols: [
+              {
+                symbol_name: "result_document",
+                symbol_kind: "MAPPING",
+                value: {
+                  kind: "OBJECT",
+                  entries: [
+                    {
+                      key: "series",
+                      value: {
+                        kind: "ARRAY",
+                        items: modelPeriods.map((period, index) => ({
+                          kind: "OBJECT" as const,
+                          entries: [
+                            { key: "period", value: { kind: "STRING" as const, value: period } },
+                            {
+                              key: "value",
+                              value: { kind: "NUMBER" as const, value: index === 0 ? 999 : 1_000 },
+                            },
+                          ],
+                        })),
+                      },
+                    },
+                    { key: "summary", value: { kind: "STRING", value: "收入上升。" } },
+                  ],
+                },
+              },
+              {
+                symbol_name: "monthly_table",
+                symbol_kind: "TABLE",
+                columns: ["period", "value"],
+                rows: modelRows,
+              },
+            ],
+          };
+        },
+      },
+    });
+
+    const documents = new Map(
+      prepared.closure.artifacts.map((artifact) => [
+        artifact.artifact_kind,
+        JSON.parse(decoder.decode(artifact.content)) as Record<string, unknown>,
+      ]),
+    );
+    expect(documents.get("RESULT")).toMatchObject({ data: { series: hostRows } });
+    expect(documents.get("TABLE")).toMatchObject({ rows: hostRows });
+    expect(documents.get("CHART")).toMatchObject({ dataset: { rows: hostRows } });
+    expect(
+      prepared.closure.analytical_value_hashes.find(
+        ({ symbol_name }) => symbol_name === "monthly_table",
+      )?.value_hash,
+    ).toBe(
+      await sha256ContentHash({
+        columns: ["period", "value"],
+        rows: hostRows.map(({ period, value }) => [period, value]),
+      }),
+    );
   });
 
   it("enforces bounded literal text policy before any result is staged", async () => {

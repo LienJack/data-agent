@@ -15,6 +15,7 @@ import {
 } from "@data-agent/contracts/ports";
 import type { StatisticalOperatorObligation } from "@data-agent/contracts/statistical-operators";
 import { z } from "zod";
+import type { GovernedResultProjection } from "./governed-result-projection.js";
 
 const encoder = new TextEncoder();
 const identifierSchema = z.string().regex(/^[A-Za-z0-9][A-Za-z0-9._:-]{0,127}$/u);
@@ -327,6 +328,22 @@ function materializeOperatorBoundResult(input: {
   return Object.freeze({ ...input.model_result, ...Object.fromEntries(authoritativeRoots) });
 }
 
+function materializeGovernedProjectedResult(input: {
+  readonly model_result: Readonly<Record<string, unknown>>;
+  readonly projections: readonly GovernedResultProjection[];
+}): Readonly<Record<string, unknown>> {
+  const result = { ...input.model_result };
+  const seen = new Set<string>();
+  for (const projection of input.projections) {
+    if (seen.has(projection.collection_field)) {
+      throw new TypeError("ANALYSIS_RESULT_GOVERNED_PROJECTION_CONFLICT");
+    }
+    seen.add(projection.collection_field);
+    result[projection.collection_field] = canonicalClone(projection.result_rows);
+  }
+  return Object.freeze(result);
+}
+
 export function decodeAnalysisExtractedMappingSymbol(
   input: unknown,
 ): Readonly<{ symbol_name: string; value: Readonly<Record<string, unknown>> }> {
@@ -558,10 +575,34 @@ function validateTable(
   });
 }
 
+function validateGovernedTableRows(
+  rows: readonly Readonly<Record<string, unknown>>[],
+  table: AnalysisResultContract["tables"][number],
+  contract: AnalysisResultContract,
+): readonly Readonly<Record<string, unknown>>[] {
+  if (rows.length > Math.min(table.max_rows, contract.limits.max_table_rows)) {
+    throw new TypeError("ANALYSIS_RESULT_TABLE_BOUNDS_OR_SCHEMA_INVALID");
+  }
+  const expectedColumns = table.columns.map(({ key }) => key);
+  return rows.map((source) => {
+    if (!exactSet(Object.keys(source), expectedColumns)) {
+      throw new TypeError("ANALYSIS_RESULT_TABLE_COLUMNS_MISMATCH");
+    }
+    const row: Record<string, unknown> = Object.create(null) as Record<string, unknown>;
+    for (const column of table.columns) {
+      const value = source[column.key];
+      assertValueType(value, column.data_type, column.nullable);
+      row[column.key] = canonicalClone(value);
+    }
+    return row;
+  });
+}
+
 export async function prepareAnalysisResult(input: {
   readonly contract: unknown;
   readonly manifest: unknown;
   readonly governed_operator_outputs: readonly GovernedOperatorPublishedValue[];
+  readonly governed_result_projections?: readonly GovernedResultProjection[];
   readonly extractor: AnalysisResultSymbolExtractorPort;
 }): Promise<PreparedAnalysisResult> {
   const contract = await verifyAnalysisResultContract(input.contract);
@@ -617,6 +658,10 @@ export async function prepareAnalysisResult(input: {
     result_binding: StatisticalOperatorObligation["result_binding"];
     authoritative_output: Readonly<Record<string, unknown>>;
   }[] = [];
+  const governedProjections = input.governed_result_projections ?? [];
+  const projectionFields = new Set(
+    governedProjections.map(({ collection_field }) => collection_field),
+  );
   for (const binding of manifest.operator_bindings) {
     const symbol = symbols.get(binding.result_symbol);
     const governed = input.governed_operator_outputs.find(
@@ -634,6 +679,10 @@ export async function prepareAnalysisResult(input: {
       throw new TypeError("ANALYSIS_RESULT_PUBLISH_OPERATOR_VALUE_MISMATCH");
     }
     if (governed.result_binding) {
+      const operatorRoot = jsonPointerTokens(governed.result_binding.result_collection_path)[0];
+      if (operatorRoot && projectionFields.has(operatorRoot)) {
+        throw new TypeError("ANALYSIS_RESULT_GOVERNED_PROJECTION_CONFLICT");
+      }
       authoritativeBindings.push({
         result_binding: governed.result_binding,
         authoritative_output: authoritativeOutput,
@@ -642,7 +691,10 @@ export async function prepareAnalysisResult(input: {
   }
   const resultValue = validateResultDocument(
     materializeOperatorBoundResult({
-      model_result: decodedResultValue,
+      model_result: materializeGovernedProjectedResult({
+        model_result: decodedResultValue,
+        projections: governedProjections,
+      }),
       bindings: authoritativeBindings,
     }),
     contract,
@@ -676,6 +728,32 @@ export async function prepareAnalysisResult(input: {
   const tableBindingById = new Map(
     manifest.table_bindings.map((binding) => [binding.table_id, binding]),
   );
+  const governedProjectionByTableId = new Map(
+    governedProjections.map((projection) => [projection.table_id, projection]),
+  );
+  if (governedProjectionByTableId.size !== governedProjections.length) {
+    throw new TypeError("ANALYSIS_RESULT_GOVERNED_PROJECTION_CONFLICT");
+  }
+  for (const table of contract.tables) {
+    const projectionContract = table.projection;
+    const directLineage =
+      projectionContract.mode === "RESULT_COLLECTION" &&
+      contract.lineage.find(({ field }) => field === projectionContract.collection_field)
+        ?.transformation === "DIRECT";
+    const projection = governedProjectionByTableId.get(table.table_id);
+    if (
+      directLineage !== Boolean(projection) ||
+      (projection &&
+        (table.projection.mode !== "RESULT_COLLECTION" ||
+          projection.collection_field !== table.projection.collection_field))
+    ) {
+      throw new TypeError("ANALYSIS_RESULT_GOVERNED_PROJECTION_REQUIRED");
+    }
+  }
+  const authoritativeTableValues = new Map<
+    string,
+    { readonly columns: readonly string[]; readonly rows: readonly (readonly unknown[])[] }
+  >();
   for (const table of contract.tables) {
     const binding = tableBindingById.get(table.table_id);
     if (!binding) continue;
@@ -683,8 +761,22 @@ export async function prepareAnalysisResult(input: {
     if (symbol?.symbol_kind !== "TABLE") {
       throw new TypeError("ANALYSIS_RESULT_TABLE_BINDING_INVALID");
     }
-    const rows = validateTable(symbol, table, contract);
+    const governedProjection = governedProjectionByTableId.get(table.table_id);
+    const rows = governedProjection
+      ? validateGovernedTableRows(governedProjection.table_rows, table, contract)
+      : validateTable(symbol, table, contract);
     validateTableProjection(rows, table, resultValue);
+    if (governedProjection) {
+      const authoritativeValue = {
+        columns: table.columns.map(({ key }) => key),
+        rows: rows.map((row) => table.columns.map(({ key }) => row[key])),
+      };
+      const existing = authoritativeTableValues.get(binding.data_symbol);
+      if (existing && canonicalizeJson(existing) !== canonicalizeJson(authoritativeValue)) {
+        throw new TypeError("ANALYSIS_RESULT_GOVERNED_PROJECTION_CONFLICT");
+      }
+      authoritativeTableValues.set(binding.data_symbol, authoritativeValue);
+    }
     tableRows.set(table.table_id, rows);
     artifacts.push(
       await sealArtifact({
@@ -763,12 +855,13 @@ export async function prepareAnalysisResult(input: {
         value_hash: await sha256ContentHash(
           symbol.symbol_name === manifest.result_symbol
             ? resultValue
-            : symbol.symbol_kind === "MAPPING"
-              ? decodeWireValue(symbol.value)
-              : {
-                  columns: symbol.columns,
-                  rows: symbol.rows.map((row) => row.map(decodeWireValue)),
-                },
+            : (authoritativeTableValues.get(symbol.symbol_name) ??
+                (symbol.symbol_kind === "MAPPING"
+                  ? decodeWireValue(symbol.value)
+                  : {
+                      columns: symbol.columns,
+                      rows: symbol.rows.map((row) => row.map(decodeWireValue)),
+                    })),
         ),
       })),
   );

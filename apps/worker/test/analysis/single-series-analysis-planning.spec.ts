@@ -7,6 +7,7 @@ import {
 import { buildAnalysisContext } from "@data-agent/contracts/context";
 import { STATISTICAL_OPERATOR_REGISTRY_DIGEST } from "@data-agent/contracts/statistical-operators";
 import { describe, expect, it } from "vitest";
+import { buildGovernedResultProjections } from "../../src/analysis/governed-result-projection.js";
 import { productTeamGovernedQueryInternals } from "../../src/analysis/product-team-query-port.js";
 import { createSingleSeriesAnalysisOracle } from "../../src/analysis/single-series-analysis-oracle.js";
 import { compileSingleSeriesAnalysisPlan } from "../../src/analysis/single-series-analysis-planning.js";
@@ -254,6 +255,58 @@ describe("generic single-series analysis planning", () => {
       ],
     });
     expect(JSON.stringify(plan)).not.toContain("case_id");
+  });
+
+  it("projects direct result collections from verified QueryEvidence with canonical months", async () => {
+    const evidence = await queryEvidence({ timeLogicalType: "DATETIME" });
+    const plan = await compileSingleSeriesAnalysisPlan(await planInput(evidence));
+    if (
+      evidence.artifact_ref.artifact_type !== "QueryEvidence" ||
+      evidence.projection.kind !== "TABLE" ||
+      evidence.provenance?.kind !== "GOVERNED_QUERY_RESULT"
+    ) {
+      throw new TypeError("TEST_QUERY_EVIDENCE_REQUIRED");
+    }
+    const content = productTeamGovernedQueryInternals.materializeProductTeamArrow(
+      evidence.projection,
+      evidence.provenance.semantic_binding.columns,
+    );
+
+    const governedInput = {
+      name: "query_evidence",
+      format: "ARROW" as const,
+      query_evidence_ref: evidence.artifact_ref,
+      query_evidence_document: evidence,
+      input_ref: reference("SensitiveExecutionArtifact", 80),
+      materialization_receipt_ref: reference("AnalysisInputMaterializationReceipt", 81),
+      materialization_receipt_document: {},
+      content,
+    };
+    const projections = await buildGovernedResultProjections({
+      contract: plan.result_contract,
+      governed_inputs: [governedInput],
+    });
+
+    expect(projections).toEqual([
+      {
+        table_id: "single_series_monthly",
+        collection_field: "series",
+        result_rows: Array.from({ length: 12 }, (_, index) => ({
+          period: month(index),
+          value: 100 + index * 10,
+        })),
+        table_rows: Array.from({ length: 12 }, (_, index) => ({
+          period: month(index),
+          value: 100 + index * 10,
+        })),
+      },
+    ]);
+    await expect(
+      buildGovernedResultProjections({
+        contract: plan.result_contract,
+        governed_inputs: [governedInput, { ...governedInput, name: "duplicate_evidence" }],
+      }),
+    ).rejects.toThrowError("ANALYSIS_GOVERNED_RESULT_PROJECTION_INVALID");
   });
 
   it("uses governed monthly evidence for an atomic published metric and DATETIME values", async () => {

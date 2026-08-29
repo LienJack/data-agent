@@ -39,6 +39,7 @@ import type {
   GovernedResultBridge,
   RecoveredGovernedOperatorResult,
 } from "./governed-result-bridge.js";
+import { buildGovernedResultProjections } from "./governed-result-projection.js";
 import { createOpenSandboxAnalysisResultSymbolExtractor } from "./opensandbox-result-symbol-extractor.js";
 import {
   type AnalysisResultAtomicStagePort,
@@ -622,6 +623,10 @@ export async function executeAnalysisToolLoop(input: {
   ) {
     throw new TypeError("ANALYSIS_AGENT_LOOP_CONFIGURATION_INVALID");
   }
+  const governedResultProjections = await buildGovernedResultProjections({
+    contract: input.result_contract,
+    governed_inputs: input.governed_inputs,
+  });
 
   const recoveredState = recoverOperatorState({
     recovered: input.recovered_operator_results ?? [],
@@ -1230,6 +1235,7 @@ export async function executeAnalysisToolLoop(input: {
             };
           },
         ),
+        governed_result_projections: governedResultProjections,
         extractor: createOpenSandboxAnalysisResultSymbolExtractor(input.session),
       });
       if (operatorRequests.length === 0) {
