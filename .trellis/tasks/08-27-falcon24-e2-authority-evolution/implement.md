@@ -1331,11 +1331,12 @@ Diagnostic/Q1/C1任一正式首次失败必须写既有 authority支持的 immut
 
 ### F2 — Semantic UX 与 Root/Conversation 闭环
 
-- [ ] 为同比缺失精确 term 建立 failing test：Semantic读取订单收入/时间治理原语，生成 request-scoped 同比解释并继续，不直接拒答。
-- [ ] 覆盖客单价辨析、关系图、营销投入/收入/ROAS聚合公式及净 ROI 纠正；禁止静默发布全局定义。
-- [ ] 覆盖 L1 单 Specialist、L2 Semantic后Text2SQL、L3动态多Agent、L4 ordered history/指代/纠正/summary不作证据。
-- [ ] 覆盖 crash/replay不重复 Provider、SQL、Sandbox或Artifact side effect；移除/拒绝任何case/关键词路由捷径。
-- [ ] Worker/Agent Runtime focused + typecheck/build/Biome；按最小闭包创建 scoped commits。
+- [x] 为同比缺失精确 term 建立 failing test：Semantic读取订单收入/时间治理原语，生成 request-scoped 同比解释并继续，不直接拒答。
+- [x] 覆盖客单价辨析、关系图、营销投入/收入/ROAS聚合公式及净 ROI 纠正；禁止静默发布全局定义。
+- [x] 覆盖 L1 单 Specialist、L2 Semantic后Text2SQL、L3动态多Agent、L4 ordered history/指代/纠正/summary不作证据。
+- [x] 覆盖 crash/replay不重复 Provider、SQL、Sandbox或Artifact side effect；移除/拒绝任何case/关键词路由捷径。
+- [x] Worker/Agent Runtime focused + typecheck/build/Biome；Contracts 与 Worker/Agent Runtime 分别创建 scoped commits
+  （`c9179a80`、`f239bfc1`），四层聚焦套件 80/80、Provider/Side Effect/Sandbox 恢复套件 62/62 PASS。
 
 ### F3 — Web gate controller 与页面验收
 
