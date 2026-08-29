@@ -87,8 +87,12 @@ describe("direct run-bound provider retry policy", () => {
     expect(prompt).toContain("Do not use to_char");
     expect(prompt).toContain("return date_trunc as a DATE or DATETIME result column");
     expect(prompt).toContain("When the frozen snapshot lists a time column as text");
-    expect(prompt).toContain("cast the boundary parameters to the same temporal type");
+    expect(prompt).toContain("column_name::pg_catalog.timestamp");
+    expect(prompt).toContain("Never write a type name as a prefix");
     expect(prompt).toContain("TEXT2SQL_SQL_DANGEROUS means replace every unlisted function");
+    expect(prompt).toContain(
+      "DATASOURCE_ADAPTER_SQL_REJECTED means replace invalid PostgreSQL syntax",
+    );
     expect(prompt).toContain(
       "DATASOURCE_ADAPTER_SQL_TYPE_ERROR means follow the exact listed physical column types",
     );

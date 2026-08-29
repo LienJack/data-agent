@@ -319,6 +319,12 @@ describe("PostgreSQL Text2SQL query runtime", () => {
   it("projects PostgreSQL SQLSTATE into bounded repair diagnostics", () => {
     expect(
       postgresqlText2SqlQueryRuntimeInternals.classifiedPostgresqlExecutionError({
+        code: "42601",
+        message: "private provider detail",
+      }),
+    ).toMatchObject({ code: "DATASOURCE_ADAPTER_SQL_REJECTED" });
+    expect(
+      postgresqlText2SqlQueryRuntimeInternals.classifiedPostgresqlExecutionError({
         code: "42883",
         message: "private provider detail",
       }),

@@ -649,6 +649,9 @@ function classifiedPostgresqlExecutionError(error: unknown): DatasourceAdapterPo
       ? error.code
       : null;
   if (!sqlState) return null;
+  if (sqlState === "42601") {
+    return new DatasourceAdapterPolicyError("DATASOURCE_ADAPTER_SQL_REJECTED");
+  }
   if (["42804", "42809", "42846", "42883", "42P18"].includes(sqlState)) {
     return new DatasourceAdapterPolicyError("DATASOURCE_ADAPTER_SQL_TYPE_ERROR");
   }
