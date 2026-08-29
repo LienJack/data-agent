@@ -35,6 +35,7 @@ import {
 import * as worker from "../src/index.js";
 import {
   type AuthoritativeModelCertificationReceiptStore,
+  createPostgresFalcon24ModelCertificationStageStore,
   createPostgresModelCertificationReceiptStore,
 } from "../src/postgres-model-certification-receipt-store.js";
 
@@ -356,6 +357,37 @@ describe("Credentialed Provider Certification Worker", () => {
     }
 
     await expect(store.commit({ ...attempt.claims }, { worker_fence: 4 })).resolves.toMatchObject({
+      ok: false,
+      error: { code: "PERSISTENCE_INPUT_INVALID" },
+    });
+    expect(connect).not.toHaveBeenCalled();
+  });
+
+  it("Falcon24 E7 Stage Store 在接触数据库前拒绝非 live execution draft", async () => {
+    const connect = vi.fn();
+    const store = createPostgresFalcon24ModelCertificationStageStore({
+      pool: { connect } as SqlPool,
+      authorizer: {} as TransactionalCapabilityAuthorizer,
+      capability: { scope } as AppCapability,
+      target_authority_epoch: "E7",
+      staging_id: "70000000-0000-4000-8000-000000000040",
+      stage_id: "70000000-0000-4000-8000-000000000041",
+      idempotency_key: "falcon24:E7:test-stage",
+      model_resource_hash: `sha256:${"8".repeat(64)}`,
+      worker_build: {
+        schema_version: "runtime-build-identity@1.0.0",
+        consumer_role: "worker",
+        generation_id: `sha256:${"9".repeat(64)}`,
+        build_id: `sha256:${"a".repeat(64)}`,
+        built_at: "2026-08-29T00:00:00.000Z",
+        git_commit: "abcdef1",
+        git_dirty: false,
+      },
+    });
+    const attempt = await pendingAttempt(firstBinding());
+    if (attempt.kind !== "PENDING_RECEIPT_COMMIT") throw new Error("fixture invalid");
+
+    await expect(store.commit(attempt.claims, { worker_fence: 4 })).resolves.toMatchObject({
       ok: false,
       error: { code: "PERSISTENCE_INPUT_INVALID" },
     });
