@@ -10,7 +10,18 @@ export async function buildTestQueryEvidenceSemanticBinding(input: {
     readonly nullable: boolean;
     readonly semantic_role: "METRIC" | "DIMENSION";
     readonly semantic_object_id: string;
+    readonly grain?: {
+      readonly grain_id: string;
+      readonly granularity: "atomic" | "hour" | "day" | "week" | "month" | "quarter" | "year";
+    };
   }[];
+  readonly time_window?: {
+    readonly dimension_id: string;
+    readonly start: string;
+    readonly end: string;
+    readonly semantics: "HALF_OPEN";
+    readonly timezone: string | null;
+  } | null;
 }) {
   return buildQueryEvidenceSemanticBinding({
     protocol_version: "query-evidence-semantic-binding@1.0.0",
@@ -46,7 +57,7 @@ export async function buildTestQueryEvidenceSemanticBinding(input: {
       semantic_object_id: column.semantic_object_id,
       formula_hash: column.semantic_role === "METRIC" ? hash("7") : null,
       aggregate: column.semantic_role === "METRIC" ? ("sum" as const) : null,
-      grain: {
+      grain: column.grain ?? {
         grain_id: column.semantic_role === "METRIC" ? "order" : column.semantic_object_id,
         granularity: column.logical_type === "DATE" ? ("day" as const) : ("atomic" as const),
       },
@@ -69,6 +80,6 @@ export async function buildTestQueryEvidenceSemanticBinding(input: {
         },
       ],
     })),
-    time_window: null,
+    time_window: input.time_window ?? null,
   });
 }

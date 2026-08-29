@@ -42,6 +42,48 @@ function addUtcMonths(month: string, count: number): string {
   return new Date(Date.UTC(year, monthIndex + count, 1)).toISOString().slice(0, 10);
 }
 
+function calendarDateInTimeZone(value: string, timezone: string): string {
+  const parsed = new Date(value);
+  if (Number.isNaN(parsed.valueOf())) throw new TypeError("SINGLE_SERIES_MONTH_VALUE_INVALID");
+  let parts: Intl.DateTimeFormatPart[];
+  try {
+    parts = new Intl.DateTimeFormat("en-US-u-ca-gregory-nu-latn", {
+      timeZone: timezone,
+      year: "numeric",
+      month: "2-digit",
+      day: "2-digit",
+    }).formatToParts(parsed);
+  } catch {
+    throw new TypeError("SINGLE_SERIES_MONTH_VALUE_INVALID");
+  }
+  const part = (type: Intl.DateTimeFormatPartTypes) =>
+    parts.find(({ type: candidate }) => candidate === type)?.value;
+  const year = part("year");
+  const month = part("month");
+  const day = part("day");
+  if (!year || !month || !day) throw new TypeError("SINGLE_SERIES_MONTH_VALUE_INVALID");
+  return `${year}-${month}-${day}`;
+}
+
+function canonicalMonthValue(input: {
+  readonly value: string;
+  readonly logical_type: "DATE" | "DATETIME";
+  readonly timezone: string;
+}): string {
+  const month =
+    input.logical_type === "DATE"
+      ? input.value
+      : calendarDateInTimeZone(input.value, input.timezone);
+  if (!/^\d{4}-\d{2}-01$/u.test(month)) {
+    throw new TypeError("SINGLE_SERIES_QUERY_VALUE_INVALID");
+  }
+  return month;
+}
+
+function canonicalWindowBoundary(value: string, timezone: string): string {
+  return /^\d{4}-\d{2}-\d{2}$/u.test(value) ? value : calendarDateInTimeZone(value, timezone);
+}
+
 function exactBinding(field: string) {
   return {
     result_field: field,
@@ -125,21 +167,49 @@ export async function extractSingleSeriesQueryShape(input: {
     query_evidence_document: evidence,
     expected_row_count: 12,
   });
-  if (evidence.projection.kind !== "TABLE" || evidence.projection.columns.length !== 2) {
+  if (
+    evidence.projection.kind !== "TABLE" ||
+    evidence.projection.columns.length !== 2 ||
+    verified.semantic_binding.columns.length !== 2
+  ) {
     throw new TypeError("SINGLE_SERIES_QUERY_SHAPE_INVALID");
   }
-  const timeColumns = evidence.projection.columns.filter(({ data_type }) => data_type === "STRING");
-  const valueColumns = evidence.projection.columns.filter(
-    ({ data_type }) => data_type === "NUMBER",
+  const timeBindings = verified.semantic_binding.columns.filter(
+    ({ logical_type: logicalType, semantic_role: role, grain }) =>
+      role === "DIMENSION" &&
+      (logicalType === "DATE" || logicalType === "DATETIME") &&
+      grain.granularity === "month",
   );
-  if (timeColumns.length !== 1 || valueColumns.length !== 1) {
+  const valueBindings = verified.semantic_binding.columns.filter(
+    ({ logical_type: logicalType, semantic_role: role }) =>
+      role === "METRIC" && logicalType === "NUMBER",
+  );
+  const timeWindow = verified.semantic_binding.time_window;
+  const timeBinding = timeBindings[0];
+  const valueBinding = valueBindings[0];
+  if (
+    timeBindings.length !== 1 ||
+    valueBindings.length !== 1 ||
+    !timeBinding ||
+    !valueBinding ||
+    (timeBinding.logical_type !== "DATE" && timeBinding.logical_type !== "DATETIME") ||
+    !timeWindow ||
+    timeWindow.timezone === null ||
+    timeWindow.dimension_id !== timeBinding.semantic_object_id
+  ) {
     throw new TypeError("SINGLE_SERIES_QUERY_SHAPE_INVALID");
   }
-  const timeColumn = timeColumns[0]?.key;
-  const valueColumn = valueColumns[0]?.key;
+  const timezone = timeWindow.timezone;
+  const timeLogicalType = timeBinding.logical_type;
+  const timeColumn = timeBinding.output_name;
+  const valueColumn = valueBinding.output_name;
+  const timeProjection = evidence.projection.columns.find(({ key }) => key === timeColumn);
+  const valueProjection = evidence.projection.columns.find(({ key }) => key === valueColumn);
   if (
     !timeColumn ||
     !valueColumn ||
+    timeProjection?.data_type !== "STRING" ||
+    valueProjection?.data_type !== "NUMBER" ||
     !/^[A-Za-z_][A-Za-z0-9_]{0,127}$/u.test(timeColumn) ||
     !/^[A-Za-z_][A-Za-z0-9_]{0,127}$/u.test(valueColumn)
   ) {
@@ -150,15 +220,17 @@ export async function extractSingleSeriesQueryShape(input: {
     .map((row) => {
       const month = row[timeColumn];
       const value = row[valueColumn];
-      if (
-        typeof month !== "string" ||
-        !/^\d{4}-\d{2}-01$/u.test(month) ||
-        typeof value !== "number" ||
-        !Number.isFinite(value)
-      ) {
+      if (typeof month !== "string" || typeof value !== "number" || !Number.isFinite(value)) {
         throw new TypeError("SINGLE_SERIES_QUERY_VALUE_INVALID");
       }
-      return { month, value };
+      return {
+        month: canonicalMonthValue({
+          value: month,
+          logical_type: timeLogicalType,
+          timezone,
+        }),
+        value,
+      };
     })
     .sort((left, right) => left.month.localeCompare(right.month));
   if (
@@ -170,11 +242,20 @@ export async function extractSingleSeriesQueryShape(input: {
   ) {
     throw new TypeError("SINGLE_SERIES_COMPLETE_MONTH_WINDOW_INVALID");
   }
+  if (
+    canonicalWindowBoundary(timeWindow.start, timezone) !== points[0]?.month ||
+    canonicalWindowBoundary(timeWindow.end, timezone) !== addUtcMonths(points[11]?.month ?? "", 1)
+  ) {
+    throw new TypeError("SINGLE_SERIES_COMPLETE_MONTH_WINDOW_INVALID");
+  }
   return Object.freeze({
     time_column: timeColumn,
-    time_label: timeColumns[0]?.label ?? timeColumn,
+    time_label: timeProjection.label,
+    time_dimension_id: timeBinding.semantic_object_id,
+    timezone,
     value_column: valueColumn,
-    value_label: valueColumns[0]?.label ?? valueColumn,
+    value_label: valueProjection.label,
+    metric_id: valueBinding.semantic_object_id,
     ordered_months: Object.freeze(points.map(({ month }) => month)),
     ordered_values: Object.freeze(points.map(({ value }) => value)),
     result_hash: verified.result_hash,
@@ -197,8 +278,7 @@ export async function compileSingleSeriesAnalysisPlan(input: {
     !metric?.analysis_capabilities.includes("TREND_CHANGE") ||
     !metric.analysis_capabilities.includes("CHART_DATASET") ||
     metric.time_domain === null ||
-    metric.time_dimension_ref === null ||
-    metric.grain.granularity !== "month"
+    metric.time_dimension_ref === null
   ) {
     throw new TypeError("SINGLE_SERIES_METRIC_AUTHORITY_INVALID");
   }
@@ -210,6 +290,13 @@ export async function compileSingleSeriesAnalysisPlan(input: {
   );
   if (!timeDimension) throw new TypeError("SINGLE_SERIES_TIME_DIMENSION_AUTHORITY_INVALID");
   const shape = await extractSingleSeriesQueryShape(input);
+  if (
+    shape.metric_id !== metric.metric_ref.node_id ||
+    shape.time_dimension_id !== timeDimension.dimension_id ||
+    shape.timezone !== metric.time_domain.timezone
+  ) {
+    throw new TypeError("SINGLE_SERIES_QUERY_AUTHORITY_INVALID");
+  }
   const window = {
     start: `${shape.ordered_months[0]}T00:00:00.000Z`,
     end: `${addUtcMonths(shape.ordered_months[11] ?? "", 1)}T00:00:00.000Z`,

@@ -35,7 +35,7 @@ function month(index: number): string {
   return new Date(Date.UTC(2025, 7 + index, 1)).toISOString().slice(0, 10);
 }
 
-async function analysisContext() {
+async function analysisContext(input?: { readonly metricGranularity?: "atomic" | "month" }) {
   const semanticReleaseRef = reference("SemanticRelease", 10);
   return buildAnalysisContext({
     schema_version: "analysis-context@2.0.0",
@@ -61,7 +61,10 @@ async function analysisContext() {
           base_unit: "CNY",
           conversion_factor: 1,
         },
-        grain: { grain_id: "grain.order-month", granularity: "month" },
+        grain: {
+          grain_id: input?.metricGranularity === "atomic" ? "grain.order" : "grain.order-month",
+          granularity: input?.metricGranularity ?? "month",
+        },
         time_domain: {
           time_domain_id: "time.complete-month",
           calendar: "gregorian",
@@ -98,6 +101,9 @@ async function analysisContext() {
 async function queryEvidence(input?: {
   readonly monthIndexes?: readonly number[];
   readonly extraNumericColumn?: boolean;
+  readonly timeLogicalType?: "DATE" | "DATETIME";
+  readonly timeGranularity?: "atomic" | "month";
+  readonly timezone?: string;
 }): Promise<ProductTeamArtifactDocument> {
   const sql = await buildProductTeamArtifactDocument({
     schema_version: "product-team-artifact@2.0.0",
@@ -121,8 +127,12 @@ async function queryEvidence(input?: {
     committed_at: "2026-08-26T00:00:00.000Z",
   });
   const indexes = input?.monthIndexes ?? Array.from({ length: 12 }, (_, index) => index);
+  const timeLogicalType = input?.timeLogicalType ?? "DATE";
   const rows = indexes.map((index) => ({
-    period: month(index),
+    period:
+      timeLogicalType === "DATETIME"
+        ? new Date(Date.UTC(2025, 7 + index, 1) - 8 * 60 * 60 * 1_000).toISOString()
+        : month(index),
     metric_value: 100 + index * 10,
     ...(input?.extraNumericColumn ? { order_count: 10 + index } : {}),
   }));
@@ -130,10 +140,14 @@ async function queryEvidence(input?: {
     columns: [
       {
         name: "period",
-        logical_type: "DATE",
+        logical_type: timeLogicalType,
         nullable: false,
         semantic_role: "DIMENSION",
         semantic_object_id: "dimension.order_month",
+        grain: {
+          grain_id: "grain.order-month",
+          granularity: input?.timeGranularity ?? "month",
+        },
       },
       {
         name: "metric_value",
@@ -141,6 +155,7 @@ async function queryEvidence(input?: {
         nullable: false,
         semantic_role: "METRIC",
         semantic_object_id: "metric.order_revenue",
+        grain: { grain_id: "grain.order", granularity: "atomic" },
       },
       ...(input?.extraNumericColumn
         ? [
@@ -150,10 +165,18 @@ async function queryEvidence(input?: {
               nullable: false,
               semantic_role: "METRIC" as const,
               semantic_object_id: "metric.order_count",
+              grain: { grain_id: "grain.order", granularity: "atomic" as const },
             },
           ]
         : []),
     ],
+    time_window: {
+      dimension_id: "dimension.order_month",
+      start: "2025-08-01T00:00:00.000Z",
+      end: "2026-08-01T00:00:00.000Z",
+      semantics: "HALF_OPEN",
+      timezone: input?.timezone ?? "Asia/Shanghai",
+    },
   });
   return buildProductTeamArtifactDocument({
     schema_version: "product-team-artifact@2.0.0",
@@ -231,6 +254,39 @@ describe("generic single-series analysis planning", () => {
       ],
     });
     expect(JSON.stringify(plan)).not.toContain("case_id");
+  });
+
+  it("uses governed monthly evidence for an atomic published metric and DATETIME values", async () => {
+    const evidence = await queryEvidence({ timeLogicalType: "DATETIME" });
+    const input = await planInput(evidence);
+    const plan = await compileSingleSeriesAnalysisPlan({
+      ...input,
+      context: await analysisContext({ metricGranularity: "atomic" }),
+    });
+
+    expect(plan.query_shape.ordered_months).toEqual(
+      Array.from({ length: 12 }, (_, index) => month(index)),
+    );
+    expect(plan.brief.requested_time_window).toEqual({
+      start: "2025-08-01T00:00:00.000Z",
+      end: "2026-08-01T00:00:00.000Z",
+      timezone: "Asia/Shanghai",
+      semantics: "HALF_OPEN",
+    });
+  });
+
+  it("rejects evidence without governed month grain", async () => {
+    const evidence = await queryEvidence({ timeGranularity: "atomic" });
+    await expect(compileSingleSeriesAnalysisPlan(await planInput(evidence))).rejects.toThrowError(
+      "SINGLE_SERIES_QUERY_SHAPE_INVALID",
+    );
+  });
+
+  it("rejects evidence whose timezone differs from the published metric authority", async () => {
+    const evidence = await queryEvidence({ timezone: "UTC" });
+    await expect(compileSingleSeriesAnalysisPlan(await planInput(evidence))).rejects.toThrowError(
+      "SINGLE_SERIES_QUERY_AUTHORITY_INVALID",
+    );
   });
 
   it("rejects a gapped 12-row month series", async () => {
