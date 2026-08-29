@@ -970,23 +970,37 @@ receipt persistence 本身需要新的 frozen-closure 修复，本任务不满�
 
 - [x] 只读核对current E7、E6 immutable receipt=1、E7 stage PROMOTED/artifact active、semantic/defaults exact gen2、E7 diagnostic/Q1/C1=0。
 - [x] 定位 public reader alias defect并更新PRD/design/implement/runbook；不修改10799、不原地修E7。
-- [ ] scoped plan commit。
+- [x] scoped plan commit `e1b987dc`。
 
 ### E8-W1 — Failure receipt and activation v5
 
-- [ ] Contracts新增closure-failure receipt、request/result@5；Platform ports只走唯一authority。
-- [ ] 10800新增append-only receipt与record/load RPC；public reader按epoch dispatch，E7输出不变、E8使用修正alias。
-- [ ] 10800演进唯一activation RPC，原子推广fresh E8 certification并激活E8；v2-v4历史兼容。
+- [x] Contracts新增closure-failure receipt、request/result@5；Platform ports只走唯一authority（`b6865884`、`43566cfd`）。
+- [x] 10800新增append-only receipt与record/load RPC；public reader按epoch dispatch，E7输出不变、E8使用修正alias。
+- [x] 10800演进唯一activation RPC，原子推广fresh E8 certification并激活E8；v2-v4历史兼容。W3发现
+  `FOR SHARE` 需要RPC owner的UPDATE privilege，已由immutable trigger + migration postcondition约束并在`0810eb91`修复。
 
 ### E8-W2 — Finalizer and proof
 
-- [ ] Finalizer target E8加载server-verified E7 failure与fresh E8 stage，构造v5；E7 recovery path保持只读历史。
-- [ ] post-commit生产reader必须 exact AVAILABLE，否则严重故障且不得formal diagnostic。
+- [x] Finalizer target E8加载server-verified E7 failure与fresh E8 stage，构造v5；E7 recovery path保持只读历史（`ba9c7f1e`）。
+- [x] post-commit生产reader必须 exact AVAILABLE，否则严重故障且不得formal diagnostic；窄 record CLI只提交stage业务引用（`a3e9378d`）。
 
 ### E8-W3 — PostgreSQL and code proof
 
 - [ ] PG17 fresh/exact E7、E7 reader equality、receipt负例、all-old/all-new、replay、RLS/security、双连接并发。
-- [ ] full/focused tests、typecheck、Biome、renderer/inventory/secret/diff checks；scoped commits与scratch cleanup。
+- [x] full/focused tests、typecheck、Biome、renderer/inventory/diff checks；scoped commits与scratch cleanup。
+
+**E8 W1-W3 evidence（2026-08-29，待双连接最终复核）**
+
+- 10800 rendered checksum=`sha256:f388b153ccc9264b5f68fb4b7d718860331370ce144625ffd2bb24c61f66e307`；专用权威库仍停在10799/E7。
+- exact E7停机物理卷克隆的Falcon catalog inventory/content digest分别保持
+  `sha256:85dc4e7f64a0b0944ac653b95d446c253b44995e0e2574b3d393f3fb3d2cde87` /
+  `sha256:7728f3d652812ef0a7e69fcd59abbcbd859892af839ee13f82a005b35c7251fb`；逻辑dump因CTID顺序变化不作为exact fixture。
+- W3 real certification绑定clean generation `sha256:4508684743e7f169ea9bdab79f4b70d5e018b1c44c487e685d4f7050d9352411`；一次request@5
+  激活临时E8 baseline `12436bcc-e8f8-53a0-b4c7-d389b3baa186`，post-reader exact target profile AVAILABLE/selectable=true。
+- post-readback semantic pointer/runtime仍为release `18472091-59b1-5d86-b399-9605ca627040` generation 2，defaults revision=4，E8
+  diagnostic/Q1/C1=0，production isolation仍HOLD。
+- 首次非正式activation因RPC owner缺failure-receipt row-lock权限回滚为完整E7，并把该临时staging/baseline置HOLD；修复后使用新
+  staging/stage id成功，未改写HOLD证据。所有transient container/volume、scratch DB已删除，长期Docker恢复4个。
 
 ### E8-W4 — Dedicated migration and activation
 

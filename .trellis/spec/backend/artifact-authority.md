@@ -785,3 +785,88 @@ await buildFalcon24QualificationManifestV3({
   },
 });
 ```
+
+## Scenario: Falcon24 E8 provider-binding forward recovery
+
+### 1. Scope / Trigger
+
+- current E7 certification 已 PROMOTED，但 frozen public provider reader 因实现缺陷仍返回 `STALE` 时适用。
+- E7 及更早 Epoch 不可改写；修复只能由 10800 记录 E7 failure evidence，并随 E8 原子激活变为可见。
+
+### 2. Signatures
+
+```ts
+createPostgresFalcon24AuthorityEpoch({ pool, authorizer }).recordEpochClosureFailure(
+  capability,
+  { receipt_id, idempotency_key, expected_authority, stage_ref },
+);
+runFalcon24EpochClosureFailureRecord(environment?: NodeJS.ProcessEnv);
+runFalcon24AuthorityFinalization(environment?: NodeJS.ProcessEnv);
+```
+
+```sql
+app_data_agent.record_falcon24_epoch_closure_failure(command jsonb) returns jsonb
+app_data_agent.load_falcon24_epoch_closure_failure(requested_receipt_id uuid) returns jsonb
+app_data_agent.activate_falcon24_authority(command jsonb) returns jsonb -- request/result @5
+```
+
+### 3. Contracts
+
+- Record CLI 必须设置 `DATA_AGENT_ALLOW_FALCON24_EPOCH_CLOSURE_FAILURE_RECORD=YES`，并只接收
+  `DATABASE_URL`、deployment/workspace/principal、`FALCON24_EPOCH_CLOSURE_FAILURE_RECEIPT_ID`、
+  `FALCON24_EPOCH_CLOSURE_FAILURE_IDEMPOTENCY_KEY` 与 `FALCON24_PREDECESSOR_LLM_EXECUTION_STAGE_ID`。
+  CLI 不接收 readiness、subject/evidence hash 或 receipt payload；current、stage、profile 差异及全部 hash 由服务器读取并重算。
+- Receipt 固定证明 exact E7 authority、PROMOTED E7 stage、`AVAILABLE -> STALE/selectable=false`，append-only 且 same-key same-payload replay。
+- 10800 安装后 current `<E8` 必须完整委托 frozen pre-E8 reader；只有 request@5 同事务切到 E8、推广 fresh stage/artifact 后，修正 reader 才可返回 exact target `AVAILABLE`。
+- request@5 锁序为 semantic fence → Falcon advisory/current → semantic/defaults → failure receipt → E8 stage/artifact → E8 baseline/attempt；返回值必须相关 exact receipt、stage 和 E8 authority。
+- `SELECT ... FOR SHARE` 读取 failure receipt 需要 function owner 具有 `UPDATE` privilege。该 privilege 只用于取得 row lock；FORCE RLS、NOLOGIN owner、Backend 无表级 DML 与 immutable trigger 仍必须拒绝任何实际 UPDATE/DELETE。
+- Finalizer 成功后必须通过生产 `ProviderInvocationStore` 重新读取 exact target profile，并核对 model/config、execution profile hash 与 certification artifact ref；不一致属于严重 post-commit 故障，不得写补偿 HOLD 或开始 formal diagnostic。
+
+### 4. Validation & Error Matrix
+
+| Condition | Stable result |
+| --- | --- |
+| CLI 无确认、production scope 或 current 非 E7 | `...CONFIRMATION_REQUIRED` / `...LOCAL_ONLY` / `...CURRENT_MISMATCH` |
+| stage 非 PROMOTED、不是 E7 或 activation/scope 不同 | `FALCON24_EPOCH_CLOSURE_FAILURE_STAGE_MISMATCH` |
+| 服务器未观察到 exact AVAILABLE→STALE 差异 | `FALCON24_EPOCH_CLOSURE_FAILURE_NOT_PROVEN`，零 receipt |
+| same idempotency key 对应不同 command | `FALCON24_EPOCH_CLOSURE_FAILURE_IDEMPOTENCY_CONFLICT` |
+| request@5 failure receipt/stage/current/CAS 漂移 | transaction rollback，只观察 E7/STAGED/inactive |
+| row-lock owner 缺 UPDATE privilege | `permission denied` 被 Platform 映射为 `PERSISTENCE_TRANSACTION_FAILED`；migration postcondition 必须提前拒绝 |
+| commit 后生产 profile 不是 exact AVAILABLE | `FALCON24_E8_PROVIDER_EXECUTION_READBACK_*`，不得 formal diagnostic |
+
+### 5. Good / Base / Bad Cases
+
+- Good：record CLI 只给 E7 stage ref，服务器生成 immutable receipt；fresh E8 certification 在 E7 不可见；一次 request@5 后只观察 E8/PROMOTED/active/AVAILABLE。
+- Base：非正式 staging 或 activation 失败后 E7 current 不变；已 HOLD staging 不复用，修复后用新 staging/stage id 在一次性 exact E7 fixture 重证。
+- Bad：手工拼 receipt JSON、让 10800 立即改变 E7 reader、用逻辑 dump 冒充 CTID-sensitive exact fixture、给 Backend 原始表 DML，或 post-commit 原地修 profile。
+
+### 6. Tests Required
+
+- Contracts/Platform：receipt 与 request/result@5 strict/hash/correlation、同 key replay/conflict、client 无法传 payload/readiness。
+- PostgreSQL 17：fresh 与停机物理复制的 exact E7 upgrade；迁移前后 public E7 bytes、protected rows、catalog content digest 相同。
+- Security：FORCE RLS、Backend direct DML deny、RPC owner `SELECT,INSERT,UPDATE`、真实 UPDATE/DELETE 由 immutable trigger 拒绝。
+- Failure/concurrency：request@5 中段注入失败只能 all-old；两连接同 command 最多一个 E8 authority/stage/artifact，读者只见 all-old/all-new。
+- Web/Worker：fresh credential certification 绑定 clean build；Finalizer 构造 v5、只调用唯一 activation RPC，并做 exact production readback。
+- Lifecycle：E8 激活前 diagnostic/Q1/C1 均为 0；正式 diagnostic 首败写 immutable FAIL/HOLD 后立即停止。
+
+### 7. Wrong vs Correct
+
+```ts
+// Wrong：CLI 伪造失败结论或 digest。
+await recordFailure({ readiness: "STALE", evidence_hash, receipt_payload });
+
+// Correct：CLI 只交 current stage identity，RPC 从权威行重算差异与 receipt。
+await epoch.recordEpochClosureFailure(capability, {
+  receipt_id,
+  idempotency_key,
+  expected_authority: await epoch.loadCurrent(capability).then(required),
+  stage_ref: { stage_id: promoted.proof_document.stage_id, proof_hash: promoted.proof_document.proof_hash },
+});
+
+// Wrong：为满足 FOR SHARE 而移除 row lock，或把 UPDATE 直接授予 Backend。
+grant update on app_data_agent.falcon24_epoch_closure_failure_receipts to data_agent_backend;
+
+// Correct：仅 NOLOGIN RPC owner 取得锁权限，immutable trigger 继续阻止实际 mutation。
+grant select, insert, update on app_data_agent.falcon24_epoch_closure_failure_receipts
+  to data_agent_u6_rpc_owner;
+```

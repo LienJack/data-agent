@@ -295,3 +295,18 @@ E8顺序固定：
 
 10800不得直接改变E7 runtime语义：public reader必须以current epoch dispatch，`<E8`委托冻结的10799实现；修正分支只能随E8 current
 原子可见。E7 failure receipt是append-only evidence，不是对E7 baseline或diagnostic的补写。
+
+### E8 W1-W3 已完成证据（2026-08-29，双连接复核前）
+
+- 方案/Contracts/Platform/Finalizer提交为`e1b987dc`、`b6865884`、`43566cfd`、`ba9c7f1e`；10800 row-lock权限修复为
+  `0810eb91`，server-only failure record CLI为`a3e9378d`。10800当前checksum是
+  `sha256:f388b153ccc9264b5f68fb4b7d718860331370ce144625ffd2bb24c61f66e307`。
+- W3必须使用停机物理卷克隆保留Falcon表CTID顺序；逻辑dump/restore虽行数相同，但会改变catalog content digest，不能冒充exact E7 fixture。
+- exact E7 clone应用10800后，server RPC生成receipt
+  `sha256:36a4baa96d1fa17f820ae8b0c36df737df38bd007a19ace2c93fc34eb983d285`；fresh真实certification与clean Web/Worker
+  generation绑定，一次request@5成功得到临时E8并由生产读端读回目标profile `AVAILABLE/selectable=true`。
+- post-readback仍是同一semantic release generation 2，pointer/runtime generation=3、defaults revision=4，E8 diagnostic/Q1/C1=0；
+  production isolation仍为HOLD。专用`data_agent`尚未应用10800，仍是E7/10799。
+- W3发现`SELECT ... FOR SHARE`要求RPC owner具有UPDATE privilege；10800只把该权限授予NOLOGIN RPC owner，Backend仍无表DML，
+  FORCE RLS与immutable trigger继续拒绝真实UPDATE/DELETE，postcondition显式验证该锁权限。
+- 所有W3 transient container/volume和`data_agent_e8_dev`已删除；Docker恢复为专用PG、开发PG、ClamAV、Neo4j四个长期容器。
