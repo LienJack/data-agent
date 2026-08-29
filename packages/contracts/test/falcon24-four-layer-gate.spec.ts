@@ -1,5 +1,6 @@
 import { describe, expect, it } from "vitest";
 import {
+  buildFalcon24FourLayerAttemptTerminalReceipt,
   buildFalcon24FourLayerBusinessReceipt,
   buildFalcon24FourLayerGateManifest,
   buildFalcon24FourLayerManifestTurns,
@@ -8,6 +9,7 @@ import {
   buildFalcon24FourLayerTraceUiReceipt,
   FALCON24_FOUR_LAYER_LAYER_TURN_COUNTS,
   FALCON24_FOUR_LAYER_TURN_BLUEPRINTS,
+  verifyFalcon24FourLayerConversationBindings,
   verifyFalcon24FourLayerGateManifest,
   verifyFalcon24FourLayerTurnReceiptProgression,
 } from "../src/evals/falcon24-four-layer-gate.js";
@@ -214,5 +216,44 @@ describe("Falcon24 four-layer gate contracts", () => {
         name,
       ).rejects.toThrow();
     }
+  });
+
+  it("rejects cross-conversation attempt closure and hashes the exact 15-turn terminal set", async () => {
+    const document = await manifest();
+    const bindings = document.turns.map((turn, ordinal) => ({
+      turn_ordinal: ordinal,
+      turn_id: turn.turn_id,
+      conversation_id: ordinal < 9 ? id(200 + ordinal) : ordinal < 12 ? id(300) : id(301),
+      conversation_resource_version: ordinal < 9 ? 1 : ((ordinal - 9) % 3) + 1,
+      run_id: id(400 + ordinal),
+    }));
+
+    expect(verifyFalcon24FourLayerConversationBindings(document, bindings)).toEqual(bindings);
+    expect(() =>
+      verifyFalcon24FourLayerConversationBindings(document, [
+        ...bindings.slice(0, 10),
+        { ...bindings[10], conversation_id: id(999) },
+        ...bindings.slice(11),
+      ]),
+    ).toThrow("CONVERSATION_BINDING_INVALID");
+
+    const receipt = await buildFalcon24FourLayerAttemptTerminalReceipt({
+      schema_version: "falcon24-four-layer-attempt-terminal-receipt@1.0.0",
+      gate_id: document.gate_id,
+      attempt_id: document.attempt_id,
+      manifest_hash: document.manifest_hash,
+      worker_build_hash: document.worker_build_hash,
+      worker_generation_hash: document.worker_generation_hash,
+      web_build_hash: document.web_build_hash,
+      web_generation_hash: document.web_generation_hash,
+      semantic_release_hash: document.semantic_release_hash,
+      turn_receipt_hashes: document.turns.map(
+        (_, index) => `sha256:${index.toString(16).padStart(64, "0")}`,
+      ),
+      status: "PASS",
+      failure_code: null,
+      finalized_at: now,
+    });
+    expect(receipt.receipt_hash).toMatch(/^sha256:[0-9a-f]{64}$/u);
   });
 });

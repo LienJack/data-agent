@@ -773,6 +773,37 @@ export const falcon24FourLayerTerminalReceiptSchema = terminalReceiptMaterialSch
   receipt_hash: contentHashSchema,
 });
 
+const attemptTerminalReceiptMaterialSchema = z
+  .strictObject({
+    schema_version: z.literal("falcon24-four-layer-attempt-terminal-receipt@1.0.0"),
+    gate_id: falcon24FourLayerGateIdSchema,
+    attempt_id: immutableIdSchema,
+    manifest_hash: contentHashSchema,
+    worker_build_hash: contentHashSchema,
+    worker_generation_hash: contentHashSchema,
+    web_build_hash: contentHashSchema,
+    web_generation_hash: contentHashSchema,
+    semantic_release_hash: contentHashSchema,
+    turn_receipt_hashes: z.array(contentHashSchema).min(1).max(15),
+    status: z.enum(["PASS", "FAILED"]),
+    failure_code: failureCodeSchema.nullable(),
+    finalized_at: timestampSchema,
+  })
+  .superRefine((receipt, context) => {
+    const passed = receipt.status === "PASS";
+    if (
+      passed !== (receipt.failure_code === null) ||
+      (passed &&
+        (receipt.turn_receipt_hashes.length !== 15 ||
+          new Set(receipt.turn_receipt_hashes).size !== 15))
+    ) {
+      context.addIssue({ code: "custom", message: "Attempt terminal receipt闭包无效。" });
+    }
+  });
+
+export const falcon24FourLayerAttemptTerminalReceiptSchema =
+  attemptTerminalReceiptMaterialSchema.extend({ receipt_hash: contentHashSchema });
+
 async function buildReceipt<T extends z.ZodType>(schema: T, input: unknown) {
   const material = schema.parse(input) as Record<string, unknown>;
   return { ...material, receipt_hash: await sha256ContentHash(material) };
@@ -806,6 +837,59 @@ export async function buildFalcon24FourLayerTerminalReceipt(input: unknown) {
   return falcon24FourLayerTerminalReceiptSchema.parse(
     await buildReceipt(terminalReceiptMaterialSchema, input),
   );
+}
+export async function buildFalcon24FourLayerAttemptTerminalReceipt(input: unknown) {
+  return falcon24FourLayerAttemptTerminalReceiptSchema.parse(
+    await buildReceipt(attemptTerminalReceiptMaterialSchema, input),
+  );
+}
+
+const conversationBindingSchema = z.strictObject({
+  turn_ordinal: z.number().int().min(0).max(14),
+  turn_id: z.string().min(3).max(16),
+  conversation_id: immutableIdSchema,
+  conversation_resource_version: z.number().int().positive().safe(),
+  run_id: immutableIdSchema,
+});
+
+export function verifyFalcon24FourLayerConversationBindings(
+  manifestInput: unknown,
+  bindingsInput: unknown,
+) {
+  const manifest = falcon24FourLayerGateManifestSchema.parse(manifestInput);
+  const bindings = z.array(conversationBindingSchema).length(15).parse(bindingsInput);
+  const runIds = bindings.map(({ run_id: runId }) => runId);
+  const independentConversationIds = bindings
+    .slice(0, 9)
+    .map(({ conversation_id: conversationId }) => conversationId);
+  const l4a = bindings.slice(9, 12);
+  const l4b = bindings.slice(12, 15);
+  const groupIsValid = (group: readonly z.infer<typeof conversationBindingSchema>[]) =>
+    new Set(group.map(({ conversation_id: conversationId }) => conversationId)).size === 1 &&
+    group.every(
+      (binding, index) =>
+        index === 0 ||
+        binding.conversation_resource_version >
+          (group[index - 1]?.conversation_resource_version ?? Number.MAX_SAFE_INTEGER),
+    );
+  if (
+    bindings.some(
+      (binding, index) =>
+        binding.turn_ordinal !== index || binding.turn_id !== manifest.turns[index]?.turn_id,
+    ) ||
+    new Set(runIds).size !== 15 ||
+    new Set(independentConversationIds).size !== 9 ||
+    independentConversationIds.some(
+      (conversationId) =>
+        conversationId === l4a[0]?.conversation_id || conversationId === l4b[0]?.conversation_id,
+    ) ||
+    !groupIsValid(l4a) ||
+    !groupIsValid(l4b) ||
+    l4a[0]?.conversation_id === l4b[0]?.conversation_id
+  ) {
+    throw new TypeError("FALCON24_FOUR_LAYER_CONVERSATION_BINDING_INVALID");
+  }
+  return bindings;
 }
 
 function identityMaterial(value: z.infer<typeof receiptIdentitySchema>) {
@@ -952,4 +1036,7 @@ export type Falcon24FourLayerQaUiReceipt = z.infer<typeof falcon24FourLayerQaUiR
 export type Falcon24FourLayerTraceUiReceipt = z.infer<typeof falcon24FourLayerTraceUiReceiptSchema>;
 export type Falcon24FourLayerTerminalReceipt = z.infer<
   typeof falcon24FourLayerTerminalReceiptSchema
+>;
+export type Falcon24FourLayerAttemptTerminalReceipt = z.infer<
+  typeof falcon24FourLayerAttemptTerminalReceiptSchema
 >;
