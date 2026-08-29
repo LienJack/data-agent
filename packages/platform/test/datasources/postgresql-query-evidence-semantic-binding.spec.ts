@@ -532,6 +532,51 @@ describe("PostgreSQL QueryEvidence semantic binding", () => {
     });
   });
 
+  it("binds a governed timestamp month bucket for a published date dimension", async () => {
+    const input = await fixture("text");
+    const binding = await buildPostgresqlQueryEvidenceSemanticBinding({
+      ...input,
+      candidate: {
+        ...input.candidate,
+        sql: "select date_trunc('month', o.order_date::pg_catalog.timestamp) as order_month, sum(o.amount) as revenue from public.orders o where o.order_date::pg_catalog.timestamp >= $1::pg_catalog.timestamp and o.order_date::pg_catalog.timestamp < $2::pg_catalog.timestamp group by 1 order by 1",
+        result_columns: input.candidate.result_columns.map((column, index) =>
+          index === 0 ? { ...column, semantic_type: "DATETIME" as const } : column,
+        ),
+      },
+      result: await queryResult([
+        { name: "order_month", type: "1114" },
+        { name: "revenue", type: "1700" },
+      ]),
+    });
+
+    expect(binding.columns[0]).toMatchObject({
+      logical_type: "DATETIME",
+      semantic_role: "DIMENSION",
+      semantic_object_id: "dimension.order_month",
+    });
+  });
+
+  it("rejects date-to-datetime widening without a governed temporal bucket", async () => {
+    const input = await fixture("text");
+
+    await expect(
+      buildPostgresqlQueryEvidenceSemanticBinding({
+        ...input,
+        candidate: {
+          ...input.candidate,
+          sql: "select o.order_date::pg_catalog.timestamp as order_month, sum(o.amount) as revenue from public.orders o where o.order_date::pg_catalog.timestamp >= $1::pg_catalog.timestamp and o.order_date::pg_catalog.timestamp < $2::pg_catalog.timestamp group by 1 order by 1",
+          result_columns: input.candidate.result_columns.map((column, index) =>
+            index === 0 ? { ...column, semantic_type: "DATETIME" as const } : column,
+          ),
+        },
+        result: await queryResult([
+          { name: "order_month", type: "1114" },
+          { name: "revenue", type: "1700" },
+        ]),
+      }),
+    ).rejects.toMatchObject({ code: "QUERY_EVIDENCE_DIMENSION_BINDING_INVALID" });
+  });
+
   it("rejects an uncast text-backed temporal dimension", async () => {
     const input = await fixture("text");
 

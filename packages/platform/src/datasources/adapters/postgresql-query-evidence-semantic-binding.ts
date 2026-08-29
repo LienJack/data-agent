@@ -218,6 +218,14 @@ function hasExplicitTemporalSourceCast(input: {
   return new RegExp(`${column}\\s*${temporalCastPattern()}`, "iu").test(input.sql);
 }
 
+function hasTemporalBucketForSource(input: {
+  readonly sql: string;
+  readonly column_name: string;
+}): boolean {
+  const column = quotedIdentifierPattern(input.column_name);
+  return new RegExp(`\\bdate_trunc\\s*\\([^)]*${column}`, "iu").test(input.sql);
+}
+
 function hasHalfOpenPredicate(input: {
   readonly sql: string;
   readonly column_name: string;
@@ -418,8 +426,15 @@ export async function buildPostgresqlQueryEvidenceSemanticBinding(
               : dimension.data_type === "boolean"
                 ? "BOOLEAN"
                 : "STRING";
+      const outputTypeCompatible =
+        column.semantic_type === expectedType ||
+        (expectedType === "DATE" &&
+          column.semantic_type === "DATETIME" &&
+          sources.every(({ column_name: columnName }) =>
+            hasTemporalBucketForSource({ sql: candidate.sql, column_name: columnName }),
+          ));
       if (
-        column.semantic_type !== expectedType ||
+        !outputTypeCompatible ||
         sources.some(
           ({ logical_type: logicalType, column_name: columnName }) =>
             logicalType !== expectedType &&
@@ -486,6 +501,7 @@ export const postgresqlQueryEvidenceSemanticBindingInternals = Object.freeze({
   logicalTypeForOid,
   logicalTypeForPhysicalType,
   hasExplicitTemporalSourceCast,
+  hasTemporalBucketForSource,
   physicalSourceIdentity,
   selectedSemanticObjects,
   validTimeValue,
