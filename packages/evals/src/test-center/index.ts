@@ -22,6 +22,7 @@ export * from "./falcon-semantic-context.js";
 export * from "./falcon-tuning-recipes.js";
 export * from "./falcon24-agent-analysis-suite.js";
 export * from "./falcon24-analysis-oracles.js";
+export * from "./falcon24-four-layer-gate.js";
 export * from "./generated-program-oracle.js";
 export * from "./insightbench-dataset.js";
 export * from "./insightbench-installer.js";
