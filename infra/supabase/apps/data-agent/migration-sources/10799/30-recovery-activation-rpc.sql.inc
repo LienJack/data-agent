@@ -4,7 +4,7 @@ alter function app_data_agent.activate_falcon24_authority(jsonb)
 create or replace function app_data_agent.reject_artifact_payload_mutation()
 returns trigger language plpgsql set search_path='' as $function$
 declare activation_stage_id text;
-  activation_attempt_id text;
+  requested_activation_attempt_id text;
 begin
   if tg_op='DELETE' then raise exception using errcode='P0001',
     message='DA_ARTIFACT_REVISION_IMMUTABLE'; end if;
@@ -13,13 +13,13 @@ begin
   then return new; end if;
   activation_stage_id:=nullif(pg_catalog.current_setting(
     'app.falcon24_e7_activation_stage_id',true),'');
-  activation_attempt_id:=nullif(pg_catalog.current_setting(
+  requested_activation_attempt_id:=nullif(pg_catalog.current_setting(
     'app.falcon24_e7_activation_attempt_id',true),'');
   if not old.is_active and new.is_active and old.artifact_type='ModelCertificationReceipt'
     and (pg_catalog.to_jsonb(new)-'is_active')=(pg_catalog.to_jsonb(old)-'is_active')
     and activation_stage_id~
       '^[0-9a-f]{8}-[0-9a-f]{4}-[1-8][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$'
-    and activation_attempt_id~
+    and requested_activation_attempt_id~
       '^[0-9a-f]{8}-[0-9a-f]{4}-[1-8][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$'
     and exists(select 1 from app_data_agent.falcon24_llm_execution_certification_stage stage
       where stage.app_id=old.app_id and stage.tenant_id=old.tenant_id
@@ -28,7 +28,7 @@ begin
         and stage.certification_revision=old.revision
         and stage.certification_content_hash=old.content_hash
         and stage.stage_id=activation_stage_id::uuid
-        and stage.activation_attempt_id=activation_attempt_id::uuid
+        and stage.activation_attempt_id=requested_activation_attempt_id::uuid
         and stage.status='PROMOTED')
   then return new; end if;
   raise exception using errcode='P0001',message='DA_ARTIFACT_REVISION_IMMUTABLE';
