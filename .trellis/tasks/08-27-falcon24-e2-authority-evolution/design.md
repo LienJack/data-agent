@@ -1,5 +1,8 @@
 # Falcon24 Semantic Generation 2、E4 原子恢复与 E5 前向构建权威 — Design
 
+> 最新设计权威（2026-08-29）：以本文第 25 节“四层业务门禁与持续执行技术设计”为准。前文保留历史设计与证据；
+> 与第 25 节冲突的 16+30、零修复预算或内部首败终止条款已被覆盖。
+
 > W1-W7 已于 2026-08-28 实施并全量验证，用户已批准 exact review packet 与 W8。10795 已应用，`e430` 已封存为 HOLD；clean build
 > 上唯一一次 `e431` Finalizer 因旧 smoke 幂等键未绑定 Worker build 而失败关闭，current 仍为 E3/gen1，且没有 `e431`/E4 污染。
 > W8-R3 与 10796 已应用；随后只运行一次 `e432` Finalizer，新 build smoke PASS 已 append，但 combined RPC 因错误比较两个哈希域而
@@ -1265,3 +1268,130 @@ AnalysisReport/Chart`的每条边必须同Run、同release/datasource/schema、a
 
 两种终态都执行凭据、浏览器、Web/Worker、OpenSandbox、scratch container/volume清理；COMPLETE还必须有Diagnostic、16/16、30/30
 和residual=0，任何缺项都只能HOLD并提交可接手handoff。
+
+## 25. 四层业务门禁与持续执行技术设计（最终覆盖）
+
+本节覆盖本文先前的 16+30 门禁、E11 后禁止内部修复和“首个内部缺陷直接终止”设计。E1-E10 历史不变；当前 E11 尚未激活，
+因此四层门禁合同、代码与 build 在 scratch 证明后作为 fresh E11 closure 激活。若 E11 正式运行后发现新的内部 frozen-closure
+缺陷，则保存 E11 失败事实并以前向 Epoch 自动恢复，不修改或重放失败 Run。
+
+### 25.1 Gate authority 与数据模型
+
+现有 `10774/10779` 把资格门禁硬编码为 16 slots，Campaign 又固定 30 slots，不能无损表达 5/2/2/6 的四层题库。
+实现使用验证后的下一 migration frontier（当前预计 `10803`）新增 append-only 四层 gate authority，而不修改旧表、旧函数或历史行：
+
+```text
+four_layer_gate_attempt
+  scope: app/tenant/environment/principal
+  gate_id + attempt_id + authority_epoch + baseline/build/release hashes
+  manifest_hash + status + current_layer + next_turn + terminal_receipt
+
+four_layer_gate_turn
+  layer + scenario_id + turn_index + expected_agent_contract
+  conversation_id + conversation_resource_version + run_id
+  question_hash + answer_hash + public_event_hash
+  accepted_artifact_refs + business_receipt
+  qa_ui_receipt + trace_ui_receipt + terminal_status
+```
+
+`begin -> claim_turn -> record_business -> record_qa_ui -> record_trace_ui -> finalize_turn -> finalize_attempt` 全部通过 server-owned
+RPC、expected version、advisory/row lock、RLS 与幂等 key 仲裁。上一层完整 PASS 才能 claim 下一层；业务 FAIL 后 UI receipt 必须保持
+空；任何 code/build/release hash 变化都不能继续旧 attempt。旧 Qualification/Campaign 只保留历史读取，不再是完成条件。
+
+题库、顺序、期望 Agent 范围、公式/术语 rubric、是否需要表格/图表、L4 Conversation 分组以及 UI/Trace 合同共同计算 manifest hash。
+Evaluator sealed Oracle 仍与生产上下文隔离，不能把 gold SQL、期望答案或固定调用链注入 Root。
+
+### 25.2 Root 动态 Tool Loop 与语义 fallback
+
+Host 只给 Root 冻结的 Conversation history、Agent Cards、当前可调用工具、预算与已验收 Artifact，不根据题号选择 Agent。
+门禁在 Run 完成后观察实际 Tool/Task 序列并评分：L1 恰好一个 Specialist，L2 恰好 Semantic 与 Text2SQL 两个能力且后者消费前者
+已验收 context，L3/L4 允许 Root 根据 Tool Result 动态继续 Analysis/Report/Chart。
+
+Semantic 解析链固定为治理机制而非业务硬编码：
+
+```text
+exact term/formula lookup
+  -> missing: decompose requested concept
+  -> bind governed metric/dimension/relationship/time primitives
+  -> synthesize request-scoped executable interpretation
+  -> continue Semantic answer or hand off exact context
+  -> only when multiple interpretations materially change the answer: ask one concise clarification
+```
+
+缺失命中、索引 reason code、候选检索状态只进入安全内部 Trace；用户答案说明采用的口径和可调整项，不把内部缺失当成拒答。
+request-scoped 解释不自动写回 Published Semantic Release，也不允许模型自行发明物理 Join 或发布全局公式。
+
+### 25.3 单次模型调用、后置 UI/Trace 检查
+
+正式 turn 使用真实 `/w/:workspaceId/qa` composer 提交一次并冻结 Run。浏览器等待 durable terminal event，随后 Gate Evaluator 先读取
+同一 Run 的公开事件、accepted Artifact、Oracle/公式结果和最终 answer：
+
+```text
+submit once -> wait terminal -> business rubric
+  FAIL -> persist failure -> repair loop（不做深度 UI/Trace）
+  PASS -> same Run QA page checks -> click answer trace entry -> exact Trace checks -> finalize turn
+```
+
+QA/Trace 检查由固定 selector、URL/Run/Conversation identity、DOM 可见性、Artifact hash 和 refresh/replay 断言完成；不通过另一个
+聊天模型重新提问。仅当 CSS/rendering 无法由 DOM 判断时保存截图供失败诊断，不能用截图替代 exact authority receipt。
+
+Q&A Agent 页面验收覆盖 composer、streaming/activity、terminal answer、Markdown/table/chart preview、error/loading、刷新恢复与 L4 连续消息。
+Trace 验收必须从答案按钮进入，覆盖 exact focus、Root/Subagent/Tool 公开事件、Artifact lineage/preview、Run 切换、返回对话和刷新恢复。
+桌面 1440px 是逐 Run 正式 viewport；全部通过后复用已保存 Conversation 做一次 390px 展示 smoke，不重新调用模型。
+
+### 25.4 L4 Conversation/Run 恢复
+
+每个 L4 场景固定一个浏览器 session 与一个 Conversation，三轮分别创建三个 Run。Run admission 冻结当时的
+`conversation_id + resource_version + ordered visible_messages`；后一轮新增消息不能污染前一 Run。Provider summary 明确标记为
+untrusted context，不是 Semantic/Data Artifact。
+
+当前合同首期仍要求事实在 current Run 重新验证；如果后续开放跨 Run Artifact 复用，只能由 server 选择同 workspace/conversation、
+exact accepted/hash-match 的引用。无论是否重新查询，上一轮 assistant prose 都不能进入 `accepted_artifact_refs`。刷新或 SSE 中断时从
+PostgreSQL events 恢复 exact Run cursor；已存在 terminal/tool/artifact checkpoint 时不得重复 Provider/SQL/Sandbox side effect。
+
+### 25.5 无人值班控制器
+
+```text
+PREFLIGHT
+  -> SCRATCH_VERTICAL_CANARY
+  -> LIVE_STAGE_ACTIVATE
+  -> L1 -> L2 -> L3 -> L4
+  -> FINAL_AUDIT_CLEANUP -> COMPLETE
+
+business/internal failure
+  -> persist FAILED attempt
+  -> CLASSIFY -> MINIMAL_REPRO -> TDD_FIX -> FOCUSED_CHECK -> SCOPED_COMMIT
+  -> CLEAN_BUILD -> SCRATCH_CANARY -> fresh epoch/attempt -> L1
+
+external authority blocker
+  -> CHECKPOINT -> CLEANUP -> EXTERNAL_BLOCKED
+```
+
+同一可重试基础设施错误最多同构重放两次；第三次相同 fingerprint 自动转为最小复现和代码/配置诊断，而不是继续盲重试或结束。
+每个独立修复都有 focused test 与 scoped commit，staging 只包含任务拥有文件。服务、浏览器或上下文中断后读取 attempt/Run/checkpoint
+恢复。只有外部 credential、真人治理/安全审批、长期外部服务不可达或需要未授权的受保护历史/生产破坏性变更进入
+`EXTERNAL_BLOCKED`；这类阻断不能靠伪造 Secret、自动审批、手工 DML 或降低安全门禁绕过。
+
+### 25.6 Crash windows
+
+| 窗口 | 可观察状态 | 恢复 |
+|---|---|---|
+| gate claim 前崩溃 | 无 Run | 同幂等输入重新 claim |
+| Run 已创建、浏览器断开 | RUNNING/terminal events 持久化 | 重连 SSE/trajectory；不重新 submit |
+| business PASS、UI 未检查 | business receipt 已写，UI receipt 空 | 直接恢复同 Run 页面检查 |
+| QA PASS、Trace 未检查 | QA receipt 已写 | 从答案入口恢复 exact Trace，不提新问题 |
+| turn finalize 前崩溃 | receipts 齐全、next_turn 未推进 | 幂等 finalize |
+| 正式业务 FAIL | attempt immutable FAILED | 门禁外修复；新 build/attempt 从 L1 开始 |
+| live activation rollback | predecessor all-old | 修复后 fresh stage；禁止补偿 DML |
+| live activation commit | successor all-new | readback后继续或保存失败并前向恢复 |
+
+### 25.7 主要改动边界
+
+- Contracts/Evals：四层 manifest、turn/attempt receipt、题库 rubric 与 deterministic evaluator。
+- PostgreSQL/Platform：下一 frontier 的 append-only four-layer authority、RLS、adapter、fresh/populated/rollback/replay/concurrency tests。
+- Worker：Semantic fallback、Root Tool observation/turn recovery、L1-L4 route/evidence负例；不增加 case router。
+- Web：四层 gate controller、同 Run business/UI/Trace 分阶段 receipt、L4 same-session submission、页面恢复测试。
+- Specs/Runbook/Trellis：废止 16+30 完成条件，记录无人值班状态机、硬阻断和最终证据索引。
+
+严禁修改 E1-E10 history、复用失败 Run、Direct QA、固定 SQL/业务 DAG、API-only UI PASS、把 assistant 文本当证据、把 request-scoped
+语义解释静默发布为全局定义，或将 `production_isolation=false` 描述为生产 GO。

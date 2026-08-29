@@ -1,5 +1,7 @@
 # Falcon24 Semantic Generation 2、E4 原子恢复与 E5 前向构建权威 — Implementation Plan
 
+> 最新执行入口（2026-08-29）：从本文第 25 节 F0-F7 开始。前文步骤保留为历史进度；与第 25 节冲突的未完成项不再执行。
+
 > W1-W7 已于 2026-08-28 实施并全量验证。用户已批准 exact review packet 与 W8；10795 已应用，旧 `e430` 已封存为 HOLD。
 > clean build 上唯一一次 `e431` Finalizer 因 smoke 幂等键未绑定 Worker build 而失败关闭，current 仍为 E3/gen1 且无 E4 污染。
 > W8-R3 与 10796 已应用；随后只运行一次 `e432` Finalizer，新 smoke PASS 已 append，但 combined activation 因错误混用 ChangeSet/snapshot
@@ -1305,3 +1307,92 @@ Diagnostic/Q1/C1任一正式首次失败必须写既有 authority支持的 immut
   原任务未完成；不使用“继续调查”作为第三种状态。
 - 两种终态都必须停止本任务 Web/Worker/browser/OpenSandbox，删除 scratch container/volume与临时 credential，只保留既定长期
   容器，核对 audit stash，更新 Trellis/spec、focused validation、scoped commit并确保 worktree clean。
+
+## 25. 四层门禁最终实施计划（覆盖第 23-24 节未完成步骤）
+
+> 本节是最新执行入口。旧 `Q1 16/16 + C1 30/30`、产品修复预算为零和内部首败直接 HOLD 的未完成项不再执行；历史事实保留。
+
+### F0 — 方案冻结（本轮）
+
+- [x] 固定 L1-L4 的 9 个单轮问题与 2 组三轮 Conversation，共 15 个用户回合。
+- [x] 固定 Semantic 缺失定义的友好 fallback，不向用户展示索引/治理命中失败。
+- [x] 固定“业务 PASS 后复用同 Run 做 QA/Trace E2E”，不重复模型回答。
+- [x] 固定无人值班软失败恢复与 `EXTERNAL_BLOCKED` 硬边界。
+- [x] 更新 PRD/design/implement，Trellis validate、Markdown/diff check；docs-only scoped commit 在本轮完成。
+
+### F1 — 四层 gate contract 与 authority
+
+- [ ] 先写 Contracts/Evals failing tests：5/2/2/6 顺序、L4 Conversation 分组、15 次唯一问题、期望 Agent 范围、business/UI/Trace
+  分阶段 receipt、旧 build/跨 attempt/跨 Conversation拒绝。
+- [ ] 新增 four-layer manifest/receipt v1 与 deterministic rubric；旧 qualification/campaign contract只读保留。
+- [ ] 在验证后的下一 frontier（预计10803）新增 append-only attempt/turn authority与 server RPC；不修改10774/10779或历史行。
+- [ ] Platform adapter、RLS/grants、fresh/populated upgrade、rollback/replay/concurrency、renderer/inventory全部 PASS。
+- [ ] Contracts/Platform focused + typecheck/Biome；分别创建 scoped commits。
+
+### F2 — Semantic UX 与 Root/Conversation 闭环
+
+- [ ] 为同比缺失精确 term 建立 failing test：Semantic读取订单收入/时间治理原语，生成 request-scoped 同比解释并继续，不直接拒答。
+- [ ] 覆盖客单价辨析、关系图、营销投入/收入/ROAS聚合公式及净 ROI 纠正；禁止静默发布全局定义。
+- [ ] 覆盖 L1 单 Specialist、L2 Semantic后Text2SQL、L3动态多Agent、L4 ordered history/指代/纠正/summary不作证据。
+- [ ] 覆盖 crash/replay不重复 Provider、SQL、Sandbox或Artifact side effect；移除/拒绝任何case/关键词路由捷径。
+- [ ] Worker/Agent Runtime focused + typecheck/build/Biome；按最小闭包创建 scoped commits。
+
+### F3 — Web gate controller 与页面验收
+
+- [ ] Gate controller每个 turn只提交一次，terminal后先 business rubric；FAIL不执行深度UI/Trace，PASS才继续同Run浏览器检查。
+- [ ] Q&A Agent页面覆盖 composer、activity、answer、table/chart、error/loading、refresh/reconnect、不重复Run。
+- [ ] Trace必须从答案入口进入 exact Run，覆盖Root/Subagent/Tool、Artifact lineage/preview、Run切换、返回与刷新。
+- [ ] L4两个browser session各保留一个Conversation连续三轮；验证resource version、三个Run与纠正后的口径。
+- [ ] 1440px逐Run正式检查；全部PASS后复用已有Conversation做390px smoke，不重新调用模型。
+- [ ] Web focused/browser contract tests、typecheck/build/Biome；scoped commit。
+
+### F4 — 无模型的低成本预检
+
+- [ ] worktree clean、owned commit/build identity、migration checksum、retained assets、Semantic Release/Profile/Datasource/Sandbox attestation核对。
+- [ ] Contracts/Agent Runtime/Platform/Worker/Web focused/full、typecheck/build、Trellis/spec、forbidden scan先通过；失败只在本阶段修复。
+- [ ] exact predecessor physical clone上应用新migration，证明protected history零漂移与all-old/all-new activation。
+- [ ] 启动attested scratch Web/Worker/OpenSandbox，用一个非正式趋势问题完成动态Semantic/Text2SQL/Analysis/Chart和答案入口Trace。
+- [ ] scratch失败进入自动修复环，不触碰live successor；PASS后清理scratch并冻结clean build。
+
+### F5 — Live activation 与四层正式门禁
+
+- [ ] fresh live certification在predecessor下STAGED/inactive；单事务激活fresh successor并完成production-port readback。
+- [ ] 创建唯一 four-layer attempt，按 L1五题 -> L2两题 -> L3两题 -> L4两组三轮严格串行。
+- [ ] 每一 turn：真实composer一次提交 -> terminal business receipt -> 同Run QA receipt -> 答案入口 exact Trace receipt -> finalize。
+- [ ] 任一层未完整PASS不得claim下一层；正式业务FAIL保存immutable evidence后进入F6，不继续消耗高层问题token。
+- [ ] 全部15回合必须绑定同一baseline/build/release/profile；L4每组固定Conversation且三个Run可逐一打开。
+
+### F6 — 无人值班修复循环
+
+- [ ] 自动读取首个失败Run/Tool/Artifact/页面receipt，生成稳定root-cause fingerprint与最小复现。
+- [ ] 对内部缺陷执行TDD修复、focused validation、scoped commit、clean build、scratch canary；若live已激活则以前向Epoch保留失败历史。
+- [ ] 新build创建fresh attempt并从L1重跑；禁止resume旧Run、跨attempt/build拼PASS或手工DML修权威。
+- [ ] 同一瞬态错误最多同构重放2次；第三次转 deeper diagnostic，而不是继续盲重试或静默停止。
+- [ ] 只有外部credential、真人治理/安全审批、长期外部服务不可达或未授权破坏性生产变更进入`EXTERNAL_BLOCKED`；先清理、
+  scoped handoff commit并记录唯一恢复命令。
+
+### F7 — 最终审计、页面证据与闭环
+
+- [ ] 输出 L1-L4 矩阵：question/Conversation/Run、实际Agent序列、answer/artifact hashes、business/QA/Trace receipts与token usage。
+- [ ] 证明15回合真实答案页可用、每个exact Trace可从答案进入、L4上下文/纠正正确、refresh/replay无重复副作用。
+- [ ] 核对protected history零漂移、最新authority/build/release/profile exact、sandbox residual=0、production isolation真实状态。
+- [ ] 停止本任务Web/Worker/browser/OpenSandbox，删除scratch/container/volume和临时credential；保留既定长期容器和audit stash。
+- [ ] 更新spec/runbook/Trellis，运行final focused/full/validate/diff checks；每个完成小任务scoped commit，最终worktree clean。
+- [ ] 只有全部AC-FL/UI/AUTO/FINAL闭合才标记COMPLETE；若为`EXTERNAL_BLOCKED`必须明确任务未完成且可从checkpoint恢复。
+
+### 验证命令族
+
+```bash
+pnpm vitest run <owned focused suites>
+pnpm --filter @data-agent/contracts typecheck
+pnpm --filter @data-agent/platform typecheck
+pnpm --filter @data-agent/worker typecheck
+pnpm --filter @data-agent/web typecheck
+pnpm turbo run build --force --filter=@data-agent/web... --filter=@data-agent/worker...
+pnpm db:migrations:render:check
+pnpm db:migrations:inventory:check
+python3 ./.trellis/scripts/task.py validate .trellis/tasks/08-27-falcon24-e2-authority-evolution
+git diff --check
+```
+
+每次只运行当前工作包需要的子集；模型题库在 F4 scratch canary 与 F5 正式门禁之前不会启动。

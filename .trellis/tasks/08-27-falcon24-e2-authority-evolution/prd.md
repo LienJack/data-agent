@@ -1,5 +1,8 @@
 # Falcon24 Semantic Generation 2、E4 原子恢复与 E5 前向构建权威
 
+> 最新需求权威（2026-08-29）：以本文第 20 节“四层业务门禁与无人值班闭环”为准。前文 Epoch、16+30 门禁与失败记录
+> 作为不可变历史保留；与第 20 节冲突的未完成要求不再执行。
+
 > 执行状态（2026-08-29）：W1-W8-R4 已完成。10797 已应用，`e432` 已经既有 capability authority 封存为 `HOLD`；clean build 上
 > 唯一一次 `e433` Finalizer 已把 generation 2 与 E4 在同一事务中激活并通过 production-port readback。当前 exact authority 为 E4，
 > semantic pointer/runtime/workspace defaults 均为 generation 2，E4 diagnostic、qualification 与 campaign 均为零。
@@ -570,3 +573,116 @@ child `task_id`，所以跨 Root turn 的合法新 Tool Call 与旧 Tool Call �
 - [ ] **AC-E11-T03** 仅在scratch PASS后，live E11 activation、唯一Diagnostic、Q1 16/16、C1 30/30全部PASS。
 - [ ] **AC-E11-T04** canonical audit、真实production isolation、资源清理、spec/Trellis验证、scoped commit和clean worktree PASS；
   否则以完整handoff进入HOLD并明确任务未完成。
+
+## 20. 四层业务门禁与无人值班闭环（最终需求覆盖）
+
+本节是 2026-08-29 用户确认后的最终产品需求。它覆盖本文此前仍要求 `Q1 16/16 + C1 30/30`、产品修复预算为零、
+或任一内部缺陷立即终止任务的条款；历史 attempt、Run、receipt 和失败事实继续不可变，只是不再作为未来验收规模。
+
+### 20.1 Goal 与范围
+
+最终目标不是继续扩大 Epoch 或重复跑题，而是在同一个冻结 build 上，用自然业务问题证明：Root 能动态调用正确的
+Semantic、Text2SQL、Analysis、Report/Chart Agent；同一窗口的后续问题能继承并纠正上下文；真实 Q&A Agent 页面与
+exact Run 轨迹页面均可用。正式业务门禁只运行下列 15 个用户回合，不再执行旧 16+30 重复矩阵。
+
+范围内包括 Root/Agent Harness、Semantic fallback、Text2SQL/Analysis/Report/Chart、Conversation/Run/Artifact 证据、
+Q&A Agent 页面、轨迹页、浏览器恢复、门禁 authority、无人值班恢复与最终审计。生产隔离认证、移动端完整适配、历史 Run
+迁移、旧门禁补分和用固定业务 DAG/SQL 绕过 Agent 均不在本闭环范围。
+
+### 20.2 最终四层题库
+
+#### L1：单 Agent（5 个独立 Conversation/Run）
+
+1. `我想看订单收入的同比增长，系统里应该怎么算？需要使用哪些收入和时间口径？`
+   - 期望只调用 Semantic Agent；读取已发布的订单收入、时间字段和术语/公式图。
+   - 精确同比术语不存在时，Semantic Agent 必须以已治理原语形成 request-scoped 可执行解释并友好回答，不能直接暴露
+     “索引未找到”“未受治理定义”或让用户重述完整问题。
+2. `当前工作区里的“客单价”是怎样计算的？它与客户订单总金额有什么区别？`
+   - 期望只调用 Semantic Agent，正确区分订单行平均金额与客户累计金额。
+3. `订单、客户、客户反馈和配送信息之间怎样关联？`
+   - 期望只调用 Semantic Agent，并给出已发布关系、方向与关键 Join。
+4. `列出最近10笔订单的订单编号、下单日期和订单金额。`
+   - 期望只调用 Text2SQL Agent，返回受限、可复核的 10 行结果。
+5. `基于这份已经确认的数据表，写一段给经营负责人的简短摘要，不增加表中没有的结论。`
+   - 在同 Run 注入已验收表格输入，期望只调用 Report Agent，且所有事实可回指输入证据。
+
+#### L2：两个 Agent（2 个独立 Conversation/Run）
+
+6. `最近12个完整月的订单收入同比表现如何？按月给出本期收入、上年同期收入和同比增速。`
+   - 期望 `Semantic -> Text2SQL`；先闭合指标、时间与同比口径，再查询。
+7. `各营销渠道投入产出表现如何？按正式口径给出总投入、营销收入和ROAS渠道对比表。`
+   - 期望 `Semantic -> Text2SQL`；ROAS 按 `SUM(revenue_generated) / NULLIF(SUM(spend), 0)` 聚合后计算，
+     不能汇总或平均源表 ROAS。
+
+#### L3：单轮多 Agent（2 个独立 Conversation/Run）
+
+8. `最近12个完整月的订单收入有没有持续上升或下降？说明趋势强度，给出折线图和经营结论。`
+   - 期望动态形成 `Semantic -> Text2SQL -> Analysis -> Report/Chart`，但 Host 不预排业务 DAG。
+9. `过去一年各营销渠道投入效果如何？比较不同渠道和目标人群的投入、转化与回报，并结合订单收入、新客和订单量，指出值得继续投入和需要收缩的渠道。`
+   - 期望动态多 Agent；结论必须区分相关性与因果性，并附表格/图表证据。
+
+#### L4：同一窗口多轮、多 Agent（2 个 Conversation，各 3 个 Run）
+
+场景 A 固定在同一个浏览器窗口和 Conversation 中顺序提交：
+
+1. `最近12个完整月的订单收入同比表现如何？请给出月度趋势图。`
+2. `其中下降最明显的3个月，按客户类型拆开看看，主要差异来自哪里？`
+3. `把总体趋势和这3个月的拆解合成一份经营摘要，保留原趋势图，再增加客户类型对比图。`
+
+场景 B 固定在另一个浏览器窗口内的同一个 Conversation 中顺序提交：
+
+1. `各营销渠道的总投入、营销收入和ROAS表现如何？给出渠道对比图。`
+2. `我说的回报不是ROAS，改成净ROI，也就是扣除投入后的回报率，再按渠道重算。`
+3. `只看投入增长但净ROI下降的渠道，再按目标人群拆开，说明可能原因和下一步建议。`
+
+L4 必须证明每条用户消息创建不同 Run、Conversation ID 保持不变、resource version 单调增加、`其中/这3个月/只看`
+正确指代，后一轮纠正覆盖旧口径。历史 assistant 文本和 summary 只能帮助理解语境，不能冒充数据/语义证据；当前 Run
+需要重新验证事实，或引用合同允许的 exact accepted Artifact。净 ROI 使用 `(营销收入-投入)/投入`，不得复用 ROAS 结果。
+
+### 20.3 分阶段业务与 UI/Trace 验收
+
+每个用户回合只允许一次正式模型提交。Run 到达终态后先执行业务验收：回答正确性、期望 Agent 数量/顺序、公式/SQL/Oracle、
+证据闭包和用户可读错误。业务验收失败时不再打开图表或深度遍历轨迹，直接进入门禁外修复；业务验收通过后，使用同一个
+Conversation/Run 做确定性浏览器验收，不再次向模型提问。
+
+Q&A Agent 页面必须满足：真实 composer 提交一次；用户消息、Agent 执行状态和终态回答按序可见；预期表格/图表可展开；
+无错误 banner 或永久 loading；刷新后恢复同一 Conversation/Run 且不重复调用；L4 三轮连续显示且纠正后的答案不回退旧口径。
+
+轨迹页必须从答案入口点击进入 exact Run，不能直接拼 URL。页面应显示 Root turn、Subagent task/tool、公开安全事件、accepted
+Artifact lineage、表格/图表/报告预览；切换 Run、返回对话和刷新均保持 exact focus；不得出现 `BLOCKED` 占位冒充成功，
+也不得用 API-only receipt 代替页面可用性。
+
+### 20.4 Token 与重复运行约束
+
+- 正式门禁共 15 个用户回合，每个冻结 build 最多各提交一次；废止 16+30、COLD/WARM 和三次重复。
+- L1 未全过不运行 L2，L2 未全过不运行 L3，L3 未全过不运行 L4。
+- Browser E2E 复用已经回答成功的 Run；DOM、URL、Artifact/hash、刷新和截图核验不触发第二次模型回答。
+- 默认使用 deterministic rubric、受治理公式、独立 SQL/分析 Oracle 和公开事件断言；只有无法确定的文本质量才允许一次
+  小型 evaluator，不运行多评委或对抗评审。
+- 失败只保存必要的结构化事件、首张失败截图和最小日志；成功每个场景保存一组 receipt，不录制长视频或重复截图。
+
+### 20.5 无人值班执行合同
+
+内部可修复问题不能让任务静默停止。正式 Run 失败先写 immutable attempt/Run evidence，然后退出门禁，在隔离 worktree 中按
+“最小复现 -> failing test -> scoped fix -> focused validation -> scoped commit -> clean build/attestation -> scratch canary -> 新正式
+attempt”自动前进。正式 Run 本身不得 retry/resume，也不得跨 build/attempt 拼接 PASS；代码变化后从 L1 重新证明同一 baseline。
+
+同一根因指纹连续出现三次时不继续盲重试，而是自动进入 deeper diagnostic：缩小到最早失败层、读取持久化 Run/Tool/Artifact
+证据、形成新的 failing test，再继续修复。上下文压缩、进程退出或浏览器断开后按持久化 checkpoint 恢复，不重复已提交的
+Provider、SQL、Sandbox 或 Artifact side effect。
+
+只有以下硬阻断允许无人值班任务停止在 `EXTERNAL_BLOCKED`，且必须先完成清理、提交 handoff 并留下唯一恢复命令：本地无法
+安全取得/轮换的外部 credential；必须由真人完成的语义发布或安全审批；目标服务长期不可达；需要删除/回写受保护历史或扩大到
+用户未授权的生产变更。普通测试失败、SQL/路由/页面缺陷、构建错误和可恢复进程故障都不是停止理由。
+
+### 20.6 Final acceptance
+
+- [ ] **AC-FL-01** L1 五题在同一 frozen baseline 上全部 PASS，且每题只出现一个预期 Specialist Profile。
+- [ ] **AC-FL-02** L2 两题全部 PASS，动态顺序为 Semantic 后 Text2SQL，公式、时间与数据结果可复核。
+- [ ] **AC-FL-03** L3 两题全部 PASS，Root 基于 Tool Result 动态决定后续调用，表格、分析、报告和图表同源。
+- [ ] **AC-FL-04** L4 两个三轮 Conversation 全部 PASS，正确处理指代、筛选、口径纠正、跨 Run 历史与证据边界。
+- [ ] **AC-UI-01** 15 个正式用户回合的 Q&A Agent 页面均从真实 composer 提交并可见终态结果；刷新不重复 Run/调用。
+- [ ] **AC-UI-02** 每个通过的 Run 都能从答案入口打开 exact 可用轨迹；Agent、Tool、Artifact、表格/图表/报告预览与返回交互正常。
+- [ ] **AC-AUTO-01** 内部失败可自动修复并在新 build/attempt 上重启；crash/replay 不重复已提交副作用；硬阻断有明确 handoff。
+- [ ] **AC-FINAL-01** PostgreSQL authority、protected history、credential、安全边界、sandbox residual、服务/浏览器/scratch 清理、
+  focused/full checks、scoped commits 与 clean worktree 全部闭合；production isolation 仍按真实证据单独声明。

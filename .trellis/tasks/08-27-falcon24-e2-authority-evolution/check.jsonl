@@ -7,3 +7,5 @@
 {"file":".trellis/spec/backend/python-sandbox-execution.md","reason":"Audit Operator, Oracle, Publisher, sandbox receipt, and residual closure."}
 {"file":".trellis/spec/frontend/agent-public-events.md","reason":"Audit browser and public trace surfaces for safe exact-reference behavior."}
 {"file":"docs/plans/2026-08-26-001-refactor-falcon24-e1-authority-reset-plan.md","reason":"Audit every original U1-U9 and E2 recovery requirement before completion."}
+{"file":".trellis/spec/backend/qa-conversation-resource-binding.md","reason":"Audit L4 ordered history, exact Conversation version, Run isolation, and no cross-conversation evidence leakage."}
+{"file":".trellis/spec/backend/run-event-streaming.md","reason":"Audit Q&A and Trace UI recovery from the same durable event source without duplicate Run or tool side effects."}
