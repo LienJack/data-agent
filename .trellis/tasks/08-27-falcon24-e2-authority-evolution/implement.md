@@ -1115,10 +1115,16 @@ receipt persistence 本身需要新的 frozen-closure 修复，本任务不满�
 
 ### E11-W1 — Worker dynamic Tool Loop identity fix
 
-- [ ] 先写 failing regression：同 Run、不同 accepted child task、相同 TEXT2SQL stage/call_index当前生成相同 logical ID并被 duplicate。
-- [ ] Specialist identity绑定 run/task/stage/call_index；同 task重放仍相同，repair index与跨 task均分域。
-- [ ] 候选最终失败只返回 safe stable policy code；raw candidate/parameters/prompt/provider output不进入 Event或Artifact。
-- [ ] Worker focused tests、Agent Runtime boundary tests、typecheck/build/Biome/diff check；scoped commit。
+- [x] 先写 failing regression：同 Run、不同 accepted child task、相同 TEXT2SQL stage/call_index当前生成相同 logical ID并被 duplicate。
+- [x] Specialist identity绑定 run/task/stage/call_index；同 task重放仍相同，repair index与跨 task均分域。
+- [x] 候选最终失败只返回 allowlisted stable policy code；raw candidate/parameters/prompt/provider output不进入 Event或Artifact。
+- [x] Worker focused 3 files / 16 tests、typecheck、build、owned Biome与diff check PASS；scoped commit。
+
+实现使用 `specialist-provider-call@2:<task_id>:<stage>:<call_index>` 作为既有 Team deterministic UUID 的 material。
+测试先以两个缺失 helper稳定失败，再证明同 task replay identity相等、repair index不同、下一 Root turn child task不同，并断言
+真实 Text2SQL Tool 调用把该 task-scoped ID传入 Run provider capability。最终候选 rejection只允许
+`TEXT2SQL_SQL_SHAPE_REJECTED`、`TEXT2SQL_SQL_DANGEROUS`、`TEXT2SQL_SEMANTIC_BINDING_OUT_OF_RANGE`；其他 code收敛为
+`TEAM_TEXT2SQL_CANDIDATE_POLICY_REJECTED`。
 
 ### E11-W2 — Evidence-driven retained Finalizer
 

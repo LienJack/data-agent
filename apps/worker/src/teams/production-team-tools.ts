@@ -189,8 +189,38 @@ function normalizedQueryEvidenceRows(input: {
   });
 }
 
+function specialistProviderLogicalCallId(input: {
+  readonly run_id: string;
+  readonly task_id: string;
+  readonly stage: "SEMANTIC" | "TEXT2SQL" | "REPORT";
+  readonly call_index: number;
+}): string {
+  return productionTeamRuntimeInternals.identity(
+    input.run_id,
+    [
+      "specialist-provider-call@2",
+      input.task_id,
+      input.stage.toLowerCase(),
+      String(input.call_index),
+    ].join(":"),
+  );
+}
+
+const ROOT_VISIBLE_TEXT2SQL_POLICY_CODES = new Set([
+  "TEXT2SQL_SEMANTIC_BINDING_OUT_OF_RANGE",
+  "TEXT2SQL_SQL_DANGEROUS",
+  "TEXT2SQL_SQL_SHAPE_REJECTED",
+]);
+
+function text2SqlCandidateFailureCode(code: string | null): string {
+  return code && ROOT_VISIBLE_TEXT2SQL_POLICY_CODES.has(code)
+    ? code
+    : "TEAM_TEXT2SQL_CANDIDATE_POLICY_REJECTED";
+}
+
 async function specialistProviderJson(input: {
   readonly factory: ProductionTeamToolFactoryInput;
+  readonly task_id: string;
   readonly stage: "SEMANTIC" | "TEXT2SQL" | "REPORT";
   readonly context_text: string;
   readonly call_index?: number;
@@ -211,12 +241,12 @@ async function specialistProviderJson(input: {
   }
   const result = portValue(
     await provider.invoke({
-      logical_call_id: productionTeamRuntimeInternals.identity(
-        input.factory.lease.run_id,
-        input.call_index && input.call_index > 0
-          ? `provider:${input.stage.toLowerCase()}:repair:${input.call_index}`
-          : `provider:${input.stage.toLowerCase()}`,
-      ),
+      logical_call_id: specialistProviderLogicalCallId({
+        run_id: input.factory.lease.run_id,
+        task_id: input.task_id,
+        stage: input.stage,
+        call_index: input.call_index ?? 0,
+      }),
       turn: {
         kind: "SPECIALIST",
         stage: input.stage,
@@ -647,7 +677,9 @@ export function createProductionTeamTools(
     rejection_code: null,
   };
 
-  const generateValidatedText2SqlCandidate = async (): Promise<Text2SqlQueryCandidate> => {
+  const generateValidatedText2SqlCandidate = async (
+    taskId: string,
+  ): Promise<Text2SqlQueryCandidate> => {
     if (!state.prepared) throw new ProductionTeamToolError("TEAM_TEXT2SQL_CONTEXT_REQUIRED");
     while (state.provider_attempt_count < maxText2SqlCandidateAttempts) {
       const callIndex = state.provider_attempt_count;
@@ -668,6 +700,7 @@ export function createProductionTeamTools(
       const parsed = text2sqlQueryCandidateSchema.safeParse(
         await specialistProviderJson({
           factory: factoryInput,
+          task_id: taskId,
           stage: "TEXT2SQL",
           context_text: contextText,
           call_index: callIndex,
@@ -690,7 +723,7 @@ export function createProductionTeamTools(
         state.rejected_candidate = parsed.data;
         state.rejection_code = safeErrorCode(error, "TEXT2SQL_CANDIDATE_POLICY_REJECTED");
         if (state.provider_attempt_count >= maxText2SqlCandidateAttempts) {
-          throw new ProductionTeamToolError("TEAM_TEXT2SQL_CANDIDATE_POLICY_REJECTED");
+          throw new ProductionTeamToolError(text2SqlCandidateFailureCode(state.rejection_code));
         }
       }
     }
@@ -722,6 +755,7 @@ export function createProductionTeamTools(
         const semanticSelection = semanticQuerySelectionIntentSchema.safeParse(
           await specialistProviderJson({
             factory: factoryInput,
+            task_id: input.task.task_id,
             stage: "SEMANTIC",
             context_text: canonicalizeJson({
               release_identity: catalog.release_identity,
@@ -845,7 +879,7 @@ export function createProductionTeamTools(
           return toolResult(null);
         }
         if (input.tool_id === "sql.compiler.compile") {
-          await generateValidatedText2SqlCandidate();
+          await generateValidatedText2SqlCandidate(input.task.task_id);
           return toolResult(null);
         }
         if (input.tool_id === "sql.sandbox.execute") {
@@ -875,7 +909,7 @@ export function createProductionTeamTools(
             }
             state.rejected_candidate = state.candidate;
             state.rejection_code = code;
-            state.candidate = await generateValidatedText2SqlCandidate();
+            state.candidate = await generateValidatedText2SqlCandidate(input.task.task_id);
             execution = await executeCandidate(state.candidate);
           }
           const result = execution.result;
@@ -1006,6 +1040,7 @@ export function createProductionTeamTools(
           const parsed = reportAnswerSchema.safeParse(
             await specialistProviderJson({
               factory: factoryInput,
+              task_id: input.task.task_id,
               stage: "REPORT",
               context_text: canonicalizeJson({
                 evidence_ref: evidence.artifact_ref,
@@ -1050,5 +1085,7 @@ export const productionTeamToolsInternals = Object.freeze({
   repairableQueryExecutionFailure,
   resolveAcceptedSemanticQueryContext,
   safeErrorCode,
+  specialistProviderLogicalCallId,
+  text2SqlCandidateFailureCode,
   visualizationIntent,
 });

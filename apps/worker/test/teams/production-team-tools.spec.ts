@@ -25,6 +25,54 @@ const id = (suffix: number) => `93000000-0000-4000-8000-${String(suffix).padStar
 const hash = (character: string) => `sha256:${character.repeat(64)}`;
 
 describe("Production Team governed chart publication", () => {
+  it("scopes Specialist provider logical calls to the accepted child task", () => {
+    const firstTask = productionTeamToolsInternals.specialistProviderLogicalCallId({
+      run_id: id(1),
+      task_id: id(2),
+      stage: "TEXT2SQL",
+      call_index: 0,
+    });
+    const firstTaskReplay = productionTeamToolsInternals.specialistProviderLogicalCallId({
+      run_id: id(1),
+      task_id: id(2),
+      stage: "TEXT2SQL",
+      call_index: 0,
+    });
+    const firstTaskRepair = productionTeamToolsInternals.specialistProviderLogicalCallId({
+      run_id: id(1),
+      task_id: id(2),
+      stage: "TEXT2SQL",
+      call_index: 1,
+    });
+    const nextRootTurnTask = productionTeamToolsInternals.specialistProviderLogicalCallId({
+      run_id: id(1),
+      task_id: id(3),
+      stage: "TEXT2SQL",
+      call_index: 0,
+    });
+
+    expect(firstTaskReplay).toBe(firstTask);
+    expect(firstTaskRepair).not.toBe(firstTask);
+    expect(nextRootTurnTask).not.toBe(firstTask);
+  });
+
+  it("returns only allowlisted Text2SQL policy codes to the Root Tool Result", () => {
+    expect(
+      productionTeamToolsInternals.text2SqlCandidateFailureCode("TEXT2SQL_SQL_SHAPE_REJECTED"),
+    ).toBe("TEXT2SQL_SQL_SHAPE_REJECTED");
+    expect(
+      productionTeamToolsInternals.text2SqlCandidateFailureCode(
+        "TEXT2SQL_SEMANTIC_BINDING_OUT_OF_RANGE",
+      ),
+    ).toBe("TEXT2SQL_SEMANTIC_BINDING_OUT_OF_RANGE");
+    expect(productionTeamToolsInternals.text2SqlCandidateFailureCode("DATABASE_URL_LEAK")).toBe(
+      "TEAM_TEXT2SQL_CANDIDATE_POLICY_REJECTED",
+    );
+    expect(productionTeamToolsInternals.text2SqlCandidateFailureCode(null)).toBe(
+      "TEAM_TEXT2SQL_CANDIDATE_POLICY_REJECTED",
+    );
+  });
+
   it("derives a chart intent from typed tabular columns without keyword routing", () => {
     const candidate = {
       schema_version: "text2sql-query-candidate@1.0.0" as const,
@@ -1171,6 +1219,12 @@ describe("Production Team governed chart publication", () => {
       }),
     );
     expect(provider.mock.calls[0]?.[0]).toMatchObject({
+      logical_call_id: productionTeamToolsInternals.specialistProviderLogicalCallId({
+        run_id: lease.run_id,
+        task_id: task.task_id,
+        stage: "TEXT2SQL",
+        call_index: 0,
+      }),
       turn: {
         kind: "SPECIALIST",
         stage: "TEXT2SQL",
