@@ -296,7 +296,7 @@ E8顺序固定：
 10800不得直接改变E7 runtime语义：public reader必须以current epoch dispatch，`<E8`委托冻结的10799实现；修正分支只能随E8 current
 原子可见。E7 failure receipt是append-only evidence，不是对E7 baseline或diagnostic的补写。
 
-### E8 W1-W3 已完成证据（2026-08-29，双连接复核前）
+### E8 W1-W3 已完成证据（2026-08-29）
 
 - 方案/Contracts/Platform/Finalizer提交为`e1b987dc`、`b6865884`、`43566cfd`、`ba9c7f1e`；10800 row-lock权限修复为
   `0810eb91`，server-only failure record CLI为`a3e9378d`。10800当前checksum是
@@ -309,4 +309,6 @@ E8顺序固定：
   production isolation仍为HOLD。专用`data_agent`尚未应用10800，仍是E7/10799。
 - W3发现`SELECT ... FOR SHARE`要求RPC owner具有UPDATE privilege；10800只把该权限授予NOLOGIN RPC owner，Backend仍无表DML，
   FORCE RLS与immutable trigger继续拒绝真实UPDATE/DELETE，postcondition显式验证该锁权限。
+- 两个并发Finalizer使用同一E8 staging/stage均返回同一baseline/activation；最终数据库精确为1个session、6个staging receipts、
+  1个ACTIVE baseline、1个ACTIVATED attempt、1个PROMOTED stage与1个active certification artifact，未产生重复authority或部分可见状态。
 - 所有W3 transient container/volume和`data_agent_e8_dev`已删除；Docker恢复为专用PG、开发PG、ClamAV、Neo4j四个长期容器。

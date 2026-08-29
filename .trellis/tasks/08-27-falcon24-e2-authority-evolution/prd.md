@@ -393,7 +393,7 @@ E7 已在一次 request@4 中原子激活：E6 orphan diagnostic 现为 immutabl
 
 ### 15.2 Acceptance
 
-- [ ] **AC-E8-01** E7 failure receipt由服务器重算且append-only；伪造stage/ref/readiness/current或重复不同payload全部拒绝。
-- [ ] **AC-E8-02** PostgreSQL 17 fresh/exact E7 upgrade证明迁移前后 E7公开输出相同；all-old/all-new、RLS、replay和双连接并发通过。
+- [x] **AC-E8-01** E7 failure receipt由服务器重算且append-only；伪造stage/ref/readiness/current或重复不同payload全部拒绝。
+- [x] **AC-E8-02** PostgreSQL 17 fresh/exact E7 upgrade证明迁移前后 E7公开输出相同；all-old/all-new、RLS、replay和双连接并发通过。
 - [ ] **AC-E8-03** exact E8 build真实 certification在 E7不可见；一次request@5后 current E8且exact profile AVAILABLE，gen2/defaults不变。
 - [ ] **AC-E8-04** 唯一 E8 diagnostic PASS，随后 E8-Q1 16/16、E8-C1 30/30；正式首败立即 immutable HOLD并停止。

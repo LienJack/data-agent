@@ -986,10 +986,10 @@ receipt persistence 本身需要新的 frozen-closure 修复，本任务不满�
 
 ### E8-W3 — PostgreSQL and code proof
 
-- [ ] PG17 fresh/exact E7、E7 reader equality、receipt负例、all-old/all-new、replay、RLS/security、双连接并发。
+- [x] PG17 fresh/exact E7、E7 reader equality、receipt负例、all-old/all-new、replay、RLS/security、双连接并发。
 - [x] full/focused tests、typecheck、Biome、renderer/inventory/diff checks；scoped commits与scratch cleanup。
 
-**E8 W1-W3 evidence（2026-08-29，待双连接最终复核）**
+**E8 W1-W3 evidence（2026-08-29）**
 
 - 10800 rendered checksum=`sha256:f388b153ccc9264b5f68fb4b7d718860331370ce144625ffd2bb24c61f66e307`；专用权威库仍停在10799/E7。
 - exact E7停机物理卷克隆的Falcon catalog inventory/content digest分别保持
@@ -1001,6 +1001,9 @@ receipt persistence 本身需要新的 frozen-closure 修复，本任务不满�
   diagnostic/Q1/C1=0，production isolation仍HOLD。
 - 首次非正式activation因RPC owner缺failure-receipt row-lock权限回滚为完整E7，并把该临时staging/baseline置HOLD；修复后使用新
   staging/stage id成功，未改写HOLD证据。所有transient container/volume、scratch DB已删除，长期Docker恢复4个。
+- 最终双连接用同一clean build/staging/stage并发运行两个Finalizer，二者均幂等返回同一E8 baseline
+  `a0a550d4-6687-59d6-82e3-2a42852c8f3a`与activation `809226c5-871f-53cb-ac6f-19b383e7efe1`；数据库只有
+  1 session / 6 receipts / 1 ACTIVE baseline / 1 ACTIVATED attempt / 1 PROMOTED stage / 1 active certification artifact，E8 gates=0。
 
 ### E8-W4 — Dedicated migration and activation
 
