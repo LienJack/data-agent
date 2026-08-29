@@ -33,6 +33,7 @@ import type { FrozenSemanticReleaseCatalog } from "../semantic/semantic-release-
 import type { DataAgentProductTeamRuntimePort } from "./data-agent-team-runner.js";
 
 const POSTGRES_IDENTIFIER = /^[A-Za-z_][A-Za-z0-9_$]*$/u;
+const POSTGRES_DATE_OID = 1082;
 
 type EffectiveConfig = ReturnType<RunExecutionContext["getEffectiveConfig"]>;
 type SemanticContextPackage = Parameters<
@@ -622,7 +623,10 @@ function localTarget(input: unknown): LocalTarget {
   return { reader_role: input.reader_role };
 }
 
-function jsonValue(input: unknown): null | string | number | boolean | object {
+function jsonValue(
+  input: unknown,
+  postgresqlTypeId?: number,
+): null | string | number | boolean | object {
   if (
     input === null ||
     typeof input === "string" ||
@@ -635,7 +639,24 @@ function jsonValue(input: unknown): null | string | number | boolean | object {
     return input;
   }
   if (typeof input === "bigint") return input.toString();
-  if (input instanceof Date) return input.toISOString();
+  if (input instanceof Date) {
+    if (!Number.isFinite(input.getTime())) {
+      throw new DatasourceAdapterPolicyError("DATASOURCE_ADAPTER_RESULT_INVALID");
+    }
+    if (postgresqlTypeId === POSTGRES_DATE_OID) {
+      // node-postgres decodes DATE at local midnight. UTC serialization can move the
+      // calendar value to the previous day, so recover the original local components.
+      const year = input.getFullYear();
+      if (year < 0 || year > 9_999) {
+        throw new DatasourceAdapterPolicyError("DATASOURCE_ADAPTER_RESULT_INVALID");
+      }
+      return `${String(year).padStart(4, "0")}-${String(input.getMonth() + 1).padStart(
+        2,
+        "0",
+      )}-${String(input.getDate()).padStart(2, "0")}`;
+    }
+    return input.toISOString();
+  }
   if (Buffer.isBuffer(input) || input instanceof Uint8Array) {
     return `hex:${Buffer.from(input).toString("hex")}`;
   }
@@ -723,6 +744,9 @@ function createManagedPostgresqlTransport(pool: pg.Pool): DatasourceAdapterTrans
           if (new Set(fieldNames).size !== fieldNames.length) {
             throw new DatasourceAdapterPolicyError("DATASOURCE_ADAPTER_RESULT_INVALID");
           }
+          const fieldTypeByName = new Map(
+            result.fields.map((field) => [field.name, field.dataTypeID] as const),
+          );
           return {
             columns: result.fields.map((field) => ({
               name: field.name,
@@ -730,7 +754,10 @@ function createManagedPostgresqlTransport(pool: pg.Pool): DatasourceAdapterTrans
             })),
             rows: result.rows.map((row) =>
               Object.fromEntries(
-                Object.entries(row).map(([key, child]) => [key, jsonValue(child)]),
+                Object.entries(row).map(([key, child]) => [
+                  key,
+                  jsonValue(child, fieldTypeByName.get(key)),
+                ]),
               ),
             ),
           };

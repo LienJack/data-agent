@@ -693,4 +693,77 @@ describe("PostgreSQL Text2SQL query runtime", () => {
     expect(queries.some((query) => query.startsWith("select * from ("))).toBe(true);
     expect(connect).toHaveBeenCalledTimes(2);
   });
+
+  it("preserves PostgreSQL DATE cells without a local-timezone day shift", async () => {
+    const { config, semanticCatalog, semanticContext, snapshot } = await fixture();
+    const databaseDate = new Date(2025, 7, 1);
+    const client = {
+      async query(input: string | { text: string }) {
+        const text = typeof input === "string" ? input : input.text;
+        if (text.startsWith("select * from (")) {
+          return {
+            fields: [
+              { name: "order_month", dataTypeID: 1082 },
+              { name: "customer_id", dataTypeID: 25 },
+              { name: "order_count", dataTypeID: 20 },
+            ],
+            rows: [{ order_month: databaseDate, customer_id: "customer-1", order_count: 2n }],
+            rowCount: 1,
+          };
+        }
+        return { fields: [], rows: [], rowCount: 0 };
+      },
+      release: vi.fn(),
+    };
+    const runtime = createPostgresqlText2SqlQueryRuntime({
+      pool: { connect: vi.fn(async () => client) } as never,
+      capability: {},
+      schema_snapshots: {} as never,
+      datasources: {} as never,
+      secrets: {} as never,
+      bind_query_evidence: vi.fn(async () => ({ binding_hash: hash("f") }) as never),
+      now: () => 0,
+    });
+    const baseCandidate = candidate(
+      "select o.customer_id::date as order_month, o.customer_id as customer_id, count(*) as order_count from falcon_db_24.orders as o group by o.customer_id::date, o.customer_id order by order_month",
+    );
+    const result = await runtime.execute({
+      effective_config: config as never,
+      prepared: {
+        context_text: "{}",
+        datasource_id: config.datasource.resource_id,
+        schema_snapshot_id: config.schema_snapshot.resource_id,
+        schema_snapshot_hash: config.schema_snapshot.resource_hash,
+        allowed_relations: ["falcon_db_24.orders"],
+        target_capability_hash: hash("c"),
+        reader_role: "falcon_demo_reader",
+        semantic_query_context_hash: null,
+        binding_authority: {
+          physical_snapshot: snapshot,
+          semantic_context: semanticContext,
+          semantic_catalog: semanticCatalog,
+          datasource_ref: config.datasource,
+        },
+      },
+      candidate: {
+        ...baseCandidate,
+        result_columns: [
+          {
+            name: "order_month",
+            semantic_type: "DATE",
+            label: "月份",
+            semantic_binding: { object_kind: "DIMENSION", object_id: "order-month" },
+          },
+          ...baseCandidate.result_columns,
+        ],
+      },
+      timeout_ms: 5_000,
+      max_rows: 100,
+      max_bytes: 64_000,
+    });
+
+    expect(result.result.rows).toEqual([
+      { order_month: "2025-08-01", customer_id: "customer-1", order_count: "2" },
+    ]);
+  });
 });
