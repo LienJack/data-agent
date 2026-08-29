@@ -1,8 +1,8 @@
 import { describe, expect, it } from "vitest";
 import {
   assertPostgresqlText2SqlCandidatePolicy,
-  parameterizePostgresqlText2SqlCandidate,
   type PostgresqlText2SqlPolicyError,
+  parameterizePostgresqlText2SqlCandidate,
 } from "../../src/datasources/adapters/postgresql-text2sql-policy.js";
 
 const allowed = [
@@ -86,13 +86,11 @@ describe("PostgreSQL model-authored Text2SQL policy", () => {
       "TEXT2SQL_SQL_DANGEROUS",
     ],
     [
-      "select o.customer_id as customer_id from private.orders as o",
-      "TEXT2SQL_SQL_SHAPE_REJECTED",
+      "select to_char(o.created_at, $1) as month_label from falcon_db_24.orders as o",
+      "TEXT2SQL_SQL_DANGEROUS",
     ],
-    [
-      "select o.customer_id as customer_id from orders as o",
-      "TEXT2SQL_SQL_SHAPE_REJECTED",
-    ],
+    ["select o.customer_id as customer_id from private.orders as o", "TEXT2SQL_SQL_SHAPE_REJECTED"],
+    ["select o.customer_id as customer_id from orders as o", "TEXT2SQL_SQL_SHAPE_REJECTED"],
     [
       "select o.customer_id as customer_id from falcon_db_24.orders as o limit 10",
       "TEXT2SQL_SQL_SHAPE_REJECTED",

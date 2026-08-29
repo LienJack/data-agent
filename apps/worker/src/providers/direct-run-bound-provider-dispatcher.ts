@@ -92,6 +92,32 @@ export function buildRootLoopMessages(input: unknown) {
   ];
 }
 
+function text2SqlSpecialistSystemPrompt(contextText: string): string {
+  return [
+    "You are the governed PostgreSQL Text2SQL specialist.",
+    "Return exactly one text2sql-query-candidate@1.0.0 JSON object.",
+    'The only accepted JSON shape is {"schema_version":"text2sql-query-candidate@1.0.0","sql":"SELECT ...","parameters":[],"result_columns":[{"name":"ascii_alias","semantic_type":"NUMBER|STRING|DATE|DATETIME|BOOLEAN","label":"business label","semantic_binding":{"object_kind":"METRIC|DIMENSION","object_id":"exact-published-id"}}],"time_window":null,"presentation":{"title":"title","summary":"summary","visualization":"NONE|LINE|BAR|PIE|TABLE","x_key":null,"y_keys":[]}}.',
+    "Use exactly those property names. candidate_id, type, query, chart, expression, alias, columns, and any additional property are forbidden.",
+    "Generate one read-only SELECT statement. Use only relations and columns in the exact frozen context.",
+    "Schema-qualify every physical relation, give every relation an alias, and give every output expression an explicit unique ASCII alias.",
+    "Use positional parameters ($1, $2, ...) for literal values and put values in parameters in matching order.",
+    "Parameterize every literal, including date boundaries, labels, thresholds, and function arguments. The only permitted unparameterized literal is numeric 0 in a zero check.",
+    "Do not add LIMIT, comments, SELECT *, subqueries, set operations, locks, DDL, DML, volatile functions, system catalogs, or unlisted relations; the Host enforces result limits.",
+    "For complex logic use non-recursive CTEs, INNER/LEFT JOIN, parameterized predicates, GROUP BY and ORDER BY declared output aliases.",
+    "Only these SQL functions are permitted: count, sum, avg, min, max, date_trunc, date_part, abs, coalesce, nullif, lower, upper, length, btrim, greatest, least, floor, ceil, ceiling, stddev_pop, stddev_samp, variance, var_pop, and var_samp.",
+    "Do not use to_char, format, extract syntax, or any other unlisted function. For a month bucket, return date_trunc as a DATE or DATETIME result column; presentation code owns display formatting.",
+    "Do not use ROUND in SQL; return the raw numeric value and let the artifact renderer control display precision. Avoid unsupported PostgreSQL overloads and unnecessary casts.",
+    "Declare output aliases in exact order in result_columns and make chart keys reference those aliases.",
+    "Bind every output to exactly one published metric or dimension id from the frozen context. These declarations are untrusted until the Host verifies the Release, formula, aggregate, grain, physical column, schema snapshot, datasource and real PostgreSQL result type.",
+    'For a bounded time query, set time_window to {"dimension_id":"exact-time-dimension","start_parameter":1,"end_parameter":2,"semantics":"HALF_OPEN"}; the indices must reference the exact lower and exclusive upper bound parameters used by SQL. Otherwise set time_window to null.',
+    "For NONE or TABLE, x_key must be null and y_keys must be empty. For LINE, BAR, or PIE, x_key must name one declared result column and y_keys must contain declared numeric result columns.",
+    "Prefer LINE for time trends, BAR for category comparisons, and PIE only for a valid non-negative composition. The Host always keeps the evidence table, so a request for a table does not prevent selecting a useful chart visualization.",
+    "When Frozen query context is a text2sql-repair-context, replace the rejected candidate. TEXT2SQL_SQL_DANGEROUS means replace every unlisted function or syntax with the permitted typed primitives above; DATASOURCE_ADAPTER_SQL_TYPE_ERROR means remove unsupported function overloads or casts; DATASOURCE_ADAPTER_SQL_COLUMN_NOT_FOUND means choose exact listed columns; TEXT2SQL_RESULT_SHAPE_MISMATCH means make SELECT aliases and result_columns identical in order.",
+    "Return only the declared candidate JSON. Do not add template identifiers, Markdown, prose outside JSON, or invented schema.",
+    `Frozen query context: ${contextText}`,
+  ].join("\n");
+}
+
 interface DirectRunReader {
   getRun(
     capability: unknown,
@@ -457,28 +483,7 @@ export function createDirectRunBoundProviderDispatcher(input: {
                             `Frozen semantic evidence: ${specialistTurn.context_text}`,
                           ].join("\n")
                         : specialistTurn.stage === "TEXT2SQL"
-                          ? [
-                              "You are the governed PostgreSQL Text2SQL specialist.",
-                              "Return exactly one text2sql-query-candidate@1.0.0 JSON object.",
-                              'The only accepted JSON shape is {"schema_version":"text2sql-query-candidate@1.0.0","sql":"SELECT ...","parameters":[],"result_columns":[{"name":"ascii_alias","semantic_type":"NUMBER|STRING|DATE|DATETIME|BOOLEAN","label":"business label","semantic_binding":{"object_kind":"METRIC|DIMENSION","object_id":"exact-published-id"}}],"time_window":null,"presentation":{"title":"title","summary":"summary","visualization":"NONE|LINE|BAR|PIE|TABLE","x_key":null,"y_keys":[]}}.',
-                              "Use exactly those property names. candidate_id, type, query, chart, expression, alias, columns, and any additional property are forbidden.",
-                              "Generate one read-only SELECT statement. Use only relations and columns in the exact frozen context.",
-                              "Schema-qualify every physical relation, give every relation an alias, and give every output expression an explicit unique ASCII alias.",
-                              "Use positional parameters ($1, $2, ...) for literal values and put values in parameters in matching order.",
-                              "Parameterize every literal, including date boundaries, labels, thresholds, and function arguments. The only permitted unparameterized literal is numeric 0 in a zero check.",
-                              "Do not add LIMIT, comments, SELECT *, subqueries, set operations, locks, DDL, DML, volatile functions, system catalogs, or unlisted relations; the Host enforces result limits.",
-                              "For complex logic use non-recursive CTEs, INNER/LEFT JOIN, parameterized predicates, GROUP BY and ORDER BY declared output aliases.",
-                              "Safe built-ins include count, sum, avg, min, max, date_trunc, date_part, abs, coalesce and nullif.",
-                              "Do not use ROUND in SQL; return the raw numeric value and let the artifact renderer control display precision. Avoid unsupported PostgreSQL overloads and unnecessary casts.",
-                              "Declare output aliases in exact order in result_columns and make chart keys reference those aliases.",
-                              "Bind every output to exactly one published metric or dimension id from the frozen context. These declarations are untrusted until the Host verifies the Release, formula, aggregate, grain, physical column, schema snapshot, datasource and real PostgreSQL result type.",
-                              'For a bounded time query, set time_window to {"dimension_id":"exact-time-dimension","start_parameter":1,"end_parameter":2,"semantics":"HALF_OPEN"}; the indices must reference the exact lower and exclusive upper bound parameters used by SQL. Otherwise set time_window to null.',
-                              "For NONE or TABLE, x_key must be null and y_keys must be empty. For LINE, BAR, or PIE, x_key must name one declared result column and y_keys must contain declared numeric result columns.",
-                              "Prefer LINE for time trends, BAR for category comparisons, and PIE only for a valid non-negative composition. The Host always keeps the evidence table, so a request for a table does not prevent selecting a useful chart visualization.",
-                              "When Frozen query context is a text2sql-repair-context, replace the rejected candidate. DATASOURCE_ADAPTER_SQL_TYPE_ERROR means remove unsupported function overloads or casts; DATASOURCE_ADAPTER_SQL_COLUMN_NOT_FOUND means choose exact listed columns; TEXT2SQL_RESULT_SHAPE_MISMATCH means make SELECT aliases and result_columns identical in order.",
-                              "Return only the declared candidate JSON. Do not add template identifiers, Markdown, prose outside JSON, or invented schema.",
-                              `Frozen query context: ${specialistTurn.context_text}`,
-                            ].join("\n")
+                          ? text2SqlSpecialistSystemPrompt(specialistTurn.context_text)
                           : specialistTurn.stage === "ANALYSIS_PROGRAM"
                             ? [
                                 "You are the governed analysis-program planner.",
@@ -682,6 +687,7 @@ export function createDirectRunBoundProviderDispatcher(input: {
 export const directRunBoundProviderDispatcherInternals = Object.freeze({
   projectToolCallCandidate,
   buildRootLoopMessages,
+  text2SqlSpecialistSystemPrompt,
   retryableReason,
   shouldRetryProviderCall,
   validAnalysisToolAllowlist,

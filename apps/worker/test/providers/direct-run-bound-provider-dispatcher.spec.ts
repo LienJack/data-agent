@@ -78,6 +78,17 @@ describe("direct run-bound provider retry policy", () => {
     ).toBe(true);
   });
 
+  it("keeps month buckets typed and gives the repair turn actionable SQL safety feedback", () => {
+    const prompt = directRunBoundProviderDispatcherInternals.text2SqlSpecialistSystemPrompt(
+      '{"schema_version":"text2sql-repair-context@1.0.0","rejection":{"diagnostic_code":"TEXT2SQL_SQL_DANGEROUS"}}',
+    );
+
+    expect(prompt).toContain("Only these SQL functions are permitted");
+    expect(prompt).toContain("Do not use to_char");
+    expect(prompt).toContain("return date_trunc as a DATE or DATETIME result column");
+    expect(prompt).toContain("TEXT2SQL_SQL_DANGEROUS means replace every unlisted function");
+  });
+
   it("fails closed unless a tool turn exposes a non-empty unique registered subset", () => {
     const validate = directRunBoundProviderDispatcherInternals.validAnalysisToolAllowlist;
     expect(validate("TOOL", ["python_cell"])).toBe(true);
