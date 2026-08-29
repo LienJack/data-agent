@@ -1,22 +1,18 @@
 import { createHash } from "node:crypto";
 import type { ModelProviderExecutionBinding } from "@data-agent/agent-runtime";
+import { canonicalizeJson } from "@data-agent/contracts/common";
 import {
-  canonicalizeJson,
   falcon24AuthorityEpochOrdinal,
   falcon24AuthorityEpochSchema,
   type RunProjectionRecord,
   type RunWorkLease,
   type WorkerRunRuntimeEvent,
-} from "@data-agent/contracts";
+} from "@data-agent/contracts/runs";
 import { loadRuntimeBuildIdentity } from "@data-agent/contracts/server";
-import {
-  adaptPgPool,
-  createPostgresCapabilityAuthority,
-  createPostgresRepository,
-  createPostgresRunEventStore,
-  createPostgresRunQueue,
-} from "@data-agent/platform";
+import { adaptPgPool, createPostgresRepository } from "@data-agent/platform/persistence";
+import { createPostgresRunEventStore, createPostgresRunQueue } from "@data-agent/platform/runs";
 import { loadRuntimeEnvironment } from "@data-agent/platform/runtime-config";
+import { createPostgresCapabilityAuthority } from "@data-agent/platform/tenancy";
 import { Pool } from "pg";
 import { z } from "zod";
 import { runCredentialedProviderCertification } from "../credentialed-provider-certification.js";
