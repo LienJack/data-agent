@@ -2,12 +2,18 @@
 
 ## 1. 运行边界
 
-本地开发固定采用以下拓扑：
+开发提供两个显式拓扑，生产另有完整 NAS 容器模式：
 
-- Docker：PostgreSQL 17、Neo4j；
-- 宿主机：Next.js Web、Durable Worker、Relationship Indexer；
+- `pnpm dev` / `pnpm dev:local`：本地 Docker PostgreSQL 17、Neo4j；宿主机运行 Next.js Web、
+  Durable Worker、Relationship Indexer 与 Semantic Authoring；
+- `pnpm dev:nas`：NAS Docker 只运行 PostgreSQL/Neo4j，本地经受监督 SSH tunnel 访问；宿主机运行相同应用，
+  本地 Data Agent 容器全部停止；
+- `pnpm prod:nas`：NAS 六服务 Data Agent 容器栈，Web 使用 `http://192.168.5.41:3001`；
 - PostgreSQL 是 Run 与语义权威，Neo4j 是可删除、可重建的关系投影；
 - 日常启动只检查 Migration Ledger，不自动执行迁移。
+
+宿主开发模式默认不启用分析 Sandbox。OpenSandbox 是唯一 Python 执行层，由独立服务管理，
+不属于本地或 NAS Data Agent Compose 栈；需要分析能力时按 `python-sandbox-execution.md` 显式配置并核验。
 
 不要同时运行 Docker Web/Worker/Indexer 与本地应用进程，否则旧镜像可能占用端口并遮蔽
 刚修改的源码。
@@ -17,14 +23,14 @@
 ```bash
 pnpm install
 
-# 启动并等待 PostgreSQL、Neo4j 健康，同时停止并移除旧的 Docker 应用容器
-pnpm dev:infra
+# 启动并等待本地 PostgreSQL、Neo4j 健康，同时停止并移除旧的 Docker 应用容器
+pnpm dev:infra:local
 
 # 显式应用尚未登记的迁移，并再次核验 Migration Ledger
-pnpm dev:migrate
+pnpm dev:migrate:local
 
 # 检查数据库、Ledger、Authority 映射与应用端口
-pnpm dev:check
+pnpm dev:check:local
 
 # 启动 Web、Worker、Indexer 三个本地 watch 进程
 pnpm dev:apps
@@ -36,8 +42,33 @@ pnpm dev:apps
 pnpm dev
 ```
 
-`pnpm dev` 的顺序是 `dev:infra -> 可选 dev:admin-sync -> dev:check -> dev:apps`。Ledger 缺失或 checksum
-不一致时，它会以非零状态停止并提示执行 `pnpm dev:migrate`，不会隐式重放 SQL。
+`pnpm dev` 等价于 `pnpm dev:local`。`dev:infra`、`dev:migrate`、`dev:check` 仍是对应 local 命令的兼容别名。
+Ledger 缺失或 checksum 不一致时，启动会以非零状态停止并提示执行 `pnpm dev:migrate:local`，不会隐式重放 SQL。
+
+## 3. NAS 混合开发
+
+首次由管理员完成一次 SSH 配置：`data-agent-nas` 使用 SSH key 登录，远端 `admin` 属于 Docker group，
+sshd 设置 `AllowTcpForwarding local`。随后日常只需：
+
+```bash
+# 仅在 Ledger 有缺失 migration 时显式执行
+pnpm dev:migrate:nas
+
+# NAS 数据库 + 本地 Web/Worker/Indexer/Semantic Authoring
+pnpm dev:nas
+```
+
+启动器会同步受控源码副本到 `/vol1/1000/work/data-agent/current`，但排除并保护远端 `.env`、`backups/`、
+`.git`、构建缓存和 Docker named volumes。它先把 NAS 切成 infra-only，再停止本地 Data Agent 容器，建立：
+
+```text
+127.0.0.1:55432 -> NAS PostgreSQL 127.0.0.1:55432
+127.0.0.1:7474  -> NAS Neo4j HTTP 127.0.0.1:7474
+127.0.0.1:7687  -> NAS Neo4j Bolt 127.0.0.1:7687
+```
+
+隧道在应用启动前执行真实 PostgreSQL 协议探测。隧道退出会让受管理应用整体退出；NAS 不可用时停止该命令，
+再运行默认 `pnpm dev` 回到本地卷。两个 PostgreSQL 会在切换后形成不同写入历史，不做自动双向合并。
 
 应用端口绑定前，根协调器会按 Turbo dependency graph 构建 Workspace package、核对导出文件与 output
 digest，并为 Web、Worker、Indexer、Semantic Authoring 分别写入 opaque build identity。只准备构建证明、不启动
@@ -50,7 +81,7 @@ pnpm dev:check
 
 `dev:check` 只验证已有证明，不会代替 build，也不会执行 migration。
 
-## 3. 单服务调试
+## 4. 单服务调试
 
 ```bash
 pnpm dev:web       # Next.js / Turbopack，端口 3000
@@ -69,7 +100,7 @@ Worker 与 Indexer 均使用 `tsx watch`。修改对应 `apps/worker/src/**` 文
 聚合命令收到 `SIGINT`/`SIGTERM` 时会转发给三个子进程。任一子进程意外退出时，其余
 进程也会被停止，聚合命令返回非零状态，避免留下半套运行环境。
 
-## 4. 环境变量
+## 5. 环境变量
 
 本地运行脚本按以下优先级合并环境：
 
@@ -89,6 +120,11 @@ Secret 只放在 Git 忽略的 `.env` 或 `.env.local`，不要写入 Compose、
 - `WORKER_RESEARCH_AUTHORITY_CAPABILITY_SET`（严格 JSON，按 12 个 Artifact Domain 与
   `REPORT_READ` 分别填写数据库签发的 Capability ID）；
 - `NEO4J_PASSWORD`。
+
+NAS 非秘密覆盖变量为 `DATA_AGENT_NAS_SSH_HOST`、`DATA_AGENT_NAS_PROJECT_DIR`、
+`DATA_AGENT_NAS_POSTGRES_FORWARD_PORT`、`DATA_AGENT_NAS_NEO4J_HTTP_FORWARD_PORT`、
+`DATA_AGENT_NAS_NEO4J_BOLT_FORWARD_PORT` 与 `DATA_AGENT_NAS_WEB_URL`。数据库与 Neo4j endpoint 会在 dotenv
+合并后由模式固定，旧 `.env.local` 不能把 `dev:nas` 偷换回本地数据库。
 
 本地超级管理员可选同步使用以下变量名（值只写入 Git 忽略的 `.env` / `.env.local`）：
 
@@ -178,7 +214,7 @@ Publisher。`RESOLUTION_TRACE_ARTIFACT_REFERENCE_MISSING`、
 Membership，数据库锁内签发 12 个 Artifact Domain 与一个 `REPORT_READ` Capability；
 默认有效 24 小时。调用者不能指定 Capability ID，重复的 exact Manifest 不会产生第二套。
 
-## 5. 健康检查
+## 6. 健康检查
 
 ```bash
 docker compose ps
@@ -205,12 +241,16 @@ curl --fail http://127.0.0.1:9090/live
 
 安全诊断不会输出 SQL、参数、数据库 message、stack、DSN 或 Secret。
 
-## 6. 端口与停止
+NAS 模式使用 `pnpm dev:check:nas` 做数据库、Ledger、Authority、隧道和 build readiness 门禁；NAS 上
+`docker compose -f compose.yaml -f compose.nas.yaml ps` 应只有 PostgreSQL/Neo4j 运行，本地不应有 Data Agent 容器。
+
+## 7. 端口与停止
 
 | 服务 | 本地端口 |
 | --- | --- |
 | Web | 3000 |
 | PostgreSQL | 5432 |
+| NAS PostgreSQL tunnel | 55432 |
 | Neo4j HTTP | 7474 |
 | Neo4j Bolt | 7687 |
 | Relationship Indexer `/live` | 9090 |
@@ -222,7 +262,7 @@ curl --fail http://127.0.0.1:9090/live
 - 暂停数据库但保留容器和数据卷：`docker compose stop postgres neo4j`；
 - 不要执行 `docker compose down -v`，除非明确决定永久删除本地数据库数据。
 
-## 7. 完整 Docker 部署验证
+## 8. 完整 Docker 部署验证
 
 完整容器模式不是热更新开发入口：
 
@@ -243,3 +283,11 @@ build` 时必须显式设置 `DATA_AGENT_GIT_COMMIT` 和 `DATA_AGENT_GIT_DIRTY=t
 构建阶段失败关闭。镜像只携带每个进程的 portable identity，不携带本地 `.turbo` 或完整 attestation。
 
 部署细节见 [deployment-operations.md](./deployment-operations.md)。
+
+NAS 完整容器模式使用独立入口：
+
+```bash
+pnpm prod:nas:migrate
+pnpm prod:nas
+pnpm prod:nas:down
+```

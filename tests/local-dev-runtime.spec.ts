@@ -1,5 +1,7 @@
 import { execFileSync, spawnSync } from "node:child_process";
-import { readFileSync } from "node:fs";
+import { mkdtempSync, readdirSync, readFileSync, rmSync, utimesSync, writeFileSync } from "node:fs";
+import { tmpdir } from "node:os";
+import { join } from "node:path";
 import { fileURLToPath } from "node:url";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import {
@@ -7,9 +9,11 @@ import {
   buildLocalApplicationProcessSpecs,
   injectDockerBuildProvenance,
   isLocalSuperadminSyncEnabled,
+  mergeDevelopmentEnvironmentForMode,
   mergeLocalDevelopmentEnvironment,
   RecoverableWorkspaceBuildCoordinator,
   readExpectedMigrations,
+  readLocalWorkspaceInputDigest,
   type WorkspaceBuildCoordinatorAdapter,
 } from "../scripts/local-dev-runtime.js";
 import { parseManagedBuildProvenance } from "../scripts/workspace-build-release.js";
@@ -46,6 +50,27 @@ function deploymentComposeConfig(): {
 }
 
 describe("local development runtime modes", () => {
+  it("单文件 watcher 只在内容变化时改变摘要", () => {
+    const directory = mkdtempSync(join(tmpdir(), "data-agent-runtime-watch-"));
+    const path = join(directory, "package.json");
+    try {
+      writeFileSync(path, '{"name":"data-agent"}\n');
+      const initial = readLocalWorkspaceInputDigest(path);
+      const now = new Date();
+      utimesSync(path, now, now);
+      expect(readLocalWorkspaceInputDigest(path)).toBe(initial);
+      writeFileSync(path, '{"name":"data-agent-updated"}\n');
+      expect(readLocalWorkspaceInputDigest(path)).not.toBe(initial);
+    } finally {
+      rmSync(directory, { recursive: true, force: true });
+    }
+  });
+
+  it("NAS 开发会等待应用监督结束后再关闭 SSH tunnel", () => {
+    const runtimeSource = readFileSync(`${repositoryRoot}/scripts/local-dev-runtime.ts`, "utf8");
+    expect(runtimeSource).toMatch(/return await superviseApplications\([\s\S]*tunnel\.dependency/);
+  });
+
   it("默认 Compose 启用本地基础设施，deploy profile 启用完整长期服务", () => {
     expect(composeServices()).toEqual(["neo4j", "postgres"]);
     expect(composeServices("--profile", "deploy")).toEqual([
@@ -84,6 +109,30 @@ describe("local development runtime modes", () => {
     expect(merged.WORKER_DEPLOYMENT_ID).toBe(merged.SEMANTIC_DEPLOYMENT_ID);
     expect(merged.WORKSPACE_DEPLOYMENT_ID).toBe(merged.SEMANTIC_DEPLOYMENT_ID);
     expect(merged.BETTER_AUTH_SECRET).toHaveLength(45);
+  });
+
+  it("dev 默认保持全本地，只有显式 nas 模式固定使用 SSH 转发端点", () => {
+    const input = {
+      dotenvLocal: {
+        AUTH_DATABASE_URL: "postgres://stale@127.0.0.1:5432/stale",
+        DATABASE_URL: "postgres://stale@127.0.0.1:5432/stale",
+        NEO4J_URI: "bolt://127.0.0.1:17687",
+      },
+    };
+    const local = mergeDevelopmentEnvironmentForMode("local", input);
+    const nas = mergeDevelopmentEnvironmentForMode("nas", input, {
+      DATA_AGENT_NAS_POSTGRES_FORWARD_PORT: "55432",
+      DATA_AGENT_NAS_NEO4J_BOLT_FORWARD_PORT: "7687",
+    });
+
+    expect(local.DATABASE_URL).toBe("postgres://postgres:postgres@127.0.0.1:5432/data_agent");
+    expect(local.AUTH_DATABASE_URL).toBe(local.DATABASE_URL);
+    expect(local.NEO4J_URI).toBe("bolt://127.0.0.1:7687");
+    expect(nas.DATABASE_URL).toBe("postgres://postgres:postgres@127.0.0.1:55432/data_agent");
+    expect(nas.AUTH_DATABASE_URL).toBe(nas.DATABASE_URL);
+    expect(nas.DATA_AGENT_DATABASE_URL).toBe(nas.DATABASE_URL);
+    expect(nas.DATA_AGENT_ECOMMERCE_PORT).toBe("55432");
+    expect(nas.NEO4J_URI).toBe("bolt://127.0.0.1:7687");
   });
 
   it("默认允许并投影随项目分发的 E-commerce 语义域", () => {
@@ -235,16 +284,36 @@ describe("local development runtime modes", () => {
 
   it("从每个迁移的固定 ledger 声明读取版本与 checksum", () => {
     const migrations = readExpectedMigrations(repositoryRoot);
-    expect(migrations).toHaveLength(118);
+    const migrationFileCount = [
+      "infra/supabase/platform/migrations",
+      "infra/supabase/apps/data-agent/migrations",
+    ].reduce(
+      (count, directory) =>
+        count +
+        readdirSync(`${repositoryRoot}/${directory}`).filter((name) => name.endsWith(".sql"))
+          .length,
+      0,
+    );
+    expect(migrations).toHaveLength(migrationFileCount);
+    expect(new Set(migrations.map((migration) => migration.migration_version)).size).toBe(
+      migrations.length,
+    );
     expect(migrations[0]).toMatchObject({
       owner_kind: "platform",
       app_id: null,
       migration_version: "20260725000100_platform_foundation",
     });
+    const latestAppMigration = readdirSync(
+      `${repositoryRoot}/infra/supabase/apps/data-agent/migrations`,
+    )
+      .filter((name) => name.endsWith(".sql"))
+      .sort()
+      .at(-1)
+      ?.replace(/\.sql$/, "");
     expect(migrations.at(-1)).toMatchObject({
       owner_kind: "app",
       app_id: "00000000-0000-4000-8000-00000000da01",
-      migration_version: "20260725010707_app_data_agent_optional_resource_binding_repair",
+      migration_version: latestAppMigration,
     });
   });
 

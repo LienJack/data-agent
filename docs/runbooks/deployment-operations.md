@@ -104,6 +104,38 @@ pnpm docker:down
 # 永久删除数据卷是破坏性操作，只能在明确确认数据不再需要时另行执行。
 ```
 
+### 1.7 NAS 完整容器部署
+
+NAS 使用 SSH alias `data-agent-nas`，部署副本位于 `/vol1/1000/work/data-agent/current`。远端现有服务占用
+3000 与系统 PostgreSQL 5432，因此 NAS override 固定为：Web `192.168.5.41:3001`、PostgreSQL
+`127.0.0.1:55432`、Neo4j `127.0.0.1:7474/7687`。数据库端口不监听 LAN。
+
+```bash
+# 显式迁移；普通启动不隐式写 migration
+pnpm prod:nas:migrate
+
+# 同步受控源码、验证 Ledger、构建镜像并等待六服务 deploy profile
+pnpm prod:nas
+
+# 停止容器但保留全部 named volumes
+pnpm prod:nas:down
+```
+
+NAS `admin` 必须能以 SSH key 无交互登录并直接访问 Docker socket；Docker group 是 root-equivalent 权限，只授予
+现有管理员账户。混合开发还要求 sshd 为 `AllowTcpForwarding local`。远端 `.env` 权限为 600，源码同步明确排除
+`.env`、`.env.local`、`.git`、`.trellis`、`.data`、`.next`、`.turbo`、`node_modules` 与 `dist`。
+
+权威恢复顺序固定为：roles globals → PostgreSQL custom dump → workspace content tar。若 dump 的 data section
+调用受限 owner 的校验函数，先恢复 pre-data，临时 `GRANT USAGE ON SCHEMA app_data_agent TO PUBLIC`，以
+`--exit-on-error --section=data` 恢复数据后立即 REVOKE，再恢复 post-data。最后对比 Migration Ledger、用户表数、
+roles 数与 workspace 文件数。Neo4j 使用空卷，由 Relationship Indexer 从 PostgreSQL 重建；不复制脏投影卷。
+
+OpenSandbox 是独立管理的唯一 Python 执行层，不属于本 NAS Compose 栈。启用分析能力时必须按
+`python-sandbox-execution.md` 单独部署并核验 endpoint、API key、固定镜像和 attestation；不得复活旧 UDS Sandbox。
+NAS 首次构建受镜像仓库带宽影响时，可以先使用已验证的 `pnpm dev:nas`，待镜像缓存完成后再运行生产入口。
+失败时不得执行 `down -v`；保留 `/vol1/1000/work/data-agent/backups/`、PostgreSQL/workspace named volumes 与
+本地回退卷。
+
 ---
 
 ## 2. 迁移管理

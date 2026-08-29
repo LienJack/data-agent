@@ -25,6 +25,21 @@ import {
   type WorkspaceBuildAttestationV2,
   writeWorkspaceBuildAttestation,
 } from "./lib/workspace-build-integrity.js";
+import {
+  type NasEnvironment,
+  type NasRuntimeConfig,
+  readNasComposeStates,
+  resolveNasRuntimeConfig,
+  runNasMigration,
+  runNasPostgresCommand,
+  runNasProduction,
+  startNasSshTunnel,
+  stopNasProduction,
+  stopNasSshTunnel,
+  switchNasToInfrastructure,
+  syncNasDeployment,
+  waitForNasSshTunnel,
+} from "./nas-runtime.js";
 
 const REPOSITORY_ROOT = resolve(dirname(fileURLToPath(import.meta.url)), "..");
 const LOCAL_DEPLOYMENT_ID = "00000000-0000-4000-8000-000000000001";
@@ -118,6 +133,39 @@ export function mergeLocalDevelopmentEnvironment(
   return merged;
 }
 
+export type DevelopmentRuntimeMode = "local" | "nas";
+
+const MODE_DATABASE_KEYS = [
+  "AUTH_DATABASE_URL",
+  "DATABASE_URL",
+  "DATA_AGENT_DATABASE_URL",
+  "DATA_AGENT_JOB_DATABASE_URL",
+  "SCHEMA_DISCOVERY_DATABASE_URL",
+  "SEMANTIC_CANDIDATE_DATABASE_URL",
+  "SEMANTIC_EXPLORER_DATABASE_URL",
+] as const;
+
+export function mergeDevelopmentEnvironmentForMode(
+  mode: DevelopmentRuntimeMode,
+  input: Readonly<{
+    processEnvironment?: EnvironmentLayer;
+    dotenv?: EnvironmentLayer;
+    dotenvLocal?: EnvironmentLayer;
+  }> = {},
+  nasOverrides: NasEnvironment = {},
+): NodeJS.ProcessEnv {
+  const merged = mergeLocalDevelopmentEnvironment(input);
+  const nas = mode === "nas" ? resolveNasRuntimeConfig({ ...merged, ...nasOverrides }) : undefined;
+  const postgresPort = nas?.postgresForwardPort ?? 5432;
+  const databaseUrl = `postgres://postgres:postgres@127.0.0.1:${postgresPort}/data_agent`;
+  for (const key of MODE_DATABASE_KEYS) merged[key] = databaseUrl;
+  merged.DATA_AGENT_ECOMMERCE_HOST = "127.0.0.1";
+  merged.DATA_AGENT_ECOMMERCE_PORT = String(postgresPort);
+  merged.NEO4J_URI = `bolt://127.0.0.1:${nas?.neo4jBoltForwardPort ?? 7687}`;
+  merged.DATA_AGENT_DEVELOPMENT_RUNTIME_MODE = mode;
+  return merged;
+}
+
 export function injectDockerBuildProvenance(
   environment: NodeJS.ProcessEnv,
   repositoryRoot = REPOSITORY_ROOT,
@@ -146,8 +194,8 @@ function readEnvironmentFile(path: string): Record<string, string> {
   );
 }
 
-function loadLocalDevelopmentEnvironment(): NodeJS.ProcessEnv {
-  return mergeLocalDevelopmentEnvironment({
+function loadLocalDevelopmentEnvironment(mode: DevelopmentRuntimeMode): NodeJS.ProcessEnv {
+  return mergeDevelopmentEnvironmentForMode(mode, {
     dotenv: readEnvironmentFile(resolve(REPOSITORY_ROOT, ".env")),
     dotenvLocal: readEnvironmentFile(resolve(REPOSITORY_ROOT, ".env.local")),
     processEnvironment: process.env,
@@ -386,6 +434,14 @@ type UnexpectedApplicationExitHandler = (
 ) => void;
 
 const WORKSPACE_BUILD_RUNTIME_DIRECTORY = resolve(REPOSITORY_ROOT, ".turbo/data-agent-dev");
+
+export function readLocalWorkspaceInputDigest(path: string): string | null {
+  try {
+    return createHash("sha256").update(readFileSync(path)).digest("hex");
+  } catch {
+    return null;
+  }
+}
 
 function attestationPath(name: LocalApplicationProcessSpec["name"]): string {
   return resolve(WORKSPACE_BUILD_RUNTIME_DIRECTORY, `${name}.attestation.json`);
@@ -712,8 +768,16 @@ class LocalWorkspaceInputWatcher {
     const addWatcher = (path: string, recursive: boolean, invalidate: () => void): void => {
       if (!existsSync(path) || watchedPaths.has(path)) return;
       watchedPaths.add(path);
+      let contentDigest: string | null | undefined = recursive
+        ? undefined
+        : readLocalWorkspaceInputDigest(path);
       this.#watchers.push(
         watch(path, { recursive }, () => {
+          if (!recursive) {
+            const nextDigest = readLocalWorkspaceInputDigest(path);
+            if (nextDigest === contentDigest) return;
+            contentDigest = nextDigest;
+          }
           invalidate();
         }),
       );
@@ -797,20 +861,31 @@ interface ComposeContainerState {
   readonly Health?: string;
 }
 
+type DevelopmentInfrastructure =
+  | Readonly<{ mode: "local" }>
+  | Readonly<{ mode: "nas"; nas: NasRuntimeConfig }>;
+
+const LOCAL_INFRASTRUCTURE: DevelopmentInfrastructure = { mode: "local" };
+
 function parseJsonLines<T>(value: string): readonly T[] {
-  return value
-    .split("\n")
-    .map((line) => line.trim())
-    .filter(Boolean)
-    .map((line) => JSON.parse(line) as T);
+  const trimmed = value.trim();
+  if (!trimmed) return [];
+  try {
+    const document: unknown = JSON.parse(trimmed);
+    return Array.isArray(document) ? (document as T[]) : [document as T];
+  } catch {
+    return trimmed.split("\n").map((line) => JSON.parse(line) as T);
+  }
 }
 
-function assertDatabaseContainersHealthy(): void {
-  const output = execFileSync(
-    "docker",
-    ["compose", "ps", "--format", "json", "postgres", "neo4j"],
-    { cwd: REPOSITORY_ROOT, encoding: "utf8" },
-  );
+function assertDatabaseContainersHealthy(infrastructure: DevelopmentInfrastructure): void {
+  const output =
+    infrastructure.mode === "nas"
+      ? readNasComposeStates(infrastructure.nas)
+      : execFileSync("docker", ["compose", "ps", "--format", "json", "postgres", "neo4j"], {
+          cwd: REPOSITORY_ROOT,
+          encoding: "utf8",
+        });
   const states = parseJsonLines<ComposeContainerState>(output);
   for (const service of ["postgres", "neo4j"] as const) {
     const state = states.find((candidate) => candidate.Service === service);
@@ -818,6 +893,21 @@ function assertDatabaseContainersHealthy(): void {
       throw new Error(`DEV_DATABASE_NOT_HEALTHY:${service}`);
     }
   }
+}
+
+function runPostgresCommand(
+  infrastructure: DevelopmentInfrastructure,
+  postgresArgs: readonly string[],
+  input?: string,
+): string {
+  if (infrastructure.mode === "nas") {
+    return runNasPostgresCommand(infrastructure.nas, postgresArgs, input);
+  }
+  return execFileSync("docker", ["compose", "exec", "-T", "postgres", "psql", ...postgresArgs], {
+    cwd: REPOSITORY_ROOT,
+    encoding: "utf8",
+    input,
+  });
 }
 
 interface ExpectedMigration {
@@ -875,31 +965,22 @@ export function readExpectedMigrations(
   return migrations;
 }
 
-function readMigrationLedger(): Map<string, string> {
-  const output = execFileSync(
-    "docker",
-    [
-      "compose",
-      "exec",
-      "-T",
-      "postgres",
-      "psql",
-      "-X",
-      "-A",
-      "-t",
-      "-F",
-      "|",
-      "-U",
-      "postgres",
-      "-d",
-      "data_agent",
-      "-v",
-      "ON_ERROR_STOP=1",
-      "-c",
-      "select owner_kind, coalesce(app_id::text, ''), migration_version, migration_checksum from platform.migration_ledger order by owner_kind, app_id, migration_version",
-    ],
-    { cwd: REPOSITORY_ROOT, encoding: "utf8" },
-  );
+function readMigrationLedger(infrastructure: DevelopmentInfrastructure): Map<string, string> {
+  const output = runPostgresCommand(infrastructure, [
+    "-X",
+    "-A",
+    "-t",
+    "-F",
+    "|",
+    "-U",
+    "postgres",
+    "-d",
+    "data_agent",
+    "-v",
+    "ON_ERROR_STOP=1",
+    "-c",
+    "select owner_kind, coalesce(app_id::text, ''), migration_version, migration_checksum from platform.migration_ledger order by owner_kind, app_id, migration_version",
+  ]);
   const ledger = new Map<string, string>();
   for (const line of output
     .split("\n")
@@ -914,9 +995,11 @@ function readMigrationLedger(): Map<string, string> {
   return ledger;
 }
 
-function assertMigrationLedgerCurrent(): VerifiedMigrationRuntimeFact {
+function assertMigrationLedgerCurrent(
+  infrastructure: DevelopmentInfrastructure = LOCAL_INFRASTRUCTURE,
+): VerifiedMigrationRuntimeFact {
   const expected = readExpectedMigrations();
-  const ledger = readMigrationLedger();
+  const ledger = readMigrationLedger(infrastructure);
   const failures: string[] = [];
   for (const migration of expected) {
     const key = `${migration.owner_kind}|${migration.app_id ?? ""}|${migration.migration_version}`;
@@ -926,7 +1009,9 @@ function assertMigrationLedgerCurrent(): VerifiedMigrationRuntimeFact {
     }
   }
   if (failures.length > 0) {
-    throw new Error(`DEV_MIGRATIONS_NOT_READY:${failures.join(",")}\nRun: pnpm dev:migrate`);
+    const migrateCommand =
+      infrastructure.mode === "nas" ? "pnpm dev:migrate:nas" : "pnpm dev:migrate:local";
+    throw new Error(`DEV_MIGRATIONS_NOT_READY:${failures.join(",")}\nRun: ${migrateCommand}`);
   }
   return {
     migration_ready: true,
@@ -938,39 +1023,38 @@ function assertMigrationLedgerCurrent(): VerifiedMigrationRuntimeFact {
   };
 }
 
-function assertAuthorityMapping(environment: NodeJS.ProcessEnv): void {
-  const result = spawnSync(
-    "docker",
-    [
-      "compose",
-      "exec",
-      "-T",
-      "postgres",
-      "psql",
-      "-X",
-      "-A",
-      "-t",
-      "-U",
-      "postgres",
-      "-d",
-      "data_agent",
-      "-v",
-      "ON_ERROR_STOP=1",
-      "-v",
-      `deployment_id=${environment.WORKER_DEPLOYMENT_ID ?? ""}`,
-      "-v",
-      `tenant_id=${environment.WORKER_TENANT_ID ?? ""}`,
-      "-v",
-      `principal_id=${environment.WORKER_PRINCIPAL_ID ?? ""}`,
-    ],
-    {
-      cwd: REPOSITORY_ROOT,
-      encoding: "utf8",
-      input:
-        "select count(*) from platform.resolve_backend_authority(:'deployment_id'::uuid, :'tenant_id'::uuid, :'principal_id'::uuid, true);\n",
-    },
-  );
-  if (result.status !== 0 || result.stdout.trim() !== "1") {
+function assertAuthorityMapping(
+  environment: NodeJS.ProcessEnv,
+  infrastructure: DevelopmentInfrastructure,
+): void {
+  const args = [
+    "-X",
+    "-A",
+    "-t",
+    "-U",
+    "postgres",
+    "-d",
+    "data_agent",
+    "-v",
+    "ON_ERROR_STOP=1",
+    "-v",
+    `deployment_id=${environment.WORKER_DEPLOYMENT_ID ?? ""}`,
+    "-v",
+    `tenant_id=${environment.WORKER_TENANT_ID ?? ""}`,
+    "-v",
+    `principal_id=${environment.WORKER_PRINCIPAL_ID ?? ""}`,
+  ];
+  let output: string;
+  try {
+    output = runPostgresCommand(
+      infrastructure,
+      args,
+      "select count(*) from platform.resolve_backend_authority(:'deployment_id'::uuid, :'tenant_id'::uuid, :'principal_id'::uuid, true);\n",
+    );
+  } catch {
+    throw new Error("DEV_AUTHORITY_MAPPING_NOT_READY");
+  }
+  if (output.trim() !== "1") {
     throw new Error("DEV_AUTHORITY_MAPPING_NOT_READY");
   }
 }
@@ -1032,19 +1116,27 @@ function assertNoExistingNextDevelopmentProcess(): void {
 
 async function runDevelopmentCheck(
   environment: NodeJS.ProcessEnv,
+  infrastructure: DevelopmentInfrastructure,
 ): Promise<VerifiedMigrationRuntimeFact> {
-  assertDatabaseContainersHealthy();
-  const migrationFact = assertMigrationLedgerCurrent();
-  assertAuthorityMapping(environment);
+  assertDatabaseContainersHealthy(infrastructure);
+  const migrationFact = assertMigrationLedgerCurrent(infrastructure);
+  assertAuthorityMapping(environment, infrastructure);
   assertNoExistingNextDevelopmentProcess();
   await assertApplicationPortsFree();
   console.info("Development readiness passed: databases, migrations, authority, and ports.");
   return migrationFact;
 }
 
+interface ManagedRuntimeDependency {
+  readonly name: string;
+  readonly process: ChildProcess;
+  readonly stop: () => void;
+}
+
 async function superviseApplications(
   specs: readonly LocalApplicationProcessSpec[],
   environment: NodeJS.ProcessEnv,
+  dependencies: readonly ManagedRuntimeDependency[] = [],
 ): Promise<number> {
   let exitCode = 0;
   let finishing = false;
@@ -1095,6 +1187,18 @@ async function superviseApplications(
   const finishPromise = new Promise<void>((resolveRun) => {
     finishRun = () => resolveRun();
   });
+  for (const dependency of dependencies) {
+    const unexpectedExit = (detail: string) => {
+      if (finishing) return;
+      console.error(`Local runtime dependency ${dependency.name} exited unexpectedly: ${detail}`);
+      exitCode = 1;
+      void finish();
+    };
+    dependency.process.once("error", (error) => unexpectedExit(`error=${error.message}`));
+    dependency.process.once("exit", (code, signal) =>
+      unexpectedExit(`code=${code ?? "null"} signal=${signal ?? "none"}`),
+    );
+  }
   async function finish(): Promise<void> {
     if (finishing) return;
     finishing = true;
@@ -1104,6 +1208,7 @@ async function superviseApplications(
     process.off("SIGTERM", stop);
     process.off("SIGUSR2", retry);
     await coordinator?.shutdown();
+    for (const dependency of dependencies) dependency.stop();
     finishRun?.();
   }
   const stop = () => {
@@ -1163,12 +1268,124 @@ function selectApplicationSpecs(
   return command === "apps" ? specs : specs.filter((spec) => spec.name === command);
 }
 
+function stopLocalDataAgentContainersIfAvailable(environment: NodeJS.ProcessEnv): void {
+  const available = spawnSync("docker", ["info"], {
+    cwd: REPOSITORY_ROOT,
+    env: environment,
+    stdio: "ignore",
+  });
+  if (available.status !== 0) return;
+  runCommand(
+    "docker",
+    [
+      "compose",
+      "--profile",
+      "deploy",
+      "stop",
+      "web",
+      "worker",
+      "relationship-indexer",
+      "clamav",
+      "postgres",
+      "neo4j",
+    ],
+    environment,
+  );
+}
+
+function startLocalInfrastructure(environment: NodeJS.ProcessEnv): void {
+  runCommand(
+    "docker",
+    ["compose", "--profile", "deploy", "stop", "web", "worker", "relationship-indexer"],
+    environment,
+  );
+  runCommand(
+    "docker",
+    ["compose", "--profile", "deploy", "rm", "-f", "web", "worker", "relationship-indexer"],
+    environment,
+  );
+  runCommand("docker", ["compose", "up", "-d", "--wait", "postgres", "neo4j"], environment);
+}
+
+function prepareNasInfrastructure(
+  environment: NodeJS.ProcessEnv,
+): Readonly<{ config: NasRuntimeConfig; infrastructure: DevelopmentInfrastructure }> {
+  const config = resolveNasRuntimeConfig(environment);
+  syncNasDeployment(config, REPOSITORY_ROOT);
+  switchNasToInfrastructure(config);
+  stopLocalDataAgentContainersIfAvailable(environment);
+  return { config, infrastructure: { mode: "nas", nas: config } };
+}
+
+async function startReadyNasTunnel(
+  config: NasRuntimeConfig,
+): Promise<Readonly<{ dependency: ManagedRuntimeDependency; process: ChildProcess }>> {
+  const tunnel = startNasSshTunnel(config);
+  try {
+    await waitForNasSshTunnel(tunnel, config);
+  } catch (error) {
+    stopNasSshTunnel(tunnel);
+    throw error;
+  }
+  return {
+    process: tunnel,
+    dependency: {
+      name: "nas-ssh-tunnel",
+      process: tunnel,
+      stop: () => stopNasSshTunnel(tunnel),
+    },
+  };
+}
+
+async function runLocalDevelopment(): Promise<number> {
+  let environment = loadLocalDevelopmentEnvironment("local");
+  startLocalInfrastructure(environment);
+  assertMigrationLedgerCurrent(LOCAL_INFRASTRUCTURE);
+  environment = runOptionalLocalSuperadminSync(environment);
+  const migrationFact = await runDevelopmentCheck(environment, LOCAL_INFRASTRUCTURE);
+  environment = {
+    ...environment,
+    DATA_AGENT_MIGRATION_READY: String(migrationFact.migration_ready),
+    DATA_AGENT_MIGRATION_FRONTIER: migrationFact.migration_frontier,
+  };
+  return superviseApplications(buildLocalApplicationProcessSpecs(), environment);
+}
+
+async function runNasDevelopment(): Promise<number> {
+  let environment = loadLocalDevelopmentEnvironment("nas");
+  const { config, infrastructure } = prepareNasInfrastructure(environment);
+  assertMigrationLedgerCurrent(infrastructure);
+  const tunnel = await startReadyNasTunnel(config);
+  try {
+    environment = runOptionalLocalSuperadminSync(environment);
+    const migrationFact = await runDevelopmentCheck(environment, infrastructure);
+    environment = {
+      ...environment,
+      DATA_AGENT_MIGRATION_READY: String(migrationFact.migration_ready),
+      DATA_AGENT_MIGRATION_FRONTIER: migrationFact.migration_frontier,
+    };
+    return await superviseApplications(buildLocalApplicationProcessSpecs(), environment, [
+      tunnel.dependency,
+    ]);
+  } finally {
+    stopNasSshTunnel(tunnel.process);
+  }
+}
+
 type RuntimeCommand =
   | "dev"
+  | "dev-local"
+  | "dev-nas"
   | "build"
   | "infra"
+  | "infra-local"
+  | "infra-nas"
   | "migrate"
+  | "migrate-local"
+  | "migrate-nas"
   | "check"
+  | "check-local"
+  | "check-nas"
   | "apps"
   | "web"
   | "worker"
@@ -1176,85 +1393,130 @@ type RuntimeCommand =
   | "semantic-authoring"
   | "docker-migrate"
   | "docker-up"
-  | "docker-down";
+  | "docker-down"
+  | "prod-nas-migrate"
+  | "prod-nas"
+  | "prod-nas-down";
 
 async function main(command: RuntimeCommand | undefined): Promise<number> {
-  let environment = loadLocalDevelopmentEnvironment();
   switch (command) {
     case "infra":
-      runCommand(
-        "docker",
-        ["compose", "--profile", "deploy", "stop", "web", "worker", "relationship-indexer"],
-        environment,
-      );
-      runCommand(
-        "docker",
-        ["compose", "--profile", "deploy", "rm", "-f", "web", "worker", "relationship-indexer"],
-        environment,
-      );
-      runCommand("docker", ["compose", "up", "-d", "--wait", "postgres", "neo4j"], environment);
+    case "infra-local":
+      startLocalInfrastructure(loadLocalDevelopmentEnvironment("local"));
+      return 0;
+    case "infra-nas":
+      prepareNasInfrastructure(loadLocalDevelopmentEnvironment("nas"));
       return 0;
     case "migrate":
-      await main("infra");
+    case "migrate-local": {
+      const environment = loadLocalDevelopmentEnvironment("local");
+      startLocalInfrastructure(environment);
       runCommand(
         "docker",
         ["compose", "--profile", "migrate", "run", "--rm", "migration"],
         environment,
       );
-      assertMigrationLedgerCurrent();
+      assertMigrationLedgerCurrent(LOCAL_INFRASTRUCTURE);
       return 0;
+    }
+    case "migrate-nas": {
+      const environment = loadLocalDevelopmentEnvironment("nas");
+      const { config, infrastructure } = prepareNasInfrastructure(environment);
+      runNasMigration(config);
+      assertMigrationLedgerCurrent(infrastructure);
+      return 0;
+    }
     case "check":
-      await runDevelopmentCheck(environment);
+    case "check-local": {
+      const environment = loadLocalDevelopmentEnvironment("local");
+      await runDevelopmentCheck(environment, LOCAL_INFRASTRUCTURE);
       await assertWorkspaceBuildReadiness(buildLocalApplicationProcessSpecs(), environment);
       console.info("Workspace build readiness passed for all managed consumers.");
       return 0;
-    case "build":
+    }
+    case "check-nas": {
+      const environment = loadLocalDevelopmentEnvironment("nas");
+      const { config, infrastructure } = prepareNasInfrastructure(environment);
+      const tunnel = await startReadyNasTunnel(config);
+      try {
+        await runDevelopmentCheck(environment, infrastructure);
+        await assertWorkspaceBuildReadiness(buildLocalApplicationProcessSpecs(), environment);
+        console.info("Workspace build readiness passed for all managed consumers.");
+        return 0;
+      } finally {
+        stopNasSshTunnel(tunnel.process);
+      }
+    }
+    case "build": {
+      const environment = loadLocalDevelopmentEnvironment("local");
       await refreshWorkspaceBuildReadiness(buildLocalApplicationProcessSpecs(), environment);
       return 0;
-    case "dev": {
-      await main("infra");
-      // Admin sync depends on the newest governed SQL surface. Keep the
-      // existing migration-ledger diagnostic ahead of any optional write so a
-      // stale local database still receives the actionable migrate message.
-      assertMigrationLedgerCurrent();
-      environment = runOptionalLocalSuperadminSync(environment);
-      const migrationFact = await runDevelopmentCheck(environment);
-      environment = {
-        ...environment,
-        DATA_AGENT_MIGRATION_READY: String(migrationFact.migration_ready),
-        DATA_AGENT_MIGRATION_FRONTIER: migrationFact.migration_frontier,
-      };
-      return superviseApplications(buildLocalApplicationProcessSpecs(), environment);
     }
+    case "dev":
+    case "dev-local":
+      return runLocalDevelopment();
+    case "dev-nas":
+      return runNasDevelopment();
     case "apps":
     case "web":
     case "worker":
     case "indexer":
     case "semantic-authoring":
-      return superviseApplications(selectApplicationSpecs(command), environment);
-    case "docker-migrate":
+      return superviseApplications(
+        selectApplicationSpecs(command),
+        loadLocalDevelopmentEnvironment("local"),
+      );
+    case "docker-migrate": {
+      const environment = loadLocalDevelopmentEnvironment("local");
       runCommand("docker", ["compose", "up", "-d", "--wait", "postgres"], environment);
       runCommand(
         "docker",
         ["compose", "--profile", "migrate", "run", "--rm", "migration"],
         environment,
       );
-      assertMigrationLedgerCurrent();
+      assertMigrationLedgerCurrent(LOCAL_INFRASTRUCTURE);
       return 0;
-    case "docker-up":
-      environment = injectDockerBuildProvenance(environment);
+    }
+    case "docker-up": {
+      const environment = injectDockerBuildProvenance(loadLocalDevelopmentEnvironment("local"));
       runCommand(
         "docker",
         ["compose", "--profile", "deploy", "up", "--build", "-d", "--wait"],
         environment,
       );
       return 0;
-    case "docker-down":
+    }
+    case "docker-down": {
+      const environment = loadLocalDevelopmentEnvironment("local");
       runCommand("docker", ["compose", "--profile", "deploy", "down"], environment);
+      return 0;
+    }
+    case "prod-nas-migrate": {
+      const environment = loadLocalDevelopmentEnvironment("nas");
+      const { config, infrastructure } = prepareNasInfrastructure(environment);
+      runNasMigration(config);
+      assertMigrationLedgerCurrent(infrastructure);
+      return 0;
+    }
+    case "prod-nas": {
+      const environment = loadLocalDevelopmentEnvironment("nas");
+      const { config, infrastructure } = prepareNasInfrastructure(environment);
+      assertMigrationLedgerCurrent(infrastructure);
+      await assertApplicationPortsFree();
+      const provenance = injectDockerBuildProvenance(environment);
+      const gitCommit = provenance.DATA_AGENT_GIT_COMMIT;
+      const gitDirty = provenance.DATA_AGENT_GIT_DIRTY;
+      if (!gitCommit || !gitDirty) throw new Error("NAS_BUILD_PROVENANCE_MISSING");
+      runNasProduction(config, { gitCommit, gitDirty });
+      console.info(`NAS production ready: ${config.webUrl}`);
+      return 0;
+    }
+    case "prod-nas-down":
+      stopNasProduction(resolveNasRuntimeConfig(loadLocalDevelopmentEnvironment("nas")));
       return 0;
     default:
       console.error(
-        "Usage: local-dev-runtime.ts <dev|build|infra|migrate|check|apps|web|worker|indexer|semantic-authoring|docker-migrate|docker-up|docker-down>",
+        "Usage: local-dev-runtime.ts <dev|dev-local|dev-nas|build|infra|infra-local|infra-nas|migrate|migrate-local|migrate-nas|check|check-local|check-nas|apps|web|worker|indexer|semantic-authoring|docker-migrate|docker-up|docker-down|prod-nas-migrate|prod-nas|prod-nas-down>",
       );
       return 2;
   }

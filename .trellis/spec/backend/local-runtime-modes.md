@@ -12,13 +12,19 @@
 ### 2. 签名
 
 ```text
-pnpm dev:infra     # 当前 PostgreSQL + Neo4j；Sandbox 落地后再加入 python-sandbox
-pnpm dev:migrate   # 显式应用缺失迁移并核验 Ledger
-pnpm dev:check     # 只读健康、Ledger、Authority 和端口门禁
+pnpm dev:infra:local     # 本地 PostgreSQL + Neo4j
+pnpm dev:infra:nas       # NAS PostgreSQL + Neo4j；停止本地 Data Agent 容器
+pnpm dev:migrate:local   # 本地显式应用缺失迁移并核验 Ledger
+pnpm dev:migrate:nas     # NAS 显式应用缺失迁移并核验 Ledger
+pnpm dev:check:local     # 本地只读健康、Ledger、Authority 和端口门禁
+pnpm dev:check:nas       # NAS 只读门禁与 SSH tunnel 探测
 pnpm dev:build     # 构建并证明全部受管理 consumer，不绑定端口
-pnpm dev           # dev:infra -> dev:check -> 三个本地 watch 进程
+pnpm dev           # 等价于 dev:local；本地数据库 + 四个本地 consumer
+pnpm dev:nas       # NAS 数据库 + 受监督 SSH tunnel + 四个本地 consumer
+pnpm prod:nas:migrate
+pnpm prod:nas      # NAS 六服务 Data Agent 容器栈
 pnpm docker:migrate
-pnpm docker:up     # deploy profile 的五个长期服务
+pnpm docker:up     # 当前主机 deploy profile
 pnpm docker:down   # 移除容器，保留命名数据卷
 
 DATA_AGENT_ALLOW_QA_READINESS_BOOTSTRAP=YES \
@@ -27,18 +33,17 @@ pnpm --filter @data-agent/web exec tsx src/cli/bootstrap-qa-readiness.ts
 
 GET worker:9091/live
 GET relationship-indexer:9090/live
-python-sandbox health  # 通过受控 IPC/容器 healthcheck，不开放公共 TCP 端口
+OpenSandbox health  # 独立管理；按 python-sandbox-execution.md 验证 endpoint 与 attestation
 ```
 
 ### 3. 契约
 
-- 在 Python Sandbox 实现前，Compose 默认服务集合仍精确为 `postgres, neo4j`，`deploy`
-  profile 再加 `web, worker, relationship-indexer`。完成该能力时，默认集合改为
-  `postgres, neo4j, python-sandbox`，`deploy` 再加三个应用服务，`migrate` 仍是一次性服务；
-  对应 Contract 测试必须与功能提交原子更新，不能提前宣称第六个服务健康。
-- `python-sandbox` 无数据库连接、无公共 TCP、无外网和宿主项目/数据/Secret 挂载；仅允许
-  专用 IPC socket 目录。宿主 Worker 与容器 Worker 必须使用同一版本协议，executor OS
-  身份不能读取 supervisor socket。
+- Compose 默认服务集合精确为 `postgres, neo4j`，`deploy` profile 再加
+  `clamav, web, worker, relationship-indexer`，`migrate` 是一次性服务。已退役的内置
+  `python-sandbox` 服务和 Dockerfile 不得复活。
+- OpenSandbox 是唯一 Python 执行层并独立于本 Compose 栈部署；启用分析能力时必须按
+  `python-sandbox-execution.md` 配置 endpoint、API key、固定镜像与 attestation。它不是数据库权威，
+  不得获得 PostgreSQL、Datasource、对象存储或 Provider 凭据。
 - 本地 Web 使用 Next/Turbopack，Worker 和 Indexer 使用 `tsx watch`。Worker 的
   watch 与 Docker CMD 必须执行同一个 `run-worker-cli` 组合入口。
 - 所有公开 dev 入口必须先经过根级 freshness coordinator。Coordinator 以 Turbo task hash 作为 input
@@ -55,8 +60,9 @@ python-sandbox health  # 通过受控 IPC/容器 healthcheck，不开放公共 T
   复制 portable identity；不得复制 `.git`、本地 `.turbo`、完整 attestation 或公开 package digest。
 - persistence transaction 失败的公开 code/message 保持脱敏；进程级 diagnostics subscriber 必须幂等、
   reference-counted，并只记录 operation、correlation、SQLSTATE、process role 与 opaque build identity。
-- 宿主机 DSN 使用 `127.0.0.1`；容器 DSN 使用 Compose 服务名
-  `postgres` / `neo4j`，不得混用。
+- local 宿主 DSN 使用 `127.0.0.1:5432`；NAS 宿主 DSN 使用 SSH tunnel
+  `127.0.0.1:55432`，Neo4j 使用 `127.0.0.1:7687`；容器 DSN 使用 Compose 服务名
+  `postgres` / `neo4j`，不得混用。模式 endpoint 必须在 dotenv 合并后固定。
 - 本地环境优先级是 `process > .env.local > .env > safe defaults`；Secret 只能来自
   运行时环境，不得输出值。
 - Web、Worker、Semantic Authoring、Certification 和根级 CLI 必须复用
@@ -66,8 +72,11 @@ python-sandbox health  # 通过受控 IPC/容器 healthcheck，不开放公共 T
 - `SEMANTIC_GOVERNANCE_BACKEND=postgres`、`SEMANTIC_EXPLORER_ENABLED=true`与
   `SEMANTIC_RELATIONSHIP_INDEX_ENABLED=true` 在两种模式保持一致。Neo4j 不可用时
   Explorer 走 PostgreSQL fallback，Web 与 Governance 继续可用。
-- `pnpm dev` 只读 Migration Ledger，不得隐式执行 SQL。迁移只由显式
+- `pnpm dev` / `pnpm dev:nas` 只读 Migration Ledger，不得隐式执行 SQL。迁移只由匹配当前模式的显式
   migrate 命令执行，并要求 `ON_ERROR_STOP=1` 与名称/checksum 精确复核。
+- NAS 数据库只绑定远端 loopback。SSH tunnel 必须使用 `ExitOnForwardFailure`，在应用启动前执行远端
+  PostgreSQL 协议探测；只存在本地 SSH listener 不能视为 ready。tunnel 退出必须停止全部受管理 consumer。
+- 单文件 workspace watcher 必须比较内容 digest；macOS 文件属性/访问事件在内容未变时不得触发 consumer 重建。
 - Q&A readiness bootstrap 只允许显式 CLI：确认变量必须精确为
   `DATA_AGENT_ALLOW_QA_READINESS_BOOTSTRAP=YES`，`NODE_ENV=production` 必须返回
   `QA_READINESS_PRODUCTION_FORBIDDEN`。页面加载、`pnpm dev` 和 Run POST 均不得隐式调用。
@@ -83,7 +92,8 @@ python-sandbox health  # 通过受控 IPC/容器 healthcheck，不开放公共 T
 | 条件 | 稳定结果 |
 | --- | --- |
 | PostgreSQL/Neo4j 容器不健康 | `DEV_DATABASE_NOT_HEALTHY:<service>` |
-| Ledger 缺失或 checksum 不同 | `DEV_MIGRATIONS_NOT_READY:*`，提示 `pnpm dev:migrate` |
+| Ledger 缺失或 checksum 不同 | `DEV_MIGRATIONS_NOT_READY:*`，提示匹配模式的 migrate 命令 |
+| NAS SSH/Compose/转发失败 | `NAS_*` 稳定 reason，应用端口保持未启动 |
 | 固定 Server Context 无 Authority | `DEV_AUTHORITY_MAPPING_NOT_READY` |
 | 3000/9090/9091 已占用 | `DEV_PORT_IN_USE:<service>:<port>` |
 | 既有 Next dev lock 仍对应存活进程 | `DEV_NEXT_PROCESS_ALREADY_RUNNING:<pid>:<port>` |
@@ -113,9 +123,10 @@ python-sandbox health  # 通过受控 IPC/容器 healthcheck，不开放公共 T
 
 ### 6. 必需测试
 
-- Compose Contract：断言 default 只有两个数据库，`deploy` 精确为五个长期服务。
-- Python Sandbox 落地时同步把 Compose Contract 更新为 default 三个基础设施服务、deploy
-  六个长期服务，并断言 sandbox 无网络/数据库 Secret/公共端口、只读 root 与硬资源限制。
+- Compose Contract：断言 default 精确为 PostgreSQL/Neo4j，`deploy` 精确为六个长期服务，
+  并断言已退役的内置 `python-sandbox` 服务和 Dockerfile 没有复活。
+- Runtime mode：断言 `dev == dev:local`、显式 `dev:nas`、dotenv 后 endpoint 固定、NAS loopback port merge、
+  SSH quoting/tunnel 生命周期和内容摘要 watcher。
 - Worker Unit/Integration：严格 env、IDLE 退避、日志脱敏、Lease/Heartbeat/Fence/终态。
 - Runtime Config：覆盖 repo root / Web / Worker cwd、dotenv 幂等、规范变量优先、旧别名提升、
   缺失配置失败关闭和诊断不含 Secret。
@@ -131,9 +142,9 @@ python-sandbox health  # 通过受控 IPC/容器 healthcheck，不开放公共 T
   浏览器 POST 必须从 readiness 400 变为 201。
 - 在执行过 Next/Docker 生产构建的工作区运行根级 Vitest 时，命令必须显式使用
   `--exclude '**/.next/**'`，避免把 `.next/standalone` 中复制的测试文件当作源码重复执行。
-- 物理 Smoke：三个本地应用热更新；当前五容器 healthy；Python Sandbox 落地后六容器
-  分别 healthy；停 Neo4j 时 Web/Explorer/Governance 仍可用且关系搜索返回稳定 fallback
-  reason。Sandbox 不健康时 SQL-only 路径可用，但 Python case 与 Production Readiness
+- 物理 Smoke：local/NAS 开发的四个本地 consumer health；完整 deploy 六容器分别 healthy；停 Neo4j 时
+  Web/Explorer/Governance 仍可用且关系搜索返回稳定 fallback
+  reason。外部 OpenSandbox 不健康时 SQL-only 路径可用，但 Python case 与 Production Readiness
   必须失败关闭。
 
 ### 7. Wrong vs Correct
@@ -151,8 +162,9 @@ pnpm exec vitest run apps/web/test/integration/example.spec.ts  # 构建后可�
 
 ```bash
 pnpm dev              # 开发：Docker 数据库 + 本地 watch
-pnpm dev:build && pnpm dev:check  # 只刷新并核对受管理 build 证明
-pnpm docker:migrate && pnpm docker:up  # 部署：显式迁移 + 五服务容器
+pnpm dev:nas          # 低内存开发：NAS 数据库 + SSH tunnel + 本地 watch
+pnpm dev:build && pnpm dev:check:local  # 只刷新并核对受管理 build 证明
+pnpm prod:nas:migrate && pnpm prod:nas  # NAS 完整容器部署
 pnpm exec vitest run --exclude '**/.next/**' apps/web/test/integration/example.spec.ts
 DATA_AGENT_ALLOW_QA_READINESS_BOOTSTRAP=YES NODE_OPTIONS=--conditions=react-server \
   pnpm --filter @data-agent/web exec tsx src/cli/bootstrap-qa-readiness.ts
