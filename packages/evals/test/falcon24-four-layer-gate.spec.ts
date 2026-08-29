@@ -3,7 +3,11 @@ import {
   buildFalcon24FourLayerManifestTurns,
 } from "@data-agent/contracts/evals";
 import { describe, expect, it } from "vitest";
-import { evaluateFalcon24FourLayerTurn } from "../src/test-center/falcon24-four-layer-gate.js";
+import {
+  buildFalcon24FourLayerRubricEvidence,
+  evaluateFalcon24FourLayerTurn,
+  verifyFalcon24FourLayerRubricEvidence,
+} from "../src/test-center/falcon24-four-layer-gate.js";
 
 const id = (suffix: number) => `00000000-0000-4000-8000-${String(suffix).padStart(12, "0")}`;
 const hash = (character: string) => `sha256:${character.repeat(64)}`;
@@ -106,5 +110,53 @@ describe("Falcon24 four-layer deterministic evaluator", () => {
         actual_profile_ids: [...base.actual_profile_ids, "unpublished-specialist-agent"],
       }),
     ).toMatchObject({ status: "FAIL", failure_code: "AGENT_CONTRACT_MISMATCH" });
+  });
+
+  it("binds rubric evidence to the exact Run outputs and preserves an empty Agent failure", async () => {
+    const document = await manifest();
+    const turn = document.turns[0];
+    if (!turn) throw new Error("turn fixture missing");
+    const evidence = await buildFalcon24FourLayerRubricEvidence({
+      schema_version: "falcon24-four-layer-rubric-evidence@1.0.0",
+      gate_id: document.gate_id,
+      attempt_id: document.attempt_id,
+      manifest_hash: document.manifest_hash,
+      turn_ordinal: turn.ordinal,
+      turn_id: turn.turn_id,
+      conversation_id: id(10),
+      conversation_resource_version: 1,
+      run_id: id(11),
+      answer_hash: hash("a"),
+      public_event_hash: hash("b"),
+      accepted_artifact_refs_hash: hash("c"),
+      accepted_input_artifact_refs_hash: hash("e"),
+      observations: turn.rubric.required_checks.map((checkId) => ({
+        check_id: checkId,
+        status: "PASS" as const,
+        evidence_hash: hash("d"),
+      })),
+      table_present: false,
+      chart_present: false,
+      accepted_input_present: false,
+      current_run_evidence_present: true,
+      evaluated_at: "2026-08-30T08:00:00.000Z",
+    });
+
+    await expect(verifyFalcon24FourLayerRubricEvidence(evidence)).resolves.toEqual(evidence);
+    await expect(
+      verifyFalcon24FourLayerRubricEvidence({ ...evidence, answer_hash: hash("e") }),
+    ).rejects.toThrow("FALCON24_FOUR_LAYER_RUBRIC_EVIDENCE_HASH_INVALID");
+    expect(
+      evaluateFalcon24FourLayerTurn({
+        turn,
+        actual_profile_ids: [],
+        observations: evidence.observations,
+        answer_text: "采用已发布订单收入与时间口径。",
+        table_present: evidence.table_present,
+        chart_present: evidence.chart_present,
+        accepted_input_present: evidence.accepted_input_present,
+        current_run_evidence_present: evidence.current_run_evidence_present,
+      }),
+    ).toEqual({ status: "FAIL", failure_code: "AGENT_CONTRACT_MISMATCH" });
   });
 });
