@@ -273,13 +273,9 @@ export async function finalizeFalcon24RetainedAuthority(input: {
   });
   const diagnosticRecoveryRequired = targetOrdinal === 7n;
   const closureRecoveryRequired = targetOrdinal === 8n;
-  const terminalDiagnosticRecoveryRequired = targetOrdinal === 9n;
-  const finalizationFailureRecoveryRequired = targetOrdinal >= 10n;
+  const terminalRecoveryRequired = targetOrdinal >= 9n;
   const recoveryRequired =
-    diagnosticRecoveryRequired ||
-    closureRecoveryRequired ||
-    terminalDiagnosticRecoveryRequired ||
-    finalizationFailureRecoveryRequired;
+    diagnosticRecoveryRequired || closureRecoveryRequired || terminalRecoveryRequired;
   let llmProof: Falcon24LlmExecutionAuthorityProof | null = null;
   let predecessorFailure: ReturnType<
     typeof falcon24PredecessorDiagnosticFailureSchema.parse
@@ -292,8 +288,11 @@ export async function finalizeFalcon24RetainedAuthority(input: {
     if (
       (diagnosticRecoveryRequired && input.recovery.kind !== "DIAGNOSTIC") ||
       (closureRecoveryRequired && input.recovery.kind !== "CLOSURE_FAILURE") ||
-      (terminalDiagnosticRecoveryRequired && input.recovery.kind !== "TERMINAL_DIAGNOSTIC") ||
-      (finalizationFailureRecoveryRequired && input.recovery.kind !== "FINALIZATION_FAILURE")
+      (terminalRecoveryRequired &&
+        input.recovery.kind !== "TERMINAL_DIAGNOSTIC" &&
+        input.recovery.kind !== "FINALIZATION_FAILURE") ||
+      (input.recovery.kind === "TERMINAL_DIAGNOSTIC" && targetOrdinal < 9n) ||
+      (input.recovery.kind === "FINALIZATION_FAILURE" && targetOrdinal < 10n)
     ) {
       throw new TypeError("FALCON24_RECOVERY_ACTIVATION_KIND_MISMATCH");
     }
@@ -556,9 +555,10 @@ export async function finalizeFalcon24RetainedAuthority(input: {
         (terminalDiagnosticRecoveryResult && predecessorDiagnosticReceipt) ||
         (finalizationFailureRecoveryResult && predecessorFinalizationFailure)
       ) {
-        const resolveCurrentCertification = finalizationFailureRecoveryResult
-          ? input.resolve_current_execution_certification_v2
-          : input.resolve_current_execution_certification;
+        const resolveCurrentCertification =
+          targetOrdinal >= 10n
+            ? input.resolve_current_execution_certification_v2
+            : input.resolve_current_execution_certification;
         if (!resolveCurrentCertification) {
           throw new TypeError("FALCON24_RETAINED_CURRENT_CERTIFICATION_READBACK_REQUIRED");
         }

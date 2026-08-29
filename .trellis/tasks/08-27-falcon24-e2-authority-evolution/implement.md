@@ -1111,7 +1111,7 @@ receipt persistence 本身需要新的 frozen-closure 修复，本任务不满�
 - [x] 证明 Specialist logical ID遗漏 child task：首 task产生 base+repair两个 Provider call，后续三个 task均在 Provider I/O前 duplicate。
 - [x] 记录无法从安全事件证明首轮具体 SQL policy 子码，不推断 raw candidate。
 - [x] PRD/design/implement/spec明确 task-scoped identity、safe feedback、既有 request@6复用、锁序、恢复、文件和测试边界。
-- [ ] Trellis validate、Markdown/diff check后 scoped docs commit。
+- [x] Trellis validate、Markdown/diff check后 scoped docs commit（`7fc7ee57`）。
 
 ### E11-W1 — Worker dynamic Tool Loop identity fix
 
@@ -1128,12 +1128,18 @@ receipt persistence 本身需要新的 frozen-closure 修复，本任务不满�
 
 ### E11-W2 — Evidence-driven retained Finalizer
 
-- [ ] Finalizer configuration对 E9+要求 fresh LLM stage和 exactly one predecessor diagnostic attempt或 finalization failure receipt；
+- [x] Finalizer configuration对 E9+要求 fresh LLM stage和 exactly one predecessor diagnostic attempt或 finalization failure receipt；
   E7/E8专用历史分支不变。
-- [ ] `finalizeFalcon24RetainedAuthority`按 recovery kind选择既有 v6/v7，不再把 target>=10硬编码为 finalization failure。
-- [ ] target>=E10无论v6/v7均用 current certification resolver v2完成post-readback；v1没有fallback。
-- [ ] 增加 E10->E11 request@6、E9->E10 request@7 regression、missing/both evidence、readback mismatch tests。
-- [ ] Web focused/full tests、typecheck/build/Biome/static boundary scan；scoped commit。无 10803/migration变更。
+- [x] `finalizeFalcon24RetainedAuthority`按 recovery kind选择既有 v6/v7，不再把 target>=10硬编码为 finalization failure。
+- [x] target>=E10无论v6/v7均用 current certification resolver v2完成post-readback；v1没有fallback。
+- [x] 增加 E10->E11 request@6、E9->E10 request@7 regression、missing/both evidence、readback mismatch tests。
+- [x] Web focused tests、Platform v6/v7 adapter regression、typecheck/build/Biome/static boundary scan全部PASS；无
+  10803/migration变更。
+
+W2先用 E10->E11 terminal diagnostic fixture稳定复现 `FALCON24_RECOVERY_ACTIVATION_KIND_MISMATCH`，再集中由
+`resolveFalcon24RetainedRecoveryKind`约束 stage + exactly-one predecessor evidence。`finalizeFalcon24RetainedAuthority`按实际
+receipt kind构造 request@6或request@7；E10+ post-readback只调用resolver v2。聚焦验证为 Web 2 files / 29 tests、Platform
+authority adapter 1 file / 16 tests、Web typecheck和production build PASS；Turbopack仅保留既有 Test Center动态文件访问warning。
 
 ### E11-W3 — Full proof and scratch vertical canary
 

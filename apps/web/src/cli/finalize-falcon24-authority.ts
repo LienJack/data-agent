@@ -99,6 +99,57 @@ const SEMANTIC_DOMAIN = "falcon24" as const;
 const REPOSITORY_ROOT = fileURLToPath(new URL("../../../../", import.meta.url));
 const execFileAsync = promisify(execFile);
 
+export type Falcon24RetainedRecoveryKind =
+  | "DIAGNOSTIC"
+  | "CLOSURE_FAILURE"
+  | "TERMINAL_DIAGNOSTIC"
+  | "FINALIZATION_FAILURE";
+
+export function resolveFalcon24RetainedRecoveryKind(input: {
+  readonly authority_epoch: string;
+  readonly llm_execution_stage_id?: string;
+  readonly predecessor_diagnostic_attempt_id?: string;
+  readonly predecessor_closure_failure_receipt_id?: string;
+  readonly predecessor_finalization_failure_receipt_id?: string;
+}): Falcon24RetainedRecoveryKind | null {
+  const ordinal = falcon24AuthorityEpochOrdinal(input.authority_epoch);
+  const hasStage = Boolean(input.llm_execution_stage_id);
+  const hasDiagnostic = Boolean(input.predecessor_diagnostic_attempt_id);
+  const hasClosureFailure = Boolean(input.predecessor_closure_failure_receipt_id);
+  const hasFinalizationFailure = Boolean(input.predecessor_finalization_failure_receipt_id);
+  if (ordinal < 7n) {
+    if (hasStage || hasDiagnostic || hasClosureFailure || hasFinalizationFailure) {
+      throw new TypeError("FALCON24_RECOVERY_ACTIVATION_EPOCH_INVALID");
+    }
+    return null;
+  }
+  if (ordinal === 7n) {
+    if (!hasStage || !hasDiagnostic || hasClosureFailure || hasFinalizationFailure) {
+      throw new TypeError("FALCON24_E7_RECOVERY_CONFIGURATION_REQUIRED");
+    }
+    return "DIAGNOSTIC";
+  }
+  if (ordinal === 8n) {
+    if (!hasStage || hasDiagnostic || !hasClosureFailure || hasFinalizationFailure) {
+      throw new TypeError("FALCON24_E8_RECOVERY_CONFIGURATION_REQUIRED");
+    }
+    return "CLOSURE_FAILURE";
+  }
+  if (
+    !hasStage ||
+    hasClosureFailure ||
+    hasDiagnostic === hasFinalizationFailure ||
+    (ordinal === 9n && hasFinalizationFailure)
+  ) {
+    throw new TypeError(
+      ordinal === 9n
+        ? "FALCON24_TERMINAL_DIAGNOSTIC_RECOVERY_CONFIGURATION_REQUIRED"
+        : "FALCON24_TERMINAL_RECOVERY_CONFIGURATION_REQUIRED",
+    );
+  }
+  return hasDiagnostic ? "TERMINAL_DIAGNOSTIC" : "FINALIZATION_FAILURE";
+}
+
 const configurationSchema = z
   .strictObject({
     database_url: z.string().min(1),
@@ -118,61 +169,14 @@ const configurationSchema = z
     build_attestation_file: z.string().min(1).max(4_096).refine(isAbsolute),
   })
   .superRefine((configuration, context) => {
-    const ordinal = falcon24AuthorityEpochOrdinal(configuration.authority_epoch);
-    if (ordinal === 7n && !configuration.llm_execution_stage_id) {
+    try {
+      resolveFalcon24RetainedRecoveryKind(configuration);
+    } catch (error) {
       context.addIssue({
         code: "custom",
-        message: "FALCON24_E7_RECOVERY_CONFIGURATION_REQUIRED",
-        path: ["llm_execution_stage_id"],
-      });
-    }
-    if (
-      ordinal === 7n &&
-      (!configuration.predecessor_diagnostic_attempt_id ||
-        configuration.predecessor_closure_failure_receipt_id)
-    ) {
-      context.addIssue({
-        code: "custom",
-        message: "FALCON24_E7_RECOVERY_CONFIGURATION_REQUIRED",
-        path: ["predecessor_diagnostic_attempt_id"],
-      });
-    }
-    if (
-      ordinal === 8n &&
-      (!configuration.llm_execution_stage_id ||
-        !configuration.predecessor_closure_failure_receipt_id ||
-        configuration.predecessor_diagnostic_attempt_id)
-    ) {
-      context.addIssue({
-        code: "custom",
-        message: "FALCON24_E8_RECOVERY_CONFIGURATION_REQUIRED",
-        path: ["predecessor_closure_failure_receipt_id"],
-      });
-    }
-    if (
-      ordinal === 9n &&
-      (!configuration.llm_execution_stage_id ||
-        !configuration.predecessor_diagnostic_attempt_id ||
-        configuration.predecessor_closure_failure_receipt_id ||
-        configuration.predecessor_finalization_failure_receipt_id)
-    ) {
-      context.addIssue({
-        code: "custom",
-        message: "FALCON24_TERMINAL_DIAGNOSTIC_RECOVERY_CONFIGURATION_REQUIRED",
-        path: ["predecessor_diagnostic_attempt_id"],
-      });
-    }
-    if (
-      ordinal >= 10n &&
-      (!configuration.llm_execution_stage_id ||
-        !configuration.predecessor_finalization_failure_receipt_id ||
-        configuration.predecessor_diagnostic_attempt_id ||
-        configuration.predecessor_closure_failure_receipt_id)
-    ) {
-      context.addIssue({
-        code: "custom",
-        message: "FALCON24_FINALIZATION_FAILURE_RECOVERY_CONFIGURATION_REQUIRED",
-        path: ["predecessor_finalization_failure_receipt_id"],
+        message:
+          error instanceof Error ? error.message : "FALCON24_RECOVERY_CONFIGURATION_REQUIRED",
+        path: ["authority_epoch"],
       });
     }
   });
@@ -966,8 +970,8 @@ export async function runFalcon24AuthorityFinalization(
     });
     const currentAuthority = requireValue(await epoch.loadCurrent(capability));
     const retainedTarget = configuration.authority_epoch !== "E4";
-    const recoveryOrdinal = falcon24AuthorityEpochOrdinal(configuration.authority_epoch);
-    const recoveryTarget = recoveryOrdinal >= 7n;
+    const recoveryKind = resolveFalcon24RetainedRecoveryKind(configuration);
+    const recoveryTarget = recoveryKind !== null;
     const expectedCurrentEpoch = predecessorAuthorityEpoch(configuration.authority_epoch);
     if (currentAuthority?.authority_epoch !== expectedCurrentEpoch) {
       throw new TypeError("FALCON24_AUTHORITY_EPOCH_NOT_SUCCESSOR");
@@ -995,7 +999,7 @@ export async function runFalcon24AuthorityFinalization(
           ) {
             throw new TypeError("FALCON24_RECOVERY_PROOF_PREFLIGHT_MISMATCH");
           }
-          if (recoveryOrdinal === 7n) {
+          if (recoveryKind === "DIAGNOSTIC") {
             const diagnosticAttemptId = configuration.predecessor_diagnostic_attempt_id;
             if (!diagnosticAttemptId) {
               throw new TypeError("FALCON24_E7_RECOVERY_CONFIGURATION_REQUIRED");
@@ -1009,7 +1013,7 @@ export async function runFalcon24AuthorityFinalization(
               predecessor_diagnostic_failure: predecessorDiagnosticFailure,
             });
           }
-          if (recoveryOrdinal === 8n) {
+          if (recoveryKind === "CLOSURE_FAILURE") {
             const failureReceiptId = configuration.predecessor_closure_failure_receipt_id;
             if (!failureReceiptId) {
               throw new TypeError("FALCON24_E8_RECOVERY_CONFIGURATION_REQUIRED");
@@ -1036,7 +1040,7 @@ export async function runFalcon24AuthorityFinalization(
               predecessor_closure_failure: predecessorClosureFailure,
             });
           }
-          if (recoveryOrdinal === 9n) {
+          if (recoveryKind === "TERMINAL_DIAGNOSTIC") {
             const diagnosticAttemptId = configuration.predecessor_diagnostic_attempt_id;
             if (!diagnosticAttemptId) {
               throw new TypeError("FALCON24_TERMINAL_DIAGNOSTIC_RECOVERY_CONFIGURATION_REQUIRED");

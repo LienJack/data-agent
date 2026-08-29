@@ -18,6 +18,7 @@ import {
   buildFalcon24AgentProfileAuthorityProof,
   buildFalcon24SuccessorSmokeIdempotencyKey,
   resolveFalcon24PredecessorDatasetSubjectHash,
+  resolveFalcon24RetainedRecoveryKind,
   runFalcon24AuthorityFinalization,
   verifyFalcon24PredecessorStagingReceipt,
 } from "../src/cli/finalize-falcon24-authority.js";
@@ -50,7 +51,7 @@ describe("Falcon24 versioned authority finalization", () => {
     });
   });
 
-  it.each(["E5", "E6", "E7", "E8", "E9", "E10"])(
+  it.each(["E5", "E6", "E7", "E8", "E9", "E10", "E11"])(
     "recognizes %s as an explicit retained-authority target before confirmation",
     async (authorityEpoch) => {
       await expect(
@@ -74,6 +75,40 @@ describe("Falcon24 versioned authority finalization", () => {
         FALCON24_AUTHORITY_EPOCH: "E3",
       }),
     ).rejects.toThrow();
+  });
+
+  it("selects terminal diagnostic evidence for E11 and finalization evidence for E10", () => {
+    expect(
+      resolveFalcon24RetainedRecoveryKind({
+        authority_epoch: "E11",
+        llm_execution_stage_id: "00000000-0000-4000-8000-000000000001",
+        predecessor_diagnostic_attempt_id: "00000000-0000-4000-8000-000000000002",
+      }),
+    ).toBe("TERMINAL_DIAGNOSTIC");
+    expect(
+      resolveFalcon24RetainedRecoveryKind({
+        authority_epoch: "E10",
+        llm_execution_stage_id: "00000000-0000-4000-8000-000000000001",
+        predecessor_finalization_failure_receipt_id: "00000000-0000-4000-8000-000000000003",
+      }),
+    ).toBe("FINALIZATION_FAILURE");
+  });
+
+  it("rejects ambiguous or missing E11 predecessor evidence", () => {
+    expect(() =>
+      resolveFalcon24RetainedRecoveryKind({
+        authority_epoch: "E11",
+        llm_execution_stage_id: "00000000-0000-4000-8000-000000000001",
+        predecessor_diagnostic_attempt_id: "00000000-0000-4000-8000-000000000002",
+        predecessor_finalization_failure_receipt_id: "00000000-0000-4000-8000-000000000003",
+      }),
+    ).toThrow("FALCON24_TERMINAL_RECOVERY_CONFIGURATION_REQUIRED");
+    expect(() =>
+      resolveFalcon24RetainedRecoveryKind({
+        authority_epoch: "E11",
+        llm_execution_stage_id: "00000000-0000-4000-8000-000000000001",
+      }),
+    ).toThrow("FALCON24_TERMINAL_RECOVERY_CONFIGURATION_REQUIRED");
   });
 
   it("imports only the generation-2 combined activation path", () => {
