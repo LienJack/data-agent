@@ -296,13 +296,16 @@ export async function buildPostgresqlQueryEvidenceSemanticBinding(
   }
   const packageDocument = context.package;
   if (
-    result.query_id !== input.result.query_id ||
     result.columns.length !== candidate.result_columns.length ||
     result.columns.some(
       (column, index) =>
         column.name !== candidate.result_columns[index]?.name ||
         logicalTypeForOid(column.type) !== candidate.result_columns[index]?.semantic_type,
-    ) ||
+    )
+  ) {
+    reject("QUERY_EVIDENCE_RESULT_BINDING_MISMATCH");
+  }
+  if (
     snapshot.snapshot_id !== packageDocument.schema_snapshot.resource_id ||
     snapshot.snapshot_content_hash !== packageDocument.schema_snapshot.resource_hash ||
     snapshot.content.datasource_id !== input.datasource_ref.resource_id ||

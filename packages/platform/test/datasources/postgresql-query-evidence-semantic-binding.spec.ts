@@ -459,7 +459,20 @@ describe("PostgreSQL QueryEvidence semantic binding", () => {
           { name: "revenue", type: "1700" },
         ]),
       }),
-    ).rejects.toMatchObject({ code: "QUERY_EVIDENCE_AUTHORITY_BINDING_MISMATCH" });
+    ).rejects.toMatchObject({ code: "QUERY_EVIDENCE_RESULT_BINDING_MISMATCH" });
+  });
+
+  it("rejects a result name that contradicts the declared output binding", async () => {
+    const input = await fixture();
+    await expect(
+      buildPostgresqlQueryEvidenceSemanticBinding({
+        ...input,
+        result: await queryResult([
+          { name: "unexpected_month", type: "1082" },
+          { name: "revenue", type: "1700" },
+        ]),
+      }),
+    ).rejects.toMatchObject({ code: "QUERY_EVIDENCE_RESULT_BINDING_MISMATCH" });
   });
 
   it("rejects a semantic type that contradicts the exact physical snapshot column", async () => {

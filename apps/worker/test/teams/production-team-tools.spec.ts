@@ -170,6 +170,19 @@ describe("Production Team governed chart publication", () => {
     );
   });
 
+  it("repairs result binding drift but never retries frozen authority drift", () => {
+    expect(
+      productionTeamToolsInternals.repairableQueryExecutionFailure(
+        "QUERY_EVIDENCE_RESULT_BINDING_MISMATCH",
+      ),
+    ).toBe(true);
+    expect(
+      productionTeamToolsInternals.repairableQueryExecutionFailure(
+        "QUERY_EVIDENCE_AUTHORITY_BINDING_MISMATCH",
+      ),
+    ).toBe(false);
+  });
+
   it("derives a chart intent from typed tabular columns without keyword routing", () => {
     const candidate = {
       schema_version: "text2sql-query-candidate@1.0.0" as const,
@@ -1189,7 +1202,7 @@ describe("Production Team governed chart publication", () => {
     const productDocuments = new Map<string, ProductTeamArtifactDocument>();
     let chartDocument: ArtifactWorkspaceChartDocumentV2 | null = null;
     const text2sqlPrepare = vi.fn(async () => ({
-      context_text: "frozen-schema-and-semantic-context",
+      context_text: '{"schema_version":"frozen-query-context@1.0.0"}',
       datasource_id: id(40),
       schema_snapshot_id: id(41),
       schema_snapshot_hash: hash("4"),
@@ -1417,9 +1430,33 @@ describe("Production Team governed chart publication", () => {
         stage: "TEXT2SQL",
         profile_id: "governed-text2sql-agent",
         objective: "查询每月订单趋势",
-        context_text: "frozen-schema-and-semantic-context",
+        context_text: '{"schema_version":"frozen-query-context@1.0.0"}',
       },
     });
+
+    text2sqlExecute.mockRejectedValueOnce(
+      Object.assign(new TypeError("QUERY_EVIDENCE_RESULT_BINDING_MISMATCH"), {
+        code: "QUERY_EVIDENCE_RESULT_BINDING_MISMATCH",
+      }),
+    );
+    await expect(invocation("sql.sandbox.execute")).resolves.toMatchObject({
+      output_ref: { artifact_type: "QueryEvidence" },
+    });
+    expect(provider).toHaveBeenCalledTimes(2);
+    expect(provider.mock.calls[1]?.[0]).toMatchObject({
+      logical_call_id: productionTeamToolsInternals.specialistProviderLogicalCallId({
+        run_id: lease.run_id,
+        task_id: task.task_id,
+        stage: "TEXT2SQL",
+        call_index: 1,
+      }),
+      turn: {
+        kind: "SPECIALIST",
+        stage: "TEXT2SQL",
+        context_text: expect.stringContaining("QUERY_EVIDENCE_RESULT_BINDING_MISMATCH"),
+      },
+    });
+    expect(text2sqlExecute).toHaveBeenCalledTimes(3);
 
     const committedBeforeFailure = [...productDocuments.keys()].sort();
     const chartBeforeFailure = chartDocument;

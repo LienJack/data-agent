@@ -85,7 +85,8 @@ describe("direct run-bound provider retry policy", () => {
 
     expect(prompt).toContain("Only these SQL functions are permitted");
     expect(prompt).toContain("Do not use to_char");
-    expect(prompt).toContain("return date_trunc as a DATE or DATETIME result column");
+    expect(prompt).toContain("date_trunc returns a PostgreSQL timestamp");
+    expect(prompt).toContain("declare DATETIME unless the output expression is explicitly cast");
     expect(prompt).toContain("When the frozen snapshot lists a time column as text");
     expect(prompt).toContain("column_name::pg_catalog.timestamp");
     expect(prompt).toContain("Never write a type name as a prefix");
@@ -98,6 +99,9 @@ describe("direct run-bound provider retry policy", () => {
     );
     expect(prompt).toContain(
       "DATASOURCE_ADAPTER_SQL_TYPE_ERROR means follow the exact listed physical column types",
+    );
+    expect(prompt).toContain(
+      "QUERY_EVIDENCE_RESULT_BINDING_MISMATCH means make every SELECT output name and PostgreSQL result type agree",
     );
     expect(prompt).toContain("semantic_context.request_scoped_interpretations");
     expect(prompt).toContain("aggregates numerator and denominator separately before division");
