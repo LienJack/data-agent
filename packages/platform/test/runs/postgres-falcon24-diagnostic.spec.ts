@@ -189,6 +189,14 @@ describe("PostgreSQL Falcon24 diagnostic authority", () => {
     });
 
     expect(result).toMatchObject({ ok: true, value: { outcome: "FAIL" } });
+    expect(
+      scripted.calls.find(({ text }) => text.includes("set_config('app.semantic_domain'"))?.values,
+    ).toEqual(["falcon24"]);
+    expect(
+      scripted.calls.findIndex(({ text }) => text.includes("set_config('app.semantic_domain'")),
+    ).toBeLessThan(
+      scripted.calls.findIndex(({ text }) => text.includes("complete_falcon24_diagnostic")),
+    );
   });
 
   it("begins and terminally records an E5 retained-gen2 diagnostic", async () => {

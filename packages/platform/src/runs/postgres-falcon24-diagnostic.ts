@@ -231,6 +231,7 @@ export function createPostgresFalcon24DiagnosticAuthority(input: {
         access: "WRITE",
         operation: "complete_falcon24_diagnostic",
         command,
+        semantic_domain: "falcon24",
         parse: async (raw) =>
           verifyFalcon24DiagnosticReceiptDocument(
             falcon24DiagnosticReceiptDocumentSchema.parse(raw),
