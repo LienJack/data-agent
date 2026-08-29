@@ -94,6 +94,9 @@ describe("direct run-bound provider retry policy", () => {
       "DATASOURCE_ADAPTER_SQL_REJECTED means replace invalid PostgreSQL syntax",
     );
     expect(prompt).toContain(
+      "DATASOURCE_ADAPTER_SQL_GROUPING_ERROR means make every non-aggregate SELECT expression structurally identical",
+    );
+    expect(prompt).toContain(
       "DATASOURCE_ADAPTER_SQL_TYPE_ERROR means follow the exact listed physical column types",
     );
     expect(prompt).toContain("semantic_context.request_scoped_interpretations");

@@ -187,9 +187,55 @@ export async function parameterizePostgresqlText2SqlCandidate(input: {
     reject("TEXT2SQL_SQL_SHAPE_REJECTED");
   }
   const parameters = [...input.parameters];
+  const stableTemporalUnitParameters = new Map<string, number>();
+  const parameterReference = (constant: JsonRecord, parameterNumber: number): JsonRecord => ({
+    ParamRef: {
+      number: parameterNumber,
+      ...(Number.isInteger(constant.location) ? { location: constant.location } : {}),
+    },
+  });
+  const rewriteStableTemporalUnit = (value: unknown, functionName: string): unknown => {
+    if (!isRecord(value) || wrappedNodeName(value) !== "A_Const") return rewrite(value);
+    const constant = value.A_Const as JsonRecord;
+    const parameter = literalValue(constant);
+    if (typeof parameter !== "string") return rewrite(value);
+    const key = `${functionName}\u0000${parameter}`;
+    const existingParameterNumber = stableTemporalUnitParameters.get(key);
+    if (existingParameterNumber !== undefined) {
+      return parameterReference(constant, existingParameterNumber);
+    }
+    parameters.push(parameter);
+    stableTemporalUnitParameters.set(key, parameters.length);
+    return parameterReference(constant, parameters.length);
+  };
   const rewrite = (value: unknown): unknown => {
     if (Array.isArray(value)) return value.map(rewrite);
     if (!isRecord(value)) return value;
+    if (wrappedNodeName(value) === "FuncCall") {
+      const call = value.FuncCall as JsonRecord;
+      const functionName = normalizedPrimitiveName(call.funcname);
+      const args = call.args;
+      if (
+        (functionName === "date_trunc" || functionName === "date_part") &&
+        Array.isArray(args) &&
+        args.length > 0
+      ) {
+        return {
+          FuncCall: Object.fromEntries(
+            Object.entries(call).map(([key, child]) => [
+              key,
+              key === "args"
+                ? args.map((argument, index) =>
+                    index === 0
+                      ? rewriteStableTemporalUnit(argument, functionName)
+                      : rewrite(argument),
+                  )
+                : rewrite(child),
+            ]),
+          ),
+        };
+      }
+    }
     if (wrappedNodeName(value) === "A_Const") {
       const constant = value.A_Const as JsonRecord;
       if (
@@ -201,12 +247,7 @@ export async function parameterizePostgresqlText2SqlCandidate(input: {
       }
       const parameter = literalValue(constant);
       parameters.push(parameter);
-      return {
-        ParamRef: {
-          number: parameters.length,
-          ...(Number.isInteger(constant.location) ? { location: constant.location } : {}),
-        },
-      };
+      return parameterReference(constant, parameters.length);
     }
     return Object.fromEntries(Object.entries(value).map(([key, child]) => [key, rewrite(child)]));
   };

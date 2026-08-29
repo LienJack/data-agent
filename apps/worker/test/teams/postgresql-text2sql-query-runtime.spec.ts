@@ -330,6 +330,9 @@ describe("PostgreSQL Text2SQL query runtime", () => {
       }),
     ).toMatchObject({ code: "DATASOURCE_ADAPTER_SQL_TYPE_ERROR" });
     expect(
+      postgresqlText2SqlQueryRuntimeInternals.classifiedPostgresqlExecutionError({ code: "42803" }),
+    ).toMatchObject({ code: "DATASOURCE_ADAPTER_SQL_GROUPING_ERROR" });
+    expect(
       postgresqlText2SqlQueryRuntimeInternals.classifiedPostgresqlExecutionError({ code: "42703" }),
     ).toMatchObject({ code: "DATASOURCE_ADAPTER_SQL_COLUMN_NOT_FOUND" });
     expect(

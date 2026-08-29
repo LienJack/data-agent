@@ -40,6 +40,33 @@ describe("PostgreSQL model-authored Text2SQL policy", () => {
     ).resolves.toBeUndefined();
   });
 
+  it("reuses a stable temporal unit parameter across matching select and group expressions", async () => {
+    const compiled = await parameterizePostgresqlText2SqlCandidate({
+      sql: `
+        select
+          date_trunc('month', o.created_at::timestamp) as order_month,
+          sum(o.amount) as order_revenue
+        from falcon_db_24.orders as o
+        where o.created_at::timestamp >= $1::timestamp
+          and o.created_at::timestamp < $2::timestamp
+        group by date_trunc('month', o.created_at::timestamp)
+        order by order_month
+      `,
+      parameters: ["2025-08-01", "2026-08-01"],
+    });
+
+    expect(compiled.parameters).toEqual(["2025-08-01", "2026-08-01", "month"]);
+    expect(compiled.sql.match(/\$3/gu)).toHaveLength(2);
+    expect(compiled.sql).not.toContain("$4");
+    await expect(
+      assertPostgresqlText2SqlCandidatePolicy({
+        sql: compiled.sql,
+        parameter_count: compiled.parameters.length,
+        allowed_relations: allowed,
+      }),
+    ).resolves.toBeUndefined();
+  });
+
   it("accepts schema-qualified aggregation, safe date functions, ordering and parameters", async () => {
     await expect(
       assertPostgresqlText2SqlCandidatePolicy({
