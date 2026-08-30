@@ -63,6 +63,7 @@ export interface GovernedAnalysisProgramExecutor {
   execute(input: {
     readonly lease: GovernedAnalysisCommand["lease"];
     readonly authority: GovernedAnalysisCommand["authority"];
+    readonly task_id: string;
     readonly principal_id: string;
     readonly brief: ResearchBriefV3Payload;
     readonly brief_ref: ArtifactReference;
@@ -459,6 +460,7 @@ export function createGovernedAnalysisRuntime(input: {
           .execute({
             lease: command.lease,
             authority: command.authority,
+            task_id: command.task_id,
             principal_id: command.lease.principal_id,
             brief,
             brief_ref: briefRef,
@@ -640,6 +642,7 @@ export interface PreparedAnalysisPublicationNode {
 export async function assembleAnalysisPublication(input: {
   readonly lease: RunWorkLease;
   readonly authority: Falcon24AuthorityBindingV2;
+  readonly task_id: string;
   readonly principal_id: string;
   readonly program: AnalysisProgramPayload;
   readonly analysis_program_ref: ArtifactReference & { readonly artifact_type: "AnalysisProgram" };
@@ -722,7 +725,7 @@ export async function assembleAnalysisPublication(input: {
       content_hash: `sha256:${"0".repeat(64)}`,
     },
     profile_id: "governed-analysis-agent",
-    task_id: deterministicAnalysisUuid(`falcon24-analysis-task\0${input.lease.run_id}`),
+    task_id: input.task_id,
     source_refs: sourceRefs,
     provenance: null,
     projection: {

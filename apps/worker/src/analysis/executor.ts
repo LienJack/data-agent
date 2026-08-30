@@ -540,6 +540,7 @@ export function createAnalysisProgramExecutor(dependencies: AnalysisExecutorDepe
     async execute(input: {
       readonly lease: RunWorkLease;
       readonly authority: Falcon24AuthorityBindingV2;
+      readonly task_id: string;
       readonly principal_id: string;
       readonly brief: ResearchBriefV3Payload;
       readonly brief_ref: ArtifactReference;
@@ -1149,6 +1150,7 @@ export function createAnalysisProgramExecutor(dependencies: AnalysisExecutorDepe
       const publication = await assembleAnalysisPublication({
         lease: input.lease,
         authority: input.authority,
+        task_id: input.task_id,
         principal_id: input.principal_id,
         program: analysisProgram,
         analysis_program_ref: analysisProgramRef,

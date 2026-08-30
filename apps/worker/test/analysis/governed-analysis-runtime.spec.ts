@@ -553,6 +553,7 @@ describe("generic governed analysis runtime", () => {
       planningAuthority.method_registry.entries[0]?.parameter_schema.properties,
     ).not.toHaveProperty("acceptance_case_id");
     expect(test.execute).toHaveBeenCalledOnce();
+    expect(test.execute).toHaveBeenCalledWith(expect.objectContaining({ task_id: id(50) }));
   });
 
   it("fails closed when the executor cannot prove one Oracle receipt per node", async () => {
