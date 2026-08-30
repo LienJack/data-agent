@@ -37,6 +37,7 @@ describe("10811 Falcon24 Root Agent public lifecycle event", () => {
     expect(migration).toContain("'run.agent_status'");
     expect(migration).toContain("FALCON24_ROOT_AGENT_PUBLIC_STATUS_REJECTED");
     expect(migration).toContain("FALCON24_ROOT_AGENT_PUBLIC_TOOL_PERMISSION_WIDENED");
+    expect(migration).toContain("FALCON24_MODEL_REQUEST_PUBLIC_EVENT_REJECTED");
     expect(migration).toContain("public_run_v2_payload_is_valid(");
     expect(migration).toContain("'run.tool_started'");
   });
@@ -46,7 +47,7 @@ describe("10811 Falcon24 Root Agent public lifecycle event", () => {
     expect(migration).toContain("target_status_clause");
     expect(migration).toContain("FALCON24_ROOT_AGENT_PUBLIC_EVENT_SOURCE_MISMATCH");
     expect(migration).toContain("FALCON24_ROOT_AGENT_PUBLIC_EVENT_REWRITE_FAILED");
-    expect(migration).toContain("owner to data_agent_u6_data_owner");
+    expect(migration).toContain("owner to postgres");
     expect(migration).toContain("revoke all on function");
     expect(migration).not.toContain(
       "('data-agent-orchestrator','governed-analysis-agent','governed-text2sql-agent','report-writing-agent','semantic-management-agent')\n    or",
