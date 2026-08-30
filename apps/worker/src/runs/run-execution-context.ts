@@ -10,6 +10,7 @@ import {
   mastraSnapshotBindingBodySchema,
   modelRequestPerformanceSchema,
   type PortResult,
+  type RootAcceptedInputArtifact,
   type RootToolObservation,
   type RootVerifierFeedback,
   type RunEventStorePort,
@@ -43,6 +44,7 @@ export interface RunProviderDispatchCapability {
       | Readonly<{
           kind: "ROOT";
           turn_index: number;
+          accepted_input_artifacts?: readonly RootAcceptedInputArtifact[];
           tool_observations: readonly RootToolObservation[];
           verifier_feedback: RootVerifierFeedback | null;
         }>

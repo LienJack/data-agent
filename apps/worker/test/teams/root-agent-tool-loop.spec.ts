@@ -3,6 +3,7 @@ import {
   buildSubagentCapabilityCatalogSnapshot,
   DEFAULT_RUN_EXECUTION_POLICY,
   type MastraSnapshotBinding,
+  type RootAcceptedInputArtifact,
   type RootAgentDecisionCandidate,
   type RootToolObservation,
   type RunWorkLease,
@@ -204,6 +205,32 @@ function observation(input: Awaited<ReturnType<typeof fixture>>): RootToolObserv
   };
 }
 
+function acceptedInput(input: Awaited<ReturnType<typeof fixture>>): RootAcceptedInputArtifact {
+  const artifactRef = {
+    artifact_id: id(31),
+    artifact_type: "QueryEvidence" as const,
+    ...input.lease.scope,
+    run_id: input.lease.run_id,
+    revision: 1,
+    content_hash: hash("c"),
+  };
+  return {
+    schema_version: "root-accepted-input-artifact@1.0.0",
+    artifact_ref: artifactRef,
+    safe_projection: {
+      schema_version: "root-tool-safe-projection@1.0.0",
+      artifact_ref: artifactRef,
+      projection_kind: "TABLE",
+      title: "已验收经营表格",
+      summary: "3 accepted user-confirmed rows are available.",
+      column_keys: ["channel", "revenue"],
+      total_rows: 3,
+      source_artifact_refs: [],
+      semantic_query_context: null,
+    },
+  };
+}
+
 describe("bounded Root tool loop", () => {
   it("returns accepted tool observations to the next Root turn", async () => {
     const input = await fixture();
@@ -239,6 +266,7 @@ describe("bounded Root tool loop", () => {
     expect(decide).toHaveBeenCalledTimes(2);
     expect(decide.mock.calls[0]?.[1]).toEqual({
       turn_index: 0,
+      accepted_input_artifacts: [],
       tool_observations: [],
       verifier_feedback: null,
     });
@@ -732,6 +760,71 @@ describe("bounded Root tool loop", () => {
     ).resolves.toEqual({ kind: "COMPLETED" });
     expect(decide).not.toHaveBeenCalled();
     expect(execute).not.toHaveBeenCalled();
+  });
+
+  it("restores an accepted input checkpoint without loading or committing the input again", async () => {
+    const input = await fixture();
+    const seeded = acceptedInput(input);
+    const load = vi.fn(async () => ({ ok: true as const, value: [seeded] }));
+    const firstDecide = vi.fn(async () => ({
+      ok: false as const,
+      error: { code: "ROOT_PROVIDER_CRASH", message: "crash", retryable: false },
+    }));
+    const firstRunner = createDataAgentTeamRunner({
+      ...input.dependencies,
+      accepted_inputs: { load },
+      root: { decide: firstDecide },
+      root_runtime: { execute: vi.fn() },
+    });
+    const execution = {
+      lease: input.lease,
+      restored_snapshot: null,
+      context: input.createContext(),
+      signal: new AbortController().signal,
+      deadline_at: input.lease.expires_at,
+    };
+
+    await expect(firstRunner.execute(execution)).resolves.toEqual({
+      kind: "FAILED",
+      error_code: "ROOT_PROVIDER_CRASH",
+    });
+    const acceptedInputCheckpoint = input.snapshots[0];
+    if (!acceptedInputCheckpoint) throw new Error("accepted input checkpoint missing");
+    expect(acceptedInputCheckpoint.mastra_snapshot).toMatchObject({
+      turn_index: 0,
+      checkpoint_version: 1,
+      accepted_input_artifacts: [seeded],
+    });
+
+    const resumedDecide = vi.fn(async () => ({
+      ok: true as const,
+      value: finalDecision(input),
+    }));
+    const resumedExecute = vi.fn(async () => ({
+      status: "ACCEPTED" as const,
+      reason_code: "ROOT_ANSWER_VERIFIED",
+    }));
+    const resumedRunner = createDataAgentTeamRunner({
+      ...input.dependencies,
+      accepted_inputs: { load },
+      root: { decide: resumedDecide },
+      root_runtime: { execute: resumedExecute },
+    });
+    await expect(
+      resumedRunner.execute({
+        ...execution,
+        restored_snapshot: acceptedInputCheckpoint,
+        context: input.createContext(),
+      }),
+    ).resolves.toEqual({ kind: "COMPLETED" });
+    expect(load).toHaveBeenCalledOnce();
+    expect(resumedDecide).toHaveBeenCalledWith(
+      expect.anything(),
+      expect.objectContaining({ accepted_input_artifacts: [seeded] }),
+    );
+    expect(resumedExecute).toHaveBeenCalledWith(
+      expect.objectContaining({ accepted_artifact_refs: [seeded.artifact_ref] }),
+    );
   });
 
   it("resumes after a tool checkpoint without repeating the completed tool turn", async () => {

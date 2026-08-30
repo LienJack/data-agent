@@ -374,6 +374,25 @@ export const rootToolSafeProjectionSchema = z
     }
   });
 
+export const rootAcceptedInputArtifactSchema = z
+  .strictObject({
+    schema_version: z.literal("root-accepted-input-artifact@1.0.0"),
+    artifact_ref: artifactReferenceSchema,
+    safe_projection: rootToolSafeProjectionSchema,
+  })
+  .superRefine((input, ctx) => {
+    if (
+      artifactReferenceIdentity(input.artifact_ref) !==
+      artifactReferenceIdentity(input.safe_projection.artifact_ref)
+    ) {
+      ctx.addIssue({
+        code: "custom",
+        message: "Root accepted input projection must bind the exact accepted Artifact.",
+        path: ["safe_projection", "artifact_ref"],
+      });
+    }
+  });
+
 const completedRootToolObservationSchema = z
   .strictObject({
     schema_version: z.literal("root-tool-observation@1.0.0"),
@@ -419,6 +438,7 @@ export const rootVerifierFeedbackSchema = z.strictObject({
 });
 
 export type RootToolSafeProjection = z.infer<typeof rootToolSafeProjectionSchema>;
+export type RootAcceptedInputArtifact = z.infer<typeof rootAcceptedInputArtifactSchema>;
 export type RootToolObservation = z.infer<typeof rootAgentToolResultSchema>;
 export type RootVerifierFeedback = z.infer<typeof rootVerifierFeedbackSchema>;
 

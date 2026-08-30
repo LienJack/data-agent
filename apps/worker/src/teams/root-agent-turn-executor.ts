@@ -3,9 +3,11 @@ import { normalizeRootAgentProviderTurn } from "@data-agent/agent-runtime";
 import {
   effectiveConfigRunLeasePayloadSchema,
   type PortResult,
+  type RootAcceptedInputArtifact,
   type RootAgentDecisionCandidate,
   type RootToolObservation,
   type RootVerifierFeedback,
+  rootAcceptedInputArtifactSchema,
   rootAgentDecisionCandidateSchema,
   rootAgentToolResultSchema,
   rootVerifierFeedbackSchema,
@@ -53,12 +55,14 @@ export interface RootAgentTurnPort {
 
 const rootAgentTurnStateSchema = z.strictObject({
   turn_index: z.number().int().nonnegative().max(3),
+  accepted_input_artifacts: z.array(rootAcceptedInputArtifactSchema).max(16).default([]),
   tool_observations: z.array(rootAgentToolResultSchema).max(32),
   verifier_feedback: rootVerifierFeedbackSchema.nullable(),
 });
 
 export type RootAgentTurnState = Readonly<{
   turn_index: number;
+  accepted_input_artifacts?: readonly RootAcceptedInputArtifact[];
   tool_observations: readonly RootToolObservation[];
   verifier_feedback: RootVerifierFeedback | null;
 }>;
@@ -230,6 +234,7 @@ export function createRootAgentTurnExecutor(): RootAgentTurnPort {
           turn: {
             kind: "ROOT",
             turn_index: state.data.turn_index,
+            accepted_input_artifacts: state.data.accepted_input_artifacts,
             tool_observations: state.data.tool_observations,
             verifier_feedback: state.data.verifier_feedback,
           },

@@ -113,6 +113,10 @@ import {
 import { createRunWorkerRunner } from "./runs/run-worker-runner.js";
 import { createWorkerSemanticJobComposition } from "./semantic/job-composition.js";
 import { createFrozenSemanticReleaseReadPort } from "./semantic/semantic-release-read-port.js";
+import {
+  createAcceptedTableInputSeeder,
+  loadAcceptedTableInputSeedConfig,
+} from "./teams/accepted-table-input-seeder.js";
 import { createDataAgentTeamRunner } from "./teams/data-agent-team-runner.js";
 import { createPostgresqlText2SqlQueryRuntime } from "./teams/postgresql-text2sql-query-runtime.js";
 import { createProductionTeamRuntime } from "./teams/production-team-runtime.js";
@@ -277,6 +281,7 @@ export async function runWorkerProcess(
   const migrationFact = loadRuntimeMigrationFact(environment);
   environment = loadRunWorkerEnvironment(environment);
   const config = parseRunWorkerEnvironment(environment);
+  const acceptedTableInputSeed = await loadAcceptedTableInputSeedConfig(environment);
   const analysisSandboxMaintenance = createEnvironmentOpenSandboxAnalysisRuntime(environment);
   const smokeTarget =
     environment.DATA_AGENT_U3_PROVIDER_SMOKE_ONE_SHOT === "YES"
@@ -651,6 +656,14 @@ export async function runWorkerProcess(
               }
             },
           },
+          ...(acceptedTableInputSeed
+            ? {
+                accepted_inputs: createAcceptedTableInputSeeder(
+                  { capability, artifacts: teamArtifacts },
+                  acceptedTableInputSeed,
+                ),
+              }
+            : {}),
           root: createRootAgentTurnExecutor(),
           root_runtime: createRootAgentDelegationRuntime({
             runtime: productionTeamRuntime,

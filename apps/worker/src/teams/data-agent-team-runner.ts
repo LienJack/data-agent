@@ -8,9 +8,11 @@ import {
   type Falcon24AuthorityBinding,
   type Falcon24AuthorityBindingV2,
   type PortResult,
+  type RootAcceptedInputArtifact,
   type RootAgentDecisionCandidate,
   type RootToolObservation,
   type RootVerifierFeedback,
+  rootAcceptedInputArtifactSchema,
   rootAgentToolResultSchema,
   rootVerifierFeedbackSchema,
   type SemanticContextCommitResult,
@@ -47,15 +49,20 @@ const rootRuntimeResultSchema = z.discriminatedUnion("status", [
 ]);
 
 const ROOT_LOOP_WORKFLOW_ID = "root-agent-tool-loop@1.0.0";
-const ROOT_LOOP_WORKFLOW_REVISION = `sha256:${createHash("sha256")
+const LEGACY_ROOT_LOOP_WORKFLOW_REVISION = `sha256:${createHash("sha256")
   .update("data-agent/root-agent-tool-loop@1.0.0")
+  .digest("hex")}`;
+const ROOT_LOOP_WORKFLOW_REVISION = `sha256:${createHash("sha256")
+  .update("data-agent/root-agent-tool-loop@2.0.0")
   .digest("hex")}`;
 
 const rootLoopStateSchema = z
   .strictObject({
-    schema_version: z.literal("root-agent-loop-state@1.0.0"),
+    schema_version: z.literal("root-agent-loop-state@2.0.0"),
     runId: z.string().min(1).max(128),
     turn_index: z.number().int().nonnegative().max(4),
+    checkpoint_version: z.number().int().nonnegative().max(8),
+    accepted_input_artifacts: z.array(rootAcceptedInputArtifactSchema).max(16),
     accepted_tool_observations: z.array(rootAgentToolResultSchema).max(32),
     verifier_feedback: rootVerifierFeedbackSchema.nullable(),
     terminal: z.boolean(),
@@ -78,6 +85,16 @@ const rootLoopStateSchema = z
       });
     }
   });
+
+const legacyRootLoopStateSchema = z.strictObject({
+  schema_version: z.literal("root-agent-loop-state@1.0.0"),
+  runId: z.string().min(1).max(128),
+  turn_index: z.number().int().nonnegative().max(4),
+  accepted_tool_observations: z.array(rootAgentToolResultSchema).max(32),
+  verifier_feedback: rootVerifierFeedbackSchema.nullable(),
+  terminal: z.boolean(),
+  terminal_error_code: reasonCodeSchema.nullable(),
+});
 
 type RootLoopState = z.infer<typeof rootLoopStateSchema>;
 
@@ -127,6 +144,11 @@ export interface DataAgentTeamRunnerDependencies {
       catalog: SubagentCapabilityCatalogSnapshot,
     ): Promise<PortResult<readonly AgentProductProfileRegistryItemV2[]>>;
   };
+  readonly accepted_inputs?: {
+    load(
+      input: Parameters<RunWorkflowExecutorPort["execute"]>[0],
+    ): Promise<PortResult<readonly RootAcceptedInputArtifact[]>>;
+  };
   readonly root?: RootAgentTurnPort;
   readonly root_runtime?: {
     execute(input: {
@@ -162,9 +184,11 @@ function mastraRunId(runId: string): string {
 
 function initialLoopState(runId: string): RootLoopState {
   return rootLoopStateSchema.parse({
-    schema_version: "root-agent-loop-state@1.0.0",
+    schema_version: "root-agent-loop-state@2.0.0",
     runId: mastraRunId(runId),
     turn_index: 0,
+    checkpoint_version: 0,
+    accepted_input_artifacts: [],
     accepted_tool_observations: [],
     verifier_feedback: null,
     terminal: false,
@@ -175,18 +199,41 @@ function initialLoopState(runId: string): RootLoopState {
 function restoreLoopState(input: Parameters<RunWorkflowExecutorPort["execute"]>[0]): RootLoopState {
   const snapshot = input.restored_snapshot;
   if (!snapshot) return initialLoopState(input.lease.run_id);
-  const state = rootLoopStateSchema.safeParse(snapshot.mastra_snapshot);
+  const currentState = rootLoopStateSchema.safeParse(snapshot.mastra_snapshot);
+  const legacyState = legacyRootLoopStateSchema.safeParse(snapshot.mastra_snapshot);
+  const isCurrent =
+    currentState.success && snapshot.workflow_definition_revision === ROOT_LOOP_WORKFLOW_REVISION;
+  const isLegacy =
+    legacyState.success &&
+    snapshot.workflow_definition_revision === LEGACY_ROOT_LOOP_WORKFLOW_REVISION;
+  const state = isCurrent
+    ? currentState
+    : isLegacy
+      ? rootLoopStateSchema.safeParse({
+          ...legacyState.data,
+          schema_version: "root-agent-loop-state@2.0.0",
+          checkpoint_version: legacyState.data.turn_index,
+          accepted_input_artifacts: [],
+        })
+      : currentState;
   if (
     !state.success ||
     snapshot.run_id !== input.lease.run_id ||
     snapshot.attempt_id !== input.lease.attempt_id ||
     snapshot.worker_fence !== input.lease.worker_fence ||
     snapshot.workflow_id !== ROOT_LOOP_WORKFLOW_ID ||
-    snapshot.workflow_definition_revision !== ROOT_LOOP_WORKFLOW_REVISION ||
+    (!isCurrent && !isLegacy) ||
     snapshot.mastra_run_id !== mastraRunId(input.lease.run_id) ||
     state.data.runId !== snapshot.mastra_run_id ||
-    state.data.turn_index !== snapshot.snapshot_version ||
+    state.data.checkpoint_version !== snapshot.snapshot_version ||
     state.data.turn_index > input.lease.execution_policy.max_root_turns ||
+    state.data.accepted_input_artifacts.some(
+      ({ artifact_ref: artifactRef }) =>
+        artifactRef.run_id !== input.lease.run_id ||
+        artifactRef.app_id !== input.lease.scope.app_id ||
+        artifactRef.tenant_id !== input.lease.scope.tenant_id ||
+        artifactRef.environment !== input.lease.scope.environment,
+    ) ||
     state.data.accepted_tool_observations.some(
       ({ output_ref: outputRef }) =>
         outputRef !== null &&
@@ -202,11 +249,15 @@ function restoreLoopState(input: Parameters<RunWorkflowExecutorPort["execute"]>[
 }
 
 function acceptedArtifactRefs(
+  inputs: readonly RootAcceptedInputArtifact[],
   observations: readonly RootToolObservation[],
 ): readonly ArtifactReference[] {
-  return observations.flatMap((observation) =>
-    observation.status === "COMPLETED" ? [observation.output_ref] : [],
-  );
+  return [
+    ...inputs.map(({ artifact_ref: artifactRef }) => artifactRef),
+    ...observations.flatMap((observation) =>
+      observation.status === "COMPLETED" ? [observation.output_ref] : [],
+    ),
+  ];
 }
 
 function correlateContinuation(
@@ -230,12 +281,14 @@ async function checkpointLoop(
   input: Parameters<RunWorkflowExecutorPort["execute"]>[0],
   state: RootLoopState,
 ): Promise<PortResult<unknown>> {
-  const lastArtifact = acceptedArtifactRefs(state.accepted_tool_observations).at(-1) ?? null;
+  const lastArtifact =
+    acceptedArtifactRefs(state.accepted_input_artifacts, state.accepted_tool_observations).at(-1) ??
+    null;
   return input.context.checkpoint({
     workflow_id: ROOT_LOOP_WORKFLOW_ID,
     workflow_definition_revision: ROOT_LOOP_WORKFLOW_REVISION,
     mastra_run_id: mastraRunId(input.lease.run_id),
-    snapshot_version: state.turn_index,
+    snapshot_version: state.checkpoint_version,
     active_artifact_ref: lastArtifact,
     mastra_snapshot: state,
   });
@@ -301,6 +354,29 @@ export function createDataAgentTeamRunner(
           : runExecutorResultSchema.parse({ kind: "COMPLETED" });
       }
 
+      if (
+        state.turn_index === 0 &&
+        input.restored_snapshot === null &&
+        dependencies.accepted_inputs
+      ) {
+        const loadedInputs = await dependencies.accepted_inputs.load(input);
+        if (!loadedInputs.ok) return failed(loadedInputs.error.code);
+        const parsedInputs = z
+          .array(rootAcceptedInputArtifactSchema)
+          .max(16)
+          .safeParse(loadedInputs.value);
+        if (!parsedInputs.success) return failed("ROOT_ACCEPTED_INPUT_INVALID");
+        if (parsedInputs.data.length > 0) {
+          state = rootLoopStateSchema.parse({
+            ...state,
+            checkpoint_version: state.checkpoint_version + 1,
+            accepted_input_artifacts: parsedInputs.data,
+          });
+          const checkpoint = await checkpointLoop(input, state);
+          if (!checkpoint.ok) return failed(checkpoint.error.code);
+        }
+      }
+
       for (
         let turnIndex = state.turn_index;
         turnIndex < input.lease.execution_policy.max_root_turns;
@@ -308,6 +384,7 @@ export function createDataAgentTeamRunner(
       ) {
         const decision = await dependencies.root.decide(input, {
           turn_index: turnIndex,
+          accepted_input_artifacts: state.accepted_input_artifacts,
           tool_observations: state.accepted_tool_observations,
           verifier_feedback: state.verifier_feedback,
         });
@@ -326,7 +403,10 @@ export function createDataAgentTeamRunner(
           await dependencies.root_runtime.execute({
             decision: decision.value,
             turn_index: turnIndex,
-            accepted_artifact_refs: acceptedArtifactRefs(state.accepted_tool_observations),
+            accepted_artifact_refs: acceptedArtifactRefs(
+              state.accepted_input_artifacts,
+              state.accepted_tool_observations,
+            ),
             execution: input,
             profiles: frozenProfiles.value,
             authority: runAuthority.value,
@@ -340,6 +420,7 @@ export function createDataAgentTeamRunner(
           state = rootLoopStateSchema.parse({
             ...state,
             turn_index: turnIndex + 1,
+            checkpoint_version: state.checkpoint_version + 1,
             verifier_feedback: null,
             terminal: true,
             terminal_error_code: null,
@@ -353,6 +434,7 @@ export function createDataAgentTeamRunner(
           state = rootLoopStateSchema.parse({
             ...state,
             turn_index: turnIndex + 1,
+            checkpoint_version: state.checkpoint_version + 1,
             terminal: true,
             terminal_error_code: runtime.data.reason_code,
           });
@@ -382,6 +464,7 @@ export function createDataAgentTeamRunner(
         state = rootLoopStateSchema.parse({
           ...state,
           turn_index: turnIndex + 1,
+          checkpoint_version: state.checkpoint_version + 1,
           accepted_tool_observations: nextObservations,
           verifier_feedback: runtime.data.verifier_feedback,
           terminal: exhausted,

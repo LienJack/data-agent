@@ -113,6 +113,86 @@ async function harness() {
 }
 
 describe("Data Agent Root runner", () => {
+  it("makes a same-Run accepted input available before Root decides the first turn", async () => {
+    const { authority, catalog, catalogAuthority, context, lease } = await harness();
+    const acceptedInput = {
+      schema_version: "root-accepted-input-artifact@1.0.0" as const,
+      artifact_ref: {
+        artifact_id: id(50),
+        artifact_type: "QueryEvidence" as const,
+        ...lease.scope,
+        run_id: lease.run_id,
+        revision: 1,
+        content_hash: `sha256:${"5".repeat(64)}` as const,
+      },
+      safe_projection: {
+        schema_version: "root-tool-safe-projection@1.0.0" as const,
+        artifact_ref: {
+          artifact_id: id(50),
+          artifact_type: "QueryEvidence" as const,
+          ...lease.scope,
+          run_id: lease.run_id,
+          revision: 1,
+          content_hash: `sha256:${"5".repeat(64)}` as const,
+        },
+        projection_kind: "TABLE" as const,
+        title: "已验收经营表格",
+        summary: "3 accepted rows are available.",
+        column_keys: ["channel", "revenue"],
+        total_rows: 3,
+        source_artifact_refs: [],
+        semantic_query_context: null,
+      },
+    };
+    const load = vi.fn(async () => ({ ok: true as const, value: [acceptedInput] }));
+    const decision = {
+      schema_version: "root-agent-turn-candidate@1.0.0" as const,
+      kind: "FINAL_ANSWER" as const,
+      scope: lease.scope,
+      run_id: lease.run_id,
+      catalog_snapshot_hash: catalog.snapshot_hash,
+      sections: [
+        {
+          kind: "GENERAL_TEXT" as const,
+          text: "已根据已验收输入生成摘要。",
+          basis: "GENERAL_KNOWLEDGE" as const,
+          source_message_refs: [],
+        },
+      ],
+      public_summary: "已根据已验收输入生成摘要。",
+    };
+    const decide = vi.fn(async () => ({ ok: true as const, value: decision }));
+    const execute = vi.fn(async () => ({
+      status: "ACCEPTED" as const,
+      reason_code: "ROOT_DIRECT_ANSWER_ACCEPTED",
+    }));
+    const runner = createDataAgentTeamRunner({
+      authority,
+      catalog_authority: catalogAuthority,
+      accepted_inputs: { load },
+      root: { decide },
+      root_runtime: { execute },
+    });
+
+    await expect(
+      runner.execute({
+        lease,
+        restored_snapshot: null,
+        context,
+        signal: new AbortController().signal,
+        deadline_at: lease.expires_at,
+      }),
+    ).resolves.toEqual({ kind: "COMPLETED" });
+    expect(load).toHaveBeenCalledOnce();
+    expect(decide).toHaveBeenCalledWith(
+      expect.anything(),
+      expect.objectContaining({ accepted_input_artifacts: [acceptedInput] }),
+    );
+    expect(execute).toHaveBeenCalledWith(
+      expect.objectContaining({ accepted_artifact_refs: [acceptedInput.artifact_ref] }),
+    );
+  });
+
   it("routes every V3 QUESTION_RUN through Root and its admitted runtime", async () => {
     const { authority, catalog, catalogAuthority, context, lease } = await harness();
     const decision = {
