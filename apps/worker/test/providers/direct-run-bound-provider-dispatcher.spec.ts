@@ -104,6 +104,9 @@ describe("direct run-bound provider retry policy", () => {
       "TEXT2SQL_SQL_TARGET_ALIAS_REQUIRED means add AS ascii_alias to every SELECT item",
     );
     expect(prompt).toContain("TEXT2SQL_SQL_FUNCTION_DENIED means remove the unlisted function");
+    expect(prompt).toContain("Before returning, scan the outer SELECT and every CTE SELECT");
+    expect(prompt).toContain("Never compute current time with current_date");
+    expect(prompt).toContain("frozen min_time and max_time");
     expect(prompt).toContain("TEXT2SQL_SQL_OPERATOR_DENIED means replace the denied operator");
     expect(prompt).toContain("TEXT2SQL_SQL_CAST_DENIED means replace the denied cast");
     expect(prompt).toContain(
