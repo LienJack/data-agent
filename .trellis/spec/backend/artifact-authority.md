@@ -574,6 +574,10 @@ issueCapabilityDeliveryReceipt(
 - nullable chart 的 dataset hash 包含 NULL，NULL → 0 或丢行均是内容变更；Web 使用 `invalidType=break`，不补零、不跨缺口连线，等价表保留完整受限数据集。
 - TABLE column 可携带可选 `display={kind:TEMPORAL, logical_type, granularity, timezone}`。QueryEvidence 的显示元数据只能从已校验 semantic binding 派生，DATETIME 必须匹配 time window 的维度与显式时区；缺少该证据时保留原字符串，禁止浏览器本地时区或字符串猜测。DATE 是日历日期，不做时区偏移。
 - `projectQueryEvidenceTablePresentation` 与 `formatArtifactTableCell` 是表格、Root ARTIFACT_FACTS 正文和图表横轴的共同呈现入口。只增加显示元数据/格式化文本，不更改 QueryEvidence rows、原始数值、source ref 或旧 document hash；chart companion 的新增显示元数据由新 document/dataset hash 封存。
+- 已发布独立公式使用 QueryEvidence `semantic_role=FORMULA`（NUMBER、非空 formula_hash、aggregate=null），由发布 AST 与
+  exact physical binding 的共同证明封存；不得冒充 Metric。AnalysisInputMaterializationReceipt 保留该 role/object_id，
+  source_binding_hash 继续绑定完整 QueryEvidence 公式证明；Arrow 数值转换不产生新的语义权威。
+  Analysis 方法授权仍只使用真正的 Metric，Report/Chart/Trace 继续沿原 exact QueryEvidence 引用链读取。
 - Root TABLE 正文保留 exact current-Run accepted-ref 校验，输出有界 Markdown 表（最多前 100 行）、总行数、显式时区与 NULL 说明，转义单元格文本；不得把内部 JSON dump 当成业务答案，也不得为排版新增模型事实。数值显示最多 12 位有效数字，整数不截精度，完整原值在表格提示与原始导出保留；不凭列名猜测币种/百分比。
 
 ### 7. Wrong vs Correct

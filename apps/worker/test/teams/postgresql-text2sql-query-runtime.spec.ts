@@ -34,7 +34,7 @@ function column(name: string, ordinal: number, type = "text") {
   };
 }
 
-async function fixture() {
+async function fixture(includeFormulaSelection = false) {
   const baseConfig = await buildWorkerEffectiveConfigFixture({
     scope,
     workspace_id: scope.tenant_id,
@@ -121,7 +121,11 @@ async function fixture() {
     schema_snapshot: config.schema_snapshot,
     semantic_release: config.semantic_release,
     retrieval_receipt: {
-      selected_object_ids: ["dimension.customer-id", "metric.order-count"],
+      selected_object_ids: [
+        "dimension.customer-id",
+        ...(includeFormulaSelection ? ["formula.order-count"] : []),
+        "metric.order-count",
+      ],
       receipt_hash: hash("c"),
     },
     inference_receipt: {
@@ -136,7 +140,11 @@ async function fixture() {
       selected_ontology_ids: ["dimension.customer-id"],
     },
     mandatory_closure: {
-      object_ids: ["dimension.customer-id", "metric.order-count"],
+      object_ids: [
+        "dimension.customer-id",
+        ...(includeFormulaSelection ? ["formula.order-count"] : []),
+        "metric.order-count",
+      ],
       relationship_ids: [],
     },
     evidence: [],
@@ -540,9 +548,10 @@ describe("PostgreSQL Text2SQL query runtime", () => {
 
   it("narrows compiler and firewall context to an accepted SemanticQueryContext", async () => {
     const { config, datasource, semanticCatalog, semanticContext, semanticQueryContext, snapshot } =
-      await fixture();
+      await fixture(true);
+    const connect = vi.fn();
     const runtime = createPostgresqlText2SqlQueryRuntime({
-      pool: { connect: vi.fn() } as never,
+      pool: { connect } as never,
       capability: {},
       schema_snapshots: {
         getSnapshot: vi.fn(async () => ({ ok: true as const, value: snapshot })),
@@ -603,6 +612,52 @@ describe("PostgreSQL Text2SQL query runtime", () => {
         { semantic_binding: { object_kind: "METRIC", object_id: "metric.order-count" } },
       ],
     });
+    const formulaCandidate: Text2SqlQueryCandidate = {
+      ...narrowedCandidate,
+      result_columns: [
+        {
+          name: "order_count",
+          semantic_type: "NUMBER",
+          label: "订单数",
+          semantic_binding: { object_kind: "FORMULA", object_id: "formula.order-count" },
+        },
+      ],
+    };
+    expect(prepared.semantic_query_context_binding?.formula_ids).toEqual(["formula.order-count"]);
+    await expect(
+      runtime.compileCandidate({ prepared, candidate: formulaCandidate }),
+    ).resolves.toMatchObject({
+      result_columns: [
+        { semantic_binding: { object_kind: "FORMULA", object_id: "formula.order-count" } },
+      ],
+    });
+    await expect(
+      runtime.compileCandidate({
+        prepared,
+        candidate: {
+          ...formulaCandidate,
+          sql: formulaCandidate.sql.replace("count", "sum"),
+        },
+      }),
+    ).rejects.toMatchObject({ code: "TEXT2SQL_PUBLISHED_FORMULA_EXPRESSION_MISMATCH" });
+    await expect(
+      runtime.compileCandidate({
+        prepared,
+        candidate: {
+          ...formulaCandidate,
+          result_columns: [
+            {
+              ...formulaCandidate.result_columns[0],
+              name: "order_count",
+              semantic_type: "NUMBER",
+              label: "fake",
+              semantic_binding: { object_kind: "FORMULA", object_id: "formula.hidden" },
+            },
+          ],
+        },
+      }),
+    ).rejects.toMatchObject({ diagnostic_code: "TEXT2SQL_SEMANTIC_RESULT_BINDING_OUT_OF_RANGE" });
+    expect(connect).not.toHaveBeenCalled();
     await expect(
       runtime.compileCandidate({
         prepared,

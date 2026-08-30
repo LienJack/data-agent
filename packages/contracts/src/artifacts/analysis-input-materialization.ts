@@ -11,7 +11,7 @@ const materializedColumnSchema = z.strictObject({
   name: postgresqlOutputAliasSchema,
   arrow_type: z.enum(["UTF8", "FLOAT64", "BOOL", "DATE32", "TIMESTAMP_MS"]),
   nullable: z.boolean(),
-  semantic_role: z.enum(["METRIC", "DIMENSION"]),
+  semantic_role: z.enum(["METRIC", "FORMULA", "DIMENSION"]),
   semantic_object_id: versionIdentifierSchema,
 });
 

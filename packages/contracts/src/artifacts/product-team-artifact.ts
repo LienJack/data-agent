@@ -42,7 +42,7 @@ const queryEvidenceColumnBindingSchema = z
     output_name: postgresqlOutputAliasSchema,
     logical_type: z.enum(["NUMBER", "STRING", "DATE", "DATETIME", "BOOLEAN"]),
     nullable: z.boolean(),
-    semantic_role: z.enum(["METRIC", "DIMENSION", "PHYSICAL_COLUMN"]),
+    semantic_role: z.enum(["METRIC", "FORMULA", "DIMENSION", "PHYSICAL_COLUMN"]),
     semantic_object_id: versionIdentifierSchema,
     formula_hash: contentHashSchema.nullable(),
     aggregate: z.enum(["sum", "count", "count_distinct", "avg", "min", "max"]).nullable(),
@@ -56,12 +56,16 @@ const queryEvidenceColumnBindingSchema = z
     if (
       (column.semantic_role === "METRIC" &&
         (column.formula_hash === null || column.aggregate === null)) ||
+      (column.semantic_role === "FORMULA" &&
+        (column.logical_type !== "NUMBER" ||
+          column.formula_hash === null ||
+          column.aggregate !== null)) ||
       ((column.semantic_role === "DIMENSION" || column.semantic_role === "PHYSICAL_COLUMN") &&
         (column.formula_hash !== null || column.aggregate !== null))
     ) {
       ctx.addIssue({
         code: "custom",
-        message: "QueryEvidence metric/dimension binding shape is invalid.",
+        message: "QueryEvidence semantic column binding shape is invalid.",
       });
     }
     const identities = column.physical_sources.map((source) =>

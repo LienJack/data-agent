@@ -172,8 +172,11 @@ export function createProductTeamGovernedAnalysisQueryPort(input: {
       });
       const binding = evidenceShape.semantic_binding;
       const analysisColumns = binding.columns.filter(
-        (column): column is typeof column & { readonly semantic_role: "METRIC" | "DIMENSION" } =>
-          column.semantic_role !== "PHYSICAL_COLUMN",
+        (
+          column,
+        ): column is typeof column & {
+          readonly semantic_role: Exclude<typeof column.semantic_role, "PHYSICAL_COLUMN">;
+        } => column.semantic_role !== "PHYSICAL_COLUMN",
       );
       if (analysisColumns.length !== binding.columns.length) {
         throw new TypeError("ANALYSIS_QUERY_EVIDENCE_PHYSICAL_COLUMN_UNSUPPORTED");

@@ -1,8 +1,10 @@
+import type { SemanticFormulaExpression } from "@data-agent/contracts/artifacts";
 import { describe, expect, it } from "vitest";
 import {
   assertPostgresqlText2SqlCandidatePolicy,
   type PostgresqlText2SqlPolicyError,
   parameterizePostgresqlText2SqlCandidate,
+  resolvePostgresqlFormulaProjectionSlots,
 } from "../../src/datasources/adapters/postgresql-text2sql-policy.js";
 
 const allowed = [
@@ -21,6 +23,138 @@ async function expectCode(sql: string, code: PostgresqlText2SqlPolicyError["code
 }
 
 describe("PostgreSQL model-authored Text2SQL policy", () => {
+  it.each([
+    ["CASE WHEN SUM(m.spend)=0 THEN 0 ELSE SUM(m.revenue)/SUM(m.spend) END", true],
+    ["CASE WHEN SUM(m.spend)=$1 THEN $1 ELSE SUM(m.revenue)/SUM(m.spend) END", true],
+    ["CASE WHEN SUM(m.spend)=0 THEN 0 ELSE AVG(m.revenue)/SUM(m.spend) END", false],
+    ["CASE WHEN SUM(m.spend)=0 THEN 0 ELSE SUM(m.spend)/SUM(m.revenue) END", false],
+    ["CASE WHEN SUM(m.spend)=0 THEN NULL ELSE SUM(m.revenue)/SUM(m.spend) END", false],
+    ["SUM(m.revenue)/NULLIF(SUM(m.spend),0)", false],
+    ["CASE WHEN SUM(m.spend)=0 THEN 0 ELSE SUM(m.revenue)/SUM(m.spend)+$2 END", false],
+    ["CASE WHEN SUM(m.spend)=0 THEN 0 ELSE SUM(DISTINCT m.revenue)/SUM(m.spend) END", false],
+    [
+      "CASE WHEN SUM(m.spend)=0 THEN 0 ELSE SUM(m.revenue) FILTER (WHERE m.spend>0)/SUM(m.spend) END",
+      false,
+    ],
+    ["CASE WHEN SUM(m.spend)=0 THEN 0 ELSE SUM(m.revenue)::numeric/SUM(m.spend) END", false],
+    ["CASE WHEN SUM(m.spend)=0 THEN 0 ELSE SUM(revenue)/SUM(m.spend) END", false],
+    ["CASE WHEN SUM(m.spend)=0 THEN 0 ELSE SUM(m.revenue) OVER ()/SUM(m.spend) END", false],
+  ] as const)(
+    "proves the published aggregate formula, not just its claimed id: %s",
+    async (expression, pass) => {
+      const sum = (slot_id: string): SemanticFormulaExpression => ({
+        kind: "AGGREGATE",
+        function: "SUM",
+        input: { kind: "SLOT", slot_id },
+        distinct: false,
+        filter: null,
+      });
+      const formula: SemanticFormulaExpression = {
+        kind: "CASE",
+        branches: [
+          {
+            when: {
+              kind: "BINARY",
+              operator: "EQ",
+              left: sum("spend"),
+              right: { kind: "LITERAL", value: 0 },
+            },
+            result: { kind: "LITERAL", value: 0 },
+          },
+        ],
+        otherwise: {
+          kind: "BINARY",
+          operator: "DIVIDE",
+          left: sum("revenue"),
+          right: sum("spend"),
+        },
+      };
+      const slots = ["spend", "revenue"].map((column_name) => ({
+        slot_id: column_name,
+        physical_type: "numeric",
+        schema_name: "falcon_db_24",
+        relation_name: "marketing",
+        column_name,
+      }));
+      const input = {
+        sql: `select ${expression} as roas from falcon_db_24.marketing as m`,
+        parameters: [0, 1],
+        output_name: "roas",
+        expression: formula,
+        slots,
+      };
+      await expect(resolvePostgresqlFormulaProjectionSlots(input)).resolves.toEqual(
+        pass ? ["revenue", "spend"] : null,
+      );
+      if (pass) {
+        for (const change of [
+          { slots: slots.filter((slot) => slot.slot_id !== "spend") },
+          {
+            slots: [
+              ...slots,
+              {
+                slot_id: "spend",
+                physical_type: "numeric",
+                schema_name: "falcon_db_24",
+                column_name: "spend",
+                relation_name: "other",
+              },
+            ],
+          },
+          { slots: slots.map((slot) => ({ ...slot, physical_type: "integer" })) },
+          {
+            sql: `select ${expression} as roas from falcon_db_24.marketing as m join falcon_db_24.marketing as n on m.spend=n.spend`,
+          },
+          {
+            sql: `with ignored as (select 1 as n) select ${expression} as roas from falcon_db_24.marketing as m`,
+          },
+          { parameters: [1, 1] },
+          { output_name: "other" },
+        ]) {
+          if (!expression.includes("$1") && "parameters" in change) continue;
+          await expect(
+            resolvePostgresqlFormulaProjectionSlots({ ...input, ...change }),
+          ).resolves.toBeNull();
+        }
+      }
+    },
+  );
+  it.each([
+    ["SUM", "integer", false],
+    ["SUM", "bigint", true],
+    ["SUM", "numeric(12,2)", true],
+    ["COUNT", "numeric", false],
+    ["AVG", "integer", true],
+  ] as const)(
+    "does not mistake %s(%s) division for non-truncating arithmetic",
+    async (fn, type, supported) => {
+      const aggregate: SemanticFormulaExpression = {
+        kind: "AGGREGATE",
+        function: fn,
+        input: { kind: "SLOT", slot_id: "amount" },
+        distinct: false,
+        filter: null,
+      };
+      await expect(
+        resolvePostgresqlFormulaProjectionSlots({
+          sql: `select ${fn}(o.amount)/${fn}(o.amount) as ratio from falcon_db_24.orders as o`,
+          parameters: [],
+          output_name: "ratio",
+          expression: { kind: "BINARY", operator: "DIVIDE", left: aggregate, right: aggregate },
+          slots: [
+            {
+              slot_id: "amount",
+              physical_type: type,
+              schema_name: "falcon_db_24",
+              relation_name: "orders",
+              column_name: "amount",
+            },
+          ],
+        }),
+      ).resolves.toEqual(supported ? ["amount"] : null);
+    },
+  );
+
   const coverage = [
     {
       schema_name: "falcon_db_24",

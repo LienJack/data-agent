@@ -8,7 +8,7 @@ export async function buildTestQueryEvidenceSemanticBinding(input: {
     readonly name: string;
     readonly logical_type: "NUMBER" | "STRING" | "DATE" | "DATETIME" | "BOOLEAN";
     readonly nullable: boolean;
-    readonly semantic_role: "METRIC" | "DIMENSION" | "PHYSICAL_COLUMN";
+    readonly semantic_role: "METRIC" | "FORMULA" | "DIMENSION" | "PHYSICAL_COLUMN";
     readonly semantic_object_id: string;
     readonly grain?: {
       readonly grain_id: string;
@@ -55,7 +55,8 @@ export async function buildTestQueryEvidenceSemanticBinding(input: {
       nullable: column.nullable,
       semantic_role: column.semantic_role,
       semantic_object_id: column.semantic_object_id,
-      formula_hash: column.semantic_role === "METRIC" ? hash("7") : null,
+      formula_hash:
+        column.semantic_role === "METRIC" || column.semantic_role === "FORMULA" ? hash("7") : null,
       aggregate: column.semantic_role === "METRIC" ? ("sum" as const) : null,
       grain: column.grain ?? {
         grain_id: column.semantic_role === "METRIC" ? "order" : column.semantic_object_id,

@@ -1443,3 +1443,23 @@ CHECK 与不可变 trigger，deactivation、no-op 和 payload UPDATE 均须拒�
 multiset hash 全相等，也不一定保持该证明。已观察到两张表行序差异；保留失败副本，采用 PostgreSQL 在线物理备份、
 校验 backup manifest、独立 volume/loopback port/cluster_name 且不启用 replication，精确重现原 proof 后才继续。
 不为测试方便修改旧 proof/hash 或把逻辑相等当成冻结发布闭包相等。
+
+### 25.9 独立 Published Formula 的查询输出绑定
+
+E13 scratch 的只读诊断确认：gen2 `formula.marketing_roas` 是独立 Formula，没有同名 Metric。保留发布目录不变，
+在现有 Candidate/QueryEvidence 绑定增加明确的 `FORMULA` kind/role；不得把公式改名为 Metric、借用收入指标的 hash，
+或创建第二个发布权威。旧字段/历史 hash 不变，新输出仅由新冻结 build 消费。
+
+- 先验证 exact selected Formula，再从选中 Metric 的已发布依赖、active PhysicalBinding 和 exact Schema Snapshot
+  解析每个 slot；缺失、歧义、跨粒度或未选依赖失败关闭。公式 hash 绑定 release、公式 AST 与实际依赖，不伪造单一 aggregate。
+- Formula 列为 NUMBER、`aggregate=null`、非空 formula hash，保留所有规范排序的 physical sources 与依赖 grain。
+  受支持的数值聚合/算术/CASE 表达式须在查询 I/O 前与 SQL 的实际输出表达式重验；未知结构拒绝，不能只校验自报公式 ID。
+  原有 SQL AST、防越权、只读、类型、窗口和 Artifact acceptance 守卫继续生效。
+- Analysis 输入 materialization 保留 FORMULA 身份与 exact evidence hash，不把它转为 Published Metric。分析仍只能用已有
+  Metric authority 编译方法约束；Formula 可以随同表格作为已绑定数值输入，不扩大方法或数据权限。Report/Chart/Trace 复用
+  相同 QueryEvidence，不创建新的口径或数据源。
+- 测试覆盖真实公式绑定、SQL 算式偏离/AVG 源 ROAS/缺失或歧义依赖/未选公式/篡改 hash、旧物理列与 Metric 历史回读，
+  以及 compile 前零 I/O、Analysis receipt 保留 role、同 Run Table/Chart/Trace。全链通过前不激活 live E13。
+- 首版只证明单个物理 FROM 的直接 typed aggregate/算术/CASE 输出；CTE、join、cast、window、DATE_BUCKET/GROUP_COUNT
+  失败关闭。除法另校验 PostgreSQL 数值提升，避免同形 SQL 的整数截断；不通过加 SQL 模板或自动 cast 偷换口径。
+  相同证明用于 compile/execute 前与 evidence acceptance；accepted Context 排除的 Metric 不得用于 Formula 依赖。

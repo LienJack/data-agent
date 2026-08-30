@@ -314,3 +314,59 @@ published_time_coverage?: readonly {
   and business value/rate checks remain mandatory: publishing derived parameters to a model is not proof that the model used them.
 - Required regressions: full/partial/absent prior coverage, all-unavailable empty source, leap year and preserved offsets, partial-month
   boundary rejection, missing paired intent, mismatched bindings, actual prepare/provider projection and unchanged historical context hashes.
+
+## 独立 Published Formula 输出的物理证明
+
+### 1. Scope / Trigger
+
+当已发布、已选中的 Formula 没有对应 Metric 时，Candidate 必须使用 `object_kind=FORMULA` 与 exact node_id。
+不得伪造同名 Metric、借基础 Metric 的身份/hash，或为完成一次查询修改 Semantic Release。
+
+### 2. Signatures
+
+- `resolvePostgresqlPublishedFormulaBindings`：编译前与 QueryEvidence acceptance 共用的纯校验入口，不生成或重写 SQL。
+- `PreparedText2SqlContext.semantic_query_context_binding.formula_ids` 只来自验证后的 accepted Context；
+  `binding_authority.formula_dependency_metric_ids` 同时限制编译与证据校验可使用的 Metric 依赖。
+- Formula 列使用 `semantic_role=FORMULA`、NUMBER、`aggregate=null` 与非空 `formula_hash`。
+
+### 3. Contracts
+
+- 只接受 exact selected、ACTIVE 的 numeric/integer Formula。每个 SLOT 经已选 Metric 的 dependency_column_ids、
+  active 同 datasource PhysicalBinding 与 exact SchemaSnapshot 解析；短名仅在物理来源唯一时成立。
+  不从 Formula 名称猜物理列，不借未选 Metric 扩大依赖；不兼容跨 grain。
+- 哈希域 `published-formula-physical-binding@1.0.0` 绑定 release hash、完整 Formula、实际使用的 Metric 与 slot/physical
+  bindings；来源唯一且规范排序。QueryEvidence 原有 binding hash 继续封存该字段，旧 Metric/物理列算法和文档不变。
+- 当前证明是有界数值子集：单个带 alias 的物理 FROM、直接外层输出；匹配 typed AST 的 SLOT/LITERAL、算术/比较、
+  布尔、searched CASE、带单个输入的聚合、DISTINCT/FILTER。函数、操作数、参数值、零值/NULL 分支必须完全一致。
+  CTE、join、表达式 cast、window、DATE_BUCKET/GROUP_COUNT、无依赖常量公式失败关闭，不做等价式推断。
+- SQL 树相同仍可能发生整数截断：DIVIDE 至少一侧须被保守证明为非整数运算；COUNT/COUNT 与 SUM(integer)/SUM(integer)
+  拒绝，AVG、SUM(bigint)、numeric/real/double precision 的合法组合可通过。不会自动添加 cast 修复业务 SQL。
+- 原有 read-only AST、scope、snapshot、真实结果 OID、时间窗口、Artifact hash 校验继续执行。
+  有请求窗口时，同时校验 Formula 所使用的真实 Metric 依赖；time-domain 本身不是时间 Dimension 或过滤请求。
+
+### 4. Validation & Error Matrix
+
+| 条件 | 结果 |
+| --- | --- |
+| 输出 Formula 不在 accepted Context | 原 membership 错误及 result-binding 精确诊断 |
+| Formula/type/selection/grain 无效 | `QUERY_EVIDENCE_FORMULA_BINDING_INVALID` |
+| SQL 算式、slot 或受支持结构未获证明 | `TEXT2SQL_PUBLISHED_FORMULA_EXPRESSION_MISMATCH` |
+| active physical binding 缺失或快照漂移 | 原 physical-binding 失败码 |
+| 合法且真实结果相符 | 原 QueryEvidence 成功路径；不产生新发布权威 |
+
+### 5. Good / Base / Bad Cases
+
+- Good：按正式 CASE 零值规则分别 SUM 收入/投入，再除法；Formula 与基础 Metric、渠道 Dimension 可在同表保留各自身份。
+- Base：既有非 Formula 查询不增加此证明步骤，旧绑定仍原样回读。
+- Bad：将 SUM 改 AVG、交换分子分母、用 NULLIF 改写已发布零值规则、给计算结果冒用收入 Metric，或通过整数除法截断。
+
+### 6. Tests Required
+
+合法/漂移表达式、参数、歧义/缺失/未选依赖、跨粒度、整数截断、hash 篡改与排序稳定性；编译零 query I/O、重复 evidence
+校验、白名单诊断/repair 脱敏、Formula → Arrow → 真实 materialization receipt 的 role/hash 保留、旧路径回归。
+离线测试不是业务验收；新 clean build、fresh scratch、单链路业务/QA/Trace 与 fresh 正式 attempt 仍必需。
+
+### 7. Wrong vs Correct
+
+Wrong：`formula.foo` 不被旧 enum 接受，就声明成 `metric.foo` 或 `metric.revenue`。
+Correct：精确校验已有 Formula 与物理表达式，保留 Formula 身份；后续 Analysis 不因此获得一个新的 Published Metric。

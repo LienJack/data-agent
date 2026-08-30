@@ -64,11 +64,13 @@ async function queryEvidenceDocument(
         readonly row_count?: number;
         readonly artifact_suffix?: number;
         readonly result_hash?: `sha256:${string}`;
+        readonly value_role?: "METRIC" | "FORMULA";
       } = 2,
 ) {
   const rowCount = typeof input === "number" ? input : (input.row_count ?? 2);
   const artifactSuffix = typeof input === "number" ? 21 : (input.artifact_suffix ?? 21);
   const resultHash = typeof input === "number" ? hash("a") : (input.result_hash ?? hash("a"));
+  const valueRole = typeof input === "number" ? "METRIC" : (input.value_role ?? "METRIC");
   const sqlRef = reference("SqlArtifact", 20, hash("f"));
   const rows = Array.from({ length: rowCount }, (_, index) => ({
     order_id: `order-${index + 1}`,
@@ -87,8 +89,8 @@ async function queryEvidenceDocument(
         name: "order_total",
         logical_type: "NUMBER",
         nullable: false,
-        semantic_role: "METRIC",
-        semantic_object_id: "order-total",
+        semantic_role: valueRole,
+        semantic_object_id: valueRole === "FORMULA" ? "formula.order-total" : "order-total",
       },
     ],
   });
@@ -211,99 +213,111 @@ describe("analysis input materializer", () => {
     },
   );
 
-  it("encrypts Arrow bytes and commits the exact QueryEvidence-to-input receipt", async () => {
-    const evidence = await queryEvidenceDocument();
-    const sensitiveCommit = vi.fn(async (_capability, request) => ({
-      ok: true as const,
-      value: {
-        schema_version: "sensitive-execution-artifact-commit-result@2.0.0" as const,
-        disposition: "CREATED" as const,
-        receipt: request.command.receipt,
-      },
-    }));
-    const systemCommit = vi.fn(async ({ reference: committed }) => committed);
-    const materializer = createAnalysisInputMaterializer({
-      sensitive_artifacts: { commit: sensitiveCommit },
-      product_artifacts: productArtifactAuthority(evidence.document),
-      analysis_artifacts: {
-        commitL2: vi.fn(),
-        commitSystem: systemCommit,
-        resolveCommitted: vi.fn(),
-      },
-      capability_input: { authority: "test" },
-      encryption_key: Buffer.alloc(32, 7),
-      encryption_key_id: "analysis-input-test@1",
-    });
-    const content = arrowContent();
-    const result = await materializer.materialize({
-      lease,
-      analysis_program_ref: reference("AnalysisProgram", 33),
-      node_id: "falcon24-business-review-18m",
-      idempotency_key: "analysis-input-test",
-      input_name: "falcon24_business_review",
-      format: "ARROW",
-      content,
-      row_count: 2,
-      columns: materializationColumns,
-      source_binding_hash: evidence.semanticBinding.binding_hash as `sha256:${string}`,
-      spec_hash: hash("1"),
-      snapshot_receipt_hash: evidence.semanticBinding.schema_snapshot_ref
-        .resource_hash as `sha256:${string}`,
-      query_evidence_ref: evidence.reference,
-    });
-
-    expect(result.input_ref.artifact_type).toBe("SensitiveExecutionArtifact");
-    expect(result.materialization_receipt_ref.artifact_type).toBe(
-      "AnalysisInputMaterializationReceipt",
-    );
-    const committedCiphertext = sensitiveCommit.mock.calls[0]?.[1].ciphertext;
-    expect(Buffer.from(committedCiphertext ?? []).equals(content)).toBe(false);
-    expect(
-      Buffer.from(committedCiphertext ?? [])
-        .subarray(0, 5)
-        .toString("ascii"),
-    ).toBe("DAAI1");
-    expect(systemCommit).toHaveBeenCalledOnce();
-    expect(result.materialization_receipt_document).toMatchObject({
-      protocol_version: "analysis-input-materialization@3.0.0",
-      query_evidence_ref: evidence.reference,
-      source_result_hash: hash("a"),
-      input_ref: result.input_ref,
-      row_count: 2,
-      columns: materializationColumns,
-    });
-    expect(result.materialization_receipt_document).not.toHaveProperty("query_result_ref");
-    await expect(
-      verifyGovernedAnalysisInputs({
+  it.each(["METRIC", "FORMULA"] as const)(
+    "encrypts %s Arrow bytes and commits the exact QueryEvidence-to-input receipt",
+    async (valueRole) => {
+      const evidence = await queryEvidenceDocument({ value_role: valueRole });
+      const columns = materializationColumns.map((column) =>
+        column.name === "order_total"
+          ? {
+              ...column,
+              semantic_role: valueRole,
+              semantic_object_id: valueRole === "FORMULA" ? "formula.order-total" : "order-total",
+            }
+          : column,
+      );
+      const sensitiveCommit = vi.fn(async (_capability, request) => ({
+        ok: true as const,
+        value: {
+          schema_version: "sensitive-execution-artifact-commit-result@2.0.0" as const,
+          disposition: "CREATED" as const,
+          receipt: request.command.receipt,
+        },
+      }));
+      const systemCommit = vi.fn(async ({ reference: committed }) => committed);
+      const materializer = createAnalysisInputMaterializer({
+        sensitive_artifacts: { commit: sensitiveCommit },
+        product_artifacts: productArtifactAuthority(evidence.document),
+        analysis_artifacts: {
+          commitL2: vi.fn(),
+          commitSystem: systemCommit,
+          resolveCommitted: vi.fn(),
+        },
+        capability_input: { authority: "test" },
+        encryption_key: Buffer.alloc(32, 7),
+        encryption_key_id: "analysis-input-test@1",
+      });
+      const content = arrowContent();
+      const result = await materializer.materialize({
+        lease,
         analysis_program_ref: reference("AnalysisProgram", 33),
-        governed_inputs: [result],
-      }),
-    ).resolves.toBeUndefined();
+        node_id: "falcon24-business-review-18m",
+        idempotency_key: "analysis-input-test",
+        input_name: "falcon24_business_review",
+        format: "ARROW",
+        content,
+        row_count: 2,
+        columns,
+        source_binding_hash: evidence.semanticBinding.binding_hash as `sha256:${string}`,
+        spec_hash: hash("1"),
+        snapshot_receipt_hash: evidence.semanticBinding.schema_snapshot_ref
+          .resource_hash as `sha256:${string}`,
+        query_evidence_ref: evidence.reference,
+      });
 
-    const committedReceipt = await verifyAnalysisInputMaterializationReceipt(
-      result.materialization_receipt_document,
-    );
-    const { receipt_hash: _receiptHash, ...receiptMaterial } = committedReceipt;
-    const substitutedReceipt = await buildAnalysisInputMaterializationReceipt({
-      ...receiptMaterial,
-      source_result_hash: hash("b"),
-    });
-    await expect(
-      verifyGovernedAnalysisInputs({
-        analysis_program_ref: reference("AnalysisProgram", 33),
-        governed_inputs: [
-          {
-            ...result,
-            materialization_receipt_document: substitutedReceipt,
-            materialization_receipt_ref: {
-              ...result.materialization_receipt_ref,
-              content_hash: await sha256ContentHash(substitutedReceipt),
+      expect(result.input_ref.artifact_type).toBe("SensitiveExecutionArtifact");
+      expect(result.materialization_receipt_ref.artifact_type).toBe(
+        "AnalysisInputMaterializationReceipt",
+      );
+      const committedCiphertext = sensitiveCommit.mock.calls[0]?.[1].ciphertext;
+      expect(Buffer.from(committedCiphertext ?? []).equals(content)).toBe(false);
+      expect(
+        Buffer.from(committedCiphertext ?? [])
+          .subarray(0, 5)
+          .toString("ascii"),
+      ).toBe("DAAI1");
+      expect(systemCommit).toHaveBeenCalledOnce();
+      expect(result.materialization_receipt_document).toMatchObject({
+        protocol_version: "analysis-input-materialization@3.0.0",
+        query_evidence_ref: evidence.reference,
+        source_result_hash: hash("a"),
+        input_ref: result.input_ref,
+        row_count: 2,
+        columns,
+      });
+      expect(result.materialization_receipt_document).not.toHaveProperty("query_result_ref");
+      await expect(
+        verifyGovernedAnalysisInputs({
+          analysis_program_ref: reference("AnalysisProgram", 33),
+          governed_inputs: [result],
+        }),
+      ).resolves.toBeUndefined();
+
+      const committedReceipt = await verifyAnalysisInputMaterializationReceipt(
+        result.materialization_receipt_document,
+      );
+      const { receipt_hash: _receiptHash, ...receiptMaterial } = committedReceipt;
+      const substitutedReceipt = await buildAnalysisInputMaterializationReceipt({
+        ...receiptMaterial,
+        source_result_hash: hash("b"),
+      });
+      await expect(
+        verifyGovernedAnalysisInputs({
+          analysis_program_ref: reference("AnalysisProgram", 33),
+          governed_inputs: [
+            {
+              ...result,
+              materialization_receipt_document: substitutedReceipt,
+              materialization_receipt_ref: {
+                ...result.materialization_receipt_ref,
+                content_hash: await sha256ContentHash(substitutedReceipt),
+              },
             },
-          },
-        ],
-      }),
-    ).rejects.toThrow("ANALYSIS_QUERY_EVIDENCE_MATERIALIZATION_INVALID");
-  });
+          ],
+        }),
+      ).rejects.toThrow("ANALYSIS_QUERY_EVIDENCE_MATERIALIZATION_INVALID");
+    },
+  );
 
   it("replays one QueryEvidence deterministically but never reuses its receipt for another evidence", async () => {
     const evidence = await queryEvidenceDocument();

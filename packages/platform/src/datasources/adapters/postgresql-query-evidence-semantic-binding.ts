@@ -5,6 +5,7 @@ import {
 import {
   buildQueryEvidenceSemanticBinding,
   computePublishedMetricFormulaHash,
+  formulaNodeSchema,
   type PhysicalBindingEntry,
   type QueryEvidenceSemanticBinding,
   type SemanticDimension,
@@ -14,7 +15,7 @@ import {
   type PhysicalSchemaSnapshot,
   physicalSchemaSnapshotSchema,
 } from "@data-agent/contracts/catalog";
-import { sha256ContentHash } from "@data-agent/contracts/common";
+import { canonicalizeJson, sha256ContentHash } from "@data-agent/contracts/common";
 import {
   type SemanticContextCommitResult,
   verifySemanticContextCommitResult,
@@ -23,7 +24,10 @@ import {
   type GovernedDatasourceQueryResult,
   verifyGovernedDatasourceQueryResult,
 } from "@data-agent/contracts/datasources";
-import { hasExactPostgresqlPhysicalColumnProjections } from "./postgresql-text2sql-policy.js";
+import {
+  hasExactPostgresqlPhysicalColumnProjections,
+  resolvePostgresqlFormulaProjectionSlots,
+} from "./postgresql-text2sql-policy.js";
 
 export interface QueryEvidenceSemanticCatalog {
   readonly release_identity: {
@@ -51,6 +55,7 @@ export interface PostgresqlQueryEvidenceSemanticBindingInput {
     readonly resource_hash: string;
   };
   readonly target_binding_hash: string;
+  readonly formula_dependency_metric_ids?: readonly string[];
 }
 
 export class PostgresqlQueryEvidenceSemanticBindingError extends TypeError {
@@ -215,6 +220,140 @@ function physicalSources(input: {
     reject("QUERY_EVIDENCE_PHYSICAL_BINDING_INVALID");
   }
   return sources;
+}
+
+/** Shared by pre-I/O compilation and post-query evidence acceptance. Never constructs SQL. */
+export async function resolvePostgresqlPublishedFormulaBindings(
+  input: Pick<
+    PostgresqlQueryEvidenceSemanticBindingInput,
+    | "candidate"
+    | "physical_snapshot"
+    | "semantic_context"
+    | "semantic_catalog"
+    | "datasource_ref"
+    | "formula_dependency_metric_ids"
+  >,
+) {
+  const outputs = input.candidate.result_columns.filter(
+    ({ semantic_binding }) => semantic_binding.object_kind === "FORMULA",
+  );
+  if (outputs.length === 0) return [];
+  const selected = selectedSemanticObjects(input.semantic_context);
+  const acceptedMetrics = input.formula_dependency_metric_ids
+    ? new Set(input.formula_dependency_metric_ids)
+    : selected;
+  const catalog = input.semantic_catalog;
+  const dependencies = catalog.executable.metrics
+    .filter(({ metric_id }) => selected.has(metric_id) && acceptedMetrics.has(metric_id))
+    .flatMap((metric) =>
+      metric.dependency_column_ids.flatMap((columnId) => {
+        const sources = physicalSources({
+          object_id: metric.metric_id,
+          object_kind: "METRIC",
+          table_id: metric.table_id,
+          column_ids: [columnId],
+          datasource_id: input.datasource_ref.resource_id,
+          bindings: catalog.executable.physical_bindings,
+          snapshot: input.physical_snapshot,
+        });
+        const qualifiedId = physicalColumnId(metric.table_id, columnId);
+        return sources.flatMap((source) =>
+          [
+            ...new Set([
+              columnId,
+              qualifiedId,
+              qualifiedId.slice("column.".length),
+              source.column_name,
+            ]),
+          ].map((slot_id) => ({ slot_id, metric, source })),
+        );
+      }),
+    );
+  return Promise.all(
+    outputs.map(async (output) => {
+      const formulas = catalog.executable.formulas.filter(
+        ({ node_id }) => node_id === output.semantic_binding.object_id,
+      );
+      const parsed = formulaNodeSchema.safeParse(formulas[0]);
+      if (
+        formulas.length !== 1 ||
+        !parsed.success ||
+        !selected.has(output.semantic_binding.object_id) ||
+        output.semantic_type !== "NUMBER" ||
+        parsed.data.lifecycle !== "ACTIVE" ||
+        !["numeric", "integer"].includes(parsed.data.return_type)
+      )
+        reject("QUERY_EVIDENCE_FORMULA_BINDING_INVALID");
+      const formula = parsed.data;
+      const usedSlots = await resolvePostgresqlFormulaProjectionSlots({
+        sql: input.candidate.sql,
+        parameters: input.candidate.parameters,
+        output_name: output.name,
+        expression: formula.expression,
+        slots: dependencies.map(({ slot_id, source }) => ({
+          slot_id,
+          physical_type: source.formatted_type,
+          ...source,
+        })),
+      });
+      if (!usedSlots) reject("TEXT2SQL_PUBLISHED_FORMULA_EXPRESSION_MISMATCH");
+      const used = dependencies.filter(({ slot_id }) => usedSlots.includes(slot_id));
+      const grains = new Map(
+        used.map(({ metric }) => [canonicalizeJson(metric.grain), metric.grain]),
+      );
+      const grain = grains.values().next().value;
+      if (
+        !grain ||
+        grains.size !== 1 ||
+        used.some(({ source }) => source.logical_type !== "NUMBER")
+      ) {
+        reject("QUERY_EVIDENCE_FORMULA_BINDING_INVALID");
+      }
+      const sources = [
+        ...new Map(
+          used.map(({ source }) => [
+            canonicalizeJson([source.schema_name, source.relation_name, source.column_name]),
+            source,
+          ]),
+        ).entries(),
+      ]
+        .sort(([left], [right]) => (left < right ? -1 : left > right ? 1 : 0))
+        .map(([, { logical_type: _logicalType, ...source }]) => source);
+      const dependencyMetrics = [
+        ...new Map(used.map(({ metric }) => [metric.metric_id, metric])).values(),
+      ].sort((left, right) => left.metric_id.localeCompare(right.metric_id));
+      const slotBindings = [
+        ...new Map(
+          used.map(({ slot_id, metric, source }) => {
+            const binding = { slot_id, metric_id: metric.metric_id, source };
+            return [canonicalizeJson(binding), binding];
+          }),
+        ).entries(),
+      ]
+        .sort(([left], [right]) => (left < right ? -1 : left > right ? 1 : 0))
+        .map(([, binding]) => binding);
+      return {
+        column: {
+          output_name: output.name,
+          logical_type: "NUMBER" as const,
+          nullable: true,
+          semantic_role: "FORMULA" as const,
+          semantic_object_id: formula.node_id,
+          formula_hash: await sha256ContentHash({
+            hash_domain: "published-formula-physical-binding@1.0.0",
+            semantic_release_hash: input.semantic_context.package.semantic_release.resource_hash,
+            formula,
+            metrics: dependencyMetrics,
+            slot_bindings: slotBindings,
+          }),
+          aggregate: null,
+          grain: { grain_id: grain.grain_id, granularity: grain.granularity },
+          physical_sources: sources,
+        },
+        dependency_metrics: dependencyMetrics,
+      };
+    }),
+  );
 }
 
 function exactParameter(candidate: Text2SqlQueryCandidate, index: number): string {
@@ -406,6 +545,7 @@ export async function buildPostgresqlQueryEvidenceSemanticBinding(
   const dimensions = input.semantic_catalog.executable.dimensions;
   const formulas = input.semantic_catalog.executable.formulas;
   const bindings = input.semantic_catalog.executable.physical_bindings;
+  const formulaBindings = await resolvePostgresqlPublishedFormulaBindings(input);
   const columns = await Promise.all(
     candidate.result_columns.map(async (column) => {
       const declaration = column.semantic_binding;
@@ -509,6 +649,13 @@ export async function buildPostgresqlQueryEvidenceSemanticBinding(
           physical_sources: sources.map(({ logical_type: _logicalType, ...source }) => source),
         };
       }
+      if (declaration.object_kind === "FORMULA") {
+        const formula = formulaBindings.find(
+          ({ column: bound }) => bound.output_name === column.name,
+        );
+        if (!formula) reject("QUERY_EVIDENCE_FORMULA_BINDING_INVALID");
+        return formula.column;
+      }
       const dimension = dimensions.find(({ dimension_id: id }) => id === declaration.object_id);
       if (!dimension) reject("QUERY_EVIDENCE_DIMENSION_BINDING_INVALID");
       const sources = physicalSources({
@@ -604,12 +751,15 @@ export async function buildPostgresqlQueryEvidenceSemanticBinding(
     columns,
     time_window: timeWindow({
       candidate,
-      metrics: columns
-        .filter(({ semantic_role: role }) => role === "METRIC")
-        .map(({ semantic_object_id: objectId }) =>
-          metrics.find(({ metric_id: id }) => id === objectId),
-        )
-        .filter((metric): metric is SemanticMetric => metric !== undefined),
+      metrics: [
+        ...formulaBindings.flatMap(({ dependency_metrics }) => dependency_metrics),
+        ...columns
+          .filter(({ semantic_role: role }) => role === "METRIC")
+          .map(({ semantic_object_id: objectId }) =>
+            metrics.find(({ metric_id: id }) => id === objectId),
+          )
+          .filter((metric): metric is SemanticMetric => metric !== undefined),
+      ],
       dimensions,
       bindings,
       snapshot,

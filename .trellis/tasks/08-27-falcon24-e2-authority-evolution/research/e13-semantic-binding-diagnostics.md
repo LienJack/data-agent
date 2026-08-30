@@ -47,3 +47,16 @@
 - [x] 仓库无 `src/templates/markdown/spec/`；不创建影子模板。
 - [x] Worker 三个聚焦套件 64/64、typecheck、6 个 owned TS 文件 Biome、Trellis validate 与 diff check 通过。
 - [ ] Formula 输出绑定修复、新 clean build/scratch canary 与 fresh live E13/15 回合正式验收仍未完成。
+
+## 6. 独立 Formula 合同修复（门禁外）
+
+- Candidate/QueryEvidence 增加明确 FORMULA，未重命名 ROAS、创建 Metric 或修改已发布 gen2。Formula 的 TYPE/hash/aggregate
+  有独立约束；旧字段和旧 hash 算法不改。新读取能力只用于后续冻结 build，不能拼接旧 canary 的通过结论。
+- Platform 共用纯证明校验实际 SELECT AST：解析 selected Metric 的 active physical 依赖与 snapshot，要求 Formula 的运算、
+  参数、CASE 零值规则完全一致，并拒绝歧义、跨 grain、未选依赖与 PostgreSQL 整数截断。没有业务 SQL 生成器或第二 authority。
+- Worker 同时限制 accepted Formula 和依赖 Metric；compile/execute 前验证，真实 query 后 acceptance 重验。
+  两个新安全诊断走原 bounded repair/事件白名单；SQL、参数和数据库异常不进入公开诊断。
+- Analysis 的 Arrow/加密 materialization receipt 保留 Formula 身份与 exact source binding hash；Metric 方法权限不扩展。
+- 早期联调命中旧 dist 合同：源码 enum 已修改但依赖仍读旧 build，随后按 Contracts → Platform 重建；该失败不是业务 canary。
+  Worker 测试加入 Formula selection 时也影响了未选 context 的旧负例，已将 fixture 开关限制在新的合法 Formula 测试。
+- 当前验证记录见 implement.md；fresh build/scratch/15 回合业务验收仍未完成，live E12 不变。

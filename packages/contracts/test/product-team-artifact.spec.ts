@@ -4,72 +4,104 @@ import {
   buildProductTeamArtifactDocument,
   buildQueryEvidenceSemanticBinding,
   verifyProductTeamArtifactDocument,
+  verifyQueryEvidenceSemanticBinding,
 } from "../src/artifacts/product-team-artifact.js";
 
 const id = (suffix: number) => `00000000-0000-4000-8000-${String(suffix).padStart(12, "0")}`;
 const hash = (character: string) => `sha256:${character.repeat(64)}`;
 
 describe("Product Team Artifact", () => {
-  it("seals a row-level physical column binding without inventing a metric or dimension", async () => {
-    const binding = await buildQueryEvidenceSemanticBinding({
-      protocol_version: "query-evidence-semantic-binding@1.0.0",
-      semantic_release_ref: {
-        resource_id: id(8),
-        resource_revision: 1,
-        resource_hash: hash("8"),
-        datasource_id: id(9),
-        semantic_generation: 1,
-        publication_status: "PUBLISHED",
-      },
-      semantic_context_ref: {
-        package_id: id(10),
-        package_hash: hash("a"),
-        receipt_id: id(11),
-        receipt_hash: hash("b"),
-      },
-      schema_snapshot_ref: {
-        resource_id: id(12),
-        resource_revision: 1,
-        resource_hash: hash("c"),
-        datasource_id: id(9),
-        semantic_release_id: id(8),
-        semantic_generation: 1,
-      },
-      datasource_ref: { resource_id: id(9), resource_revision: 1, resource_hash: hash("9") },
-      target_binding_hash: hash("d"),
-      columns: [
-        {
-          output_name: "order_id",
-          logical_type: "STRING",
-          nullable: false,
-          semantic_role: "PHYSICAL_COLUMN",
-          semantic_object_id: "column.orders.order_id",
-          formula_hash: null,
-          aggregate: null,
-          grain: { grain_id: "grain.physical.orders", granularity: "atomic" },
-          physical_sources: [
-            {
-              schema_name: "falcon_db_24",
-              relation_name: "orders",
-              column_name: "order_id",
-              formatted_type: "text",
-              nullable: false,
-            },
-          ],
+  it.each(["PHYSICAL_COLUMN", "FORMULA"] as const)(
+    "seals %s without inventing a metric or dimension",
+    async (role) => {
+      const binding = await buildQueryEvidenceSemanticBinding({
+        protocol_version: "query-evidence-semantic-binding@1.0.0",
+        semantic_release_ref: {
+          resource_id: id(8),
+          resource_revision: 1,
+          resource_hash: hash("8"),
+          datasource_id: id(9),
+          semantic_generation: 1,
+          publication_status: "PUBLISHED",
         },
-      ],
-      time_window: null,
-    });
+        semantic_context_ref: {
+          package_id: id(10),
+          package_hash: hash("a"),
+          receipt_id: id(11),
+          receipt_hash: hash("b"),
+        },
+        schema_snapshot_ref: {
+          resource_id: id(12),
+          resource_revision: 1,
+          resource_hash: hash("c"),
+          datasource_id: id(9),
+          semantic_release_id: id(8),
+          semantic_generation: 1,
+        },
+        datasource_ref: { resource_id: id(9), resource_revision: 1, resource_hash: hash("9") },
+        target_binding_hash: hash("d"),
+        columns: [
+          {
+            output_name: "order_id",
+            logical_type: role === "FORMULA" ? "NUMBER" : "STRING",
+            nullable: false,
+            semantic_role: role,
+            semantic_object_id:
+              role === "FORMULA" ? "formula.order-ratio" : "column.orders.order_id",
+            formula_hash: role === "FORMULA" ? hash("f") : null,
+            aggregate: null,
+            grain: { grain_id: "grain.physical.orders", granularity: "atomic" },
+            physical_sources: [
+              {
+                schema_name: "falcon_db_24",
+                relation_name: "orders",
+                column_name: role === "FORMULA" ? "amount" : "order_id",
+                formatted_type: role === "FORMULA" ? "numeric" : "text",
+                nullable: false,
+              },
+            ],
+          },
+        ],
+        time_window: null,
+      });
 
-    expect(binding.columns).toEqual([
-      expect.objectContaining({
-        semantic_role: "PHYSICAL_COLUMN",
-        semantic_object_id: "column.orders.order_id",
-        formula_hash: null,
-        aggregate: null,
-      }),
-    ]);
-  });
+      expect(binding.columns).toEqual([
+        expect.objectContaining({
+          semantic_role: role,
+          semantic_object_id: role === "FORMULA" ? "formula.order-ratio" : "column.orders.order_id",
+          formula_hash: role === "FORMULA" ? hash("f") : null,
+          aggregate: null,
+        }),
+      ]);
+      if (role === "FORMULA") {
+        expect(
+          await verifyQueryEvidenceSemanticBinding(JSON.parse(JSON.stringify(binding))),
+        ).toEqual(binding);
+        await expect(
+          verifyQueryEvidenceSemanticBinding({
+            ...binding,
+            columns: binding.columns.map((column) => ({
+              ...column,
+              formula_hash: hash("e"),
+            })),
+          }),
+        ).rejects.toThrow("QUERY_EVIDENCE_SEMANTIC_BINDING_HASH_MISMATCH");
+        for (const change of [
+          { formula_hash: null },
+          { aggregate: "sum" },
+          { logical_type: "STRING" },
+        ]) {
+          const { binding_hash: _bindingHash, ...material } = binding;
+          await expect(
+            buildQueryEvidenceSemanticBinding({
+              ...material,
+              columns: binding.columns.map((column) => ({ ...column, ...change })),
+            }),
+          ).rejects.toThrow();
+        }
+      }
+    },
+  );
 
   it("seals a complete user-accepted table as QueryEvidence without inventing SQL lineage", async () => {
     const projection = {

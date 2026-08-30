@@ -6,6 +6,7 @@ import {
   buildSemanticRetrievalReceipt,
   canonicalizeJson,
   type SemanticContextCommitResult,
+  type SemanticFormulaExpression,
   type Text2SqlQueryCandidate,
 } from "@data-agent/contracts";
 import { describe, expect, it } from "vitest";
@@ -14,6 +15,8 @@ import {
   buildPostgresqlQueryEvidenceSemanticBinding,
   PostgresqlQueryEvidenceSemanticBindingError,
   postgresqlQueryEvidenceSemanticBindingInternals,
+  type QueryEvidenceSemanticCatalog,
+  resolvePostgresqlPublishedFormulaBindings,
 } from "../../src/datasources/adapters/postgresql-query-evidence-semantic-binding.js";
 
 const id = (suffix: number) => `95000000-0000-4000-8000-${String(suffix).padStart(12, "0")}`;
@@ -56,7 +59,7 @@ function column(
   };
 }
 
-async function physicalSnapshot(orderDateType: "date" | "text" = "date") {
+async function physicalSnapshot(orderDateType: "date" | "text" = "date", includeSpend = false) {
   return createPhysicalSchemaSnapshot({
     schema_version: "physical-schema-snapshot-draft@1.0.0",
     snapshot_id: snapshotId,
@@ -79,6 +82,7 @@ async function physicalSnapshot(orderDateType: "date" | "text" = "date") {
             column("order_id", 1, "text", "text", false),
             column("order_date", 2, orderDateType, orderDateType, false),
             column("amount", 3, "numeric", "numeric", true),
+            ...(includeSpend ? [column("spend", 4, "numeric", "numeric", true)] : []),
           ],
           primary_key: null,
           foreign_keys: [],
@@ -93,12 +97,14 @@ async function physicalSnapshot(orderDateType: "date" | "text" = "date") {
 
 async function semanticContext(
   snapshot: Awaited<ReturnType<typeof physicalSnapshot>>,
+  additionalIds: readonly string[] = [],
 ): Promise<SemanticContextCommitResult> {
   const selectedObjectIds = [
     "column.orders.order_id",
     "dimension.order_month",
     "metric.order_revenue",
-  ];
+    ...additionalIds,
+  ].sort();
   const retrievalReceipt = await buildSemanticRetrievalReceipt({
     schema_version: "semantic-retrieval-receipt@1.0.0",
     authority_snapshot_hash: hash("e"),
@@ -379,11 +385,11 @@ async function queryResult(
     { name: "order_month", type: "1082" },
     { name: "revenue", type: "1700" },
   ],
-) {
-  const rows = [
+  rows: Record<string, string | null>[] = [
     { order_month: "2026-01-01", revenue: "120.50" },
     { order_month: "2026-02-01", revenue: null },
-  ];
+  ],
+) {
   return buildGovernedDatasourceQueryResult({
     schema_version: "governed-datasource-query-result@1.0.0",
     query_id: id(13),
@@ -416,7 +422,207 @@ async function fixture(orderDateType: "date" | "text" = "date") {
   };
 }
 
+async function formulaFixture() {
+  const snapshot = await physicalSnapshot("date", true);
+  const catalog = semanticCatalog();
+  const metric = catalog.executable.metrics[0];
+  if (!metric) throw new Error("missing metric fixture");
+  const sum = (slot_id: string): SemanticFormulaExpression => ({
+    kind: "AGGREGATE",
+    function: "SUM",
+    input: { kind: "SLOT", slot_id },
+    distinct: false,
+    filter: null,
+  });
+  const expression: SemanticFormulaExpression = {
+    kind: "CASE",
+    branches: [
+      {
+        when: {
+          kind: "BINARY",
+          operator: "EQ",
+          left: sum("spend"),
+          right: { kind: "LITERAL", value: 0 },
+        },
+        result: { kind: "LITERAL", value: 0 },
+      },
+    ],
+    otherwise: { kind: "BINARY", operator: "DIVIDE", left: sum("amount"), right: sum("spend") },
+  };
+  const semantic_catalog: QueryEvidenceSemanticCatalog = {
+    ...catalog,
+    executable: {
+      ...catalog.executable,
+      metrics: [
+        ...catalog.executable.metrics,
+        {
+          ...metric,
+          metric_id: "metric.order_spend",
+          column_id: "spend",
+          dependency_column_ids: ["spend"],
+        },
+      ],
+      formulas: [
+        {
+          node_id: "formula.roas",
+          node_version: 1,
+          node_type: "FORMULA",
+          name: "ROAS",
+          aliases: [],
+          owner_ref: "semantic.owner",
+          lifecycle: "ACTIVE",
+          evidence_refs: [],
+          tags: [],
+          formula_type: "ratio",
+          return_type: "numeric",
+          language: "semantic-ast",
+          language_version: "semantic-formula-ast@2",
+          expression,
+        },
+      ],
+      physical_bindings: [
+        ...catalog.executable.physical_bindings,
+        {
+          logical_object_id: "metric.order_spend",
+          logical_object_type: "metric",
+          datasource_id: datasourceId,
+          schema_name: "public",
+          table_name: "orders",
+          column_name: "spend",
+          binding_lifecycle: "active",
+          valid_from: null,
+          valid_until: null,
+        },
+      ],
+    },
+  };
+  return {
+    candidate: {
+      ...candidate(),
+      sql: "select case when sum(o.spend)=$1 then $1 else sum(o.amount)/sum(o.spend) end as roas from public.orders as o",
+      parameters: [0],
+      time_window: null,
+      result_columns: [
+        {
+          name: "roas",
+          semantic_type: "NUMBER",
+          label: "ROAS",
+          semantic_binding: { object_kind: "FORMULA", object_id: "formula.roas" },
+        },
+      ],
+      presentation: {
+        title: "ROAS",
+        summary: "已发布公式",
+        visualization: "TABLE",
+        x_key: null,
+        y_keys: [],
+      },
+    } satisfies Text2SqlQueryCandidate,
+    result: await queryResult([{ name: "roas", type: "1700" }], [{ roas: "3.2" }]),
+    physical_snapshot: snapshot,
+    semantic_context: await semanticContext(snapshot, ["formula.roas", "metric.order_spend"]),
+    semantic_catalog,
+    datasource_ref: datasourceRef,
+    target_binding_hash: targetBindingHash,
+  };
+}
+
 describe("PostgreSQL QueryEvidence semantic binding", () => {
+  it("proves a standalone published Formula before execution and retains its exact authority in evidence", async () => {
+    const input = await formulaFixture();
+    const proof = await resolvePostgresqlPublishedFormulaBindings(input);
+    const binding = await buildPostgresqlQueryEvidenceSemanticBinding(input);
+    expect(binding.columns).toEqual(proof.map(({ column }) => column));
+    expect(binding.columns).toMatchObject([
+      {
+        semantic_role: "FORMULA",
+        semantic_object_id: "formula.roas",
+        aggregate: null,
+        formula_hash: expect.stringMatching(/^sha256:/u),
+        physical_sources: [{ column_name: "amount" }, { column_name: "spend" }],
+      },
+    ]);
+    expect(binding.time_window).toBeNull();
+    expect(proof[0]?.dependency_metrics.map(({ metric_id }) => metric_id)).toEqual([
+      "metric.order_revenue",
+      "metric.order_spend",
+    ]);
+    const reversed = await buildPostgresqlQueryEvidenceSemanticBinding({
+      ...input,
+      semantic_catalog: {
+        ...input.semantic_catalog,
+        executable: {
+          ...input.semantic_catalog.executable,
+          metrics: [...input.semantic_catalog.executable.metrics].reverse(),
+          physical_bindings: [...input.semantic_catalog.executable.physical_bindings].reverse(),
+        },
+      },
+    });
+    expect(reversed.binding_hash).toBe(binding.binding_hash);
+  });
+
+  it.each([
+    ["expression", "TEXT2SQL_PUBLISHED_FORMULA_EXPRESSION_MISMATCH"],
+    ["unselected formula", "QUERY_EVIDENCE_FORMULA_BINDING_INVALID"],
+    ["unselected dependency", "TEXT2SQL_PUBLISHED_FORMULA_EXPRESSION_MISMATCH"],
+    ["cross grain", "QUERY_EVIDENCE_FORMULA_BINDING_INVALID"],
+    ["missing physical binding", "QUERY_EVIDENCE_PHYSICAL_BINDING_INVALID"],
+  ])(
+    "rejects invalid Formula %s both before I/O and during evidence acceptance",
+    async (change, code) => {
+      const input = await formulaFixture();
+      if (change === "expression")
+        input.candidate.sql = input.candidate.sql.replace("sum(o.amount)", "avg(o.amount)");
+      if (change === "unselected formula")
+        input.semantic_context = await semanticContext(input.physical_snapshot, [
+          "metric.order_spend",
+        ]);
+      if (change === "unselected dependency")
+        input.semantic_context = await semanticContext(input.physical_snapshot, ["formula.roas"]);
+      if (change === "cross grain")
+        input.semantic_catalog = {
+          ...input.semantic_catalog,
+          executable: {
+            ...input.semantic_catalog.executable,
+            metrics: input.semantic_catalog.executable.metrics.map((metric) =>
+              metric.metric_id === "metric.order_spend"
+                ? { ...metric, grain: { grain_id: "other-grain", granularity: "day" } }
+                : metric,
+            ),
+          },
+        };
+      if (change === "missing physical binding")
+        input.semantic_catalog = {
+          ...input.semantic_catalog,
+          executable: {
+            ...input.semantic_catalog.executable,
+            physical_bindings: input.semantic_catalog.executable.physical_bindings.filter(
+              ({ logical_object_id }) => logical_object_id !== "metric.order_spend",
+            ),
+          },
+        };
+      await expect(resolvePostgresqlPublishedFormulaBindings(input)).rejects.toMatchObject({
+        code,
+      });
+      await expect(buildPostgresqlQueryEvidenceSemanticBinding(input)).rejects.toMatchObject({
+        code,
+      });
+    },
+  );
+
+  it("never borrows a Formula dependency excluded by the accepted query context", async () => {
+    const input = {
+      ...(await formulaFixture()),
+      formula_dependency_metric_ids: ["metric.order_revenue"],
+    };
+    await expect(resolvePostgresqlPublishedFormulaBindings(input)).rejects.toMatchObject({
+      code: "TEXT2SQL_PUBLISHED_FORMULA_EXPRESSION_MISMATCH",
+    });
+    await expect(buildPostgresqlQueryEvidenceSemanticBinding(input)).rejects.toMatchObject({
+      code: "TEXT2SQL_PUBLISHED_FORMULA_EXPRESSION_MISMATCH",
+    });
+  });
+
   it("binds selected row-level physical columns to the exact published binding and snapshot", async () => {
     const input = await fixture();
     const physicalCandidate: Text2SqlQueryCandidate = {

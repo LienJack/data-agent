@@ -29,6 +29,7 @@ import {
   type DatasourceAdapterTransport,
   type PostgresqlText2SqlTimeCoverage,
   parameterizePostgresqlText2SqlCandidate,
+  resolvePostgresqlPublishedFormulaBindings,
 } from "@data-agent/platform/datasource-adapters";
 import type { PersistedSecretRef } from "@data-agent/platform/secrets";
 import type pg from "pg";
@@ -63,12 +64,14 @@ export interface PreparedText2SqlContext {
   readonly semantic_query_context_binding?: {
     readonly metric_ids: readonly string[];
     readonly dimension_ids: readonly string[];
+    readonly formula_ids: readonly string[];
   };
   readonly binding_authority?: {
     readonly physical_snapshot: PhysicalSchemaSnapshot;
     readonly semantic_context: SemanticContextCommitResult;
     readonly semantic_catalog: FrozenSemanticReleaseCatalog;
     readonly datasource_ref: EffectiveConfig["datasource"];
+    readonly formula_dependency_metric_ids?: readonly string[];
   };
 }
 
@@ -129,11 +132,14 @@ async function validateCandidate(
   if (contextBinding) {
     const metricIds = new Set(contextBinding.metric_ids);
     const dimensionIds = new Set(contextBinding.dimension_ids);
+    const formulaIds = new Set(contextBinding.formula_ids);
     if (
       candidate.result_columns.some(({ semantic_binding: binding }) =>
         binding.object_kind === "METRIC"
           ? !metricIds.has(binding.object_id)
-          : !dimensionIds.has(binding.object_id),
+          : binding.object_kind === "FORMULA"
+            ? !formulaIds.has(binding.object_id)
+            : !dimensionIds.has(binding.object_id),
       )
     ) {
       throw new Text2SqlQueryRuntimeError(
@@ -157,6 +163,16 @@ async function validateCandidate(
       ? { published_time_coverage: prepared.published_time_coverage }
       : {}),
   });
+  if (
+    candidate.result_columns.some(
+      ({ semantic_binding }) => semantic_binding.object_kind === "FORMULA",
+    )
+  ) {
+    if (!prepared.binding_authority) {
+      throw new Text2SqlQueryRuntimeError("TEXT2SQL_BINDING_AUTHORITY_REQUIRED");
+    }
+    await resolvePostgresqlPublishedFormulaBindings({ candidate, ...prepared.binding_authority });
+  }
 }
 
 export interface PostgresqlText2SqlQueryRuntimeDependencies {
@@ -1001,6 +1017,7 @@ export function createPostgresqlText2SqlQueryRuntime(
               semantic_query_context_binding: {
                 metric_ids: semanticQueryContext.metrics.map(({ metric_id: id }) => id),
                 dimension_ids: semanticQueryContext.dimensions.map(({ dimension_id: id }) => id),
+                formula_ids: semanticQueryContext.formulas.map(({ node_id: id }) => id),
               },
             }
           : {}),
@@ -1009,6 +1026,13 @@ export function createPostgresqlText2SqlQueryRuntime(
           semantic_context,
           semantic_catalog,
           datasource_ref: config.datasource,
+          ...(semanticQueryContext
+            ? {
+                formula_dependency_metric_ids: semanticQueryContext.metrics.map(
+                  ({ metric_id }) => metric_id,
+                ),
+              }
+            : {}),
         },
       });
     },
@@ -1114,6 +1138,12 @@ export function createPostgresqlText2SqlQueryRuntime(
           semantic_context: prepared.binding_authority.semantic_context,
           semantic_catalog: prepared.binding_authority.semantic_catalog,
           datasource_ref: prepared.binding_authority.datasource_ref,
+          ...(prepared.binding_authority.formula_dependency_metric_ids
+            ? {
+                formula_dependency_metric_ids:
+                  prepared.binding_authority.formula_dependency_metric_ids,
+              }
+            : {}),
           target_binding_hash: prepared.target_capability_hash,
         }),
       });

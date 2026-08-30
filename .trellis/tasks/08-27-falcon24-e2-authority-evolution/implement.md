@@ -1485,6 +1485,21 @@ Diagnostic/Q1/C1任一正式首次失败必须写既有 authority支持的 immut
   Formula 没有对应 Metric，现有输出合同无法诚实绑定；下一小任务须修复公式输出闭包，不能靠伪造 metric 或放宽 allowlist。
   详见 `research/e13-semantic-binding-diagnostics.md`。任务保持 in_progress，不能将诊断通过当成 canary/正式 PASS。
 
+**独立 Published Formula 输出闭包（2026-08-31，离线实现已验证）**
+
+- Candidate/QueryEvidence 使用 FORMULA kind/role，不创建 Metric 或更改 gen2；编译/执行前与 evidence acceptance 共用
+  已发布 AST + selected Metric dependency + active PhysicalBinding + snapshot 的精确证明。拒绝算式改写、参数漂移、
+  缺失/歧义/未选依赖、跨 grain 与整数除法截断；Formula hash 绑定 release、Formula、实际 Metric/slot/physical sources。
+- accepted Context 独立列出 Formula IDs 并限制依赖 Metric；两个安全诊断走原 repair/事件白名单。Analysis Arrow 与真实
+  加密 materialization receipt 保留 Formula 身份及 source_binding_hash，不扩大 Published Metric 方法权限。
+- Platform datasource 10 suites / 142 tests、Worker teams/analysis/provider 40 suites / 271 tests、Contracts artifact/
+  materialization 2 suites / 10 tests 通过；Contracts/Platform/Worker typecheck、owned TS Biome、diff check 和 Trellis validate 通过。
+  Trellis 仍提示两份既有长文可能在自动注入时截断，本轮按已读完整规范执行，没有将自动注入视为完整阅读。
+- 扩大回归发现四个历史 E1 路由 fixture 缺少 `d3b8e408` 已要求的 output_usage；单独修复提交 `03643bc2`，6/6 通过，
+  严格运行时守卫未变。Formula 修复未覆盖该提交，也未修改旧 canary/attempt。
+- 下一步：scoped commit → 新 clean force build/attestation/full unit → fresh NAS 物理 scratch → 单次 ROAS 业务/QA/Trace canary。
+  通过后才能正常认证/Finalizer 激活 live E13、创建全新 attempt 从 L1 开始。live 仍 E12，production isolation=false/HOLD。
+
 **F6 READY 轮次恢复边界（2026-08-30，历史）**
 
 - `e676a450-5768-48d9-a264-ab7890fe0323` 的旧构建在 L1 前三题自动门禁 PASS 后，人工页面复核发现 Root 标签及失败

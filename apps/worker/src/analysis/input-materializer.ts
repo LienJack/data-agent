@@ -1,5 +1,6 @@
 import { createCipheriv, createHash, createHmac } from "node:crypto";
 import {
+  type AnalysisInputMaterializationReceipt,
   type ArtifactReference,
   artifactReferenceFor,
   artifactReferenceIdentity,
@@ -52,13 +53,7 @@ export interface AnalysisInputMaterializationCommand {
   readonly format: "ARROW";
   readonly content: Uint8Array;
   readonly row_count: number;
-  readonly columns: readonly {
-    readonly name: string;
-    readonly arrow_type: "UTF8" | "FLOAT64" | "BOOL" | "DATE32" | "TIMESTAMP_MS";
-    readonly nullable: boolean;
-    readonly semantic_role: "METRIC" | "DIMENSION";
-    readonly semantic_object_id: string;
-  }[];
+  readonly columns: Readonly<AnalysisInputMaterializationReceipt["columns"]>;
   readonly source_binding_hash: `sha256:${string}`;
   readonly spec_hash: `sha256:${string}`;
   readonly snapshot_receipt_hash: `sha256:${string}`;

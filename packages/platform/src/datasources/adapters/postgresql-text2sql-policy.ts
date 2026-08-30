@@ -1,3 +1,4 @@
+import type { SemanticFormulaExpression } from "@data-agent/contracts/artifacts";
 import { deparse, parse } from "pgsql-parser";
 
 export type PostgresqlText2SqlPolicyDiagnosticCode =
@@ -392,6 +393,250 @@ function collectPhysicalRangeAliases(
     collectPhysicalRangeAliases(value.JoinExpr.larg, aliases) &&
     collectPhysicalRangeAliases(value.JoinExpr.rarg, aliases)
   );
+}
+
+/** Exact expression proof for a selected published formula over one physical scan.
+ * CTE substitution, joins, casts and unsupported formula operators fail closed.
+ * Returns only the slots actually proven, never a query or a rewritten expression.
+ */
+export async function resolvePostgresqlFormulaProjectionSlots(input: {
+  readonly sql: string;
+  readonly parameters: readonly QueryParameter[];
+  readonly output_name: string;
+  readonly expression: SemanticFormulaExpression;
+  readonly slots: readonly {
+    readonly slot_id: string;
+    readonly physical_type: string;
+    readonly schema_name: string;
+    readonly relation_name: string;
+    readonly column_name: string;
+  }[];
+}): Promise<readonly string[] | null> {
+  let ast: unknown;
+  try {
+    ast = await parse(input.sql);
+  } catch {
+    return null;
+  }
+  if (!isRecord(ast) || !Array.isArray(ast.stmts) || ast.stmts.length !== 1) return null;
+  const raw = ast.stmts[0];
+  const select = isRecord(raw) && isRecord(raw.stmt) ? raw.stmt.SelectStmt : null;
+  if (
+    !isRecord(select) ||
+    !Array.isArray(select.fromClause) ||
+    !Array.isArray(select.targetList) ||
+    select.withClause
+  )
+    return null;
+  const aliases = new Map<
+    string,
+    { readonly schema_name: string; readonly relation_name: string }
+  >();
+  if (
+    select.fromClause.length !== 1 ||
+    wrappedNodeName(select.fromClause[0]) !== "RangeVar" ||
+    !collectPhysicalRangeAliases(select.fromClause[0], aliases) ||
+    aliases.size !== 1
+  )
+    return null;
+  const targets = select.targetList.flatMap((target) =>
+    isRecord(target) && isRecord(target.ResTarget) && target.ResTarget.name === input.output_name
+      ? [target.ResTarget.val]
+      : [],
+  );
+  if (targets.length !== 1) return null;
+  const used = new Set<string>();
+  // Identical arithmetic trees are not equivalent when PostgreSQL truncates integer division.
+  const fractional = (expression: SemanticFormulaExpression, depth = 0): boolean => {
+    if (depth > 64) return false;
+    switch (expression.kind) {
+      case "SLOT": {
+        const sources = input.slots.filter(({ slot_id }) => slot_id === expression.slot_id);
+        return (
+          sources.length > 0 &&
+          sources.every(({ physical_type }) =>
+            /^(?:numeric(?:\(\d+(?:,\s*-?\d+)?\))?|real|double precision)$/u.test(physical_type),
+          )
+        );
+      }
+      case "AGGREGATE":
+        if (expression.function === "AVG") return true;
+        if (!expression.input || !["SUM", "MIN", "MAX"].includes(expression.function)) return false;
+        if (expression.function === "SUM" && expression.input.kind === "SLOT") {
+          const slotId = expression.input.slot_id;
+          const sources = input.slots.filter(({ slot_id }) => slot_id === slotId);
+          if (
+            sources.length > 0 &&
+            sources.every(({ physical_type }) => physical_type === "bigint")
+          )
+            return true;
+        }
+        return fractional(expression.input, depth + 1);
+      case "BINARY":
+        return (
+          ["ADD", "SUBTRACT", "MULTIPLY", "DIVIDE"].includes(expression.operator) &&
+          (fractional(expression.left, depth + 1) || fractional(expression.right, depth + 1))
+        );
+      case "CASE":
+        return (
+          expression.branches.some(({ result }) => fractional(result, depth + 1)) ||
+          (expression.otherwise !== null && fractional(expression.otherwise, depth + 1))
+        );
+      default:
+        return false;
+    }
+  };
+  const match = (expected: SemanticFormulaExpression, actual: unknown, depth = 0): boolean => {
+    if (depth > 64 || !isRecord(actual)) return false;
+    switch (expected.kind) {
+      case "LITERAL": {
+        if (isRecord(actual.ParamRef)) {
+          const index = actual.ParamRef.number;
+          return (
+            typeof index === "number" &&
+            Number.isSafeInteger(index) &&
+            index > 0 &&
+            input.parameters[index - 1] === expected.value
+          );
+        }
+        if (!isRecord(actual.A_Const)) return false;
+        const value = actual.A_Const;
+        if (value.isnull === true) return expected.value === null;
+        if (isRecord(value.ival)) return (value.ival.ival ?? 0) === expected.value;
+        if (isRecord(value.fval) && typeof value.fval.fval === "string")
+          return Number(value.fval.fval) === expected.value;
+        if (isRecord(value.sval)) return (value.sval.sval ?? "") === expected.value;
+        if (isRecord(value.boolval)) return (value.boolval.boolval ?? false) === expected.value;
+        return false;
+      }
+      case "SLOT": {
+        if (!isRecord(actual.ColumnRef)) return false;
+        const fields = stringVector(actual.ColumnRef.fields);
+        if (fields?.length !== 2 || !fields[0]) return false;
+        const relation = aliases.get(fields[0]);
+        const sources = new Map(
+          input.slots
+            .filter((slot) => slot.slot_id === expected.slot_id)
+            .map((slot) => [
+              JSON.stringify([slot.schema_name, slot.relation_name, slot.column_name]),
+              slot,
+            ]),
+        );
+        const source = sources.values().next().value;
+        if (
+          sources.size !== 1 ||
+          !source ||
+          source.schema_name !== relation?.schema_name ||
+          source.relation_name !== relation.relation_name ||
+          source.column_name !== fields[1]
+        )
+          return false;
+        used.add(expected.slot_id);
+        return true;
+      }
+      case "BINARY": {
+        const node = actual.A_Expr;
+        const operator = {
+          ADD: "+",
+          SUBTRACT: "-",
+          MULTIPLY: "*",
+          DIVIDE: "/",
+          EQ: "=",
+          NEQ: "<>",
+          GT: ">",
+          GTE: ">=",
+          LT: "<",
+          LTE: "<=",
+        }[expected.operator];
+        return (
+          isRecord(node) &&
+          node.kind === "AEXPR_OP" &&
+          stringVector(node.name)?.join(".") === operator &&
+          (expected.operator !== "DIVIDE" ||
+            fractional(expected.left) ||
+            fractional(expected.right)) &&
+          match(expected.left, node.lexpr, depth + 1) &&
+          match(expected.right, node.rexpr, depth + 1)
+        );
+      }
+      case "AGGREGATE": {
+        const node = actual.FuncCall;
+        if (
+          !isRecord(node) ||
+          node.over ||
+          node.agg_order ||
+          node.agg_star ||
+          node.agg_within_group ||
+          !expected.input ||
+          !Array.isArray(node.args) ||
+          node.args.length !== 1
+        )
+          return false;
+        const name =
+          expected.function === "COUNT_DISTINCT" ? "count" : expected.function.toLowerCase();
+        return (
+          normalizedPrimitiveName(node.funcname) === name &&
+          Boolean(node.agg_distinct) ===
+            (expected.distinct || expected.function === "COUNT_DISTINCT") &&
+          match(expected.input, node.args[0], depth + 1) &&
+          (expected.filter
+            ? match(expected.filter, node.agg_filter, depth + 1)
+            : node.agg_filter === undefined)
+        );
+      }
+      case "CASE": {
+        const node = actual.CaseExpr;
+        if (
+          !isRecord(node) ||
+          node.arg ||
+          !Array.isArray(node.args) ||
+          node.args.length !== expected.branches.length
+        )
+          return false;
+        const branches = node.args;
+        return (
+          expected.branches.every((branch, index) => {
+            const wrapped = branches[index];
+            const item = isRecord(wrapped) ? wrapped.CaseWhen : null;
+            return (
+              isRecord(item) &&
+              match(branch.when, item.expr, depth + 1) &&
+              match(branch.result, item.result, depth + 1)
+            );
+          }) &&
+          (expected.otherwise
+            ? match(expected.otherwise, node.defresult, depth + 1)
+            : node.defresult === undefined)
+        );
+      }
+      case "BOOLEAN": {
+        const node = actual.BoolExpr;
+        if (
+          !isRecord(node) ||
+          node.boolop !== `${expected.operator}_EXPR` ||
+          !Array.isArray(node.args) ||
+          node.args.length !== expected.operands.length
+        )
+          return false;
+        const args = node.args;
+        return expected.operands.every((operand, index) => match(operand, args[index], depth + 1));
+      }
+      case "NOT": {
+        const node = actual.BoolExpr;
+        return (
+          isRecord(node) &&
+          node.boolop === "NOT_EXPR" &&
+          Array.isArray(node.args) &&
+          node.args.length === 1 &&
+          match(expected.operand, node.args[0], depth + 1)
+        );
+      }
+      case "DATE_BUCKET":
+      case "GROUP_COUNT":
+        return false;
+    }
+  };
+  return match(input.expression, targets[0]) && used.size > 0 ? [...used].sort() : null;
 }
 
 /**
