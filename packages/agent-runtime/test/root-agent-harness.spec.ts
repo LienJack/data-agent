@@ -40,6 +40,19 @@ async function catalog(profileIds: readonly string[]) {
 }
 
 describe("Root Agent Harness", () => {
+  it("supplies the executable final-answer schema for AUTO text completion", async () => {
+    const message = await buildRootAgentSystemMessage(await catalog(["semantic-management-agent"]));
+    const prefix = "Root final-answer JSON Schema: ";
+    const schemaLine = message.split("\n").find((line) => line.startsWith(prefix));
+    expect(schemaLine).toBeDefined();
+    expect(JSON.parse(schemaLine?.slice(prefix.length) ?? "null")).toEqual(
+      z.toJSONSchema(rootAgentFinalAnswerOutputSchema),
+    );
+    expect(message).toContain("a possible future user request is not remaining work");
+    expect(message).toContain("Do not emit a placeholder or no-op delegation");
+    expect(message).toContain("CONTINUATION_INPUT does not force another delegation");
+  });
+
   it("allows a terminal answer to cite the accepted AnalysisReport", () => {
     expect(
       rootAgentFinalAnswerOutputSchema.safeParse({

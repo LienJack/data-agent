@@ -1513,7 +1513,27 @@ Diagnostic/Q1/C1任一正式首次失败必须写既有 authority支持的 immut
   细节和五维分析见 `research/e13-undeclared-temporal-selection.md`。下一步 scoped commit、新 clean build/fresh scratch，
   通过后 fresh live E13/15 回合；旧 E12 与两个 E13 failed canary 均只作为历史，不拼接 PASS。
 
+**E13 正式首题失败与 Root AUTO 输出修复（2026-08-31）**
+
+- `bb23f0bb` force build 9/9、full single-concurrent unit gate 15/15（12 cached）通过；fresh scratch 55466 的
+  canary Run `f239cfd4-6821-8bb6-b5e9-0fe14231b252` 四渠道全量 oracle PASS，QA/Trace PASS。
+  两次只读 UI 验证 harness 失败记录保留：先允许合法 terminal FAILED 活动，再等待实际 chart hydration；未重提问题。
+- 正常认证/Finalizer 激活 live E13 baseline `1f2a0b86-0fb2-5f9e-b52c-fa6ade84a7a3`。此前物理备份
+  `data-agent-falcon24-e12-pre-e13-bb23f0bb-backup` 已校验、never-started；347 表指纹及 ledger 审计保留。
+- fresh formal attempt `c31efada-c780-43dc-8151-e8167db5af9e` 首题 Run
+  `8ef759dc-cbd8-8132-8df3-a8ba87e6ac16` FAILED/49 events，business=FALCON24_RUN_FAILED，QA/Trace=null，
+  后续14题未提交。Semantic-only 之后 Root 产生无效 Text2SQL 调用；已封存不可变 FAIL 并停止临时服务/browser/auth vault。
+- 对照 E12 数据请求反例，不撤销 continuation 守卫。离线复现并修复 AUTO 无工具返回 text、结束分支却读取 object 的缺陷；
+  完整最终答案 Schema 从原 Zod 定义派生，明确 output_usage 只针对当前请求。Root 下一正常轮仍可自主 final，Host 不改观察。
+- Agent Runtime unit 27 suites/170 tests、真实 pinned Mastra offline integration 26/26、Worker providers/teams
+  27 suites/195 tests、Agent Runtime/Worker typecheck 通过；TDD 正向 JSON 与 prompt schema 均先 RED 后 GREEN。
+  细节见 `research/root-auto-final-answer-completion.md`，UNKNOWN 的具体原因不作超出证据的归因。
+- 下一步：scoped commit → clean force build/attestation/full unit → fresh NAS scratch 同时验证 semantic-only 与 ROAS →
+  使用 E13 首个失败 turn 的真实 receipt 正常激活 E14 → fresh 15 回合从 L1 开始。production isolation=false/HOLD，任务 ACTIVE。
+
 **F6 READY 轮次恢复边界（2026-08-30，历史）**
+
+> 以下为历史记录；当前 forward recovery 已到 E13 FAILED，下一 fresh epoch 为 E14，见上一节。
 
 - `e676a450-5768-48d9-a264-ab7890fe0323` 的旧构建在 L1 前三题自动门禁 PASS 后，人工页面复核发现 Root 标签及失败
   Specialist 活动未闭合；`6443b8a2`、`6d163113` 修复前后端，并加强真实 DOM gate。原收据保留为历史，不能拼入新构建 PASS。

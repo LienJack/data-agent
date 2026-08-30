@@ -21,7 +21,13 @@ import {
 const id = (suffix: number) => `81000000-0000-4000-8000-${String(suffix).padStart(12, "0")}`;
 const outputUsages = ["FINAL_ANSWER_EVIDENCE", "CONTINUATION_INPUT"] as const;
 const outputUsageCases = outputUsages.flatMap((semanticUsage) =>
-  outputUsages.map((reportUsage) => ({ semanticUsage, reportUsage })),
+  outputUsages.flatMap((reportUsage) =>
+    (semanticUsage === "CONTINUATION_INPUT" ? [false, true] : [false]).map((providerCompletes) => ({
+      semanticUsage,
+      reportUsage,
+      providerCompletes,
+    })),
+  ),
 );
 
 describe("Root Agent normal turn", () => {
@@ -117,8 +123,8 @@ describe("Root Agent normal turn", () => {
     ).toBeNull();
   });
 
-  it.each(outputUsageCases)("usage: $semanticUsage / $reportUsage", async (usage) => {
-    const { semanticUsage, reportUsage } = usage;
+  it.each(outputUsageCases)("$semanticUsage/$reportUsage/$providerCompletes", async (usage) => {
+    const { semanticUsage, reportUsage, providerCompletes } = usage;
     const scope = { app_id: id(1), tenant_id: id(2), environment: "test" } as const;
     const runId = id(3);
     const principalId = id(4);
@@ -274,14 +280,35 @@ describe("Root Agent normal turn", () => {
       content_hash: `sha256:${"e".repeat(64)}`,
     };
     if (semanticUsage === "CONTINUATION_INPUT") {
-      invoke.mockResolvedValueOnce({
-        ok: false,
-        error: {
-          code: "NEXT_ROOT_ACTION_REQUIRED",
-          message: "Continue from accepted semantic input.",
-          retryable: false,
-        },
-      });
+      invoke.mockResolvedValueOnce(
+        providerCompletes
+          ? {
+              ok: true,
+              value: {
+                output_text: JSON.stringify({
+                  kind: "FINAL_ANSWER",
+                  sections: [
+                    {
+                      kind: "ARTIFACT_FACTS",
+                      artifact_ref: semanticArtifactRef,
+                      fact_selectors: ["projection.context.quality_constraints"],
+                    },
+                  ],
+                  public_summary: "Accepted facts complete the current request.",
+                }),
+                tool_calls: [],
+                projection: {},
+              },
+            }
+          : {
+              ok: false,
+              error: {
+                code: "NEXT_ROOT_ACTION_REQUIRED",
+                message: "Continue from accepted semantic input.",
+                retryable: false,
+              },
+            },
+      );
     }
     const terminalSemanticResult = await createRootAgentTurnExecutor().decide(
       {
@@ -329,10 +356,21 @@ describe("Root Agent normal turn", () => {
       },
     );
     if (semanticUsage === "CONTINUATION_INPUT") {
-      expect(terminalSemanticResult).toMatchObject({
-        ok: false,
-        error: { code: "NEXT_ROOT_ACTION_REQUIRED" },
-      });
+      expect(terminalSemanticResult).toMatchObject(
+        providerCompletes
+          ? {
+              ok: true,
+              value: {
+                kind: "FINAL_ANSWER",
+                sections: [{ kind: "ARTIFACT_FACTS", artifact_ref: semanticArtifactRef }],
+                public_summary: "Accepted facts complete the current request.",
+              },
+            }
+          : {
+              ok: false,
+              error: { code: "NEXT_ROOT_ACTION_REQUIRED" },
+            },
+      );
       expect(invoke.mock.calls[1]?.[0]).toMatchObject({
         turn: {
           turn_index: 2,
@@ -354,7 +392,10 @@ describe("Root Agent normal turn", () => {
         value: expect.objectContaining({
           kind: "FINAL_ANSWER",
           sections: [
-            expect.objectContaining({ kind: "ARTIFACT_FACTS", artifact_ref: semanticArtifactRef }),
+            expect.objectContaining({
+              kind: "ARTIFACT_FACTS",
+              artifact_ref: semanticArtifactRef,
+            }),
           ],
         }),
       });

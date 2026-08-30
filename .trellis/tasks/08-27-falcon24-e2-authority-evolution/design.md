@@ -1477,3 +1477,17 @@ JOIN/FILTER/CASE 里的时间选择必须声明窗口，派生 alias/布尔列�
 
 新 clean build 后使用 fresh physical scratch 重做原题全量 oracle；不能变更 oracle 去迎合不完整结果，也不能重用
 失败 build 的 PASS。只有业务、QA、Trace 均通过才允许正常 live E13 activation 与从 L1 开始的全新正式 attempt。
+
+### 25.11 Root AUTO 最终答案的文本闭包
+
+`bb23f0bb` scratch ROAS 已通过全量业务、QA 与 Trace；正常 live E13 激活后，正式首题 semantic-only 失败。
+E13 attempt `c31efada-c780-43dc-8151-e8167db5af9e`/Run `8ef759dc-cbd8-8132-8df3-a8ba87e6ac16`
+封存为 FAILED，后续 14 题未提交。与 E12 ROAS 反例对照，两者都是 CONTINUATION_INPUT + SEMANTIC_FACTS_ONLY，
+不能让专职任务范围覆盖整个请求的 continuation。
+
+修复位于已有 Root/Provider 边界：AUTO 无工具输出从 text 严格解析，再走同一 Response Schema；原生工具、REQUIRED、
+无可选工具的 structured-output 分支保持不变。Root 从可执行 Schema 获得完整最终答案格式，usage 只针对当前请求，
+不得为假想未来问题继续执行或生成 no-op 工具调用。下一轮 Root 可自主用已验收事实结束，Host 不替它改变先前 usage。
+
+离线证明不代替业务验证。新 clean build 必须在 fresh NAS scratch 同时验证 semantic-only 与真实 ROAS 请求，
+再以 E13 的真实失败 receipt 正常前向激活 E14；E14 fresh attempt 从 L1 重做 15 回合，不能复用 E13 通过项。

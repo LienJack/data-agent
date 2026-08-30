@@ -760,6 +760,62 @@ describe("Mastra execution bridge integration", () => {
   );
 
   it.each([
+    { name: "valid", text: ' {"summary":"accepted facts","confidence":1}\n', valid: true },
+    { name: "invalid JSON", text: "not JSON", valid: false },
+    { name: "wrong schema", text: '{"summary":7,"confidence":1}', valid: false },
+    { name: "extra field", text: '{"summary":"ok","confidence":1,"extra":true}', valid: false },
+    { name: "trailing prose", text: '{"summary":"ok","confidence":1} done', valid: false },
+    { name: "markdown fence", text: '```json\n{"summary":"ok","confidence":1}\n```', valid: false },
+    { name: "empty", text: "", valid: false },
+  ])("validates an AUTO no-tool response from text ($name)", async ({ text, valid }) => {
+    const binding = getModelProviderBinding("openai");
+    const bridge = createMastraModelExecutionBridgeForTesting({
+      credential_resolver: { resolve: async () => "offline-placeholder-credential" },
+      tool_registry: new ServerOwnedToolRegistry([
+        {
+          tool_name: "semantic-query@1",
+          description: "Produce a governed query candidate only when needed.",
+          input_schema: z.strictObject({ metric: z.string() }),
+        },
+      ]),
+      response_schema_registry: responseSchemaRegistry,
+      input_token_counter: trustedInputTokenCounter,
+      tool_choice_policy: "AUTO",
+      runtime_model_factory: () =>
+        createOfflineStructuredModel(binding, {
+          output_text: text,
+          usage: validProviderUsage,
+        }),
+    });
+    const events = [];
+    for await (const event of new MastraModelProviderAdapter({
+      bridge,
+      dispatch_marker: { mark_dispatched: async () => undefined },
+      authorization: "LEGACY_TEST_ONLY",
+    }).stream(
+      await makeInvocation(binding, {
+        tool_allowlist: ["semantic-query@1"],
+        max_tool_calls: 1,
+      }),
+    )) {
+      events.push(event);
+    }
+    expect(events.filter((event) => event.event_type === "TOOL_CALL_CANDIDATE")).toEqual([]);
+    expect(events.at(-1)).toMatchObject(
+      valid
+        ? {
+            event_type: "COMPLETED",
+            output_text: '{"confidence":1,"summary":"accepted facts"}',
+          }
+        : {
+            event_type: "FAILED",
+            reason_code: "MODEL_STREAM_PROTOCOL_VIOLATION",
+            retryable: false,
+          },
+    );
+  });
+
+  it.each([
     {
       policy: undefined,
       expectedToolChoice: { type: "required" },

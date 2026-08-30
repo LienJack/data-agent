@@ -34,6 +34,11 @@ Root turn 0..3 (AUTO)
 - Root uses the catalog's semantic `description/when_to_use/when_not_to_use/examples` and is the only component allowed to choose a Profile。
 - Root direct answers are limited to `GENERAL_TEXT` based on general knowledge or visible user messages. Workspace facts, semantic definitions/relationships, aggregates, rankings, trends, rows and charts require delegation or accepted Artifact evidence。
 - Root uses server-owned `toolChoice=AUTO` for at most four normal turns. Each turn decides only the current next action or final answer; there is no dedicated review stage or predeclared future call chain。
+- AUTO 且有可选工具时不启用 Mastra `structuredOutput`；若实际没有 native Tool Call，必须严格解析完整 `fullOutput.text`
+  为 JSON，再用同一注册 Response Schema 验证/规范化。不得读取未生成的 `fullOutput.object`、剥除 Markdown/prose，
+  或通过伪 Tool Call 包装最终答案。REQUIRED/无可用工具的 structured-output 路径不变。
+- Root system message 从实际 `rootAgentFinalAnswerOutputSchema` 派生完整 JSON Schema，不能只给 `sections:[...]` 占位形状。
+  Schema 进入原 message projection/hash/token preflight；不另设模型输出或答案权威。
 - 最后一次正常模型决策可以委派产出最终证据。其已验收 `FINAL_ANSWER_EVIDENCE` 在四次决策预算之外仍须通过既有
   Host answer verifier 进行纯确定性收敛；这不是第五次 Root/model/tool 决策，不增加任何模型或工具调用预算。
   先保存 `turn_index=4, terminal=false` 的最终证据 checkpoint，再验收并保存终态。中断恢复只重复幂等答案验收，
@@ -45,6 +50,9 @@ Root turn 0..3 (AUTO)
   `answer_scope=SEMANTIC_FACTS_ONLY`。后者仅描述此次专职任务的回答范围，不能覆盖 Root 对整个用户请求的继续执行约定。
   `CONTINUATION_INPUT` 即使包含完整定义且没有歧义，也必须原样返回下一次 Root 决策；失败后恢复同样适用，不得删除旧失败观察。
   必须交叉测试 Semantic/Report 的两种 usage，证明 continuation 会调用下一次 Root，而 semantic-only final 不额外调用模型。
+- `output_usage` 只衡量当前请求的剩余工作，不能为用户未来可能查询数据预留 continuation。之前的 continuation 不强制下一轮
+  再委派：Root 仍可自主输出引用 accepted Artifact 的 FINAL_ANSWER，原观察及 Host verifier 不变。不得用 `answer_scope`
+  覆盖 continuation，或通过关键词/placeholder 过滤器代替 Root 决策。
 - Specialist Provider logical call identity必须绑定 exact `run_id + accepted child task_id + stage + call_index`。同一 task的同一
   call replay仍拒绝重复；不同 Root turn创建的不同 child task即使选择相同 Profile/stage也不得碰撞。`call_index`只表示同一
   task内部的有界候选修复，不能替代 task identity。
@@ -164,6 +172,8 @@ The only model output contract is `text2sql-query-candidate@1.0.0`:
 ## 9. Required Tests
 
 - Root Harness: direct answer, native single delegation, cross-turn serial delegation, same-turn independent calls, safe Tool Result feedback, verifier feedback, mixed response rejection, four-turn exhaustion and durable replay；另覆盖同 task replay仍duplicate、跨 turn不同 child task的相同 Specialist stage不碰撞、repair index分域。
+- Pinned Mastra bridge 离线集成同时覆盖 AUTO native Tool 与 AUTO 无工具文本；合法 JSON 完成、非法 JSON/未知字段/prose/fence/空文本拒绝。
+  Prompt 的 JSON Schema 必须等于可执行 Schema。continuation 后 Root 自主 final 与继续执行两条路径都需回归，不能只 mock 最终成功。
 - 四次串行委派后的 QueryEvidence/AnalysisReport 确定性收敛、continuation 仍耗尽、verifier 拒绝、最终证据 checkpoint 恢复及终态 replay；断言 Root 决策始终四次、恢复不重跑工具。
 - V2 Profile materialization/admission: exact revision/hash/tool/Skill closure; V1 and stale revision rejection。
 - Semantic: strict selection intent, exact release/projection/hash/resource binding, metric/formula/dependency, dimension/grain/parent, relationship/join/cardinality, time/restriction, ambiguity, semantic-only final and no SQL execution。

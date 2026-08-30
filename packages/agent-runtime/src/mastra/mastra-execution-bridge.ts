@@ -640,10 +640,26 @@ class MastraExecutionBridge implements ModelExecutionBridge {
     }
 
     const usage = normalizeUsage(fullOutput.totalUsage);
-    const outputText =
-      usesToolCalling && observedToolCalls > 0
-        ? (fullOutput.text ?? "")
-        : canonicalizeStructuredOutput(responseSchema, fullOutput.object);
+    let outputText: string;
+    if (usesToolCalling && observedToolCalls > 0) {
+      outputText = fullOutput.text ?? "";
+    } else if (usesToolCalling && this.#serverToolChoicePolicy === "AUTO") {
+      // AUTO deliberately omits Mastra structuredOutput so native tools remain
+      // optional. Its no-tool branch therefore has text, not a parsed object.
+      let candidate: unknown;
+      try {
+        candidate = JSON.parse(fullOutput.text ?? "");
+      } catch {
+        throw new MastraExecutionError(
+          "MODEL_STREAM_PROTOCOL_VIOLATION",
+          false,
+          "AUTO 无工具响应必须是完整 JSON。",
+        );
+      }
+      outputText = canonicalizeStructuredOutput(responseSchema, candidate);
+    } else {
+      outputText = canonicalizeStructuredOutput(responseSchema, fullOutput.object);
+    }
     yield {
       chunk_type: "COMPLETED",
       output_text: outputText,
