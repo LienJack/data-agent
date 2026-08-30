@@ -207,6 +207,107 @@ function validSortExpression(value: unknown): boolean {
   return typeName !== null && temporalSortCastTypes.has(typeName) && cast.typeName.typemod === -1;
 }
 
+function collectPhysicalRangeAliases(
+  value: unknown,
+  aliases: Map<string, { readonly schema_name: string; readonly relation_name: string }>,
+): boolean {
+  const nodeName = wrappedNodeName(value);
+  if (nodeName === "RangeVar" && isRecord(value)) {
+    const range = value.RangeVar;
+    if (
+      !isRecord(range) ||
+      typeof range.schemaname !== "string" ||
+      typeof range.relname !== "string" ||
+      !isRecord(range.alias) ||
+      typeof range.alias.aliasname !== "string" ||
+      aliases.has(range.alias.aliasname)
+    ) {
+      return false;
+    }
+    aliases.set(range.alias.aliasname, {
+      schema_name: range.schemaname,
+      relation_name: range.relname,
+    });
+    return true;
+  }
+  if (nodeName !== "JoinExpr" || !isRecord(value) || !isRecord(value.JoinExpr)) return false;
+  return (
+    collectPhysicalRangeAliases(value.JoinExpr.larg, aliases) &&
+    collectPhysicalRangeAliases(value.JoinExpr.rarg, aliases)
+  );
+}
+
+/**
+ * Proves that row-level physical bindings describe exact outer SELECT column projections.
+ * Calculations, CTE pass-throughs, unqualified fields, and alias drift fail closed instead of
+ * borrowing a physical column's provenance for a different expression.
+ */
+export async function hasExactPostgresqlPhysicalColumnProjections(input: {
+  readonly sql: string;
+  readonly columns: readonly {
+    readonly output_name: string;
+    readonly schema_name: string;
+    readonly relation_name: string;
+    readonly column_name: string;
+  }[];
+}): Promise<boolean> {
+  if (input.columns.length === 0) return true;
+  let ast: unknown;
+  try {
+    ast = await parse(input.sql);
+  } catch {
+    return false;
+  }
+  if (!isRecord(ast) || !Array.isArray(ast.stmts) || ast.stmts.length !== 1) return false;
+  const raw = ast.stmts[0];
+  if (!isRecord(raw) || wrappedNodeName(raw.stmt) !== "SelectStmt" || !isRecord(raw.stmt)) {
+    return false;
+  }
+  const select = raw.stmt.SelectStmt;
+  if (!isRecord(select) || !Array.isArray(select.targetList) || !Array.isArray(select.fromClause)) {
+    return false;
+  }
+  const aliases = new Map<
+    string,
+    { readonly schema_name: string; readonly relation_name: string }
+  >();
+  if (select.fromClause.some((relation) => !collectPhysicalRangeAliases(relation, aliases))) {
+    return false;
+  }
+  const targets = new Map<string, JsonRecord>();
+  for (const wrappedTarget of select.targetList) {
+    if (wrappedNodeName(wrappedTarget) !== "ResTarget" || !isRecord(wrappedTarget)) return false;
+    const target = wrappedTarget.ResTarget;
+    if (
+      !isRecord(target) ||
+      typeof target.name !== "string" ||
+      !isRecord(target.val) ||
+      targets.has(target.name)
+    ) {
+      return false;
+    }
+    targets.set(target.name, target.val);
+  }
+  return input.columns.every((column) => {
+    let expression: unknown = targets.get(column.output_name);
+    if (wrappedNodeName(expression) === "TypeCast" && isRecord(expression)) {
+      const cast = expression.TypeCast;
+      if (!isRecord(cast)) return false;
+      expression = cast.arg;
+    }
+    if (wrappedNodeName(expression) !== "ColumnRef" || !isRecord(expression)) return false;
+    const reference = expression.ColumnRef;
+    if (!isRecord(reference)) return false;
+    const fields = stringVector(reference.fields);
+    if (fields?.length !== 2 || fields[1] !== column.column_name) return false;
+    const relation = aliases.get(fields[0] as string);
+    return (
+      relation?.schema_name === column.schema_name &&
+      relation.relation_name === column.relation_name
+    );
+  });
+}
+
 function literalValue(node: JsonRecord): QueryParameter {
   if (node.isnull === true) return null;
   if (isRecord(node.ival) && typeof node.ival.ival === "number") {

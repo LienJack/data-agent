@@ -73,7 +73,7 @@ async function documents(input?: {
     readonly name: string;
     readonly logical_type: "NUMBER" | "STRING" | "DATE" | "DATETIME" | "BOOLEAN";
     readonly nullable: boolean;
-    readonly semantic_role: "METRIC" | "DIMENSION";
+    readonly semantic_role: "METRIC" | "DIMENSION" | "PHYSICAL_COLUMN";
     readonly semantic_object_id: string;
   }[];
 }) {
@@ -224,6 +224,27 @@ const request = {
 };
 
 describe("Product Team governed analysis query port", () => {
+  it("rejects row-level physical-column evidence before analysis materialization", async () => {
+    const fixture = await harness({
+      columns: [{ key: "order_id", label: "订单编号", data_type: "STRING" }],
+      rows: [{ order_id: "order-1" }],
+      bindings: [
+        {
+          name: "order_id",
+          logical_type: "STRING",
+          nullable: false,
+          semantic_role: "PHYSICAL_COLUMN",
+          semantic_object_id: "column.orders.order_id",
+        },
+      ],
+    });
+
+    await expect(fixture.port.execute(request)).rejects.toThrow(
+      "ANALYSIS_QUERY_EVIDENCE_PHYSICAL_COLUMN_UNSUPPORTED",
+    );
+    expect(fixture.materialize).not.toHaveBeenCalled();
+  });
+
   it.each([
     {
       shape: "single-series",

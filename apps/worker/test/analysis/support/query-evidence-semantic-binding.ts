@@ -8,7 +8,7 @@ export async function buildTestQueryEvidenceSemanticBinding(input: {
     readonly name: string;
     readonly logical_type: "NUMBER" | "STRING" | "DATE" | "DATETIME" | "BOOLEAN";
     readonly nullable: boolean;
-    readonly semantic_role: "METRIC" | "DIMENSION";
+    readonly semantic_role: "METRIC" | "DIMENSION" | "PHYSICAL_COLUMN";
     readonly semantic_object_id: string;
     readonly grain?: {
       readonly grain_id: string;

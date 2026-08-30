@@ -171,6 +171,13 @@ export function createProductTeamGovernedAnalysisQueryPort(input: {
         query_evidence_document: evidence,
       });
       const binding = evidenceShape.semantic_binding;
+      const analysisColumns = binding.columns.filter(
+        (column): column is typeof column & { readonly semantic_role: "METRIC" | "DIMENSION" } =>
+          column.semantic_role !== "PHYSICAL_COLUMN",
+      );
+      if (analysisColumns.length !== binding.columns.length) {
+        throw new TypeError("ANALYSIS_QUERY_EVIDENCE_PHYSICAL_COLUMN_UNSUPPORTED");
+      }
       if (
         canonicalizeJson({
           semantic_release_ref: binding.semantic_release_ref,
@@ -200,7 +207,7 @@ export function createProductTeamGovernedAnalysisQueryPort(input: {
       ) {
         throw new TypeError("ANALYSIS_QUERY_EVIDENCE_AUTHORITY_RESOLUTION_INVALID");
       }
-      const arrow = materializeProductTeamArrow(evidence.projection, binding.columns);
+      const arrow = materializeProductTeamArrow(evidence.projection, analysisColumns);
       const specHash = await sha256ContentHash({
         schema_version: "product-team-analysis-input-spec@2.0.0",
         semantic_binding_hash: binding.binding_hash,
@@ -208,7 +215,7 @@ export function createProductTeamGovernedAnalysisQueryPort(input: {
         sql_artifact_ref: sqlRef,
         result_hash: evidenceShape.result_hash,
         row_count: evidenceShape.row_count,
-        columns: binding.columns,
+        columns: analysisColumns,
       });
       const governed = await input.materializer.materialize({
         lease: request.lease,
@@ -219,7 +226,7 @@ export function createProductTeamGovernedAnalysisQueryPort(input: {
         format: "ARROW",
         content: arrow,
         row_count: evidenceShape.row_count,
-        columns: binding.columns.map((column) => ({
+        columns: analysisColumns.map((column) => ({
           name: column.output_name,
           arrow_type:
             column.logical_type === "NUMBER"

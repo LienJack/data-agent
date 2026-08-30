@@ -76,8 +76,9 @@ async function physicalSnapshot(orderDateType: "date" | "text" = "date") {
           relation_kind: "TABLE",
           comment: null,
           columns: [
-            column("order_date", 1, orderDateType, orderDateType, false),
-            column("amount", 2, "numeric", "numeric", true),
+            column("order_id", 1, "text", "text", false),
+            column("order_date", 2, orderDateType, orderDateType, false),
+            column("amount", 3, "numeric", "numeric", true),
           ],
           primary_key: null,
           foreign_keys: [],
@@ -93,7 +94,11 @@ async function physicalSnapshot(orderDateType: "date" | "text" = "date") {
 async function semanticContext(
   snapshot: Awaited<ReturnType<typeof physicalSnapshot>>,
 ): Promise<SemanticContextCommitResult> {
-  const selectedObjectIds = ["dimension.order_month", "metric.order_revenue"];
+  const selectedObjectIds = [
+    "column.orders.order_id",
+    "dimension.order_month",
+    "metric.order_revenue",
+  ];
   const retrievalReceipt = await buildSemanticRetrievalReceipt({
     schema_version: "semantic-retrieval-receipt@1.0.0",
     authority_snapshot_hash: hash("e"),
@@ -185,8 +190,8 @@ async function semanticContext(
       policy_version: "utf8-byte-upper-bound@1.0.0",
       max_context_tokens: 4096,
       max_context_bytes: 4096,
-      mandatory_bytes: 128,
-      included_bytes: 128,
+      mandatory_bytes: selectedObjectIds.length * 64,
+      included_bytes: selectedObjectIds.length * 64,
       cropped_bytes: 0,
       items: selectedObjectIds.map((objectId) => ({
         item_kind: objectId.startsWith("metric.") ? ("METRIC" as const) : ("ONTOLOGY" as const),
@@ -299,6 +304,17 @@ function semanticCatalog() {
       formulas: [],
       physical_bindings: [
         {
+          logical_object_id: "column.orders.order_id",
+          logical_object_type: "column" as const,
+          datasource_id: datasourceId,
+          schema_name: "public",
+          table_name: "orders",
+          column_name: "order_id",
+          binding_lifecycle: "active" as const,
+          valid_from: null,
+          valid_until: null,
+        },
+        {
           logical_object_id: "column.orders.amount",
           logical_object_type: "column" as const,
           datasource_id: datasourceId,
@@ -401,6 +417,218 @@ async function fixture(orderDateType: "date" | "text" = "date") {
 }
 
 describe("PostgreSQL QueryEvidence semantic binding", () => {
+  it("binds selected row-level physical columns to the exact published binding and snapshot", async () => {
+    const input = await fixture();
+    const physicalCandidate: Text2SqlQueryCandidate = {
+      schema_version: "text2sql-query-candidate@1.0.0",
+      sql: "select o.order_id as order_id, o.order_date as order_date, o.amount as order_amount from public.orders o order by o.order_date desc limit $1",
+      parameters: [10],
+      result_columns: [
+        {
+          name: "order_id",
+          semantic_type: "STRING",
+          label: "订单编号",
+          semantic_binding: {
+            object_kind: "PHYSICAL_COLUMN",
+            object_id: "column.orders.order_id",
+          },
+        },
+        {
+          name: "order_date",
+          semantic_type: "DATE",
+          label: "下单日期",
+          semantic_binding: {
+            object_kind: "PHYSICAL_COLUMN",
+            object_id: "column.orders.order_date",
+          },
+        },
+        {
+          name: "order_amount",
+          semantic_type: "NUMBER",
+          label: "订单金额",
+          semantic_binding: {
+            object_kind: "PHYSICAL_COLUMN",
+            object_id: "column.orders.amount",
+          },
+        },
+      ],
+      time_window: null,
+      presentation: {
+        title: "最近 10 笔订单",
+        summary: "按下单日期倒序返回 10 笔订单。",
+        visualization: "TABLE",
+        x_key: null,
+        y_keys: [],
+      },
+    };
+
+    const binding = await buildPostgresqlQueryEvidenceSemanticBinding({
+      ...input,
+      candidate: physicalCandidate,
+      result: await queryResult([
+        { name: "order_id", type: "25" },
+        { name: "order_date", type: "1082" },
+        { name: "order_amount", type: "1700" },
+      ]),
+    });
+
+    expect(binding.columns).toMatchObject([
+      {
+        semantic_role: "PHYSICAL_COLUMN",
+        semantic_object_id: "column.orders.order_id",
+        logical_type: "STRING",
+        aggregate: null,
+        formula_hash: null,
+      },
+      {
+        semantic_role: "PHYSICAL_COLUMN",
+        semantic_object_id: "column.orders.order_date",
+        logical_type: "DATE",
+        aggregate: null,
+        formula_hash: null,
+      },
+      {
+        semantic_role: "PHYSICAL_COLUMN",
+        semantic_object_id: "column.orders.amount",
+        logical_type: "NUMBER",
+        aggregate: null,
+        formula_hash: null,
+      },
+    ]);
+  });
+
+  it("binds a selected text-backed physical date only through an explicit temporal cast", async () => {
+    const input = await fixture("text");
+    const binding = await buildPostgresqlQueryEvidenceSemanticBinding({
+      ...input,
+      candidate: {
+        schema_version: "text2sql-query-candidate@1.0.0",
+        sql: "select o.order_date::pg_catalog.date as order_date from public.orders o order by o.order_date::pg_catalog.timestamp desc limit $1",
+        parameters: [10],
+        result_columns: [
+          {
+            name: "order_date",
+            semantic_type: "DATE",
+            label: "下单日期",
+            semantic_binding: {
+              object_kind: "PHYSICAL_COLUMN",
+              object_id: "column.orders.order_date",
+            },
+          },
+        ],
+        time_window: null,
+        presentation: {
+          title: "最近订单日期",
+          summary: "按下单日期倒序。",
+          visualization: "TABLE",
+          x_key: null,
+          y_keys: [],
+        },
+      },
+      result: await queryResult([{ name: "order_date", type: "1082" }]),
+    });
+
+    expect(binding.columns[0]).toMatchObject({
+      semantic_role: "PHYSICAL_COLUMN",
+      semantic_object_id: "column.orders.order_date",
+      logical_type: "DATE",
+    });
+  });
+
+  it("rejects an uncast text-backed physical date declaration", async () => {
+    const input = await fixture("text");
+    await expect(
+      buildPostgresqlQueryEvidenceSemanticBinding({
+        ...input,
+        candidate: {
+          schema_version: "text2sql-query-candidate@1.0.0",
+          sql: "select o.order_date as order_date from public.orders o order by o.order_date desc limit $1",
+          parameters: [10],
+          result_columns: [
+            {
+              name: "order_date",
+              semantic_type: "DATE",
+              label: "下单日期",
+              semantic_binding: {
+                object_kind: "PHYSICAL_COLUMN",
+                object_id: "column.orders.order_date",
+              },
+            },
+          ],
+          time_window: null,
+          presentation: {
+            title: "最近订单日期",
+            summary: "按下单日期倒序。",
+            visualization: "TABLE",
+            x_key: null,
+            y_keys: [],
+          },
+        },
+        result: await queryResult([{ name: "order_date", type: "1082" }]),
+      }),
+    ).rejects.toMatchObject({ code: "QUERY_EVIDENCE_PHYSICAL_BINDING_INVALID" });
+  });
+
+  it("rejects a computed expression masquerading as a row-level physical column", async () => {
+    const input = await fixture();
+    await expect(
+      buildPostgresqlQueryEvidenceSemanticBinding({
+        ...input,
+        candidate: {
+          schema_version: "text2sql-query-candidate@1.0.0",
+          sql: "select o.amount * $1 as order_amount from public.orders o",
+          parameters: [2],
+          result_columns: [
+            {
+              name: "order_amount",
+              semantic_type: "NUMBER",
+              label: "订单金额",
+              semantic_binding: {
+                object_kind: "PHYSICAL_COLUMN",
+                object_id: "column.orders.amount",
+              },
+            },
+          ],
+          time_window: null,
+          presentation: {
+            title: "订单金额",
+            summary: "订单金额明细。",
+            visualization: "TABLE",
+            x_key: null,
+            y_keys: [],
+          },
+        },
+        result: await queryResult([{ name: "order_amount", type: "1700" }]),
+      }),
+    ).rejects.toMatchObject({ code: "QUERY_EVIDENCE_PHYSICAL_BINDING_INVALID" });
+  });
+
+  it("rejects an unselected physical column even when it exists in the release", async () => {
+    const input = await fixture();
+    const revenueColumn = input.candidate.result_columns[1];
+    if (!revenueColumn) throw new TypeError("TEST_REVENUE_COLUMN_REQUIRED");
+    await expect(
+      buildPostgresqlQueryEvidenceSemanticBinding({
+        ...input,
+        candidate: {
+          ...input.candidate,
+          result_columns: [
+            {
+              name: "order_month",
+              semantic_type: "DATE",
+              label: "月份",
+              semantic_binding: {
+                object_kind: "PHYSICAL_COLUMN",
+                object_id: "column.orders.unselected",
+              },
+            },
+            revenueColumn,
+          ],
+        },
+      }),
+    ).rejects.toMatchObject({ code: "QUERY_EVIDENCE_SEMANTIC_OBJECT_NOT_SELECTED" });
+  });
+
   it("maps PostgreSQL physical and result identities without preview-value inference", () => {
     expect(
       ["int8", "numeric", "bool", "date", "timestamp", "timestamptz", "uuid", "text"].map(

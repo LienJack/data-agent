@@ -105,6 +105,11 @@ describe("direct run-bound provider retry policy", () => {
     expect(prompt).toContain("When the frozen snapshot lists a time column as text");
     expect(prompt).toContain("column_name::pg_catalog.timestamp");
     expect(prompt).toContain("Never write a type name as a prefix");
+    expect(prompt).toContain("PHYSICAL_COLUMN");
+    expect(prompt).toContain("row-level identifiers, dates, or values");
+    expect(prompt).toContain(
+      "QUERY_EVIDENCE_SEMANTIC_OBJECT_NOT_SELECTED means replace invented or out-of-scope result bindings",
+    );
     expect(prompt).toContain("TEXT2SQL_SQL_DANGEROUS means replace every unlisted function");
     expect(prompt).toContain(
       "TEXT2SQL_SQL_RELATION_BINDING_REJECTED means replace every physical relation with an exact schema-qualified relation",

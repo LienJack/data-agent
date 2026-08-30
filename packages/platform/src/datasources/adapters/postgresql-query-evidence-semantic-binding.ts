@@ -23,6 +23,7 @@ import {
   type GovernedDatasourceQueryResult,
   verifyGovernedDatasourceQueryResult,
 } from "@data-agent/contracts/datasources";
+import { hasExactPostgresqlPhysicalColumnProjections } from "./postgresql-text2sql-policy.js";
 
 export interface QueryEvidenceSemanticCatalog {
   readonly release_identity: {
@@ -98,6 +99,34 @@ function selectedSemanticObjects(context: SemanticContextCommitResult): Readonly
   ]);
 }
 
+function physicalColumnId(tableId: string, columnId: string): string {
+  const qualified = columnId.includes(".") ? columnId : `${tableId}.${columnId}`;
+  return qualified.startsWith("column.") ? qualified : `column.${qualified}`;
+}
+
+function selectedPhysicalColumns(
+  context: SemanticContextCommitResult,
+  catalog: QueryEvidenceSemanticCatalog,
+): ReadonlySet<string> {
+  const selected = selectedSemanticObjects(context);
+  const physicalIds = new Set([...selected].filter((id) => id.startsWith("column.")));
+  for (const metric of catalog.executable.metrics) {
+    if (!selected.has(metric.metric_id)) continue;
+    for (const columnId of [
+      metric.column_id,
+      ...metric.dependency_column_ids,
+      ...(metric.time_column_id ? [metric.time_column_id] : []),
+    ]) {
+      physicalIds.add(physicalColumnId(metric.table_id, columnId));
+    }
+  }
+  for (const dimension of catalog.executable.dimensions) {
+    if (!selected.has(dimension.dimension_id)) continue;
+    physicalIds.add(physicalColumnId(dimension.table_id, dimension.column_id));
+  }
+  return physicalIds;
+}
+
 function physicalSourceIdentity(source: {
   readonly schema_name: string;
   readonly relation_name: string;
@@ -108,7 +137,7 @@ function physicalSourceIdentity(source: {
 
 function physicalSources(input: {
   readonly object_id: string;
-  readonly object_kind: "METRIC" | "DIMENSION";
+  readonly object_kind: "METRIC" | "DIMENSION" | "PHYSICAL_COLUMN";
   readonly table_id: string;
   readonly column_ids: readonly string[];
   readonly datasource_id: string;
@@ -356,6 +385,7 @@ export async function buildPostgresqlQueryEvidenceSemanticBinding(
   }
 
   const selected = selectedSemanticObjects(context);
+  const selectedColumns = selectedPhysicalColumns(context, input.semantic_catalog);
   const metrics = input.semantic_catalog.executable.metrics;
   const dimensions = input.semantic_catalog.executable.dimensions;
   const formulas = input.semantic_catalog.executable.formulas;
@@ -363,8 +393,61 @@ export async function buildPostgresqlQueryEvidenceSemanticBinding(
   const columns = await Promise.all(
     candidate.result_columns.map(async (column) => {
       const declaration = column.semantic_binding;
-      if (!selected.has(declaration.object_id)) {
+      if (
+        declaration.object_kind === "PHYSICAL_COLUMN"
+          ? !selectedColumns.has(declaration.object_id)
+          : !selected.has(declaration.object_id)
+      ) {
         reject("QUERY_EVIDENCE_SEMANTIC_OBJECT_NOT_SELECTED");
+      }
+      if (declaration.object_kind === "PHYSICAL_COLUMN") {
+        const parts = declaration.object_id.split(".");
+        const columnName = parts.pop();
+        const prefix = parts.shift();
+        const tableId = parts.join(".");
+        if (prefix !== "column" || !tableId || !columnName) {
+          reject("QUERY_EVIDENCE_PHYSICAL_BINDING_INVALID");
+        }
+        const sources = physicalSources({
+          object_id: declaration.object_id,
+          object_kind: declaration.object_kind,
+          table_id: tableId,
+          column_ids: [`${tableId}.${columnName}`],
+          datasource_id: input.datasource_ref.resource_id,
+          bindings,
+          snapshot,
+        });
+        if (
+          sources.length !== 1 ||
+          sources.some(
+            ({ logical_type: logicalType, column_name: sourceColumn }) =>
+              logicalType !== column.semantic_type &&
+              !(
+                logicalType === "STRING" &&
+                (column.semantic_type === "DATE" || column.semantic_type === "DATETIME") &&
+                hasExplicitTemporalSourceCast({
+                  sql: candidate.sql,
+                  column_name: sourceColumn,
+                })
+              ),
+          )
+        ) {
+          reject("QUERY_EVIDENCE_PHYSICAL_BINDING_INVALID");
+        }
+        return {
+          output_name: column.name,
+          logical_type: column.semantic_type,
+          nullable: sources.some(({ nullable }) => nullable),
+          semantic_role: "PHYSICAL_COLUMN" as const,
+          semantic_object_id: declaration.object_id,
+          formula_hash: null,
+          aggregate: null,
+          grain: {
+            grain_id: `grain.physical.${tableId}`,
+            granularity: "atomic" as const,
+          },
+          physical_sources: sources.map(({ logical_type: _logicalType, ...source }) => source),
+        };
       }
       if (declaration.object_kind === "METRIC") {
         const metric = metrics.find(({ metric_id: id }) => id === declaration.object_id);
@@ -472,6 +555,24 @@ export async function buildPostgresqlQueryEvidenceSemanticBinding(
     }),
   );
 
+  if (
+    !(await hasExactPostgresqlPhysicalColumnProjections({
+      sql: candidate.sql,
+      columns: columns.flatMap((column) =>
+        column.semantic_role === "PHYSICAL_COLUMN"
+          ? column.physical_sources.map((source) => ({
+              output_name: column.output_name,
+              schema_name: source.schema_name,
+              relation_name: source.relation_name,
+              column_name: source.column_name,
+            }))
+          : [],
+      ),
+    }))
+  ) {
+    reject("QUERY_EVIDENCE_PHYSICAL_BINDING_INVALID");
+  }
+
   return buildQueryEvidenceSemanticBinding({
     protocol_version: "query-evidence-semantic-binding@1.0.0",
     semantic_release_ref: packageDocument.semantic_release,
@@ -510,5 +611,6 @@ export const postgresqlQueryEvidenceSemanticBindingInternals = Object.freeze({
   temporalParameterExpression,
   physicalSourceIdentity,
   selectedSemanticObjects,
+  selectedPhysicalColumns,
   validTimeValue,
 });

@@ -20,7 +20,7 @@ export const text2sqlQueryCandidateSchema = z
           semantic_type: z.enum(["NUMBER", "STRING", "DATE", "DATETIME", "BOOLEAN"]),
           label: z.string().trim().min(1).max(128),
           semantic_binding: z.strictObject({
-            object_kind: z.enum(["METRIC", "DIMENSION"]),
+            object_kind: z.enum(["METRIC", "DIMENSION", "PHYSICAL_COLUMN"]),
             object_id: versionIdentifierSchema,
           }),
         }),

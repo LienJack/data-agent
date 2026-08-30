@@ -203,6 +203,11 @@ describe("Production Team governed chart publication", () => {
     ).toBe(true);
     expect(
       productionTeamToolsInternals.repairableQueryExecutionFailure(
+        "QUERY_EVIDENCE_SEMANTIC_OBJECT_NOT_SELECTED",
+      ),
+    ).toBe(true);
+    expect(
+      productionTeamToolsInternals.repairableQueryExecutionFailure(
         "QUERY_EVIDENCE_AUTHORITY_BINDING_MISMATCH",
       ),
     ).toBe(false);
