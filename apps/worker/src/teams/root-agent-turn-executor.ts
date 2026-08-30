@@ -141,6 +141,39 @@ async function terminalSemanticFactsDecision(input: {
   });
 }
 
+function terminalAcceptedReportDecision(input: {
+  readonly scope: Parameters<RunWorkflowExecutorPort["execute"]>[0]["lease"]["scope"];
+  readonly run_id: string;
+  readonly catalog_snapshot_hash: string;
+  readonly observations: readonly RootToolObservation[];
+}): RootAgentDecisionCandidate | null {
+  const observation = [...input.observations]
+    .reverse()
+    .find(
+      (candidate) =>
+        candidate.status === "COMPLETED" &&
+        candidate.output_ref.artifact_type === "AnalysisReport" &&
+        candidate.safe_projection.projection_kind === "REPORT",
+    );
+  if (observation?.status !== "COMPLETED") return null;
+
+  return rootAgentDecisionCandidateSchema.parse({
+    schema_version: "root-agent-turn-candidate@1.0.0",
+    kind: "FINAL_ANSWER",
+    scope: input.scope,
+    run_id: input.run_id,
+    catalog_snapshot_hash: input.catalog_snapshot_hash,
+    sections: [
+      {
+        kind: "ARTIFACT_FACTS",
+        artifact_ref: observation.output_ref,
+        fact_selectors: ["projection.sections", "projection.title"],
+      },
+    ],
+    public_summary: "已基于当前 Run 验收的分析报告返回结论。",
+  });
+}
+
 export const rootAgentTurnExecutorInternals = Object.freeze({ semanticFactSelectors });
 
 export function createRootAgentTurnExecutor(): RootAgentTurnPort {
@@ -223,6 +256,15 @@ export function createRootAgentTurnExecutor(): RootAgentTurnPort {
       });
       if (semanticFactsDecision) {
         return { ok: true, value: semanticFactsDecision };
+      }
+      const acceptedReportDecision = terminalAcceptedReportDecision({
+        scope: input.lease.scope,
+        run_id: input.lease.run_id,
+        catalog_snapshot_hash: catalog.snapshot_hash,
+        observations: state.data.tool_observations,
+      });
+      if (acceptedReportDecision) {
+        return { ok: true, value: acceptedReportDecision };
       }
       const provider = input.context.getProviderDispatchCapability();
       if (!hasRunProviderDispatchCapability(provider)) {

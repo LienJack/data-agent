@@ -244,6 +244,63 @@ describe("Root Agent normal turn", () => {
     });
     expect(invoke).toHaveBeenCalledOnce();
 
+    const reportArtifactRef = {
+      artifact_id: id(23),
+      artifact_type: "AnalysisReport" as const,
+      ...scope,
+      run_id: runId,
+      revision: 1,
+      content_hash: `sha256:${"f".repeat(64)}`,
+    };
+    const terminalReportResult = await createRootAgentTurnExecutor().decide(
+      {
+        lease,
+        restored_snapshot: null,
+        context,
+        signal: new AbortController().signal,
+        deadline_at: lease.expires_at,
+      },
+      {
+        turn_index: 2,
+        tool_observations: [
+          {
+            schema_version: "root-tool-observation@1.0.0",
+            tool_call_id: "report-1",
+            profile_id: "report-writing-agent",
+            status: "COMPLETED",
+            output_ref: reportArtifactRef,
+            safe_projection: {
+              schema_version: "root-tool-safe-projection@1.0.0",
+              artifact_ref: reportArtifactRef,
+              projection_kind: "REPORT",
+              title: "已验收经营摘要",
+              summary: "The accepted report satisfies the requested summary.",
+              column_keys: [],
+              total_rows: null,
+              source_artifact_refs: [],
+              semantic_query_context: null,
+            },
+            error_code: null,
+          },
+        ],
+        verifier_feedback: null,
+      },
+    );
+    expect(terminalReportResult).toEqual({
+      ok: true,
+      value: expect.objectContaining({
+        kind: "FINAL_ANSWER",
+        sections: [
+          expect.objectContaining({
+            kind: "ARTIFACT_FACTS",
+            artifact_ref: reportArtifactRef,
+            fact_selectors: ["projection.sections", "projection.title"],
+          }),
+        ],
+      }),
+    });
+    expect(invoke).toHaveBeenCalledOnce();
+
     const duplicate = await createRootAgentTurnExecutor().decide(
       {
         lease,
