@@ -35,7 +35,9 @@ const providerToolCallSchema = z.strictObject({
   arguments: z.unknown(),
 });
 
-export const rootAgentDelegationToolArgumentsSchema = delegateToSubagentArgumentsSchema;
+export const rootAgentDelegationToolArgumentsSchema = delegateToSubagentArgumentsSchema.safeExtend({
+  output_usage: z.enum(["FINAL_ANSWER_EVIDENCE", "CONTINUATION_INPUT"]),
+});
 
 export type RootAgentHarnessErrorCode =
   | "ROOT_AGENT_RESPONSE_INVALID"
@@ -88,6 +90,9 @@ export async function buildRootAgentSystemMessage(
     "If required evidence does not yet exist, invoke the delegate_to_subagent@2 native tool call instead of guessing, describing a planned delegation, or presenting an unverified direct answer.",
     "The native delegation tool exists specifically to create missing governed evidence. Saying that evidence is unavailable, refusing because no Artifact is visible, or asking the user to query elsewhere is an invalid routing outcome when a catalog capability can produce it.",
     "When delegating, select only a profile_id from the frozen catalog, use the native tool interface (not JSON text), and request only its declared output Artifact types.",
+    "Every delegation must declare output_usage. Use FINAL_ANSWER_EVIDENCE only when that accepted output directly completes the current user request with no downstream capability still required. Use CONTINUATION_INPUT when the output must feed a later capability.",
+    "For a simple database lookup, requested rows, or a governed table whose accepted QueryEvidence itself completes the request, delegate Text2SQL with output_usage FINAL_ANSWER_EVIDENCE. After that completed observation, return the QueryEvidence as the FINAL_ANSWER and do not delegate analysis or Text2SQL again.",
+    "For multi-step diagnosis, statistical analysis, or a formal report, mark prerequisite SemanticQueryContext and QueryEvidence as CONTINUATION_INPUT so the Host preserves the remaining tool chain. This is an Artifact completion contract, not keyword routing.",
     "Decide only the next useful action from the current conversation, accepted tool observations, and verifier feedback. Do not predeclare a future workflow.",
     "If a later capability needs an Artifact that does not yet exist, call only a capable producer now. The Host will return its accepted Tool Result before you decide the next action.",
     "Pass accepted Artifacts from earlier turns to later calls only through input_artifact_refs. Never refer to another call in the current response as an input.",
@@ -128,6 +133,7 @@ export async function normalizeRootAgentProviderTurn(input: {
         const argumentsValue = delegateToSubagentArgumentsSchema.parse({
           profile_id: providerArguments.profile_id,
           objective: providerArguments.objective,
+          output_usage: providerArguments.output_usage,
           requested_artifact_types: providerArguments.requested_artifact_types,
           input_artifact_refs: providerArguments.input_artifact_refs,
           requested_budget: providerArguments.requested_budget,

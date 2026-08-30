@@ -151,6 +151,7 @@ export function createRootAgentDelegationRuntime(
           });
           return { status: "ACCEPTED", reason_code: "ROOT_DIRECT_ANSWER_ACCEPTED" };
         }
+        const toolCalls = input.decision.tool_calls;
 
         const ceiling = runCeiling(input.execution);
         const admitted = await admitRootAgentDelegations({
@@ -201,12 +202,26 @@ export function createRootAgentDelegationRuntime(
               : "ROOT_TOOL_FAILURE_OBSERVATIONS_READY",
           observations:
             result.status === "COMPLETED"
-              ? result.observations
-              : input.decision.tool_calls.map(
+              ? result.observations.map((observation) => {
+                  const call = toolCalls.find(
+                    ({ tool_call_id: toolCallId }) => toolCallId === observation.tool_call_id,
+                  );
+                  if (!call) {
+                    throw new RootAgentDelegationRuntimeError(
+                      "ROOT_TOOL_OBSERVATION_CORRELATION_MISMATCH",
+                    );
+                  }
+                  return {
+                    ...observation,
+                    output_usage: call.output_usage,
+                  };
+                })
+              : toolCalls.map(
                   (call): RootToolObservation => ({
                     schema_version: "root-tool-observation@1.0.0",
                     tool_call_id: call.tool_call_id,
                     profile_id: call.profile_id,
+                    output_usage: call.output_usage,
                     status: "FAILED",
                     output_ref: null,
                     safe_projection: null,

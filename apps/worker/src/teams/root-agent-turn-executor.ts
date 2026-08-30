@@ -174,7 +174,45 @@ function terminalAcceptedReportDecision(input: {
   });
 }
 
-export const rootAgentTurnExecutorInternals = Object.freeze({ semanticFactSelectors });
+function terminalQueryEvidenceDecision(input: {
+  readonly scope: Parameters<RunWorkflowExecutorPort["execute"]>[0]["lease"]["scope"];
+  readonly run_id: string;
+  readonly catalog_snapshot_hash: string;
+  readonly observations: readonly RootToolObservation[];
+}): RootAgentDecisionCandidate | null {
+  const observation = [...input.observations]
+    .reverse()
+    .find(
+      (candidate) =>
+        candidate.status === "COMPLETED" &&
+        candidate.profile_id === "governed-text2sql-agent" &&
+        candidate.output_usage === "FINAL_ANSWER_EVIDENCE" &&
+        candidate.output_ref.artifact_type === "QueryEvidence" &&
+        candidate.safe_projection.projection_kind === "TABLE",
+    );
+  if (observation?.status !== "COMPLETED") return null;
+
+  return rootAgentDecisionCandidateSchema.parse({
+    schema_version: "root-agent-turn-candidate@1.0.0",
+    kind: "FINAL_ANSWER",
+    scope: input.scope,
+    run_id: input.run_id,
+    catalog_snapshot_hash: input.catalog_snapshot_hash,
+    sections: [
+      {
+        kind: "ARTIFACT_FACTS",
+        artifact_ref: observation.output_ref,
+        fact_selectors: ["projection.columns", "projection.rows", "projection.total_rows"],
+      },
+    ],
+    public_summary: "已返回当前 Run 验收的查询结果。",
+  });
+}
+
+export const rootAgentTurnExecutorInternals = Object.freeze({
+  semanticFactSelectors,
+  terminalQueryEvidenceDecision,
+});
 
 export function createRootAgentTurnExecutor(): RootAgentTurnPort {
   return Object.freeze({
@@ -256,6 +294,15 @@ export function createRootAgentTurnExecutor(): RootAgentTurnPort {
       });
       if (semanticFactsDecision) {
         return { ok: true, value: semanticFactsDecision };
+      }
+      const queryEvidenceDecision = terminalQueryEvidenceDecision({
+        scope: input.lease.scope,
+        run_id: input.lease.run_id,
+        catalog_snapshot_hash: catalog.snapshot_hash,
+        observations: state.data.tool_observations,
+      });
+      if (queryEvidenceDecision) {
+        return { ok: true, value: queryEvidenceDecision };
       }
       const acceptedReportDecision = terminalAcceptedReportDecision({
         scope: input.lease.scope,

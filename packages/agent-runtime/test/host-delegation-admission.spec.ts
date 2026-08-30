@@ -93,6 +93,7 @@ async function fixture() {
         tool_call_id: "semantic-call-1",
         profile_id: "semantic-management-agent",
         objective: "读取冻结语义图并解释表之间的依赖关系。",
+        output_usage: "CONTINUATION_INPUT",
         requested_artifact_types: ["AnalysisReport"],
         input_artifact_refs: [
           {
@@ -191,6 +192,7 @@ describe("Host Subagent delegation admission", () => {
             tool_call_id: "analysis",
             profile_id: "semantic-management-agent",
             objective: "Analyze the accepted QueryEvidence.",
+            output_usage: "CONTINUATION_INPUT",
             requested_artifact_types: ["AnalysisReport"],
             input_artifact_refs: [
               {

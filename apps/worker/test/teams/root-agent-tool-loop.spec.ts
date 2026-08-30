@@ -159,6 +159,7 @@ function toolDecision(
         tool_call_id: "semantic-1",
         profile_id: "semantic-management-agent",
         objective: "Resolve governed semantics.",
+        output_usage: "CONTINUATION_INPUT",
         requested_artifact_types: ["AnalysisReport"],
         input_artifact_refs: [],
         requested_budget: {
@@ -188,6 +189,7 @@ function observation(input: Awaited<ReturnType<typeof fixture>>): RootToolObserv
     schema_version: "root-tool-observation@1.0.0",
     tool_call_id: "semantic-1",
     profile_id: "semantic-management-agent",
+    output_usage: "CONTINUATION_INPUT",
     status: "COMPLETED",
     output_ref: outputRef,
     safe_projection: {
@@ -350,6 +352,7 @@ describe("bounded Root tool loop", () => {
       schema_version: "root-tool-observation@1.0.0",
       tool_call_id: "text2sql-2",
       profile_id: "governed-text2sql-agent",
+      output_usage: "CONTINUATION_INPUT",
       status: "COMPLETED",
       output_ref: secondOutputRef,
       safe_projection: {
@@ -514,6 +517,7 @@ describe("bounded Root tool loop", () => {
       schema_version: "root-tool-observation@1.0.0",
       tool_call_id: toolCallId,
       profile_id: profileId,
+      output_usage: "CONTINUATION_INPUT",
       status: "COMPLETED",
       output_ref: outputRef,
       safe_projection: {
@@ -630,6 +634,7 @@ describe("bounded Root tool loop", () => {
       schema_version: "root-tool-observation@1.0.0",
       tool_call_id: "semantic-1",
       profile_id: "semantic-management-agent",
+      output_usage: "CONTINUATION_INPUT",
       status: "FAILED",
       output_ref: null,
       safe_projection: null,

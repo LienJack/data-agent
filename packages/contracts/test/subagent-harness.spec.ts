@@ -250,7 +250,10 @@ describe("Model-driven Subagent Harness contracts", () => {
 
     await expect(
       validateRootAgentDecisionAgainstCatalog({ candidate, catalog }),
-    ).resolves.toMatchObject({ kind: "TOOL_CALLS" });
+    ).resolves.toMatchObject({
+      kind: "TOOL_CALLS",
+      tool_calls: [{ output_usage: "CONTINUATION_INPUT" }],
+    });
     await expect(
       validateRootAgentDecisionAgainstCatalog({
         catalog,

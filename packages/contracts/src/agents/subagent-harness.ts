@@ -139,6 +139,9 @@ export const delegateToSubagentArgumentsSchema = z
   .strictObject({
     profile_id: agentProfileIdSchema,
     objective: z.string().trim().min(1).max(4_000),
+    output_usage: z
+      .enum(["FINAL_ANSWER_EVIDENCE", "CONTINUATION_INPUT"])
+      .default("CONTINUATION_INPUT"),
     requested_artifact_types: z.array(knownArtifactTypeSchema).min(1).max(16),
     input_artifact_refs: z.array(artifactReferenceSchema).max(64),
     requested_budget: subagentRequestedBudgetSchema,
@@ -398,6 +401,9 @@ const completedRootToolObservationSchema = z
     schema_version: z.literal("root-tool-observation@1.0.0"),
     tool_call_id: z.string().min(1).max(256),
     profile_id: agentProfileIdSchema,
+    output_usage: z
+      .enum(["FINAL_ANSWER_EVIDENCE", "CONTINUATION_INPUT"])
+      .default("CONTINUATION_INPUT"),
     status: z.literal("COMPLETED"),
     output_ref: artifactReferenceSchema,
     safe_projection: rootToolSafeProjectionSchema,
@@ -420,6 +426,9 @@ const failedRootToolObservationSchema = z.strictObject({
   schema_version: z.literal("root-tool-observation@1.0.0"),
   tool_call_id: z.string().min(1).max(256),
   profile_id: agentProfileIdSchema,
+  output_usage: z
+    .enum(["FINAL_ANSWER_EVIDENCE", "CONTINUATION_INPUT"])
+    .default("CONTINUATION_INPUT"),
   status: z.literal("FAILED"),
   output_ref: z.null(),
   safe_projection: z.null(),

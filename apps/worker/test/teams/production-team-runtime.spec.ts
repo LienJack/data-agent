@@ -119,6 +119,7 @@ async function admittedDelegations(
           tool_call_id: `specialist-${index + 1}`,
           profile_id: revision.profile_id,
           objective: `执行 ${revision.discovery.display_name} 的冻结职责。`,
+          output_usage: "CONTINUATION_INPUT",
           requested_artifact_types: revision.expected_output_artifact_types,
           input_artifact_refs: [...(options.input_artifact_refs?.get(revision.profile_id) ?? [])],
           requested_budget: {

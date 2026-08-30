@@ -178,6 +178,7 @@ describe("Root Agent Harness", () => {
             arguments: {
               profile_id: "semantic-management-agent",
               objective: "Read the frozen graph and explain table dependencies.",
+              output_usage: "FINAL_ANSWER_EVIDENCE",
               requested_artifact_types: ["AnalysisReport"],
               input_artifact_refs: [],
               requested_budget: {
@@ -235,6 +236,7 @@ describe("Root Agent Harness", () => {
             arguments: {
               profile_id: "semantic-management-agent",
               objective: "Explain the frozen semantic definition.",
+              output_usage: "FINAL_ANSWER_EVIDENCE",
               requested_artifact_types: ["AnalysisReport"],
               input_artifact_refs: [],
               requested_budget: {
@@ -251,13 +253,21 @@ describe("Root Agent Harness", () => {
       }),
     ).resolves.toMatchObject({
       kind: "TOOL_CALLS",
-      tool_calls: [{ profile_id: "semantic-management-agent" }],
+      tool_calls: [
+        {
+          profile_id: "semantic-management-agent",
+          output_usage: "FINAL_ANSWER_EVIDENCE",
+        },
+      ],
     });
   });
 
   it("projects only public Catalog metadata into the Root system message", async () => {
     const frozenCatalog = await catalog(["semantic-management-agent"]);
     const message = await buildRootAgentSystemMessage(frozenCatalog);
+    expect(z.toJSONSchema(SUBAGENT_DELEGATION_TOOL_DESCRIPTOR.input_schema).required).toContain(
+      "output_usage",
+    );
     expect(message).toContain("semantic-management-agent");
     expect(message).toContain("Never route by keyword lists");
     expect(message).toContain("frozen Agent Card descriptions");
@@ -268,6 +278,9 @@ describe("Root Agent Harness", () => {
     expect(message).toContain("Decide only the next useful action");
     expect(message).toContain("only through input_artifact_refs");
     expect(message).toContain("Multiple calls in one response");
+    expect(message).toContain("FINAL_ANSWER_EVIDENCE");
+    expect(message).toContain("CONTINUATION_INPUT");
+    expect(message).toContain("simple database lookup");
     expect(message).toContain("completed governed-analysis-agent observation");
     expect(message).toContain('fact_selectors:["projection.sections","projection.title"]');
     expect(message).toContain("must not delegate another analysis");

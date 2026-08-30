@@ -55,6 +55,64 @@ describe("Root Agent normal turn", () => {
     ).toEqual(["projection.context.formulas"]);
   });
 
+  it("finalizes only QueryEvidence explicitly delegated as final-answer evidence", () => {
+    const scope = { app_id: id(1), tenant_id: id(2), environment: "test" } as const;
+    const runId = id(3);
+    const queryEvidenceRef = {
+      artifact_id: id(24),
+      artifact_type: "QueryEvidence" as const,
+      ...scope,
+      run_id: runId,
+      revision: 1,
+      content_hash: `sha256:${"a".repeat(64)}`,
+    };
+    const observation = {
+      schema_version: "root-tool-observation@1.0.0" as const,
+      tool_call_id: "query-1",
+      profile_id: "governed-text2sql-agent",
+      status: "COMPLETED" as const,
+      output_ref: queryEvidenceRef,
+      safe_projection: {
+        schema_version: "root-tool-safe-projection@1.0.0" as const,
+        artifact_ref: queryEvidenceRef,
+        projection_kind: "TABLE" as const,
+        title: null,
+        summary: "10 accepted governed rows are available.",
+        column_keys: ["order_date", "order_id", "order_total"],
+        total_rows: 10,
+        source_artifact_refs: [],
+        semantic_query_context: null,
+      },
+      error_code: null,
+    };
+
+    expect(
+      rootAgentTurnExecutorInternals.terminalQueryEvidenceDecision({
+        scope,
+        run_id: runId,
+        catalog_snapshot_hash: `sha256:${"b".repeat(64)}`,
+        observations: [{ ...observation, output_usage: "FINAL_ANSWER_EVIDENCE" }],
+      }),
+    ).toMatchObject({
+      kind: "FINAL_ANSWER",
+      sections: [
+        {
+          kind: "ARTIFACT_FACTS",
+          artifact_ref: queryEvidenceRef,
+          fact_selectors: ["projection.columns", "projection.rows", "projection.total_rows"],
+        },
+      ],
+    });
+    expect(
+      rootAgentTurnExecutorInternals.terminalQueryEvidenceDecision({
+        scope,
+        run_id: runId,
+        catalog_snapshot_hash: `sha256:${"b".repeat(64)}`,
+        observations: [{ ...observation, output_usage: "CONTINUATION_INPUT" }],
+      }),
+    ).toBeNull();
+  });
+
   it("invokes exactly one logical provider call per normal turn", async () => {
     const scope = { app_id: id(1), tenant_id: id(2), environment: "test" } as const;
     const runId = id(3);
@@ -225,6 +283,7 @@ describe("Root Agent normal turn", () => {
             schema_version: "root-tool-observation@1.0.0",
             tool_call_id: "semantic-1",
             profile_id: "semantic-management-agent",
+            output_usage: "FINAL_ANSWER_EVIDENCE",
             status: "COMPLETED",
             output_ref: semanticArtifactRef,
             safe_projection: {
@@ -281,6 +340,7 @@ describe("Root Agent normal turn", () => {
             schema_version: "root-tool-observation@1.0.0",
             tool_call_id: "report-1",
             profile_id: "report-writing-agent",
+            output_usage: "FINAL_ANSWER_EVIDENCE",
             status: "COMPLETED",
             output_ref: reportArtifactRef,
             safe_projection: {

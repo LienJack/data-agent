@@ -293,6 +293,7 @@ describe("audited run-bound Root provider coordinator", () => {
             schema_version: "root-tool-observation@1.0.0",
             tool_call_id: "analysis-call",
             profile_id: "governed-analysis-agent",
+            output_usage: "FINAL_ANSWER_EVIDENCE",
             status: "COMPLETED",
             output_ref: analysisReportRef,
             safe_projection: {
