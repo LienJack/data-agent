@@ -1235,360 +1235,397 @@ describe("Production Team governed chart publication", () => {
     expect(commit).not.toHaveBeenCalled();
   });
 
-  it("keeps QueryEvidence as output and publishes a sealed chart companion for trend intent", async () => {
-    const scope = { app_id: id(1), tenant_id: id(2), environment: "test" } as const;
-    const lease = {
-      scope,
-      principal_id: id(3),
-      outbox_id: id(4),
-      run_id: id(5),
-      command_id: id(6),
-      command_kind: "START_DATA_AGENT_TEAM",
-      attempt_id: id(7),
-      attempt_no: 1,
-      delivery_attempt_no: 1,
-      lease_duration_ms: 30_000,
-      worker_id: "worker-chart",
-      lease_token: 1,
-      worker_fence: 1,
-      expires_at: "2026-08-22T01:00:30.000Z",
-      execution_policy: DEFAULT_RUN_EXECUTION_POLICY,
-      payload: { kind: "START_DATA_AGENT_TEAM" },
-    } as unknown as RunWorkLease;
-    const config = await buildWorkerEffectiveConfigFixture({
-      scope,
-      workspace_id: scope.tenant_id,
-      principal_id: lease.principal_id,
-      run_id: lease.run_id,
-    });
-    const provider = vi.fn(async (_input: unknown) => ({
-      ok: true as const,
-      value: {
-        output_text: JSON.stringify({
-          schema_version: "text2sql-query-candidate@1.0.0",
-          sql: "select month, count(*)::integer as order_count from falcon_db_24.orders group by month order by month",
-          parameters: [],
-          result_columns: [
-            {
-              name: "month",
-              semantic_type: "STRING",
-              label: "月份",
-              semantic_binding: { object_kind: "DIMENSION", object_id: "month" },
-            },
-            {
-              name: "order_count",
-              semantic_type: "NUMBER",
-              label: "订单量",
-              semantic_binding: { object_kind: "METRIC", object_id: "order-count" },
-            },
-          ],
-          time_window: null,
-          presentation: {
-            title: "月度订单趋势",
-            summary: "按月展示订单量。",
-            visualization: "LINE",
-            x_key: "month",
-            y_keys: ["order_count"],
-          },
-        }),
-        tool_calls: [],
-        projection: { status: "COMPLETED" as const },
-      },
-    }));
-    const executionContext = createRunExecutionContext({
-      lease,
-      effective_config: config,
-      context_receipt: {
-        package_id: id(20),
-        package_hash: hash("a"),
-        receipt_id: id(21),
-        receipt_hash: hash("b"),
-      } as never,
-      run_signal: new AbortController().signal,
-      event_store: {} as never,
-      now: () => new Date("2026-08-22T01:00:00.000Z"),
-      create_id: () => id(22),
-      side_effect_timeout_ms: 1_000,
-      provider_dispatch: { invoke: provider as never },
-      heartbeat: vi.fn(),
-      guard_running_lease: vi.fn(),
-      append_checkpoint_event: vi.fn(),
-      append_side_effect_event: vi.fn(),
-      append_display_event: vi.fn(async () => ({
+  it.each(["accepted", "rejected"] as const)(
+    "keeps accepted evidence and preserves diagnostics when a repair is %s",
+    async (repairOutcome) => {
+      const scope = { app_id: id(1), tenant_id: id(2), environment: "test" } as const;
+      const lease = {
+        scope,
+        principal_id: id(3),
+        outbox_id: id(4),
+        run_id: id(5),
+        command_id: id(6),
+        command_kind: "START_DATA_AGENT_TEAM",
+        attempt_id: id(7),
+        attempt_no: 1,
+        delivery_attempt_no: 1,
+        lease_duration_ms: 30_000,
+        worker_id: "worker-chart",
+        lease_token: 1,
+        worker_fence: 1,
+        expires_at: "2026-08-22T01:00:30.000Z",
+        execution_policy: DEFAULT_RUN_EXECUTION_POLICY,
+        payload: { kind: "START_DATA_AGENT_TEAM" },
+      } as unknown as RunWorkLease;
+      const config = await buildWorkerEffectiveConfigFixture({
+        scope,
+        workspace_id: scope.tenant_id,
+        principal_id: lease.principal_id,
+        run_id: lease.run_id,
+      });
+      const provider = vi.fn(async (_input: unknown) => ({
         ok: true as const,
-        value: { sequence: 1 },
-      })),
-    });
-    const productDocuments = new Map<string, ProductTeamArtifactDocument>();
-    let chartDocument: ArtifactWorkspaceChartDocumentV2 | null = null;
-    const text2sqlPrepare = vi.fn(async () => ({
-      context_text: '{"schema_version":"frozen-query-context@1.0.0"}',
-      datasource_id: id(40),
-      schema_snapshot_id: id(41),
-      schema_snapshot_hash: hash("4"),
-      allowed_relations: ["falcon_db_24.orders"],
-      target_capability_hash: hash("5"),
-      reader_role: "falcon_demo_reader",
-      semantic_query_context_hash: null,
-    }));
-    const semanticBinding = await buildQueryEvidenceSemanticBinding({
-      protocol_version: "query-evidence-semantic-binding@1.0.0",
-      semantic_release_ref: config.semantic_release,
-      semantic_context_ref: {
-        package_id: id(20),
-        package_hash: hash("a"),
-        receipt_id: id(21),
-        receipt_hash: hash("b"),
-      },
-      schema_snapshot_ref: config.schema_snapshot,
-      datasource_ref: config.datasource,
-      target_binding_hash: hash("5"),
-      columns: [
-        {
-          output_name: "month",
-          logical_type: "STRING",
-          nullable: false,
-          semantic_role: "DIMENSION",
-          semantic_object_id: "month",
-          formula_hash: null,
-          aggregate: null,
-          grain: { grain_id: "month", granularity: "month" },
-          physical_sources: [
-            {
-              schema_name: "falcon_db_24",
-              relation_name: "orders",
-              column_name: "month",
-              formatted_type: "text",
-              nullable: false,
+        value: {
+          output_text: JSON.stringify({
+            schema_version: "text2sql-query-candidate@1.0.0",
+            sql: "select month, count(*)::integer as order_count from falcon_db_24.orders group by month order by month",
+            parameters: [],
+            result_columns: [
+              {
+                name: "month",
+                semantic_type: "STRING",
+                label: "月份",
+                semantic_binding: { object_kind: "DIMENSION", object_id: "month" },
+              },
+              {
+                name: "order_count",
+                semantic_type: "NUMBER",
+                label: "订单量",
+                semantic_binding: { object_kind: "METRIC", object_id: "order-count" },
+              },
+            ],
+            time_window: null,
+            presentation: {
+              title: "月度订单趋势",
+              summary: "按月展示订单量。",
+              visualization: "LINE",
+              x_key: "month",
+              y_keys: ["order_count"],
             },
-          ],
+          }),
+          tool_calls: [],
+          projection: { status: "COMPLETED" as const },
         },
-        {
-          output_name: "order_count",
-          logical_type: "NUMBER",
-          nullable: false,
-          semantic_role: "METRIC",
-          semantic_object_id: "order-count",
-          formula_hash: hash("9"),
-          aggregate: "count",
-          grain: { grain_id: "order", granularity: "atomic" },
-          physical_sources: [
-            {
-              schema_name: "falcon_db_24",
-              relation_name: "orders",
-              column_name: "id",
-              formatted_type: "uuid",
-              nullable: false,
-            },
-          ],
+      }));
+      const displayEvents: Parameters<
+        NonNullable<ProductionTeamToolFactoryInput["execution_context"]["emitDisplayEvent"]>
+      >[0][] = [];
+      const executionContext = createRunExecutionContext({
+        lease,
+        effective_config: config,
+        context_receipt: {
+          package_id: id(20),
+          package_hash: hash("a"),
+          receipt_id: id(21),
+          receipt_hash: hash("b"),
+        } as never,
+        run_signal: new AbortController().signal,
+        event_store: {} as never,
+        now: () => new Date("2026-08-22T01:00:00.000Z"),
+        create_id: () => id(22),
+        side_effect_timeout_ms: 1_000,
+        provider_dispatch: { invoke: provider as never },
+        heartbeat: vi.fn(),
+        guard_running_lease: vi.fn(),
+        append_checkpoint_event: vi.fn(),
+        append_side_effect_event: vi.fn(),
+        append_display_event: async (event) => {
+          displayEvents.push(event);
+          return { ok: true as const, value: { sequence: displayEvents.length } };
         },
-      ],
-      time_window: null,
-    });
-    const queryResult = {
-      schema_version: "governed-datasource-query-result@1.0.0" as const,
-      query_id: id(42),
-      request_hash: hash("6"),
-      adapter_ref: {
-        adapter_id: "postgresql" as const,
-        adapter_revision: 1,
-        descriptor_hash: hash("7"),
-        dialect: "POSTGRESQL" as const,
-      },
-      columns: [
-        { name: "month", type: "text" },
-        { name: "order_count", type: "integer" },
-      ],
-      rows: [
-        { month: "2026-01", order_count: 20 },
-        { month: "2026-02", order_count: 32 },
-        { month: "2026-03", order_count: 27 },
-      ],
-      row_count: 3,
-      byte_count: 128,
-      elapsed_ms: 5,
-      truncated: false as const,
-      result_hash: hash("8"),
-    };
-    const text2sqlExecute = vi.fn(async () => ({
-      result: queryResult,
-      semantic_binding: semanticBinding,
-    }));
-    const text2sqlCompile = vi.fn(async ({ candidate }) => candidate);
-    const tools = createProductionTeamTools(
-      {
-        capability: {},
-        artifacts: {
-          async commit(_capability, _lease, document) {
-            productDocuments.set(document.artifact_ref.artifact_id, document);
-            return { ok: true, value: document.artifact_ref };
-          },
-          async commitWorkspaceChart(_capability, _lease, document) {
-            chartDocument = await verifyArtifactWorkspaceChartDocumentV2(document);
-            return { ok: true, value: document.document_ref };
-          },
-          async resolveCommitted(_capability, reference) {
-            return { ok: true, value: productDocuments.get(reference.artifact_id) ?? null };
-          },
-        },
-        text2sql: {
-          prepare: text2sqlPrepare,
-          compileCandidate: text2sqlCompile,
-          execute: text2sqlExecute,
-        },
-        semantic_release: {
-          read: vi.fn(async () => ({
-            ok: true as const,
-            value: {
-              release_identity: {
-                semantic_domain: "commerce",
-                release_id: config.semantic_release.resource_id,
-                release_digest: config.semantic_release.resource_hash,
-                release_generation: config.semantic_release.semantic_generation,
-                datasource_id: config.datasource.resource_id,
-              },
-              executable: {
-                schema_version: "semantic-executable-projection@1.0.0" as const,
-                metrics: [],
-                dimensions: [],
-                formulas: [],
-                physical_bindings: [],
-              },
-              relationships: {
-                schema_version: "semantic-relationship-projection@1.0.0" as const,
-                relationships: [],
-              },
-              restrictions: {
-                schema_version: "semantic-runtime-restriction-projection@1.0.0" as const,
-                quality_constraints: [],
-                time_semantics: [],
-              },
-            },
-          })),
-        },
-      },
-      {
-        lease: lease as ProductionTeamToolFactoryInput["lease"],
-        authority: {
-          schema_version: "falcon24-authority-binding@2.0.0",
-          authority_epoch: "E2",
-          baseline_id: id(4),
-          baseline_hash: hash("d"),
-          activation_attempt_id: id(5),
-        },
-        execution_context: executionContext,
+      });
+      const productDocuments = new Map<string, ProductTeamArtifactDocument>();
+      let chartDocument: ArtifactWorkspaceChartDocumentV2 | null = null;
+      const text2sqlPrepare = vi.fn(async () => ({
+        context_text: '{"schema_version":"frozen-query-context@1.0.0"}',
+        datasource_id: id(40),
+        schema_snapshot_id: id(41),
+        schema_snapshot_hash: hash("4"),
+        allowed_relations: ["falcon_db_24.orders"],
+        target_capability_hash: hash("5"),
+        reader_role: "falcon_demo_reader",
+        semantic_query_context_hash: null,
+      }));
+      const semanticBinding = await buildQueryEvidenceSemanticBinding({
+        protocol_version: "query-evidence-semantic-binding@1.0.0",
+        semantic_release_ref: config.semantic_release,
         semantic_context_ref: {
           package_id: id(20),
           package_hash: hash("a"),
           receipt_id: id(21),
           receipt_hash: hash("b"),
-          semantic_domain: "commerce",
-          semantic_release_id: id(22),
-          semantic_release_hash: hash("c"),
         },
-        semantic_context_package: {} as never,
-        semantic_context: {} as never,
-        accepted_evidence_ref: null,
-        accepted_semantic_query_context_ref: null,
-        delegation: {
-          profile: { revision: { profile_id: "governed-text2sql-agent" } },
-          call: { objective: "查询每月订单趋势" },
-        } as ProductionTeamToolFactoryInput["delegation"],
-      },
-    );
-    const task = {
-      task_id: id(24),
-      run_id: lease.run_id,
-      profile_id: "governed-text2sql-agent",
-      scope,
-      bounds: { timeout_ms: 30_000, max_context_bytes: 16_384 },
-    } as Parameters<ProductProfileToolPort["invoke"]>[0]["task"];
-    const profile = {
-      revision: { profile_id: "governed-text2sql-agent" },
-    } as unknown as AgentProductProfileRegistryItemV2;
-    const invocation = (toolId: string) =>
-      tools.invoke({
-        task,
-        profile,
-        tool_id: toolId,
-        context_epoch: { epoch_id: id(25), build_signature: hash("e") },
+        schema_snapshot_ref: config.schema_snapshot,
+        datasource_ref: config.datasource,
+        target_binding_hash: hash("5"),
+        columns: [
+          {
+            output_name: "month",
+            logical_type: "STRING",
+            nullable: false,
+            semantic_role: "DIMENSION",
+            semantic_object_id: "month",
+            formula_hash: null,
+            aggregate: null,
+            grain: { grain_id: "month", granularity: "month" },
+            physical_sources: [
+              {
+                schema_name: "falcon_db_24",
+                relation_name: "orders",
+                column_name: "month",
+                formatted_type: "text",
+                nullable: false,
+              },
+            ],
+          },
+          {
+            output_name: "order_count",
+            logical_type: "NUMBER",
+            nullable: false,
+            semantic_role: "METRIC",
+            semantic_object_id: "order-count",
+            formula_hash: hash("9"),
+            aggregate: "count",
+            grain: { grain_id: "order", granularity: "atomic" },
+            physical_sources: [
+              {
+                schema_name: "falcon_db_24",
+                relation_name: "orders",
+                column_name: "id",
+                formatted_type: "uuid",
+                nullable: false,
+              },
+            ],
+          },
+        ],
+        time_window: null,
+      });
+      const queryResult = {
+        schema_version: "governed-datasource-query-result@1.0.0" as const,
+        query_id: id(42),
+        request_hash: hash("6"),
+        adapter_ref: {
+          adapter_id: "postgresql" as const,
+          adapter_revision: 1,
+          descriptor_hash: hash("7"),
+          dialect: "POSTGRESQL" as const,
+        },
+        columns: [
+          { name: "month", type: "text" },
+          { name: "order_count", type: "integer" },
+        ],
+        rows: [
+          { month: "2026-01", order_count: 20 },
+          { month: "2026-02", order_count: 32 },
+          { month: "2026-03", order_count: 27 },
+        ],
+        row_count: 3,
+        byte_count: 128,
+        elapsed_ms: 5,
+        truncated: false as const,
+        result_hash: hash("8"),
+      };
+      const text2sqlExecute = vi.fn(async () => ({
+        result: queryResult,
+        semantic_binding: semanticBinding,
+      }));
+      const text2sqlCompile = vi.fn(async ({ candidate }) => candidate);
+      const tools = createProductionTeamTools(
+        {
+          capability: {},
+          artifacts: {
+            async commit(_capability, _lease, document) {
+              productDocuments.set(document.artifact_ref.artifact_id, document);
+              return { ok: true, value: document.artifact_ref };
+            },
+            async commitWorkspaceChart(_capability, _lease, document) {
+              chartDocument = await verifyArtifactWorkspaceChartDocumentV2(document);
+              return { ok: true, value: document.document_ref };
+            },
+            async resolveCommitted(_capability, reference) {
+              return { ok: true, value: productDocuments.get(reference.artifact_id) ?? null };
+            },
+          },
+          text2sql: {
+            prepare: text2sqlPrepare,
+            compileCandidate: text2sqlCompile,
+            execute: text2sqlExecute,
+          },
+          semantic_release: {
+            read: vi.fn(async () => ({
+              ok: true as const,
+              value: {
+                release_identity: {
+                  semantic_domain: "commerce",
+                  release_id: config.semantic_release.resource_id,
+                  release_digest: config.semantic_release.resource_hash,
+                  release_generation: config.semantic_release.semantic_generation,
+                  datasource_id: config.datasource.resource_id,
+                },
+                executable: {
+                  schema_version: "semantic-executable-projection@1.0.0" as const,
+                  metrics: [],
+                  dimensions: [],
+                  formulas: [],
+                  physical_bindings: [],
+                },
+                relationships: {
+                  schema_version: "semantic-relationship-projection@1.0.0" as const,
+                  relationships: [],
+                },
+                restrictions: {
+                  schema_version: "semantic-runtime-restriction-projection@1.0.0" as const,
+                  quality_constraints: [],
+                  time_semantics: [],
+                },
+              },
+            })),
+          },
+        },
+        {
+          lease: lease as ProductionTeamToolFactoryInput["lease"],
+          authority: {
+            schema_version: "falcon24-authority-binding@2.0.0",
+            authority_epoch: "E2",
+            baseline_id: id(4),
+            baseline_hash: hash("d"),
+            activation_attempt_id: id(5),
+          },
+          execution_context: executionContext,
+          semantic_context_ref: {
+            package_id: id(20),
+            package_hash: hash("a"),
+            receipt_id: id(21),
+            receipt_hash: hash("b"),
+            semantic_domain: "commerce",
+            semantic_release_id: id(22),
+            semantic_release_hash: hash("c"),
+          },
+          semantic_context_package: {} as never,
+          semantic_context: {} as never,
+          accepted_evidence_ref: null,
+          accepted_semantic_query_context_ref: null,
+          delegation: {
+            profile: { revision: { profile_id: "governed-text2sql-agent" } },
+            call: { objective: "查询每月订单趋势" },
+          } as ProductionTeamToolFactoryInput["delegation"],
+        },
+      );
+      const task = {
+        task_id: id(24),
+        run_id: lease.run_id,
+        profile_id: "governed-text2sql-agent",
+        scope,
+        bounds: { timeout_ms: 30_000, max_context_bytes: 16_384 },
+      } as Parameters<ProductProfileToolPort["invoke"]>[0]["task"];
+      const profile = {
+        revision: { profile_id: "governed-text2sql-agent" },
+      } as unknown as AgentProductProfileRegistryItemV2;
+      const invocation = (toolId: string) =>
+        tools.invoke({
+          task,
+          profile,
+          tool_id: toolId,
+          context_epoch: { epoch_id: id(25), build_signature: hash("e") },
+        });
+
+      await invocation("semantic.release.read");
+      await invocation("sql.compiler.compile");
+      const result = await invocation("sql.sandbox.execute");
+      expect(result).toMatchObject({
+        output_ref: { artifact_type: "QueryEvidence" },
+        public_artifact_refs: [
+          { artifact_type: "QueryEvidence" },
+          { artifact_type: "ArtifactWorkspaceDocument" },
+        ],
+      });
+      expect(chartDocument).toMatchObject({
+        schema_version: "artifact-workspace-chart-document@2.0.0",
+        projection: { kind: "CHART", chart_type: "LINE", x_key: "month" },
+      });
+      expect(provider).toHaveBeenCalledOnce();
+      expect(text2sqlPrepare).toHaveBeenCalledOnce();
+      expect(text2sqlCompile).toHaveBeenCalledOnce();
+      expect(text2sqlExecute).toHaveBeenCalledWith(
+        expect.objectContaining({
+          candidate: expect.objectContaining({
+            schema_version: "text2sql-query-candidate@1.0.0",
+          }),
+        }),
+      );
+      expect(provider.mock.calls[0]?.[0]).toMatchObject({
+        logical_call_id: productionTeamToolsInternals.specialistProviderLogicalCallId({
+          run_id: lease.run_id,
+          task_id: task.task_id,
+          stage: "TEXT2SQL",
+          call_index: 0,
+        }),
+        turn: {
+          kind: "SPECIALIST",
+          stage: "TEXT2SQL",
+          profile_id: "governed-text2sql-agent",
+          objective: "查询每月订单趋势",
+          context_text: '{"schema_version":"frozen-query-context@1.0.0"}',
+        },
       });
 
-    await invocation("semantic.release.read");
-    await invocation("sql.compiler.compile");
-    const result = await invocation("sql.sandbox.execute");
-    expect(result).toMatchObject({
-      output_ref: { artifact_type: "QueryEvidence" },
-      public_artifact_refs: [
-        { artifact_type: "QueryEvidence" },
-        { artifact_type: "ArtifactWorkspaceDocument" },
-      ],
-    });
-    expect(chartDocument).toMatchObject({
-      schema_version: "artifact-workspace-chart-document@2.0.0",
-      projection: { kind: "CHART", chart_type: "LINE", x_key: "month" },
-    });
-    expect(provider).toHaveBeenCalledOnce();
-    expect(text2sqlPrepare).toHaveBeenCalledOnce();
-    expect(text2sqlCompile).toHaveBeenCalledOnce();
-    expect(text2sqlExecute).toHaveBeenCalledWith(
-      expect.objectContaining({
-        candidate: expect.objectContaining({
-          schema_version: "text2sql-query-candidate@1.0.0",
+      text2sqlExecute.mockRejectedValueOnce(
+        Object.assign(new TypeError("private database error must not be published"), {
+          code: "QUERY_EVIDENCE_RESULT_BINDING_MISMATCH",
         }),
-      }),
-    );
-    expect(provider.mock.calls[0]?.[0]).toMatchObject({
-      logical_call_id: productionTeamToolsInternals.specialistProviderLogicalCallId({
-        run_id: lease.run_id,
-        task_id: task.task_id,
-        stage: "TEXT2SQL",
-        call_index: 0,
-      }),
-      turn: {
-        kind: "SPECIALIST",
-        stage: "TEXT2SQL",
-        profile_id: "governed-text2sql-agent",
-        objective: "查询每月订单趋势",
-        context_text: '{"schema_version":"frozen-query-context@1.0.0"}',
-      },
-    });
+      );
+      if (repairOutcome === "rejected") {
+        text2sqlCompile.mockRejectedValueOnce(
+          Object.assign(new TypeError("private SQL and parameters must not be published"), {
+            code: "TEXT2SQL_SQL_SHAPE_REJECTED",
+            diagnostic_code: "TEXT2SQL_SQL_LIMIT_SHAPE_REJECTED",
+          }),
+        );
+        await expect(invocation("sql.sandbox.execute")).rejects.toMatchObject({
+          code: "TEXT2SQL_SQL_LIMIT_SHAPE_REJECTED",
+        });
+        const rejections = displayEvents
+          .filter((event) => event.kind === "progress")
+          .filter((event) => event.phase === "text2sql.candidate.rejected");
+        expect(rejections.map((event) => JSON.parse(event.summary))).toEqual([
+          expect.objectContaining({
+            stage: "EXECUTE",
+            attempt: 1,
+            reason_code: "QUERY_EVIDENCE_RESULT_BINDING_MISMATCH",
+            candidate_hash: expect.stringMatching(/^sha256:[0-9a-f]{64}$/u),
+            parameter_types: [],
+          }),
+          expect.objectContaining({
+            stage: "COMPILE",
+            attempt: 2,
+            reason_code: "TEXT2SQL_SQL_LIMIT_SHAPE_REJECTED",
+          }),
+        ]);
+        expect(JSON.stringify(rejections)).not.toMatch(/private|select month|order_count/u);
+        expect(text2sqlExecute).toHaveBeenCalledTimes(2);
+        return;
+      }
+      await expect(invocation("sql.sandbox.execute")).resolves.toMatchObject({
+        output_ref: { artifact_type: "QueryEvidence" },
+      });
+      expect(provider).toHaveBeenCalledTimes(2);
+      expect(provider.mock.calls[1]?.[0]).toMatchObject({
+        logical_call_id: productionTeamToolsInternals.specialistProviderLogicalCallId({
+          run_id: lease.run_id,
+          task_id: task.task_id,
+          stage: "TEXT2SQL",
+          call_index: 1,
+        }),
+        turn: {
+          kind: "SPECIALIST",
+          stage: "TEXT2SQL",
+          context_text: expect.stringContaining("QUERY_EVIDENCE_RESULT_BINDING_MISMATCH"),
+        },
+      });
+      expect(text2sqlExecute).toHaveBeenCalledTimes(3);
 
-    text2sqlExecute.mockRejectedValueOnce(
-      Object.assign(new TypeError("QUERY_EVIDENCE_RESULT_BINDING_MISMATCH"), {
-        code: "QUERY_EVIDENCE_RESULT_BINDING_MISMATCH",
-      }),
-    );
-    await expect(invocation("sql.sandbox.execute")).resolves.toMatchObject({
-      output_ref: { artifact_type: "QueryEvidence" },
-    });
-    expect(provider).toHaveBeenCalledTimes(2);
-    expect(provider.mock.calls[1]?.[0]).toMatchObject({
-      logical_call_id: productionTeamToolsInternals.specialistProviderLogicalCallId({
-        run_id: lease.run_id,
-        task_id: task.task_id,
-        stage: "TEXT2SQL",
-        call_index: 1,
-      }),
-      turn: {
-        kind: "SPECIALIST",
-        stage: "TEXT2SQL",
-        context_text: expect.stringContaining("QUERY_EVIDENCE_RESULT_BINDING_MISMATCH"),
-      },
-    });
-    expect(text2sqlExecute).toHaveBeenCalledTimes(3);
-
-    const committedBeforeFailure = [...productDocuments.keys()].sort();
-    const chartBeforeFailure = chartDocument;
-    text2sqlExecute.mockRejectedValueOnce(
-      Object.assign(new TypeError("DATASOURCE_ADAPTER_PERMISSION_DENIED"), {
+      const committedBeforeFailure = [...productDocuments.keys()].sort();
+      const chartBeforeFailure = chartDocument;
+      text2sqlExecute.mockRejectedValueOnce(
+        Object.assign(new TypeError("DATASOURCE_ADAPTER_PERMISSION_DENIED"), {
+          code: "DATASOURCE_ADAPTER_PERMISSION_DENIED",
+        }),
+      );
+      await expect(invocation("sql.sandbox.execute")).rejects.toMatchObject({
         code: "DATASOURCE_ADAPTER_PERMISSION_DENIED",
-      }),
-    );
-    await expect(invocation("sql.sandbox.execute")).rejects.toMatchObject({
-      code: "DATASOURCE_ADAPTER_PERMISSION_DENIED",
-    });
-    expect([...productDocuments.keys()].sort()).toEqual(committedBeforeFailure);
-    expect(chartDocument).toBe(chartBeforeFailure);
-  });
+      });
+      expect([...productDocuments.keys()].sort()).toEqual(committedBeforeFailure);
+      expect(chartDocument).toBe(chartBeforeFailure);
+    },
+  );
 });

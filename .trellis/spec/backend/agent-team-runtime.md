@@ -106,6 +106,7 @@ The only model output contract is `text2sql-query-candidate@1.0.0`:
 - There is no `query_kind`, template id or fixed business SQL。
 - The Host compiler turns model-authored non-zero literals into an append-only parameter vector, reparses the SQL and applies the strict PostgreSQL AST policy. It never invents relations, expressions or values。
 - One bounded repair is allowed for schema/policy/type/column/result-shape failures. The model receives only the rejected candidate, frozen context and a safe diagnostic code。
+- Every compile/execution rejection emits a current-Run `text2sql.candidate.rejected` progress event before repair or rethrow. It records the stage, bounded attempt number, allowlisted reason code, candidate hash and parameter/result types only; never SQL text, values or raw errors. A failed repair must not erase the first execution diagnostic, and these events do not authorize an Artifact or a successful answer。
 - Invalid candidates are not committed. `SqlArtifact` is committed only after the final compiled candidate executes successfully, then `QueryEvidence` references it。
 
 ### 5.3 Execution boundary

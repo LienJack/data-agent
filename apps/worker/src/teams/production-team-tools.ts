@@ -843,6 +843,39 @@ export function createProductionTeamTools(
     rejection_code: null,
   };
 
+  const recordCandidateRejection = async (
+    taskId: string,
+    stage: "COMPILE" | "EXECUTE",
+    candidate: Text2SqlQueryCandidate,
+    code: string,
+  ): Promise<void> => {
+    const context = factoryInput.execution_context;
+    if (!context.emitDisplayEvent) return;
+    const reasonCode =
+      ROOT_VISIBLE_TEXT2SQL_POLICY_CODES.has(code) || repairableQueryExecutionFailure(code)
+        ? code
+        : "TEAM_TEXT2SQL_CANDIDATE_REJECTED";
+    portValue(
+      await context.emitDisplayEvent({
+        kind: "progress",
+        key: `text2sql.rejected:${taskId}:${stage}:${state.provider_attempt_count}`,
+        phase: "text2sql.candidate.rejected",
+        title: "SQL 候选校验未通过",
+        status: "COMPLETED",
+        summary: canonicalizeJson({
+          stage,
+          attempt: state.provider_attempt_count,
+          reason_code: reasonCode,
+          candidate_hash: await sha256ContentHash(candidate),
+          parameter_types: candidate.parameters.map((value) =>
+            value === null ? "null" : typeof value,
+          ),
+          result_types: candidate.result_columns.map((column) => column.semantic_type),
+        }),
+      }),
+    );
+  };
+
   const generateValidatedText2SqlCandidate = async (
     taskId: string,
   ): Promise<Text2SqlQueryCandidate> => {
@@ -888,6 +921,7 @@ export function createProductionTeamTools(
       } catch (error) {
         state.rejected_candidate = parsed.data;
         state.rejection_code = text2SqlCandidateDiagnosticCode(error);
+        await recordCandidateRejection(taskId, "COMPILE", parsed.data, state.rejection_code);
         if (state.provider_attempt_count >= maxText2SqlCandidateAttempts) {
           throw new ProductionTeamToolError(text2SqlCandidateFailureCode(state.rejection_code));
         }
@@ -1057,16 +1091,27 @@ export function createProductionTeamTools(
           if (!state.prepared || !state.candidate) {
             throw new ProductionTeamToolError("TEAM_TEXT2SQL_COMPILE_REQUIRED");
           }
-          const executeCandidate = (candidate: Text2SqlQueryCandidate) =>
-            dependencies.text2sql.execute({
-              effective_config: factoryInput.execution_context.getEffectiveConfig(),
-              prepared: state.prepared as PreparedText2SqlContext,
-              candidate,
-              timeout_ms: Math.max(100, Math.min(30_000, input.task.bounds.timeout_ms)),
-              max_rows: 10_000,
-              max_bytes: Math.min(10_000_000, input.task.bounds.max_context_bytes * 64),
-              ...(input.signal ? { signal: input.signal } : {}),
-            });
+          const executeCandidate = async (candidate: Text2SqlQueryCandidate) => {
+            try {
+              return await dependencies.text2sql.execute({
+                effective_config: factoryInput.execution_context.getEffectiveConfig(),
+                prepared: state.prepared as PreparedText2SqlContext,
+                candidate,
+                timeout_ms: Math.max(100, Math.min(30_000, input.task.bounds.timeout_ms)),
+                max_rows: 10_000,
+                max_bytes: Math.min(10_000_000, input.task.bounds.max_context_bytes * 64),
+                ...(input.signal ? { signal: input.signal } : {}),
+              });
+            } catch (error) {
+              await recordCandidateRejection(
+                input.task.task_id,
+                "EXECUTE",
+                candidate,
+                safeErrorCode(error, "TEXT2SQL_QUERY_EXECUTION_FAILED"),
+              );
+              throw error;
+            }
+          };
           let execution: Awaited<ReturnType<typeof executeCandidate>>;
           try {
             execution = await executeCandidate(state.candidate);
