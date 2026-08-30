@@ -99,6 +99,14 @@ describe("direct run-bound provider retry policy", () => {
     );
 
     expect(prompt).toContain("Only these SQL functions are permitted");
+    expect(prompt).toContain("TEXT2SQL_SQL_RELATION_ALIAS_REQUIRED means add an explicit alias");
+    expect(prompt).toContain(
+      "TEXT2SQL_SQL_RELATION_UNQUALIFIED means schema-qualify physical relations",
+    );
+    expect(prompt).toContain(
+      "TEXT2SQL_SQL_RELATION_NOT_ALLOWED means remove the out-of-scope relation",
+    );
+    expect(prompt).toContain("Do not schema-qualify CTE names");
     expect(prompt).toContain("Do not use to_char");
     expect(prompt).toContain("date_trunc returns a PostgreSQL timestamp");
     expect(prompt).toContain("declare DATETIME unless the output expression is explicitly cast");

@@ -104,3 +104,24 @@ const authority = createPostgresText2SqlSandboxAuthority({
   require_resolved_context_binding: true,
 });
 ```
+
+## Model-authored relation rejection diagnostics
+
+- Physical relations must remain exact schema-qualified members of the frozen allowlist. CTE references are local, unqualified names;
+  both physical and CTE references require explicit aliases. No repair may broaden the allowlist or disable AST checks.
+- Keep the public failure class `TEXT2SQL_SQL_SHAPE_REJECTED`, but carry the specific allowlisted diagnostic through the candidate
+  rejection event, specialist repair context and Root Tool Result:
+
+| Diagnostic suffix (`TEXT2SQL_SQL_`) | Meaning |
+| --- | --- |
+| `RELATION_SET_DUPLICATE` | Host allowlist has duplicate entries; not a model permission problem |
+| `RELATION_SHAPE_REJECTED` | Unsupported RangeVar keys, ONLY or relation shape |
+| `RELATION_ALIAS_REQUIRED` | Missing explicit physical/CTE relation alias |
+| `RELATION_UNQUALIFIED` | Unqualified name is not a declared CTE |
+| `RELATION_NOT_ALLOWED` | Schema-qualified relation is outside the frozen allowlist |
+
+- Historical `RELATION_BINDING_REJECTED` remains readable. New diagnostics expose no SQL, identifiers, parameter values or raw provider
+  payload. Candidate hashes alone cannot reconstruct rejected SQL; do not claim an exact historical SQL cause without preserved evidence.
+- Required regression: actual parameterization/deparse/policy round trip for a monthly self-join; rejection of missing CTE aliases,
+  unqualified physical relations, out-of-scope schemas, ONLY, duplicate Host allowlists; stable Worker error propagation and targeted repair
+  guidance. Existing forbidden SQL and schema bounds must remain rejected.

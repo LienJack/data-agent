@@ -268,6 +268,65 @@ describe("PostgreSQL model-authored Text2SQL policy", () => {
     ).resolves.toBeUndefined();
   });
 
+  it("preserves a parameterized monthly self-join through the actual compiler round trip", async () => {
+    const compiled = await parameterizePostgresqlText2SqlCandidate({
+      sql: `with monthly as (
+        select date_trunc('month', o.created_at::timestamp) as month,
+          sum(o.amount) as revenue from falcon_db_24.orders as o
+        group by date_trunc('month', o.created_at::timestamp)
+      ) select current_month.month as month, current_month.revenue as revenue,
+        prior_month.revenue as prior_revenue,
+        (current_month.revenue-prior_month.revenue)/nullif(prior_month.revenue,0) as growth
+      from monthly as current_month
+      left join monthly as prior_month on prior_month.month=current_month.month-$1::interval
+      where current_month.month >= $2::timestamp and current_month.month < $3::timestamp
+      order by month`,
+      parameters: ["1 year", "2023-11-01", "2024-11-01"],
+    });
+    await expect(
+      assertPostgresqlText2SqlCandidatePolicy({
+        ...compiled,
+        parameter_count: compiled.parameters.length,
+        allowed_relations: allowed,
+      }),
+    ).resolves.toBeUndefined();
+  });
+
+  it.each([
+    [
+      "select orders.amount as amount from falcon_db_24.orders",
+      "TEXT2SQL_SQL_RELATION_ALIAS_REQUIRED",
+    ],
+    ["select o.amount as amount from orders as o", "TEXT2SQL_SQL_RELATION_UNQUALIFIED"],
+    ["select o.amount as amount from private.orders as o", "TEXT2SQL_SQL_RELATION_NOT_ALLOWED"],
+    [
+      "select o.amount as amount from only falcon_db_24.orders as o",
+      "TEXT2SQL_SQL_RELATION_SHAPE_REJECTED",
+    ],
+    [
+      "with revenue as (select o.amount as amount from falcon_db_24.orders as o) select revenue.amount as amount from revenue",
+      "TEXT2SQL_SQL_RELATION_ALIAS_REQUIRED",
+    ],
+  ])("distinguishes relation rejection without exposing SQL: %s", async (sql, diagnostic) => {
+    await expect(
+      assertPostgresqlText2SqlCandidatePolicy({
+        sql,
+        parameter_count: 0,
+        allowed_relations: allowed,
+      }),
+    ).rejects.toMatchObject({ code: "TEXT2SQL_SQL_SHAPE_REJECTED", diagnostic_code: diagnostic });
+  });
+
+  it("distinguishes a duplicate host relation allowlist from a model relation error", async () => {
+    await expect(
+      assertPostgresqlText2SqlCandidatePolicy({
+        sql: "select o.amount as amount from falcon_db_24.orders as o",
+        parameter_count: 0,
+        allowed_relations: [allowed[1], allowed[1]],
+      }),
+    ).rejects.toMatchObject({ diagnostic_code: "TEXT2SQL_SQL_RELATION_SET_DUPLICATE" });
+  });
+
   it.each([
     ["delete from falcon_db_24.orders", "TEXT2SQL_SQL_SHAPE_REJECTED"],
     [
@@ -324,7 +383,7 @@ describe("PostgreSQL model-authored Text2SQL policy", () => {
       }),
     ).rejects.toMatchObject({
       code: "TEXT2SQL_SQL_SHAPE_REJECTED",
-      diagnostic_code: "TEXT2SQL_SQL_RELATION_BINDING_REJECTED",
+      diagnostic_code: "TEXT2SQL_SQL_RELATION_UNQUALIFIED",
     });
     await expect(
       assertPostgresqlText2SqlCandidatePolicy({

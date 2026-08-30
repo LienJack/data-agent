@@ -14,6 +14,11 @@ export type PostgresqlText2SqlPolicyDiagnosticCode =
   | "TEXT2SQL_SQL_DISTINCT_SHAPE_REJECTED"
   | "TEXT2SQL_SQL_CTE_SHAPE_REJECTED"
   | "TEXT2SQL_SQL_RELATION_BINDING_REJECTED"
+  | "TEXT2SQL_SQL_RELATION_SET_DUPLICATE"
+  | "TEXT2SQL_SQL_RELATION_SHAPE_REJECTED"
+  | "TEXT2SQL_SQL_RELATION_ALIAS_REQUIRED"
+  | "TEXT2SQL_SQL_RELATION_UNQUALIFIED"
+  | "TEXT2SQL_SQL_RELATION_NOT_ALLOWED"
   | "TEXT2SQL_SQL_JOIN_SHAPE_REJECTED"
   | "TEXT2SQL_SQL_PROJECTION_SHAPE_REJECTED"
   | "TEXT2SQL_SQL_PRIMITIVE_DENIED"
@@ -513,7 +518,7 @@ export async function assertPostgresqlText2SqlCandidatePolicy(
     ),
   );
   if (allowedRelations.size !== input.allowed_relations.length) {
-    reject("TEXT2SQL_SQL_SHAPE_REJECTED", "TEXT2SQL_SQL_RELATION_BINDING_REJECTED");
+    reject("TEXT2SQL_SQL_SHAPE_REJECTED", "TEXT2SQL_SQL_RELATION_SET_DUPLICATE");
   }
   const cteNames = new Set<string>();
   visit(ast, (nodeName, node) => {
@@ -614,26 +619,23 @@ export async function assertPostgresqlText2SqlCandidatePolicy(
         assertOnlyKeys(
           node,
           ["schemaname", "relname", "inh", "relpersistence", "alias", "location"],
-          "TEXT2SQL_SQL_RELATION_BINDING_REJECTED",
+          "TEXT2SQL_SQL_RELATION_SHAPE_REJECTED",
         );
-        if (
-          typeof node.relname !== "string" ||
-          node.inh !== true ||
-          node.relpersistence !== "p" ||
-          !isRecord(node.alias) ||
-          typeof node.alias.aliasname !== "string"
-        ) {
-          reject("TEXT2SQL_SQL_SHAPE_REJECTED", "TEXT2SQL_SQL_RELATION_BINDING_REJECTED");
+        if (typeof node.relname !== "string" || node.inh !== true || node.relpersistence !== "p") {
+          reject("TEXT2SQL_SQL_SHAPE_REJECTED", "TEXT2SQL_SQL_RELATION_SHAPE_REJECTED");
+        }
+        if (!isRecord(node.alias) || typeof node.alias.aliasname !== "string") {
+          reject("TEXT2SQL_SQL_SHAPE_REJECTED", "TEXT2SQL_SQL_RELATION_ALIAS_REQUIRED");
         }
         if (node.schemaname === undefined) {
           if (!cteNames.has(node.relname)) {
-            reject("TEXT2SQL_SQL_SHAPE_REJECTED", "TEXT2SQL_SQL_RELATION_BINDING_REJECTED");
+            reject("TEXT2SQL_SQL_SHAPE_REJECTED", "TEXT2SQL_SQL_RELATION_UNQUALIFIED");
           }
         } else if (
           typeof node.schemaname !== "string" ||
           !allowedRelations.has(`${node.schemaname}\0${node.relname}`)
         ) {
-          reject("TEXT2SQL_SQL_SHAPE_REJECTED", "TEXT2SQL_SQL_RELATION_BINDING_REJECTED");
+          reject("TEXT2SQL_SQL_SHAPE_REJECTED", "TEXT2SQL_SQL_RELATION_NOT_ALLOWED");
         }
         break;
       }

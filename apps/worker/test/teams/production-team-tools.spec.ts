@@ -156,6 +156,21 @@ describe("Production Team governed chart publication", () => {
   });
 
   it("returns only allowlisted Text2SQL policy codes to the Root Tool Result", () => {
+    for (const code of [
+      "TEXT2SQL_SQL_RELATION_SET_DUPLICATE",
+      "TEXT2SQL_SQL_RELATION_SHAPE_REJECTED",
+      "TEXT2SQL_SQL_RELATION_ALIAS_REQUIRED",
+      "TEXT2SQL_SQL_RELATION_UNQUALIFIED",
+      "TEXT2SQL_SQL_RELATION_NOT_ALLOWED",
+    ]) {
+      expect(productionTeamToolsInternals.text2SqlCandidateFailureCode(code)).toBe(code);
+      expect(
+        productionTeamToolsInternals.text2SqlCandidateDiagnosticCode({
+          code: "TEXT2SQL_SQL_SHAPE_REJECTED",
+          diagnostic_code: code,
+        }),
+      ).toBe(code);
+    }
     expect(
       productionTeamToolsInternals.text2SqlCandidateFailureCode("TEXT2SQL_SQL_SHAPE_REJECTED"),
     ).toBe("TEXT2SQL_SQL_SHAPE_REJECTED");
