@@ -1432,3 +1432,14 @@ catalog/model/deployment -> target baseline/staging receipt；仅 STAGED/inactiv
 manifest 拼接、fresh stage 与 result 错配、权限和并发 CAS；先跑 focused tests，再在 NAS 专用物理库执行完整 fresh-prefix 及
 populated rollback/replay/history hash 守卫。以上通过前不迁移或激活 live。新代码 clean build 后还要 fresh scratch canary，
 随后新 epoch 的正式 attempt 从 L1 开始；任何旧 build 的 PASS 均不拼入。
+
+10814 的真实物理克隆验证发现：首次激活及其事务回滚正确，但已激活认证在 `SELECT FOR UPDATE` 时受 E7
+UPDATE USING 的 `not is_active` 限制而不可见，导致 exact replay 错报 stage mismatch。10815 只新增 current
+request@8 的 exact certification 锁可见策略，绑定 scope/principal、PROMOTED stage、current activation 和一对一
+recovery receipt；`WITH CHECK(false)`，不增加 grant、不修改 RPC/旧 policy/immutable trigger。结合既有 promotion
+CHECK 与不可变 trigger，deactivation、no-op 和 payload UPDATE 均须拒绝；锁读取仍防止 certification revoke 竞态。
+
+克隆入场检查必须先重算原 dataset proof。当前遗留 content digest 使用物理 `ctid` 行序；逻辑 copy 即使 9 表内容
+multiset hash 全相等，也不一定保持该证明。已观察到两张表行序差异；保留失败副本，采用 PostgreSQL 在线物理备份、
+校验 backup manifest、独立 volume/loopback port/cluster_name 且不启用 replication，精确重现原 proof 后才继续。
+不为测试方便修改旧 proof/hash 或把逻辑相等当成冻结发布闭包相等。

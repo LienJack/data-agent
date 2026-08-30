@@ -1435,6 +1435,21 @@ Diagnostic/Q1/C1任一正式首次失败必须写既有 authority支持的 immut
   10814 selected assertions；未声称全部 post-prefix assertions 通过。live 写入和 provider 调用均为 0。
   正向认证/激活、activation rollback/replay/concurrency 仍待下一验证步骤，不把安装或负例通过当成恢复验收。
 - [ ] 完整 fresh-prefix 与 populated rollback/replay/concurrency/history guard；通过后才允许 live migration。
+- `7fd7676c` clean build 8/8 tasks、单并发 full unit gate 15/15 tasks 通过。首次逻辑克隆 Finalizer 在 dataset
+  predecessor proof 处 HOLD（激活 RPC=0）；9 表逻辑 hash 相同但两表物理行序不同。失败克隆与认证保留且容器停止。
+- 从 live 在线物理备份建立独立克隆 `data-agent-falcon24-f6-physical-recovery-7fd7676c`（55460，独立 volume，
+  `cluster_name=falcon24-recovery-physical-7fd7676c`，无 replication），backup manifest 与原 E11 dataset proof 通过。
+  10812–10814 均完成真实 rollback + apply、346 表历史与旧 ledger 零漂移；live authority 未写。
+- 克隆 fresh credential certification Run `1a993ff7-19c6-5195-beb6-2fdc13e8fb78` 通过；正常 Finalizer 生成的 request@8
+  通过 promotion 后错误注入全回滚、成功激活后回滚，随后并发首调用真实提交 E12，第二调用暴露 active certification 锁 RLS 缺口。
+  克隆 E12 baseline `76ba3e8c-2eee-54eb-b0e7-afc208f8baa2` 与 activation `f65a4b39-f516-5def-8801-1c1a7bf8b8cf`
+  已保留，未倒退。此为非计分 integration 验证，不是 formal gate PASS。
+- [x] 10815：exact current recovery certification 锁可见性前向修复，checksum
+  `sha256:9db12283ff7d6c9c92ee6cc7b0a273a4e89668f749fd22d3613f59947ff85a1e`。SQL regression 先复现
+  `FALCON24_CURRENT_CERTIFICATION_LOCK_INVISIBLE`；在既有已提交 E12 克隆应用后，exact replay 与 deactivation/no-op/payload
+  拒绝均通过，347 表历史与旧 ledger 零漂移，安装回滚通过。新空库 `data-agent-falcon24-f6-lock-prefix-7fd7676c`
+  （55461）完整 prefix/必选历史与锁检查/10815 selected assertions 通过；并非全部 post-prefix assertions。
+  新 clean build 下的 fresh certification、首次并发激活和完整 Finalizer readback 仍需重新证明，不能拼接此次历史验证作正式 PASS。
 - [ ] 新 clean build 的 scratch canary；fresh live stage/epoch/attempt，正式 15 题重新从 L1 开始。
 
 **F6 READY 轮次恢复边界（2026-08-30）**
