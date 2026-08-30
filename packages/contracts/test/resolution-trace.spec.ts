@@ -438,6 +438,77 @@ describe("resolution trace contracts", () => {
 });
 
 describe("SQL history contracts", () => {
+  it("binds Product Team SQL evidence without inventing legacy compiler or execution receipts", async () => {
+    const input = {
+      schema_version: "sql-history-entry@2.0.0" as const,
+      scope,
+      run_id: id(4),
+      conversation_id: id(5),
+      sql_artifact_ref: reference("SqlArtifact", 20),
+      execution_receipt_ref: null,
+      query_evidence_ref: reference("QueryEvidence", 22),
+      result_ref: null,
+      schema_snapshot_ref: null,
+      schema_snapshot_hash: hash("a"),
+      compiler_version: null,
+      ast_hash: null,
+      statement_hash: hash("c"),
+      parameter_hash: hash("d"),
+      query_hash: null,
+      candidate_hash: hash("e"),
+      target_binding_hash: hash("f"),
+      status: "VALIDATED" as const,
+      occurred_at: occurredAt,
+      conversation_href: `/w/${scope.tenant_id}/qa?conversation=${id(5)}&run=${id(4)}&tab=conversation`,
+    };
+    const entry = await buildSqlHistoryEntry(input);
+    await expect(verifySqlHistoryEntry(entry)).resolves.toEqual(entry);
+    const second = await buildSqlHistoryEntry({
+      ...input,
+      sql_artifact_ref: reference("SqlArtifact", 24),
+    });
+    const sorted = [entry, second].sort((left, right) =>
+      right.entry_hash.localeCompare(left.entry_hash),
+    );
+    await expect(
+      verifySqlHistoryResult({
+        schema_version: "sql-history-result@1.0.0",
+        items: sorted,
+        next_cursor: null,
+      }),
+    ).resolves.toMatchObject({ items: sorted });
+    await expect(
+      verifySqlHistoryResult({
+        schema_version: "sql-history-result@1.0.0",
+        items: [...sorted].reverse(),
+        next_cursor: null,
+      }),
+    ).rejects.toThrow();
+    await expect(
+      verifySqlHistoryResult({
+        schema_version: "sql-history-result@1.0.0",
+        items: [entry],
+        next_cursor: null,
+      }),
+    ).resolves.toMatchObject({ items: [entry] });
+    for (const override of [
+      { compiler_version: "invented@1" },
+      { ast_hash: hash("1") },
+      { query_hash: hash("2") },
+      { execution_receipt_ref: reference("ExecutionReceipt", 21) },
+      { query_evidence_ref: null },
+      { query_evidence_ref: { ...input.query_evidence_ref, run_id: id(99) } },
+      { raw_sql: "select private_value" },
+    ])
+      await expect(verifySqlHistoryEntry({ ...entry, ...override })).rejects.toThrow();
+    await expect(verifySqlHistoryEntry({ ...entry, candidate_hash: hash("0") })).rejects.toThrow(
+      "SQL_HISTORY_ENTRY_HASH_MISMATCH",
+    );
+    expect(JSON.stringify(entry)).not.toMatch(
+      /"(?:sql|parameters|rows|prompt|context|provider_body)"/i,
+    );
+  });
+
   it("binds only hashes and typed refs, with no raw SQL parameters, rows, prompt, or context", async () => {
     const entry = await buildSqlHistoryEntry({
       schema_version: "sql-history-entry@1.0.0",

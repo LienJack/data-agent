@@ -13,6 +13,7 @@ import {
   analysisResultValueTypeSchema,
   analysisSandboxExecutionReceiptSchema,
   appScopeSchema,
+  artifactReferenceFor,
   artifactReferenceIdentity,
   artifactReferenceSchema,
   buildResolutionTrace,
@@ -2269,7 +2270,93 @@ async function projectSqlHistory(
     (artifact) => l2Document(artifact)?.payload.artifact_type === "QueryEvidence",
   );
   const entries: SqlHistoryEntry[] = [];
+  const productDocument = ({ document }: VerifiedArtifact) =>
+    "profile_id" in document && "provenance" in document ? document : null;
   for (const artifact of artifacts) {
+    const product = productDocument(artifact);
+    if (
+      product?.schema_version === "product-team-artifact@2.0.0" &&
+      product.artifact_ref.artifact_type === "SqlArtifact" &&
+      product.projection.kind === "SQL" &&
+      product.provenance?.kind === "TEXT2SQL_CANDIDATE"
+    ) {
+      const provenance = product.provenance;
+      if (provenance.schema_snapshot_ref.resource_hash !== authority.schema_snapshot_hash) {
+        throw new PersistenceBoundaryError(
+          "RESOLUTION_TRACE_CONFIG_MISMATCH",
+          "SQL Artifact 的 Schema Snapshot 与冻结 Run 不一致。",
+        );
+      }
+      const linked = artifacts.filter((candidate) => {
+        const document = productDocument(candidate);
+        return (
+          document?.schema_version === "product-team-artifact@2.0.0" &&
+          document.artifact_ref.artifact_type === "QueryEvidence" &&
+          document.provenance?.kind === "GOVERNED_QUERY_RESULT" &&
+          document.source_refs.some(
+            (ref) =>
+              artifactReferenceIdentity(ref) === artifactReferenceIdentity(artifact.reference),
+          )
+        );
+      });
+      if (linked.length > 1) {
+        throw new PersistenceBoundaryError(
+          "RESOLUTION_TRACE_ARTIFACT_AUTHORITY_AMBIGUOUS",
+          "SQL Artifact 对应多个 QueryEvidence，不能猜测当前证据。",
+        );
+      }
+      const evidence = linked[0];
+      const evidenceDocument = evidence ? productDocument(evidence) : null;
+      if (
+        evidenceDocument?.schema_version === "product-team-artifact@2.0.0" &&
+        evidenceDocument.provenance?.kind === "GOVERNED_QUERY_RESULT"
+      ) {
+        const binding = evidenceDocument.provenance.semantic_binding;
+        if (
+          binding.schema_snapshot_ref.resource_id !== provenance.schema_snapshot_ref.resource_id ||
+          binding.schema_snapshot_ref.resource_hash !==
+            provenance.schema_snapshot_ref.resource_hash ||
+          canonicalizeJson(binding.datasource_ref) !==
+            canonicalizeJson(provenance.datasource_ref) ||
+          binding.semantic_context_ref.package_id !== provenance.semantic_context_ref.package_id ||
+          binding.semantic_context_ref.package_hash !==
+            provenance.semantic_context_ref.package_hash ||
+          binding.target_binding_hash !== provenance.target_binding_hash
+        ) {
+          throw new PersistenceBoundaryError(
+            "RESOLUTION_TRACE_ARTIFACT_REFERENCE_MISMATCH",
+            "QueryEvidence 与来源 SQL 的冻结绑定不一致。",
+          );
+        }
+      }
+      entries.push(
+        await buildSqlHistoryEntry({
+          schema_version: "sql-history-entry@2.0.0",
+          scope: authority.scope,
+          run_id: authority.run_id,
+          conversation_id: authority.conversation_id,
+          sql_artifact_ref: artifactReferenceFor("SqlArtifact").parse(artifact.reference),
+          query_evidence_ref: evidence
+            ? artifactReferenceFor("QueryEvidence").parse(evidence.reference)
+            : null,
+          execution_receipt_ref: null,
+          result_ref: null,
+          schema_snapshot_ref: null,
+          schema_snapshot_hash: authority.schema_snapshot_hash,
+          compiler_version: null,
+          ast_hash: null,
+          query_hash: null,
+          statement_hash: await sha256ContentHash(product.projection.sql),
+          parameter_hash: provenance.parameters_hash,
+          candidate_hash: provenance.candidate_hash,
+          target_binding_hash: provenance.target_binding_hash,
+          status: evidence ? "VALIDATED" : "EXECUTED",
+          occurred_at: artifact.created_at,
+          conversation_href: `/w/${authority.scope.tenant_id}/qa?conversation=${authority.conversation_id}&run=${authority.run_id}&tab=conversation`,
+        }),
+      );
+      continue;
+    }
     const sqlDocument = l2Document(artifact);
     if (sqlDocument?.payload.artifact_type !== "SqlArtifact") continue;
     const sql = sqlDocument.payload;

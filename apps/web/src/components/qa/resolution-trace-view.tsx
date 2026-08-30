@@ -1323,6 +1323,18 @@ function TraceWorkbench({
   );
 }
 
+function sqlHistoryOrigin(entry: SqlHistoryEntry): string {
+  return entry.schema_version === "sql-history-entry@2.0.0"
+    ? "Product Team Text2SQL"
+    : entry.compiler_version;
+}
+
+function sqlHistoryDigest(entry: SqlHistoryEntry): string {
+  return entry.schema_version === "sql-history-entry@2.0.0"
+    ? entry.candidate_hash
+    : entry.query_hash;
+}
+
 function SqlList({ entries }: { entries: readonly SqlHistoryEntry[] }) {
   const [selectedHash, setSelectedHash] = useState<string | null>(null);
   const [selectedReferenceIdentity, setSelectedReferenceIdentity] = useState<string | null>(null);
@@ -1352,8 +1364,8 @@ function SqlList({ entries }: { entries: readonly SqlHistoryEntry[] }) {
           <thead className="bg-[var(--color-bg-canvas)] text-[var(--color-text-muted)]">
             <tr>
               <th className="px-4 py-2 font-medium">状态</th>
-              <th className="px-4 py-2 font-medium">Compiler</th>
-              <th className="px-4 py-2 font-medium">Query hash</th>
+              <th className="px-4 py-2 font-medium">执行来源</th>
+              <th className="px-4 py-2 font-medium">Query / Candidate hash</th>
               <th className="px-4 py-2 font-medium">时间</th>
               <th className="w-12 px-4 py-2" aria-label="打开会话" />
             </tr>
@@ -1375,11 +1387,14 @@ function SqlList({ entries }: { entries: readonly SqlHistoryEntry[] }) {
                     onClick={() => setSelectedHash(entry.entry_hash)}
                     className="text-left underline-offset-2 hover:underline"
                   >
-                    {entry.compiler_version}
+                    {sqlHistoryOrigin(entry)}
                   </button>
                 </td>
-                <td className="max-w-[240px] truncate px-4 py-3 font-mono" title={entry.query_hash}>
-                  {entry.query_hash}
+                <td
+                  className="max-w-[240px] truncate px-4 py-3 font-mono"
+                  title={sqlHistoryDigest(entry)}
+                >
+                  {sqlHistoryDigest(entry)}
                 </td>
                 <td className="whitespace-nowrap px-4 py-3">{formatTime(entry.occurred_at)}</td>
                 <td className="px-4 py-3">
@@ -1403,7 +1418,7 @@ function SqlList({ entries }: { entries: readonly SqlHistoryEntry[] }) {
             <div className="mb-3">
               <h3 className="text-xs font-semibold">SQL 内容与证据</h3>
               <p className="mt-1 text-[10px] text-[var(--color-text-muted)]">
-                {selected.status} · {selected.compiler_version}
+                {selected.status} · {sqlHistoryOrigin(selected)}
               </p>
             </div>
             <fieldset className="mb-3 flex max-w-full gap-1 overflow-x-auto">
@@ -1429,8 +1444,18 @@ function SqlList({ entries }: { entries: readonly SqlHistoryEntry[] }) {
             <details className="mt-3 border-t border-[var(--color-border-default)] pt-2 text-[9px] text-[var(--color-text-muted)]">
               <summary className="cursor-pointer">身份与来源</summary>
               <dl className="mt-2 grid grid-cols-[110px_minmax(0,1fr)] gap-1 font-mono">
-                <dt>Query hash</dt>
-                <dd className="break-all">{selected.query_hash}</dd>
+                <dt>
+                  {selected.schema_version === "sql-history-entry@2.0.0"
+                    ? "Candidate hash"
+                    : "Query hash"}
+                </dt>
+                <dd className="break-all">{sqlHistoryDigest(selected)}</dd>
+                {selected.schema_version === "sql-history-entry@2.0.0" && (
+                  <>
+                    <dt>Target binding hash</dt>
+                    <dd className="break-all">{selected.target_binding_hash}</dd>
+                  </>
+                )}
                 <dt>Statement hash</dt>
                 <dd className="break-all">{selected.statement_hash}</dd>
                 <dt>Parameter hash</dt>

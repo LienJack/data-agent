@@ -419,7 +419,7 @@ export async function verifyResolutionTrace(input: unknown): Promise<ResolutionT
   return deepFreeze(trace);
 }
 
-const sqlHistoryEntryDraftSchema = z.strictObject({
+const sqlHistoryEntryV1DraftSchema = z.strictObject({
   schema_version: z.literal("sql-history-entry@1.0.0"),
   scope: z.strictObject({
     app_id: immutableIdSchema,
@@ -447,6 +447,25 @@ const sqlHistoryEntryDraftSchema = z.strictObject({
     .max(1_024)
     .regex(/^\/w\/[0-9a-f-]+\/qa\?/),
 });
+
+// Product Team commits SQL only after execution. It does not create the legacy
+// compiler/AST/query digest or ExecutionReceipt; those fields must stay absent facts.
+const sqlHistoryEntryV2DraftSchema = sqlHistoryEntryV1DraftSchema.extend({
+  schema_version: z.literal("sql-history-entry@2.0.0"),
+  execution_receipt_ref: z.null(),
+  result_ref: z.null(),
+  schema_snapshot_ref: z.null(),
+  compiler_version: z.null(),
+  ast_hash: z.null(),
+  query_hash: z.null(),
+  candidate_hash: contentHashSchema,
+  target_binding_hash: contentHashSchema,
+  status: z.enum(["EXECUTED", "VALIDATED"]),
+});
+const sqlHistoryEntryDraftSchema = z.discriminatedUnion("schema_version", [
+  sqlHistoryEntryV1DraftSchema,
+  sqlHistoryEntryV2DraftSchema,
+]);
 
 function addSqlHistoryIssues(
   entry: z.infer<typeof sqlHistoryEntryDraftSchema>,
@@ -483,17 +502,35 @@ function addSqlHistoryIssues(
       });
     }
   }
-  if (entry.status === "VALIDATED" && (!entry.execution_receipt_ref || !entry.query_evidence_ref)) {
+  if (
+    entry.status === "VALIDATED" &&
+    (!entry.query_evidence_ref ||
+      (entry.schema_version === "sql-history-entry@1.0.0" && !entry.execution_receipt_ref))
+  ) {
     ctx.addIssue({
       code: "custom",
-      message: "VALIDATED SQL History 必须绑定 ExecutionReceipt 与 QueryEvidence。",
+      message: "VALIDATED SQL History 必须绑定 QueryEvidence；L2 还必须绑定 ExecutionReceipt。",
+      path: ["status"],
+    });
+  }
+  if (
+    entry.schema_version === "sql-history-entry@2.0.0" &&
+    entry.status === "EXECUTED" &&
+    entry.query_evidence_ref !== null
+  ) {
+    ctx.addIssue({
+      code: "custom",
+      message: "Product Team SQL with verified QueryEvidence must be VALIDATED.",
       path: ["status"],
     });
   }
 }
 
-export const sqlHistoryEntrySchema = sqlHistoryEntryDraftSchema
-  .extend({ entry_hash: contentHashSchema })
+export const sqlHistoryEntrySchema = z
+  .discriminatedUnion("schema_version", [
+    sqlHistoryEntryV1DraftSchema.extend({ entry_hash: contentHashSchema }),
+    sqlHistoryEntryV2DraftSchema.extend({ entry_hash: contentHashSchema }),
+  ])
   .superRefine(addSqlHistoryIssues);
 
 export const sqlHistoryResultSchema = z.strictObject({
@@ -507,7 +544,7 @@ export const sqlHistoryResultSchema = z.strictObject({
         if (
           previous &&
           (previous.occurred_at < item.occurred_at ||
-            (previous.occurred_at === item.occurred_at && previous.entry_hash >= item.entry_hash))
+            (previous.occurred_at === item.occurred_at && previous.entry_hash <= item.entry_hash))
         ) {
           ctx.addIssue({
             code: "custom",

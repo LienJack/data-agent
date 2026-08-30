@@ -56,8 +56,9 @@ GET /api/workspaces/{workspaceId}/sql-history?run_id=&conversation_id=&occurred_
   Artifact Preview API 鉴权、验 source identity 并有界读取。
 - Effective Config detail 只能消费本 Run 的 immutable `effective_config_json + config_hash`，展示冻结
   Provider/model/datasource/release/snapshot/policy/resource binding；禁止回查当前 Resource Catalog 覆盖历史。
-- SQL History 固定 SqlArtifact、ExecutionReceipt、QueryEvidence、SandboxResult、Schema Snapshot 引用/哈希，
-  compiler/AST/statement/parameter/query hash、status/time 与 `entry_hash`；statement/parameter 只公开 SHA-256。
+- SQL History 的历史 L2 v1 固定 SqlArtifact、ExecutionReceipt、QueryEvidence、SandboxResult、Schema Snapshot 引用/哈希，
+  compiler/AST/statement/parameter/query hash、status/time 与 `entry_hash`；当前 Product Team 使用本文件末尾的 v2。
+  statement/parameter 只公开 SHA-256。
 - SQL 条目必须有权威 Conversation binding。`conversation_href` 必须逐字等于
   `/w/{tenant_id}/qa?conversation={conversation_id}&run={run_id}&tab=conversation`；不得生成 latest/none fallback。
 - Client 对 route 响应再次执行 strict parse + hash verify。QA 入口消费 conversation/run 查询参数，轨迹与 SQL
@@ -207,4 +208,60 @@ const displayName = frozen.datasource_display_name ?? {
   state: "UNAVAILABLE",
   reason_code: "HISTORICAL_DISPLAY_NAME_UNAVAILABLE",
 };
+```
+
+## Scenario: Current Product Team SQL History
+
+### 1. Scope / Trigger
+
+- SQL History / Trace SQL 页签读取当前 `product-team-artifact@2.0.0` 时适用；不得只识别旧 L2 envelope 而返回空列表。
+- 仍从同一 owner-scoped `REPEATABLE READ` 事务重验现有 Run / Artifact，不新增表、发布器或镜像权威。
+
+### 2. Signatures
+
+- `buildSqlHistoryEntry` / `verifySqlHistoryEntry` 接受严格 `sql-history-entry@1.0.0 | @2.0.0`。
+- `sql-history-result@1.0.0.items` 为版本化条目集合；现有 GET route、鉴权、bounded limit 不变。
+
+### 3. Contracts
+
+- v1 文档及 hash material 保持不变。v2 绑定 SqlArtifact、可选 QueryEvidence、statement/parameter/candidate/target-binding/schema hash。
+- 当前 Product Team 仅在执行成功后提交 SqlArtifact：无 QueryEvidence 为 `EXECUTED`，存在唯一 exact 来源证据为 `VALIDATED`。
+- v2 的 compiler_version、ast_hash、query_hash、execution_receipt_ref、result_ref、schema_snapshot_ref 必须为 null；不能用 candidate hash 伪造旧编译器/执行回执。
+- SQL provenance 的 snapshot hash 必须等于 Run 冻结 hash；QueryEvidence 的 snapshot identity、datasource revision/hash、context package 与 target binding 必须等于 SQL 来源。
+- 所有 ref 仍绑定同 Scope/Run/revision/hash；两个指向同一 SQL 的 QueryEvidence 失败关闭，不选择 latest。SQL/参数/结果正文只通过 exact Artifact preview 展示。
+- 页面明确展示 `Product Team Text2SQL` 与 `Candidate hash`，不把该 hash 标为 Query hash；旧 v1 继续显示真实 compiler/query hash。
+- 结果按 occurred_at、entry_hash 严格倒序；同时间条目也必须稳定排序，重复 hash 拒绝。
+
+### 4. Validation & Error Matrix
+
+| 条件 | 结果 |
+| --- | --- |
+| SQL snapshot 与冻结 Run 不同 | `RESOLUTION_TRACE_CONFIG_MISMATCH` |
+| QueryEvidence 与 SQL 冻结绑定不同 | `RESOLUTION_TRACE_ARTIFACT_REFERENCE_MISMATCH` |
+| 多个 QueryEvidence 竞争同 SQL | `RESOLUTION_TRACE_ARTIFACT_AUTHORITY_AMBIGUOUS` |
+| 文档/关系 hash 换绑 | `RESOLUTION_TRACE_ARTIFACT_CORRUPT` |
+| v2 伪造 legacy fields 或 VALIDATED 缺证据 | strict contract reject |
+| candidate/statement/parameter hash 被篡改 | `SQL_HISTORY_ENTRY_HASH_MISMATCH` |
+
+### 5. Good / Base / Bad Cases
+
+- Good：当前 SQL 直接关联 exact QueryEvidence，页面能切换两个内容预览。
+- Base：只提交 SQL、未提交 QueryEvidence 时显示 EXECUTED，不假定业务验收通过。
+- Bad：忽略所有无 envelope 的 SQL；构造不存在的 ExecutionReceipt；让当前 Catalog 覆盖历史 snapshot。
+
+### 6. Tests Required
+
+- Contracts：v1/v2 reload/hash、伪造 legacy fields、跨 Run ref、unknown/private field、同时间倒序。
+- Platform：当前 SQL +/− QueryEvidence、冻结 snapshot 不同、证据 binding/hash/歧义负例、只读稳定 reload 与 owner predicate。
+- Web：v2 来源和 candidate label、SQL/QueryEvidence preview、无虚构 ExecutionReceipt；保留 v1 与 route/Trace 回归。
+- 真实 scratch 只读读取可作修复诊断，不得折算成新构建的正式业务或 UI PASS。
+
+### 7. Wrong vs Correct
+
+```ts
+// Wrong: map a current candidate digest into a legacy compiler fact.
+query_hash: product.provenance.candidate_hash;
+// Correct: v2 preserves the provenance category and explicitly missing legacy facts.
+candidate_hash: product.provenance.candidate_hash;
+query_hash: null;
 ```

@@ -4,6 +4,7 @@ import {
   buildArtifactWorkspaceChartDocumentV2,
   buildArtifactWorkspaceChartDocumentV3,
   buildProductTeamArtifactDocument,
+  buildQueryEvidenceSemanticBinding,
   buildSemanticQueryContext,
   canonicalizeJson,
   collectL2ResearchPayloadArtifactReferences,
@@ -410,8 +411,42 @@ async function productTeamSemanticContextRow() {
 
 async function productTeamQueryEvidenceRow(
   sql: Awaited<ReturnType<typeof productTeamSqlArtifactRow>>,
+  bindToSql = false,
 ) {
   const sqlReference = sql.document_json.artifact_ref;
+  const baseBinding = await buildTestQueryEvidenceSemanticBinding([
+    {
+      name: "order_count",
+      logical_type: "NUMBER",
+      nullable: false,
+      semantic_role: "METRIC",
+      semantic_object_id: "metric.order_count",
+    },
+  ]);
+  const sqlProvenance = sql.document_json.provenance;
+  if (sqlProvenance?.kind !== "TEXT2SQL_CANDIDATE")
+    throw new Error("SQL fixture provenance missing");
+  const { binding_hash: _bindingHash, ...bindingMaterial } = baseBinding;
+  const binding = bindToSql
+    ? await buildQueryEvidenceSemanticBinding({
+        ...bindingMaterial,
+        datasource_ref: sqlProvenance.datasource_ref,
+        semantic_release_ref: {
+          ...baseBinding.semantic_release_ref,
+          datasource_id: sqlProvenance.datasource_ref.resource_id,
+        },
+        schema_snapshot_ref: {
+          ...baseBinding.schema_snapshot_ref,
+          ...sqlProvenance.schema_snapshot_ref,
+          datasource_id: sqlProvenance.datasource_ref.resource_id,
+        },
+        semantic_context_ref: {
+          ...baseBinding.semantic_context_ref,
+          ...sqlProvenance.semantic_context_ref,
+        },
+        target_binding_hash: sqlProvenance.target_binding_hash,
+      })
+    : baseBinding;
   const document = await buildProductTeamArtifactDocument({
     schema_version: "product-team-artifact@2.0.0",
     artifact_ref: {
@@ -434,15 +469,7 @@ async function productTeamQueryEvidenceRow(
       byte_count: 64,
       elapsed_ms: 12,
       truncated: false,
-      semantic_binding: await buildTestQueryEvidenceSemanticBinding([
-        {
-          name: "order_count",
-          logical_type: "NUMBER",
-          nullable: false,
-          semantic_role: "METRIC",
-          semantic_object_id: "metric.order_count",
-        },
-      ]),
+      semantic_binding: binding,
     },
     projection: {
       kind: "TABLE",
@@ -2504,6 +2531,120 @@ describe("PostgreSQL Resolution Trace projector", () => {
       error: { code: "RESOLUTION_TRACE_ARTIFACT_REFERENCE_MISSING" },
     });
   });
+
+  it.each([true, false])(
+    "indexes current Product Team SQL with evidence=%s",
+    async (withEvidence) => {
+      const sql = await productTeamSqlArtifactRow();
+      const evidence = await productTeamQueryEvidenceRow(sql, true);
+      const { capability, authorizer } = issueCapability();
+      const { pool, calls } = scriptedPool((text) => {
+        if (text.includes("from runs as run"))
+          return { rows: [{ ...authorityRow(), schema_snapshot_hash: hash("4") }], rowCount: 1 };
+        if (text.includes("from artifacts"))
+          return { rows: withEvidence ? [sql, evidence] : [sql], rowCount: withEvidence ? 2 : 1 };
+        return undefined;
+      });
+      const projector = createPostgresResolutionTraceProjector({ pool, authorizer });
+      const input = { scope, run_id: ids.run, conversation_id: ids.conversation, limit: 10 };
+      const first = await projector.listSqlHistory(capability, input);
+      expect(first).toMatchObject({
+        ok: true,
+        value: {
+          items: [
+            {
+              schema_version: "sql-history-entry@2.0.0",
+              sql_artifact_ref: sql.document_json.artifact_ref,
+              query_evidence_ref: withEvidence ? evidence.document_json.artifact_ref : null,
+              execution_receipt_ref: null,
+              result_ref: null,
+              compiler_version: null,
+              ast_hash: null,
+              query_hash: null,
+              candidate_hash: hash("1"),
+              parameter_hash: hash("2"),
+              target_binding_hash: hash("6"),
+              statement_hash: await sha256ContentHash("select count(*) from orders"),
+              status: withEvidence ? "VALIDATED" : "EXECUTED",
+            },
+          ],
+        },
+      });
+      expect(await projector.listSqlHistory(capability, input)).toEqual(first);
+      expect(JSON.stringify(first)).not.toMatch(
+        /select count|"(?:sql|parameters|rows|prompt|context)"/i,
+      );
+      expect(calls.some(({ text }) => text.includes("run.principal_id = $4"))).toBe(true);
+    },
+  );
+
+  it("rejects current SQL whose published snapshot differs from its Run", async () => {
+    const sql = await productTeamSqlArtifactRow();
+    const { capability, authorizer } = issueCapability();
+    const { pool } = scriptedPool((text) => {
+      if (text.includes("from runs as run")) return { rows: [authorityRow()], rowCount: 1 };
+      if (text.includes("from artifacts")) return { rows: [sql], rowCount: 1 };
+      return undefined;
+    });
+    expect(
+      await createPostgresResolutionTraceProjector({ pool, authorizer }).listSqlHistory(
+        capability,
+        { scope, run_id: ids.run },
+      ),
+    ).toMatchObject({ ok: false, error: { code: "RESOLUTION_TRACE_CONFIG_MISMATCH" } });
+  });
+
+  it.each(["binding", "duplicate", "hash"])(
+    "rejects current SQL evidence %s drift",
+    async (failure) => {
+      const sql = await productTeamSqlArtifactRow();
+      const evidence = await productTeamQueryEvidenceRow(sql, failure !== "binding");
+      const additional =
+        failure === "duplicate"
+          ? await buildProductTeamArtifactDocument({
+              ...evidence.document_json,
+              artifact_ref: { ...evidence.document_json.artifact_ref, artifact_id: id(99) },
+            })
+          : null;
+      const rows = [
+        sql,
+        failure === "hash" ? { ...evidence, content_hash: hash("0") } : evidence,
+        ...(additional
+          ? [
+              {
+                ...evidence,
+                artifact_id: additional.artifact_ref.artifact_id,
+                content_hash: additional.artifact_ref.content_hash,
+                document_json: additional,
+              },
+            ]
+          : []),
+      ];
+      const { capability, authorizer } = issueCapability();
+      const { pool } = scriptedPool((text) => {
+        if (text.includes("from runs as run"))
+          return { rows: [{ ...authorityRow(), schema_snapshot_hash: hash("4") }], rowCount: 1 };
+        if (text.includes("from artifacts")) return { rows, rowCount: rows.length };
+        return undefined;
+      });
+      expect(
+        await createPostgresResolutionTraceProjector({ pool, authorizer }).listSqlHistory(
+          capability,
+          { scope, run_id: ids.run },
+        ),
+      ).toMatchObject({
+        ok: false,
+        error: {
+          code:
+            failure === "binding"
+              ? "RESOLUTION_TRACE_ARTIFACT_REFERENCE_MISMATCH"
+              : failure === "duplicate"
+                ? "RESOLUTION_TRACE_ARTIFACT_AUTHORITY_AMBIGUOUS"
+                : "RESOLUTION_TRACE_ARTIFACT_CORRUPT",
+        },
+      });
+    },
+  );
 
   it("projects stable trace and redacted SQL history from verified authority rows", async () => {
     const row = await eventRow();

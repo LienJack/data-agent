@@ -697,6 +697,63 @@ describe("Resolution Trace panel", () => {
     expect(html).not.toContain(`>${reference.artifact_id}<`);
   });
 
+  it("renders current Product Team SQL with an explicit candidate digest and exact evidence previews", async () => {
+    const trace = await buildResolutionTrace({
+      schema_version: "resolution-trace@1.0.0",
+      scope,
+      run_id: id(3),
+      conversation_id: id(4),
+      config_ref: null,
+      nodes: [],
+      edges: [],
+    });
+    const entry = await buildSqlHistoryEntry({
+      schema_version: "sql-history-entry@2.0.0",
+      scope,
+      run_id: id(3),
+      conversation_id: id(4),
+      sql_artifact_ref: {
+        artifact_id: id(7),
+        artifact_type: "SqlArtifact",
+        ...scope,
+        run_id: id(3),
+        revision: 1,
+        content_hash: hash("7"),
+      },
+      query_evidence_ref: {
+        artifact_id: id(8),
+        artifact_type: "QueryEvidence",
+        ...scope,
+        run_id: id(3),
+        revision: 1,
+        content_hash: hash("8"),
+      },
+      execution_receipt_ref: null,
+      result_ref: null,
+      schema_snapshot_ref: null,
+      schema_snapshot_hash: hash("3"),
+      compiler_version: null,
+      ast_hash: null,
+      query_hash: null,
+      statement_hash: hash("4"),
+      parameter_hash: hash("5"),
+      candidate_hash: hash("6"),
+      target_binding_hash: hash("9"),
+      status: "VALIDATED",
+      occurred_at: "2026-08-18T12:00:00.000Z",
+      conversation_href: `/w/${scope.tenant_id}/qa?conversation=${id(4)}&run=${id(3)}&tab=conversation`,
+    });
+    const markup = renderToStaticMarkup(
+      <ResolutionTracePanel trace={trace} sql={[entry]} initialTab="sql" />,
+    );
+    expect(markup).toContain("Product Team Text2SQL");
+    expect(markup).toContain("Candidate hash");
+    expect(markup).toContain(hash("6"));
+    expect(markup).toContain("QueryEvidence");
+    expect(markup).not.toContain("ExecutionReceipt");
+    expect(markup).not.toContain("暂无 SQL 记录");
+  });
+
   it("renders hash-only SQL history with a conversation deep link", async () => {
     const trace = await buildResolutionTrace({
       schema_version: "resolution-trace@1.0.0",
