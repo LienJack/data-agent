@@ -198,6 +198,48 @@ describe("PostgreSQL Falcon24 four-layer gate authority", () => {
     ]);
   });
 
+  it("supersedes an unused READY attempt through one versioned server-owned RPC", async () => {
+    const document = await manifest();
+    const auth = authority();
+    const superseded = attempt(document, {
+      status: "FAILED",
+      attempt_version: 2,
+      first_failure_code: "FALCON24_FROZEN_CLOSURE_BUILD_SUPERSEDED",
+    });
+    const scripted = scriptedPool((text) =>
+      text.includes("supersede_falcon24_four_layer_gate_attempt") ? superseded : undefined,
+    );
+    const result = await createPostgresFalcon24FourLayerGateAuthority({
+      pool: scripted.pool,
+      authorizer: auth.authorizer,
+    }).supersedeReadyAttempt(auth.capability, {
+      attempt_id: ids.attempt,
+      expected_attempt_version: 1,
+    });
+
+    expect(result).toMatchObject({
+      ok: true,
+      value: {
+        status: "FAILED",
+        first_failure_turn_ordinal: null,
+        first_failure_run_id: null,
+        first_failure_code: "FALCON24_FROZEN_CLOSURE_BUILD_SUPERSEDED",
+      },
+    });
+    expect(
+      scripted.calls.find(({ text }) => text.includes("supersede_falcon24_four_layer_gate_attempt"))
+        ?.values,
+    ).toEqual([
+      expect.objectContaining({
+        schema_version: "falcon24-four-layer-attempt-supersede@1.0.0",
+        attempt_id: ids.attempt,
+        expected_attempt_version: 1,
+        reason_code: "FALCON24_FROZEN_CLOSURE_BUILD_SUPERSEDED",
+        command_hash: expect.stringMatching(/^sha256:[0-9a-f]{64}$/u),
+      }),
+    ]);
+  });
+
   it("claims one exact versioned turn and preserves its idempotency identity", async () => {
     const document = await manifest();
     const auth = authority();

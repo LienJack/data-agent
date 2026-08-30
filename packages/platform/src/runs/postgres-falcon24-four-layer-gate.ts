@@ -162,6 +162,7 @@ const STABLE_DATABASE_ERRORS = new Set([
   "FALCON24_FOUR_LAYER_TRACE_BEFORE_QA_PASS",
   "FALCON24_FOUR_LAYER_TERMINAL_CLOSURE_INVALID",
   "FALCON24_FOUR_LAYER_ATTEMPT_FINALIZATION_INVALID",
+  "FALCON24_FOUR_LAYER_SUPERSEDE_INVALID",
 ]);
 
 function mapDatabaseError(error: unknown) {
@@ -352,6 +353,36 @@ export function createPostgresFalcon24FourLayerGateAuthority(input: {
           return {
             attempt: assertAttemptIdentity(resultDocument.attempt, manifest.attempt_id),
           };
+        },
+      );
+    },
+
+    async supersedeReadyAttempt(capabilityInput: unknown, candidate: unknown) {
+      const request = finalizeAttemptInputSchema.parse(candidate);
+      return withAppTransaction(
+        input.pool,
+        input.authorizer,
+        capabilityInput,
+        {
+          access: "WRITE",
+          allowed_roles: ["OWNER", "ANALYST"],
+          operation_name: "falcon24-four-layer.supersede-ready-attempt",
+          map_database_error: mapDatabaseError,
+        },
+        async ({ client }) => {
+          const command = await commandWithHash({
+            schema_version: "falcon24-four-layer-attempt-supersede@1.0.0" as const,
+            ...request,
+            reason_code: "FALCON24_FROZEN_CLOSURE_BUILD_SUPERSEDED" as const,
+          });
+          const result = await client.query<JsonRow>(
+            "select app_data_agent.supersede_falcon24_four_layer_gate_attempt($1::jsonb) as value",
+            [command],
+          );
+          return assertAttemptIdentity(
+            attemptRowSchema.parse(exact(result.rows)),
+            request.attempt_id,
+          );
         },
       );
     },

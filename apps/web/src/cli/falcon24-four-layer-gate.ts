@@ -219,7 +219,9 @@ async function main(): Promise<void> {
   const environment = loadRuntimeEnvironment({ cwd: root, environment: process.env }).environment;
   Object.assign(process.env, environment);
   const command = process.argv[2];
-  if (!["begin", "status", "advance", "finalize", "smoke-390"].includes(command ?? "")) {
+  if (
+    !["begin", "status", "supersede", "advance", "finalize", "smoke-390"].includes(command ?? "")
+  ) {
     throw new Error("FALCON24_FOUR_LAYER_COMMAND_INVALID");
   }
   const scope = scopeSchema.parse({
@@ -280,6 +282,17 @@ async function main(): Promise<void> {
       ),
     );
     report({ terminal: "STATUS", attempt, turns, runs });
+    return;
+  }
+
+  if (command === "supersede") {
+    const superseded = value(
+      await authority.supersedeReadyAttempt(capability, {
+        attempt_id: attemptId,
+        expected_attempt_version: attempt.attempt_version,
+      }),
+    );
+    report({ terminal: superseded.status, attempt: superseded });
     return;
   }
 
