@@ -162,12 +162,32 @@ describe("Production Team governed chart publication", () => {
         "TEXT2SQL_SEMANTIC_BINDING_OUT_OF_RANGE",
       ),
     ).toBe("TEXT2SQL_SEMANTIC_BINDING_OUT_OF_RANGE");
+    expect(
+      productionTeamToolsInternals.text2SqlCandidateFailureCode(
+        "TEXT2SQL_SQL_PARAMETER_BINDING_REJECTED",
+      ),
+    ).toBe("TEXT2SQL_SQL_PARAMETER_BINDING_REJECTED");
     expect(productionTeamToolsInternals.text2SqlCandidateFailureCode("DATABASE_URL_LEAK")).toBe(
       "TEAM_TEXT2SQL_CANDIDATE_POLICY_REJECTED",
     );
     expect(productionTeamToolsInternals.text2SqlCandidateFailureCode(null)).toBe(
       "TEAM_TEXT2SQL_CANDIDATE_POLICY_REJECTED",
     );
+  });
+
+  it("prefers an allowlisted structural diagnostic over a coarse policy code", () => {
+    expect(
+      productionTeamToolsInternals.text2SqlCandidateDiagnosticCode({
+        code: "TEXT2SQL_SQL_SHAPE_REJECTED",
+        diagnostic_code: "TEXT2SQL_SQL_RELATION_BINDING_REJECTED",
+      }),
+    ).toBe("TEXT2SQL_SQL_RELATION_BINDING_REJECTED");
+    expect(
+      productionTeamToolsInternals.text2SqlCandidateDiagnosticCode({
+        code: "TEXT2SQL_SQL_SHAPE_REJECTED",
+        diagnostic_code: "DATABASE_URL_LEAK",
+      }),
+    ).toBe("TEXT2SQL_SQL_SHAPE_REJECTED");
   });
 
   it("repairs result binding drift but never retries frozen authority drift", () => {

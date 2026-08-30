@@ -1,9 +1,27 @@
 import { deparse, parse } from "pgsql-parser";
 
+export type PostgresqlText2SqlPolicyDiagnosticCode =
+  | "TEXT2SQL_SQL_INPUT_REJECTED"
+  | "TEXT2SQL_SQL_PARAMETERIZATION_REJECTED"
+  | "TEXT2SQL_SQL_STATEMENT_SHAPE_REJECTED"
+  | "TEXT2SQL_SQL_SELECT_SHAPE_REJECTED"
+  | "TEXT2SQL_SQL_CTE_SHAPE_REJECTED"
+  | "TEXT2SQL_SQL_RELATION_BINDING_REJECTED"
+  | "TEXT2SQL_SQL_JOIN_SHAPE_REJECTED"
+  | "TEXT2SQL_SQL_PROJECTION_SHAPE_REJECTED"
+  | "TEXT2SQL_SQL_PRIMITIVE_DENIED"
+  | "TEXT2SQL_SQL_PARAMETER_BINDING_REJECTED"
+  | "TEXT2SQL_SQL_LITERAL_POLICY_REJECTED"
+  | "TEXT2SQL_SQL_ORDERING_SHAPE_REJECTED"
+  | "TEXT2SQL_SQL_EXPRESSION_SHAPE_REJECTED";
+
 export class PostgresqlText2SqlPolicyError extends Error {
   override readonly name = "PostgresqlText2SqlPolicyError";
 
-  constructor(readonly code: "TEXT2SQL_SQL_SHAPE_REJECTED" | "TEXT2SQL_SQL_DANGEROUS") {
+  constructor(
+    readonly code: "TEXT2SQL_SQL_SHAPE_REJECTED" | "TEXT2SQL_SQL_DANGEROUS",
+    readonly diagnostic_code: PostgresqlText2SqlPolicyDiagnosticCode,
+  ) {
     super(code);
   }
 }
@@ -91,14 +109,21 @@ function isRecord(value: unknown): value is JsonRecord {
   return typeof value === "object" && value !== null && !Array.isArray(value);
 }
 
-function reject(code: PostgresqlText2SqlPolicyError["code"]): never {
-  throw new PostgresqlText2SqlPolicyError(code);
+function reject(
+  code: PostgresqlText2SqlPolicyError["code"],
+  diagnosticCode: PostgresqlText2SqlPolicyDiagnosticCode,
+): never {
+  throw new PostgresqlText2SqlPolicyError(code, diagnosticCode);
 }
 
-function assertOnlyKeys(node: JsonRecord, allowedKeys: readonly string[]): void {
+function assertOnlyKeys(
+  node: JsonRecord,
+  allowedKeys: readonly string[],
+  diagnosticCode: PostgresqlText2SqlPolicyDiagnosticCode,
+): void {
   const allowed = new Set(allowedKeys);
   if (Object.keys(node).some((key) => !allowed.has(key))) {
-    reject("TEXT2SQL_SQL_SHAPE_REJECTED");
+    reject("TEXT2SQL_SQL_SHAPE_REJECTED", diagnosticCode);
   }
 }
 
@@ -153,12 +178,16 @@ function normalizedPrimitiveName(value: unknown): string | null {
 function literalValue(node: JsonRecord): QueryParameter {
   if (node.isnull === true) return null;
   if (isRecord(node.ival) && typeof node.ival.ival === "number") {
-    if (!Number.isSafeInteger(node.ival.ival)) reject("TEXT2SQL_SQL_SHAPE_REJECTED");
+    if (!Number.isSafeInteger(node.ival.ival)) {
+      reject("TEXT2SQL_SQL_SHAPE_REJECTED", "TEXT2SQL_SQL_LITERAL_POLICY_REJECTED");
+    }
     return node.ival.ival;
   }
   if (isRecord(node.fval) && typeof node.fval.fval === "string") {
     const value = Number(node.fval.fval);
-    if (!Number.isFinite(value)) reject("TEXT2SQL_SQL_SHAPE_REJECTED");
+    if (!Number.isFinite(value)) {
+      reject("TEXT2SQL_SQL_SHAPE_REJECTED", "TEXT2SQL_SQL_LITERAL_POLICY_REJECTED");
+    }
     return value;
   }
   if (isRecord(node.sval) && typeof node.sval.sval === "string") return node.sval.sval;
@@ -166,7 +195,7 @@ function literalValue(node: JsonRecord): QueryParameter {
   if (isRecord(node.boolval) && typeof node.boolval.boolval === "boolean") {
     return node.boolval.boolval;
   }
-  reject("TEXT2SQL_SQL_SHAPE_REJECTED");
+  reject("TEXT2SQL_SQL_SHAPE_REJECTED", "TEXT2SQL_SQL_LITERAL_POLICY_REJECTED");
 }
 
 /**
@@ -184,7 +213,7 @@ export async function parameterizePostgresqlText2SqlCandidate(input: {
   try {
     ast = await parse(input.sql);
   } catch {
-    reject("TEXT2SQL_SQL_SHAPE_REJECTED");
+    reject("TEXT2SQL_SQL_SHAPE_REJECTED", "TEXT2SQL_SQL_PARAMETERIZATION_REJECTED");
   }
   const parameters = [...input.parameters];
   const stableTemporalUnitParameters = new Map<string, number>();
@@ -255,7 +284,7 @@ export async function parameterizePostgresqlText2SqlCandidate(input: {
   try {
     sql = await deparse(rewrite(ast) as Parameters<typeof deparse>[0]);
   } catch {
-    reject("TEXT2SQL_SQL_SHAPE_REJECTED");
+    reject("TEXT2SQL_SQL_SHAPE_REJECTED", "TEXT2SQL_SQL_PARAMETERIZATION_REJECTED");
   }
   return Object.freeze({ sql, parameters: Object.freeze(parameters) });
 }
@@ -278,7 +307,7 @@ export async function assertPostgresqlText2SqlCandidatePolicy(
     !Array.isArray(input.allowed_relations) ||
     input.allowed_relations.length === 0
   ) {
-    reject("TEXT2SQL_SQL_SHAPE_REJECTED");
+    reject("TEXT2SQL_SQL_SHAPE_REJECTED", "TEXT2SQL_SQL_INPUT_REJECTED");
   }
   if (
     input.sql.includes(";") ||
@@ -286,34 +315,36 @@ export async function assertPostgresqlText2SqlCandidatePolicy(
     input.sql.includes("/*") ||
     input.sql.includes("*/")
   ) {
-    reject("TEXT2SQL_SQL_SHAPE_REJECTED");
+    reject("TEXT2SQL_SQL_SHAPE_REJECTED", "TEXT2SQL_SQL_STATEMENT_SHAPE_REJECTED");
   }
 
   let ast: unknown;
   try {
     ast = await parse(input.sql);
   } catch {
-    reject("TEXT2SQL_SQL_SHAPE_REJECTED");
+    reject("TEXT2SQL_SQL_SHAPE_REJECTED", "TEXT2SQL_SQL_STATEMENT_SHAPE_REJECTED");
   }
   if (!isRecord(ast) || !Array.isArray(ast.stmts) || ast.stmts.length !== 1) {
-    reject("TEXT2SQL_SQL_SHAPE_REJECTED");
+    reject("TEXT2SQL_SQL_SHAPE_REJECTED", "TEXT2SQL_SQL_STATEMENT_SHAPE_REJECTED");
   }
   const raw = ast.stmts[0];
   if (!isRecord(raw) || wrappedNodeName(raw.stmt) !== "SelectStmt") {
-    reject("TEXT2SQL_SQL_SHAPE_REJECTED");
+    reject("TEXT2SQL_SQL_SHAPE_REJECTED", "TEXT2SQL_SQL_STATEMENT_SHAPE_REJECTED");
   }
 
   const allowedRelations = new Set(
-    input.allowed_relations.map(({ schema_name, relation_name }) => `${schema_name}\0${relation_name}`),
+    input.allowed_relations.map(
+      ({ schema_name, relation_name }) => `${schema_name}\0${relation_name}`,
+    ),
   );
   if (allowedRelations.size !== input.allowed_relations.length) {
-    reject("TEXT2SQL_SQL_SHAPE_REJECTED");
+    reject("TEXT2SQL_SQL_SHAPE_REJECTED", "TEXT2SQL_SQL_RELATION_BINDING_REJECTED");
   }
   const cteNames = new Set<string>();
   visit(ast, (nodeName, node) => {
     if (nodeName !== "CommonTableExpr") return;
     if (typeof node.ctename !== "string" || cteNames.has(node.ctename)) {
-      reject("TEXT2SQL_SQL_SHAPE_REJECTED");
+      reject("TEXT2SQL_SQL_SHAPE_REJECTED", "TEXT2SQL_SQL_CTE_SHAPE_REJECTED");
     }
     cteNames.add(node.ctename);
   });
@@ -321,25 +352,29 @@ export async function assertPostgresqlText2SqlCandidatePolicy(
   const referencedParameters = new Set<number>();
   visit(ast, (nodeName, node) => {
     if (nodeName.endsWith("Stmt") && nodeName !== "SelectStmt") {
-      reject("TEXT2SQL_SQL_DANGEROUS");
+      reject("TEXT2SQL_SQL_DANGEROUS", "TEXT2SQL_SQL_PRIMITIVE_DENIED");
     }
     if (/^[A-Z][A-Za-z0-9_]*$/u.test(nodeName) && !allowedAstNodes.has(nodeName)) {
-      reject("TEXT2SQL_SQL_DANGEROUS");
+      reject("TEXT2SQL_SQL_DANGEROUS", "TEXT2SQL_SQL_PRIMITIVE_DENIED");
     }
     switch (nodeName) {
       case "SelectStmt": {
-        assertOnlyKeys(node, [
-          "distinctClause",
-          "targetList",
-          "fromClause",
-          "whereClause",
-          "groupClause",
-          "havingClause",
-          "sortClause",
-          "limitOption",
-          "withClause",
-          "op",
-        ]);
+        assertOnlyKeys(
+          node,
+          [
+            "distinctClause",
+            "targetList",
+            "fromClause",
+            "whereClause",
+            "groupClause",
+            "havingClause",
+            "sortClause",
+            "limitOption",
+            "withClause",
+            "op",
+          ],
+          "TEXT2SQL_SQL_SELECT_SHAPE_REJECTED",
+        );
         if (
           !Array.isArray(node.targetList) ||
           node.targetList.length === 0 ||
@@ -356,29 +391,30 @@ export async function assertPostgresqlText2SqlCandidatePolicy(
               !isRecord(node.distinctClause[0]) ||
               Object.keys(node.distinctClause[0]).length !== 0))
         ) {
-          reject("TEXT2SQL_SQL_SHAPE_REJECTED");
+          reject("TEXT2SQL_SQL_SHAPE_REJECTED", "TEXT2SQL_SQL_SELECT_SHAPE_REJECTED");
         }
         break;
       }
       case "CommonTableExpr":
-        assertOnlyKeys(node, ["ctename", "ctematerialized", "ctequery", "location"]);
+        assertOnlyKeys(
+          node,
+          ["ctename", "ctematerialized", "ctequery", "location"],
+          "TEXT2SQL_SQL_CTE_SHAPE_REJECTED",
+        );
         if (
           typeof node.ctename !== "string" ||
           node.ctematerialized !== "CTEMaterializeDefault" ||
           wrappedNodeName(node.ctequery) !== "SelectStmt"
         ) {
-          reject("TEXT2SQL_SQL_SHAPE_REJECTED");
+          reject("TEXT2SQL_SQL_SHAPE_REJECTED", "TEXT2SQL_SQL_CTE_SHAPE_REJECTED");
         }
         break;
       case "RangeVar": {
-        assertOnlyKeys(node, [
-          "schemaname",
-          "relname",
-          "inh",
-          "relpersistence",
-          "alias",
-          "location",
-        ]);
+        assertOnlyKeys(
+          node,
+          ["schemaname", "relname", "inh", "relpersistence", "alias", "location"],
+          "TEXT2SQL_SQL_RELATION_BINDING_REJECTED",
+        );
         if (
           typeof node.relname !== "string" ||
           node.inh !== true ||
@@ -386,53 +422,55 @@ export async function assertPostgresqlText2SqlCandidatePolicy(
           !isRecord(node.alias) ||
           typeof node.alias.aliasname !== "string"
         ) {
-          reject("TEXT2SQL_SQL_SHAPE_REJECTED");
+          reject("TEXT2SQL_SQL_SHAPE_REJECTED", "TEXT2SQL_SQL_RELATION_BINDING_REJECTED");
         }
         if (node.schemaname === undefined) {
-          if (!cteNames.has(node.relname)) reject("TEXT2SQL_SQL_SHAPE_REJECTED");
+          if (!cteNames.has(node.relname)) {
+            reject("TEXT2SQL_SQL_SHAPE_REJECTED", "TEXT2SQL_SQL_RELATION_BINDING_REJECTED");
+          }
         } else if (
           typeof node.schemaname !== "string" ||
           !allowedRelations.has(`${node.schemaname}\0${node.relname}`)
         ) {
-          reject("TEXT2SQL_SQL_SHAPE_REJECTED");
+          reject("TEXT2SQL_SQL_SHAPE_REJECTED", "TEXT2SQL_SQL_RELATION_BINDING_REJECTED");
         }
         break;
       }
       case "JoinExpr":
-        assertOnlyKeys(node, ["jointype", "larg", "rarg", "quals"]);
+        assertOnlyKeys(
+          node,
+          ["jointype", "larg", "rarg", "quals"],
+          "TEXT2SQL_SQL_JOIN_SHAPE_REJECTED",
+        );
         if (
           !["JOIN_INNER", "JOIN_LEFT"].includes(String(node.jointype)) ||
           !["RangeVar", "JoinExpr"].includes(wrappedNodeName(node.larg) ?? "") ||
           wrappedNodeName(node.rarg) !== "RangeVar" ||
           !["A_Expr", "BoolExpr"].includes(wrappedNodeName(node.quals) ?? "")
         ) {
-          reject("TEXT2SQL_SQL_SHAPE_REJECTED");
+          reject("TEXT2SQL_SQL_SHAPE_REJECTED", "TEXT2SQL_SQL_JOIN_SHAPE_REJECTED");
         }
         break;
       case "ResTarget":
-        assertOnlyKeys(node, ["name", "val", "location"]);
+        assertOnlyKeys(node, ["name", "val", "location"], "TEXT2SQL_SQL_PROJECTION_SHAPE_REJECTED");
         if (typeof node.name !== "string" || node.name.length === 0 || !isRecord(node.val)) {
-          reject("TEXT2SQL_SQL_SHAPE_REJECTED");
+          reject("TEXT2SQL_SQL_SHAPE_REJECTED", "TEXT2SQL_SQL_PROJECTION_SHAPE_REJECTED");
         }
         break;
       case "ColumnRef": {
-        assertOnlyKeys(node, ["fields", "location"]);
+        assertOnlyKeys(node, ["fields", "location"], "TEXT2SQL_SQL_PROJECTION_SHAPE_REJECTED");
         const fields = stringVector(node.fields);
         if (!fields || fields.length < 1 || fields.length > 3) {
-          reject("TEXT2SQL_SQL_SHAPE_REJECTED");
+          reject("TEXT2SQL_SQL_SHAPE_REJECTED", "TEXT2SQL_SQL_PROJECTION_SHAPE_REJECTED");
         }
         break;
       }
       case "FuncCall": {
-        assertOnlyKeys(node, [
-          "funcname",
-          "args",
-          "agg_star",
-          "agg_distinct",
-          "agg_filter",
-          "funcformat",
-          "location",
-        ]);
+        assertOnlyKeys(
+          node,
+          ["funcname", "args", "agg_star", "agg_distinct", "agg_filter", "funcformat", "location"],
+          "TEXT2SQL_SQL_PRIMITIVE_DENIED",
+        );
         const name = normalizedPrimitiveName(node.funcname);
         if (
           !name ||
@@ -441,20 +479,16 @@ export async function assertPostgresqlText2SqlCandidatePolicy(
           (node.agg_star === true && name !== "count") ||
           (node.agg_star !== true && !Array.isArray(node.args))
         ) {
-          reject("TEXT2SQL_SQL_DANGEROUS");
+          reject("TEXT2SQL_SQL_DANGEROUS", "TEXT2SQL_SQL_PRIMITIVE_DENIED");
         }
         break;
       }
       case "A_Expr": {
-        assertOnlyKeys(node, [
-          "kind",
-          "name",
-          "lexpr",
-          "rexpr",
-          "rexpr_list_start",
-          "rexpr_list_end",
-          "location",
-        ]);
+        assertOnlyKeys(
+          node,
+          ["kind", "name", "lexpr", "rexpr", "rexpr_list_start", "rexpr_list_end", "location"],
+          "TEXT2SQL_SQL_PRIMITIVE_DENIED",
+        );
         const names = stringVector(node.name);
         const operator = names?.at(-1);
         if (
@@ -464,51 +498,61 @@ export async function assertPostgresqlText2SqlCandidatePolicy(
           (names?.length === 2 && names[0]?.toLowerCase() !== "pg_catalog") ||
           (names?.length !== 1 && names?.length !== 2)
         ) {
-          reject("TEXT2SQL_SQL_DANGEROUS");
+          reject("TEXT2SQL_SQL_DANGEROUS", "TEXT2SQL_SQL_PRIMITIVE_DENIED");
         }
         if (node.kind === "AEXPR_IN" && wrappedNodeName(node.rexpr) !== "List") {
-          reject("TEXT2SQL_SQL_SHAPE_REJECTED");
+          reject("TEXT2SQL_SQL_SHAPE_REJECTED", "TEXT2SQL_SQL_EXPRESSION_SHAPE_REJECTED");
         }
         break;
       }
       case "List":
-        assertOnlyKeys(node, ["items"]);
+        assertOnlyKeys(node, ["items"], "TEXT2SQL_SQL_PARAMETER_BINDING_REJECTED");
         if (
           !Array.isArray(node.items) ||
           node.items.length === 0 ||
           node.items.some((item) => wrappedNodeName(item) !== "ParamRef")
         ) {
-          reject("TEXT2SQL_SQL_SHAPE_REJECTED");
+          reject("TEXT2SQL_SQL_SHAPE_REJECTED", "TEXT2SQL_SQL_PARAMETER_BINDING_REJECTED");
         }
         break;
       case "ParamRef":
-        assertOnlyKeys(node, ["number", "location"]);
+        assertOnlyKeys(node, ["number", "location"], "TEXT2SQL_SQL_PARAMETER_BINDING_REJECTED");
         if (
           !Number.isSafeInteger(node.number) ||
           (node.number as number) < 1 ||
           !exactToken(input.sql, node.location, `$${String(node.number)}`)
         ) {
-          reject("TEXT2SQL_SQL_SHAPE_REJECTED");
+          reject("TEXT2SQL_SQL_SHAPE_REJECTED", "TEXT2SQL_SQL_PARAMETER_BINDING_REJECTED");
         }
         referencedParameters.add(node.number as number);
         break;
       case "TypeCast": {
-        assertOnlyKeys(node, ["arg", "typeName", "location"]);
-        if (!isRecord(node.typeName)) reject("TEXT2SQL_SQL_SHAPE_REJECTED");
+        assertOnlyKeys(node, ["arg", "typeName", "location"], "TEXT2SQL_SQL_PRIMITIVE_DENIED");
+        if (!isRecord(node.typeName)) {
+          reject("TEXT2SQL_SQL_SHAPE_REJECTED", "TEXT2SQL_SQL_EXPRESSION_SHAPE_REJECTED");
+        }
         const typeName = normalizedPrimitiveName(node.typeName.names);
         if (!typeName || !safeCastTypes.has(typeName) || node.typeName.typemod !== -1) {
-          reject("TEXT2SQL_SQL_DANGEROUS");
+          reject("TEXT2SQL_SQL_DANGEROUS", "TEXT2SQL_SQL_PRIMITIVE_DENIED");
         }
         break;
       }
       case "A_Const":
-        assertOnlyKeys(node, ["ival", "location"]);
-        if (!isRecord(node.ival) || Object.keys(node.ival).length !== 0 || !exactToken(input.sql, node.location, "0")) {
-          reject("TEXT2SQL_SQL_SHAPE_REJECTED");
+        assertOnlyKeys(node, ["ival", "location"], "TEXT2SQL_SQL_LITERAL_POLICY_REJECTED");
+        if (
+          !isRecord(node.ival) ||
+          Object.keys(node.ival).length !== 0 ||
+          !exactToken(input.sql, node.location, "0")
+        ) {
+          reject("TEXT2SQL_SQL_SHAPE_REJECTED", "TEXT2SQL_SQL_LITERAL_POLICY_REJECTED");
         }
         break;
       case "SortBy":
-        assertOnlyKeys(node, ["node", "sortby_dir", "sortby_nulls", "location"]);
+        assertOnlyKeys(
+          node,
+          ["node", "sortby_dir", "sortby_nulls", "location"],
+          "TEXT2SQL_SQL_ORDERING_SHAPE_REJECTED",
+        );
         if (
           wrappedNodeName(node.node) !== "ColumnRef" ||
           !["SORTBY_DEFAULT", "SORTBY_ASC", "SORTBY_DESC"].includes(String(node.sortby_dir)) ||
@@ -516,23 +560,34 @@ export async function assertPostgresqlText2SqlCandidatePolicy(
             String(node.sortby_nulls),
           )
         ) {
-          reject("TEXT2SQL_SQL_SHAPE_REJECTED");
+          reject("TEXT2SQL_SQL_SHAPE_REJECTED", "TEXT2SQL_SQL_ORDERING_SHAPE_REJECTED");
         }
         break;
       case "BoolExpr":
-        assertOnlyKeys(node, ["boolop", "args", "location"]);
+        assertOnlyKeys(
+          node,
+          ["boolop", "args", "location"],
+          "TEXT2SQL_SQL_EXPRESSION_SHAPE_REJECTED",
+        );
         if (
           !["AND_EXPR", "OR_EXPR", "NOT_EXPR"].includes(String(node.boolop)) ||
           !Array.isArray(node.args) ||
           node.args.length === 0
         ) {
-          reject("TEXT2SQL_SQL_SHAPE_REJECTED");
+          reject("TEXT2SQL_SQL_SHAPE_REJECTED", "TEXT2SQL_SQL_EXPRESSION_SHAPE_REJECTED");
         }
         break;
       case "NullTest":
-        assertOnlyKeys(node, ["arg", "nulltesttype", "location"]);
-        if (!isRecord(node.arg) || !["IS_NULL", "IS_NOT_NULL"].includes(String(node.nulltesttype))) {
-          reject("TEXT2SQL_SQL_SHAPE_REJECTED");
+        assertOnlyKeys(
+          node,
+          ["arg", "nulltesttype", "location"],
+          "TEXT2SQL_SQL_EXPRESSION_SHAPE_REJECTED",
+        );
+        if (
+          !isRecord(node.arg) ||
+          !["IS_NULL", "IS_NOT_NULL"].includes(String(node.nulltesttype))
+        ) {
+          reject("TEXT2SQL_SQL_SHAPE_REJECTED", "TEXT2SQL_SQL_EXPRESSION_SHAPE_REJECTED");
         }
         break;
       default:
@@ -547,6 +602,6 @@ export async function assertPostgresqlText2SqlCandidatePolicy(
       (number) => !referencedParameters.has(number),
     )
   ) {
-    reject("TEXT2SQL_SQL_SHAPE_REJECTED");
+    reject("TEXT2SQL_SQL_SHAPE_REJECTED", "TEXT2SQL_SQL_PARAMETER_BINDING_REJECTED");
   }
 }

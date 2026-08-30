@@ -210,12 +210,38 @@ const ROOT_VISIBLE_TEXT2SQL_POLICY_CODES = new Set([
   "TEXT2SQL_SEMANTIC_BINDING_OUT_OF_RANGE",
   "TEXT2SQL_SQL_DANGEROUS",
   "TEXT2SQL_SQL_SHAPE_REJECTED",
+  "TEXT2SQL_SQL_INPUT_REJECTED",
+  "TEXT2SQL_SQL_PARAMETERIZATION_REJECTED",
+  "TEXT2SQL_SQL_STATEMENT_SHAPE_REJECTED",
+  "TEXT2SQL_SQL_SELECT_SHAPE_REJECTED",
+  "TEXT2SQL_SQL_CTE_SHAPE_REJECTED",
+  "TEXT2SQL_SQL_RELATION_BINDING_REJECTED",
+  "TEXT2SQL_SQL_JOIN_SHAPE_REJECTED",
+  "TEXT2SQL_SQL_PROJECTION_SHAPE_REJECTED",
+  "TEXT2SQL_SQL_PRIMITIVE_DENIED",
+  "TEXT2SQL_SQL_PARAMETER_BINDING_REJECTED",
+  "TEXT2SQL_SQL_LITERAL_POLICY_REJECTED",
+  "TEXT2SQL_SQL_ORDERING_SHAPE_REJECTED",
+  "TEXT2SQL_SQL_EXPRESSION_SHAPE_REJECTED",
 ]);
 
 function text2SqlCandidateFailureCode(code: string | null): string {
   return code && ROOT_VISIBLE_TEXT2SQL_POLICY_CODES.has(code)
     ? code
     : "TEAM_TEXT2SQL_CANDIDATE_POLICY_REJECTED";
+}
+
+function text2SqlCandidateDiagnosticCode(error: unknown): string {
+  if (
+    typeof error === "object" &&
+    error !== null &&
+    "diagnostic_code" in error &&
+    typeof error.diagnostic_code === "string" &&
+    ROOT_VISIBLE_TEXT2SQL_POLICY_CODES.has(error.diagnostic_code)
+  ) {
+    return error.diagnostic_code;
+  }
+  return safeErrorCode(error, "TEXT2SQL_CANDIDATE_POLICY_REJECTED");
 }
 
 async function specialistProviderJson(input: {
@@ -790,7 +816,7 @@ export function createProductionTeamTools(
         return compiled;
       } catch (error) {
         state.rejected_candidate = parsed.data;
-        state.rejection_code = safeErrorCode(error, "TEXT2SQL_CANDIDATE_POLICY_REJECTED");
+        state.rejection_code = text2SqlCandidateDiagnosticCode(error);
         if (state.provider_attempt_count >= maxText2SqlCandidateAttempts) {
           throw new ProductionTeamToolError(text2SqlCandidateFailureCode(state.rejection_code));
         }
@@ -1156,6 +1182,7 @@ export const productionTeamToolsInternals = Object.freeze({
   resolveAcceptedSemanticQueryContext,
   safeErrorCode,
   specialistProviderLogicalCallId,
+  text2SqlCandidateDiagnosticCode,
   text2SqlCandidateFailureCode,
   visualizationIntent,
 });

@@ -133,6 +133,42 @@ describe("PostgreSQL model-authored Text2SQL policy", () => {
         parameter_count: 2,
         allowed_relations: allowed,
       }),
-    ).rejects.toMatchObject({ code: "TEXT2SQL_SQL_SHAPE_REJECTED" });
+    ).rejects.toMatchObject({
+      code: "TEXT2SQL_SQL_SHAPE_REJECTED",
+      diagnostic_code: "TEXT2SQL_SQL_PARAMETER_BINDING_REJECTED",
+    });
+  });
+
+  it("classifies safe structural rejection branches without retaining model SQL", async () => {
+    await expect(
+      assertPostgresqlText2SqlCandidatePolicy({
+        sql: "select o.customer_id as customer_id from orders as o",
+        parameter_count: 0,
+        allowed_relations: allowed,
+      }),
+    ).rejects.toMatchObject({
+      code: "TEXT2SQL_SQL_SHAPE_REJECTED",
+      diagnostic_code: "TEXT2SQL_SQL_RELATION_BINDING_REJECTED",
+    });
+    await expect(
+      assertPostgresqlText2SqlCandidatePolicy({
+        sql: "select o.customer_id from falcon_db_24.orders as o",
+        parameter_count: 0,
+        allowed_relations: allowed,
+      }),
+    ).rejects.toMatchObject({
+      code: "TEXT2SQL_SQL_SHAPE_REJECTED",
+      diagnostic_code: "TEXT2SQL_SQL_PROJECTION_SHAPE_REJECTED",
+    });
+    await expect(
+      assertPostgresqlText2SqlCandidatePolicy({
+        sql: "select pg_sleep($1::pg_catalog.int4) as slept from falcon_db_24.orders as o",
+        parameter_count: 1,
+        allowed_relations: allowed,
+      }),
+    ).rejects.toMatchObject({
+      code: "TEXT2SQL_SQL_DANGEROUS",
+      diagnostic_code: "TEXT2SQL_SQL_PRIMITIVE_DENIED",
+    });
   });
 });
