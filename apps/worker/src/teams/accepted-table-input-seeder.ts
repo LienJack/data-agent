@@ -1,16 +1,17 @@
 import { createHash } from "node:crypto";
 import {
+  type RootAcceptedInputArtifact,
+  rootAcceptedInputArtifactSchema,
+} from "@data-agent/contracts/agents";
+import {
   type ArtifactReference,
   artifactReferenceIdentity,
   artifactWorkspaceTableProjectionSchema,
   buildAcceptedTableInputProvenance,
   buildProductTeamArtifactDocument,
-  type PortResult,
   type ProductTeamArtifactDocument,
-  type RootAcceptedInputArtifact,
-  rootAcceptedInputArtifactSchema,
-  sha256ContentHash,
-} from "@data-agent/contracts";
+} from "@data-agent/contracts/artifacts";
+import { type PortResult, sha256ContentHash } from "@data-agent/contracts/common";
 import { z } from "zod";
 import type { RunWorkflowExecutorPort } from "../runs/run-worker-runner.js";
 import type { DataAgentTeamRunnerDependencies } from "./data-agent-team-runner.js";
