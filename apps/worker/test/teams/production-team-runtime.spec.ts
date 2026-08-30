@@ -702,6 +702,7 @@ describe("Production Team runtime", () => {
     const text2sql = profileMap.get("governed-text2sql-agent");
     if (!text2sql) throw new TypeError("missing fail-closed fixtures");
     const calls: Array<{ operation: string; document: unknown }> = [];
+    const events: unknown[] = [];
     const runtime = createProductionTeamRuntime({
       store: store(calls),
       capability: {},
@@ -735,7 +736,7 @@ describe("Production Team runtime", () => {
           semantic_release_hash: hash("s"),
         },
         restored_snapshot: null,
-        execution_context: executionContext([]),
+        execution_context: executionContext(events),
         signal: new AbortController().signal,
         deadline_at: "2026-08-18T12:01:00.000Z",
       }),
@@ -743,6 +744,16 @@ describe("Production Team runtime", () => {
     expect(calls.filter(({ operation }) => operation === "PREPARE_HANDOFF")).toHaveLength(1);
     expect(calls.some(({ operation }) => operation === "ATTACH_ACCEPTED_SIBLING_OUTPUT")).toBe(
       false,
+    );
+    expect(events).toContainEqual(
+      expect.objectContaining({
+        kind: "agent_status",
+        profile_id: "governed-text2sql-agent",
+        task_id: expect.any(String),
+        status: "FAILED",
+        phase: "execution.failed",
+        error_code: "UPSTREAM_EXECUTION_FAILED",
+      }),
     );
   });
 

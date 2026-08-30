@@ -123,6 +123,14 @@ function portValue<T>(result: PortResult<T>): T {
   return result.value;
 }
 
+function runtimeFailureCode(error: unknown): string {
+  return error instanceof ProductionTeamRuntimeError
+    ? error.code
+    : error instanceof Error && /^[A-Z][A-Z0-9_]*$/.test(error.message)
+      ? error.message
+      : "DATA_AGENT_TEAM_RUNTIME_FAILED";
+}
+
 async function command(input: {
   readonly operation:
     | "CREATE_TASK"
@@ -829,154 +837,170 @@ export function createProductionTeamRuntime(
             capability: dependencies.capability,
             bounds: taskBounds,
           });
-          await emit(input.execution_context, {
-            kind: "agent_status",
-            key: `team.agent.${task.task_id}.pending`,
-            profile_id: profileId,
-            task_id: task.task_id,
-            status: "PENDING",
-            phase: "root.subagent.selected",
-            title: admittedDelegation.profile.revision.discovery.display_name,
-            summary: `主 Agent 已选择 Product Profile ${profileId} r${admittedDelegation.profile.revision.revision}；Handoff 已持久化。`,
-            duration_ms: null,
-            error_code: null,
-          });
-          const epoch = await commitContextEpoch({
-            task,
-            context_ref: input.semantic_context_ref,
-            lease: input.lease,
-            store: dependencies.store,
-            capability: dependencies.capability,
-          });
-          await emit(input.execution_context, {
-            kind: "agent_status",
-            key: `team.agent.${task.task_id}.running`,
-            profile_id: profileId,
-            task_id: task.task_id,
-            status: "RUNNING",
-            phase: "context.activated",
-            title:
-              profileId === "governed-analysis-agent"
-                ? "Governed Analysis"
-                : profileId === "governed-text2sql-agent"
-                  ? "Text2SQL"
-                  : profileId === "report-writing-agent"
-                    ? "Report"
-                    : "Semantic",
-            summary: "受治理 Context Epoch 已激活，Subagent 开始执行专职 Tool 链",
-            duration_ms: null,
-            error_code: null,
-          });
-          const tools =
-            dependencies.create_tools?.({
+          try {
+            await emit(input.execution_context, {
+              kind: "agent_status",
+              key: `team.agent.${task.task_id}.pending`,
+              profile_id: profileId,
+              task_id: task.task_id,
+              status: "PENDING",
+              phase: "root.subagent.selected",
+              title: admittedDelegation.profile.revision.discovery.display_name,
+              summary: `主 Agent 已选择 Product Profile ${profileId} r${admittedDelegation.profile.revision.revision}；Handoff 已持久化。`,
+              duration_ms: null,
+              error_code: null,
+            });
+            const epoch = await commitContextEpoch({
+              task,
+              context_ref: input.semantic_context_ref,
               lease: input.lease,
-              authority: input.authority,
-              execution_context: input.execution_context,
-              semantic_context_ref: input.semantic_context_ref,
-              semantic_context_package: input.semantic_context_package,
-              semantic_context: input.semantic_context,
-              accepted_evidence_ref: acceptedInputRef,
-              accepted_semantic_query_context_ref: acceptedSemanticQueryContextRef,
-              delegation: admittedDelegation,
-            }) ?? dependencies.tools;
-          if (!tools) throw new ProductionTeamRuntimeError("TEAM_TOOL_COMPOSITION_REQUIRED");
-          const registry = await createMastraProfileComposition({
-            profiles: [...input.profiles.values()],
-            tools,
-            visibility: {
-              emit: (event) => {
-                if (!input.execution_context.emitDisplayEvent) {
-                  return Promise.resolve({
-                    ok: false as const,
-                    error: {
-                      code: "RUN_DISPLAY_EVENT_REQUIRED",
-                      message: "Display event authority is required.",
-                      retryable: false,
-                    },
-                  });
-                }
-                return input.execution_context.emitDisplayEvent(event);
+              store: dependencies.store,
+              capability: dependencies.capability,
+            });
+            await emit(input.execution_context, {
+              kind: "agent_status",
+              key: `team.agent.${task.task_id}.running`,
+              profile_id: profileId,
+              task_id: task.task_id,
+              status: "RUNNING",
+              phase: "context.activated",
+              title:
+                profileId === "governed-analysis-agent"
+                  ? "Governed Analysis"
+                  : profileId === "governed-text2sql-agent"
+                    ? "Text2SQL"
+                    : profileId === "report-writing-agent"
+                      ? "Report"
+                      : "Semantic",
+              summary: "受治理 Context Epoch 已激活，Subagent 开始执行专职 Tool 链",
+              duration_ms: null,
+              error_code: null,
+            });
+            const tools =
+              dependencies.create_tools?.({
+                lease: input.lease,
+                authority: input.authority,
+                execution_context: input.execution_context,
+                semantic_context_ref: input.semantic_context_ref,
+                semantic_context_package: input.semantic_context_package,
+                semantic_context: input.semantic_context,
+                accepted_evidence_ref: acceptedInputRef,
+                accepted_semantic_query_context_ref: acceptedSemanticQueryContextRef,
+                delegation: admittedDelegation,
+              }) ?? dependencies.tools;
+            if (!tools) throw new ProductionTeamRuntimeError("TEAM_TOOL_COMPOSITION_REQUIRED");
+            const registry = await createMastraProfileComposition({
+              profiles: [...input.profiles.values()],
+              tools,
+              visibility: {
+                emit: (event) => {
+                  if (!input.execution_context.emitDisplayEvent) {
+                    return Promise.resolve({
+                      ok: false as const,
+                      error: {
+                        code: "RUN_DISPLAY_EVENT_REQUIRED",
+                        message: "Display event authority is required.",
+                        retryable: false,
+                      },
+                    });
+                  }
+                  return input.execution_context.emitDisplayEvent(event);
+                },
               },
-            },
-            now: () => now().getTime(),
-            execution_tool_allowlists: {
-              [profileId]: delegationExecutionTools(profileId, admittedDelegation),
-            },
-          });
-          const effect: SideEffectReceipt = portValue(
-            await input.execution_context.executeSideEffectOnce({
-              effect_kind: "EVAL",
-              input: {
-                schema_version: "team-specialist-effect@1.0.0",
-                task_id: task.task_id,
-                task_hash: task.task_hash,
-                context_epoch: epoch,
-                input_ref: acceptedInputRef,
+              now: () => now().getTime(),
+              execution_tool_allowlists: {
+                [profileId]: delegationExecutionTools(profileId, admittedDelegation),
               },
-              execute: async ({ signal }: RunSideEffectExecutionIdentity) => {
-                const result = await registry.execute(task, epoch, signal);
-                if (result.status !== "COMPLETED" || !result.output_ref) {
-                  throw new ProductionTeamRuntimeError("TEAM_SPECIALIST_EXECUTION_FAILED");
-                }
-                return { output: result.output_ref, artifact_ref: result.output_ref };
-              },
-            }),
-          );
-          const outputRef: ArtifactReference | undefined = effect.artifact_ref;
-          if (!outputRef) throw new ProductionTeamRuntimeError("TEAM_SPECIALIST_OUTPUT_MISSING");
-          const taskCapability = await createCapability({
-            task,
-            lease: input.lease,
-            store: dependencies.store,
-            capability: dependencies.capability,
-            issued_at: timestamp,
-            deadline_at: input.deadline_at,
-          });
-          await commitAcceptedCompletion({
-            task,
-            output_ref: outputRef,
-            task_capability: taskCapability,
-            lease: input.lease,
-            store: dependencies.store,
-            capability: dependencies.capability,
-            artifacts: dependencies.artifacts,
-            timestamp,
-            coverage_hash: coverageHash,
-          });
-          const acceptedDocument = await verifyProductTeamArtifactDocument(
-            portValue(await dependencies.artifacts.resolveCommitted(outputRef)),
-          );
-          if (
-            artifactReferenceIdentity(acceptedDocument.artifact_ref) !==
-            artifactReferenceIdentity(outputRef)
-          ) {
-            throw new ProductionTeamRuntimeError("TEAM_OUTPUT_PROJECTION_INVALID");
+            });
+            const effect: SideEffectReceipt = portValue(
+              await input.execution_context.executeSideEffectOnce({
+                effect_kind: "EVAL",
+                input: {
+                  schema_version: "team-specialist-effect@1.0.0",
+                  task_id: task.task_id,
+                  task_hash: task.task_hash,
+                  context_epoch: epoch,
+                  input_ref: acceptedInputRef,
+                },
+                execute: async ({ signal }: RunSideEffectExecutionIdentity) => {
+                  const result = await registry.execute(task, epoch, signal);
+                  if (result.status !== "COMPLETED" || !result.output_ref) {
+                    throw new ProductionTeamRuntimeError("TEAM_SPECIALIST_EXECUTION_FAILED");
+                  }
+                  return { output: result.output_ref, artifact_ref: result.output_ref };
+                },
+              }),
+            );
+            const outputRef: ArtifactReference | undefined = effect.artifact_ref;
+            if (!outputRef) throw new ProductionTeamRuntimeError("TEAM_SPECIALIST_OUTPUT_MISSING");
+            const taskCapability = await createCapability({
+              task,
+              lease: input.lease,
+              store: dependencies.store,
+              capability: dependencies.capability,
+              issued_at: timestamp,
+              deadline_at: input.deadline_at,
+            });
+            await commitAcceptedCompletion({
+              task,
+              output_ref: outputRef,
+              task_capability: taskCapability,
+              lease: input.lease,
+              store: dependencies.store,
+              capability: dependencies.capability,
+              artifacts: dependencies.artifacts,
+              timestamp,
+              coverage_hash: coverageHash,
+            });
+            const acceptedDocument = await verifyProductTeamArtifactDocument(
+              portValue(await dependencies.artifacts.resolveCommitted(outputRef)),
+            );
+            if (
+              artifactReferenceIdentity(acceptedDocument.artifact_ref) !==
+              artifactReferenceIdentity(outputRef)
+            ) {
+              throw new ProductionTeamRuntimeError("TEAM_OUTPUT_PROJECTION_INVALID");
+            }
+            const observation = rootToolObservation({
+              tool_call_id: admittedDelegation.call.tool_call_id,
+              profile_id: profileId,
+              document: acceptedDocument,
+            });
+            await emit(input.execution_context, {
+              kind: "agent_status",
+              key: `team.agent.${task.task_id}.completed`,
+              profile_id: profileId,
+              task_id: task.task_id,
+              status: "COMPLETED",
+              phase: "acceptance.committed",
+              title:
+                profileId === "governed-analysis-agent"
+                  ? "Governed Analysis"
+                  : profileId === "governed-text2sql-agent"
+                    ? "Text2SQL"
+                    : profileId === "report-writing-agent"
+                      ? "Report"
+                      : "Semantic",
+              summary: "Subagent Completion、Verifier 与 Artifact Acceptance 已持久化并验收",
+              duration_ms: Math.max(0, now().getTime() - Date.parse(timestamp)),
+              error_code: null,
+            });
+            return observation;
+          } catch (error) {
+            await emit(input.execution_context, {
+              kind: "agent_status",
+              key: `team.agent.${task.task_id}.failed`,
+              profile_id: profileId,
+              task_id: task.task_id,
+              status: "FAILED",
+              phase: "execution.failed",
+              title: selectedProfile.revision.discovery.display_name,
+              summary: "专职 Agent 执行链未正常完成；失败细节已保留。",
+              duration_ms: Math.max(0, now().getTime() - Date.parse(timestamp)),
+              error_code: runtimeFailureCode(error),
+            });
+            throw error;
           }
-          const observation = rootToolObservation({
-            tool_call_id: admittedDelegation.call.tool_call_id,
-            profile_id: profileId,
-            document: acceptedDocument,
-          });
-          await emit(input.execution_context, {
-            kind: "agent_status",
-            key: `team.agent.${task.task_id}.completed`,
-            profile_id: profileId,
-            task_id: task.task_id,
-            status: "COMPLETED",
-            phase: "acceptance.committed",
-            title:
-              profileId === "governed-analysis-agent"
-                ? "Governed Analysis"
-                : profileId === "governed-text2sql-agent"
-                  ? "Text2SQL"
-                  : profileId === "report-writing-agent"
-                    ? "Report"
-                    : "Semantic",
-            summary: "Subagent Completion、Verifier 与 Artifact Acceptance 已持久化并验收",
-            duration_ms: Math.max(0, now().getTime() - Date.parse(timestamp)),
-            error_code: null,
-          });
-          return observation;
         };
 
         const completed = await Promise.all(
@@ -999,12 +1023,7 @@ export function createProductionTeamRuntime(
         });
         return { status: "COMPLETED", reason_code: "TEAM_ACCEPTED", observations };
       } catch (error) {
-        const code =
-          error instanceof ProductionTeamRuntimeError
-            ? error.code
-            : error instanceof Error && /^[A-Z][A-Z0-9_]*$/.test(error.message)
-              ? error.message
-              : "DATA_AGENT_TEAM_RUNTIME_FAILED";
+        const code = runtimeFailureCode(error);
         if (rootAgentStarted) {
           await emit(input.execution_context, {
             kind: "agent_status",
