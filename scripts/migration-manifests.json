@@ -2923,6 +2923,15 @@
       "postcondition": {
         "checksum_occurrences": 2
       }
+    },
+    {
+      "id": "10812",
+      "migration_name": "20260725010812_app_data_agent_falcon24_partial_ready_supersession.sql",
+      "source_directory": "infra/supabase/apps/data-agent/migration-sources/10812",
+      "segments": ["00-preflight.sql.inc", "20-supersession.sql.inc", "90-postconditions.sql.inc"],
+      "placeholder": "__FALCON24_PARTIAL_READY_SUPERSESSION_MIGRATION_CHECKSUM__",
+      "checksum_header": "falcon24_partial_ready_supersession_migration_checksum",
+      "postcondition": { "checksum_occurrences": 2 }
     }
   ],
   "exceptions": [

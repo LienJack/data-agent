@@ -1418,6 +1418,22 @@ Diagnostic/Q1/C1任一正式首次失败必须写既有 authority支持的 immut
 - [ ] 四层门禁不得因同比等缺失术语创建全局Semantic Candidate；若未来出现治理DRAFT，只准备review packet，不冒充真人审批，
   同时继续所有不依赖该审批的工作。
 
+**F6 READY 轮次恢复边界（2026-08-30）**
+
+- `e676a450-5768-48d9-a264-ab7890fe0323` 的旧构建在 L1 前三题自动门禁 PASS 后，人工页面复核发现 Root 标签及失败
+  Specialist 活动未闭合；`6443b8a2`、`6d163113` 修复前后端，并加强真实 DOM gate。原收据保留为历史，不能拼入新构建 PASS。
+- 既有 supersede RPC 只允许零题 READY，无法在两题之间安全退出旧构建。新增前向迁移 `10812`，checksum
+  `sha256:28b74d01eeb3d56cddbee69cf98892ff524c3cefc3cdee8b199a8c3cb7ffcfb2`；复用同一 RPC/authority，不增加第二套发布权威。
+- 只允许 READY 且 ordinal 0–14、完整 PASSED 前缀与 pristine PLANNED 后缀、无在途 Run/terminal receipt；锁与 CAS 下仅把 attempt
+  标为 `FAILED/FALCON24_FROZEN_CLOSURE_BUILD_SUPERSEDED`，保留 ordinal 和全部 turn/receipt，不伪造失败题目或 Run。
+  SQL 入口显式拒绝 null protocol/reason/hash/version；READ/browser 无执行权限，backend 无直接 UPDATE 权限。
+- 最终稿在 NAS 专用物理克隆 `data-agent-falcon24-f6-supersede-v2-6d163113`（loopback 55456）应用成功，13 张受保护表的
+  count + canonical SHA-256 前后相等。并发两次替代仅一次成功，另一次 VERSION_CONFLICT；全部 15 条 turn 逐项不变。
+  零题兼容、四种 null 拒绝、错版本、终态重放、真实 CLAIMED 状态拒绝及 ACL 检查全部通过，无模型调用。
+- 初稿的安装语法失败已验证事务全回滚；初稿 null CAS 缺陷在第一份测试克隆复现后修正，未改写该测试库 ledger。
+  最终稿重新从未迁移的专用 scratch 建立第二份物理克隆验证。证据为 audit 中 `10812-final-clone-{supersession,boundaries}.json`。
+  此项只证明恢复协议，非业务四层 PASS；生产 authority 尚未因本迁移变更。新构建仍须 fresh attempt 从 L1 重跑。
+
 ### F7 — 最终审计、页面证据与闭环
 
 - [ ] 输出 L1-L4 矩阵：question/Conversation/Run、实际Agent序列、answer/artifact hashes、business/QA/Trace receipts与token usage。
