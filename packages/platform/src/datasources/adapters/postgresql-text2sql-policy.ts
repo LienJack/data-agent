@@ -190,13 +190,12 @@ function normalizedPrimitiveName(value: unknown): string | null {
   return names.at(-1)?.toLowerCase() ?? null;
 }
 
-function validLimitCount(
+function exactIntegerParameter(
   value: unknown,
   parameters: readonly QueryParameter[] | undefined,
-): boolean {
-  if (value === undefined) return true;
-  if (!parameters || !isRecord(value)) return false;
-  const limitNode =
+): number | null {
+  if (!parameters || !isRecord(value)) return null;
+  const parameterNode =
     wrappedNodeName(value) === "ParamRef"
       ? value
       : wrappedNodeName(value) === "TypeCast" &&
@@ -209,11 +208,31 @@ function validLimitCount(
           )
         ? (value.TypeCast.arg as JsonRecord)
         : null;
-  if (!limitNode) return false;
-  const reference = limitNode.ParamRef;
-  if (!isRecord(reference) || !Number.isSafeInteger(reference.number)) return false;
+  if (!parameterNode) return null;
+  const reference = parameterNode.ParamRef;
+  if (!isRecord(reference) || !Number.isSafeInteger(reference.number)) return null;
   const parameter = parameters[(reference.number as number) - 1];
-  return Number.isSafeInteger(parameter) && (parameter as number) > 0;
+  return Number.isSafeInteger(parameter) ? (parameter as number) : null;
+}
+
+function validLimitCount(
+  value: unknown,
+  parameters: readonly QueryParameter[] | undefined,
+): boolean {
+  if (value === undefined) return true;
+  const parameter = exactIntegerParameter(value, parameters);
+  return parameter !== null && parameter > 0;
+}
+
+function validZeroOffset(
+  value: unknown,
+  parameters: readonly QueryParameter[] | undefined,
+): boolean {
+  if (!isRecord(value)) return false;
+  if (wrappedNodeName(value) === "A_Const" && isRecord(value.A_Const)) {
+    return isRecord(value.A_Const.ival) && Object.keys(value.A_Const.ival).length === 0;
+  }
+  return exactIntegerParameter(value, parameters) === 0;
 }
 
 function validSortExpression(value: unknown): boolean {
@@ -541,7 +560,9 @@ export async function assertPostgresqlText2SqlCandidatePolicy(
           reject("TEXT2SQL_SQL_SHAPE_REJECTED", "TEXT2SQL_SQL_TARGET_LIST_REJECTED");
         }
         if (
-          node.limitOffset !== undefined ||
+          (node.limitOffset !== undefined &&
+            (node.limitCount === undefined ||
+              !validZeroOffset(node.limitOffset, input.parameters))) ||
           (node.limitCount === undefined
             ? node.limitOption !== "LIMIT_OPTION_DEFAULT"
             : node.limitOption !== "LIMIT_OPTION_COUNT") ||

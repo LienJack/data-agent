@@ -151,6 +151,43 @@ describe("PostgreSQL model-authored Text2SQL policy", () => {
   });
 
   it.each([
+    {
+      sql: "select o.order_id as order_id from falcon_db_24.orders as o limit $1 offset 0",
+      parameters: [10],
+    },
+    {
+      sql: "select o.order_id as order_id from falcon_db_24.orders as o limit $1 offset $2",
+      parameters: [10, 0],
+    },
+  ])(
+    "accepts a zero-offset no-op on an exact bounded result: $sql",
+    async ({ sql, parameters }) => {
+      await expect(
+        assertPostgresqlText2SqlCandidatePolicy({
+          sql,
+          parameter_count: parameters.length,
+          parameters,
+          allowed_relations: allowed,
+        }),
+      ).resolves.toBeUndefined();
+    },
+  );
+
+  it("rejects a positive offset even when the result has an exact limit", async () => {
+    await expect(
+      assertPostgresqlText2SqlCandidatePolicy({
+        sql: "select o.order_id as order_id from falcon_db_24.orders as o limit $1 offset $2",
+        parameter_count: 2,
+        parameters: [10, 1],
+        allowed_relations: allowed,
+      }),
+    ).rejects.toMatchObject({
+      code: "TEXT2SQL_SQL_SHAPE_REJECTED",
+      diagnostic_code: "TEXT2SQL_SQL_LIMIT_SHAPE_REJECTED",
+    });
+  });
+
+  it.each([
     { parameter: 0, type: "int8" },
     { parameter: -1, type: "int8" },
     { parameter: 1.5, type: "int8" },
@@ -269,17 +306,6 @@ describe("PostgreSQL model-authored Text2SQL policy", () => {
   });
 
   it("classifies safe structural rejection branches without retaining model SQL", async () => {
-    await expect(
-      assertPostgresqlText2SqlCandidatePolicy({
-        sql: "select o.customer_id as customer_id from falcon_db_24.orders as o limit $1 offset $2",
-        parameter_count: 2,
-        parameters: [10, 0],
-        allowed_relations: allowed,
-      }),
-    ).rejects.toMatchObject({
-      code: "TEXT2SQL_SQL_SHAPE_REJECTED",
-      diagnostic_code: "TEXT2SQL_SQL_LIMIT_SHAPE_REJECTED",
-    });
     await expect(
       assertPostgresqlText2SqlCandidatePolicy({
         sql: "select o.customer_id as customer_id from falcon_db_24.orders as o, falcon_db_24.customers as c",
