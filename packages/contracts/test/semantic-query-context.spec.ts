@@ -2,6 +2,7 @@ import { describe, expect, it } from "vitest";
 import {
   buildProductTeamArtifactDocument,
   buildSemanticQueryContext,
+  resolveSemanticComparisonTimeWindows,
   resolveSemanticRequestTimeWindow,
   semanticQuerySelectionIntentSchema,
   verifySemanticQueryContext,
@@ -189,6 +190,141 @@ function contextInput() {
 }
 
 describe("SemanticQueryContext", () => {
+  async function comparisonContext(
+    minimum: string | null,
+    end = "2024-11-01T00:00:00.000Z",
+    count = 12,
+  ) {
+    const input = contextInput();
+    const domain = { ...timeDomain, min_time: minimum, max_time: end };
+    return buildSemanticQueryContext({
+      ...input,
+      metrics: input.metrics.map((metric) => ({ ...metric, time_domain: domain })),
+      time_semantics: [domain],
+      request_scoped_interpretations: [
+        {
+          interpretation_id: "request-scoped.recent",
+          requested_term: "最近完整月份",
+          scope: "REQUEST_ONLY",
+          source_object_ids: ["dimension.order_month", "metric.order_revenue"],
+          operator: { ...recentMonthsOperator, period_count: count },
+          user_explanation: "使用发布上界计算月份。",
+          publication_effect: "NONE",
+        },
+        {
+          interpretation_id: "request-scoped.yoy",
+          requested_term: "同比",
+          scope: "REQUEST_ONLY",
+          source_object_ids: ["dimension.order_month", "metric.order_revenue"],
+          operator: {
+            kind: "PERIOD_COMPARISON_RATE",
+            metric_id: "metric.order_revenue",
+            time_dimension_id: "dimension.order_month",
+            comparison_offset: { unit: "YEAR", value: 1 },
+            formula: "(current_value - comparison_value) / NULLIF(comparison_value, 0)",
+          },
+          user_explanation: "同比使用上年同月。",
+          publication_effect: "NONE",
+        },
+      ],
+    });
+  }
+
+  it.each([
+    {
+      min: "2023-05-01T00:00:00.000Z",
+      start: "2023-05-01T00:00:00.000Z",
+      end: "2023-11-01T00:00:00.000Z",
+      empty: false,
+    },
+    {
+      min: "2020-01-01T00:00:00.000Z",
+      start: "2022-11-01T00:00:00.000Z",
+      end: "2023-11-01T00:00:00.000Z",
+      empty: false,
+    },
+    { min: null, start: "2022-11-01T00:00:00.000Z", end: "2023-11-01T00:00:00.000Z", empty: false },
+    {
+      min: "2023-11-01T00:00:00.000Z",
+      start: "2023-11-01T00:00:00.000Z",
+      end: "2023-11-01T00:00:00.000Z",
+      empty: true,
+    },
+  ])(
+    "resolves comparison source coverage without changing context authority: $min",
+    async ({ min, start, end, empty }) => {
+      const context = await comparisonContext(min);
+      const hashBefore = context.context_hash;
+      expect(resolveSemanticComparisonTimeWindows(context)).toEqual([
+        {
+          metric_id: "metric.order_revenue",
+          dimension_id: "dimension.order_month",
+          start,
+          end,
+          empty,
+          requested_start: "2022-11-01T00:00:00.000Z",
+          requested_end: "2023-11-01T00:00:00.000Z",
+          semantics: "HALF_OPEN",
+          timezone: "Asia/Shanghai",
+          comparison_offset: { unit: "YEAR", value: 1 },
+        },
+      ]);
+      expect((await verifySemanticQueryContext(context)).context_hash).toBe(hashBefore);
+    },
+  );
+
+  it("shifts complete calendar months across leap years and preserves explicit offsets", async () => {
+    const context = await comparisonContext(
+      "2020-01-01T00:00:00+08:00",
+      "2025-03-01T00:00:00+08:00",
+      1,
+    );
+    expect(resolveSemanticComparisonTimeWindows(context)).toMatchObject([
+      {
+        start: "2024-02-01T00:00:00+08:00",
+        end: "2024-03-01T00:00:00+08:00",
+        empty: false,
+      },
+    ]);
+  });
+
+  it("does not treat a partial published month as a complete comparison period", async () => {
+    const context = await comparisonContext("2023-05-15T00:00:00.000Z");
+    expect(() => resolveSemanticComparisonTimeWindows(context)).toThrow(
+      "SEMANTIC_COMPARISON_TIME_COVERAGE_UNAVAILABLE",
+    );
+  });
+
+  it("does not invent relative comparison windows for historical contexts", async () => {
+    const context = await buildSemanticQueryContext(contextInput());
+    expect(resolveSemanticComparisonTimeWindows(context)).toEqual([]);
+  });
+
+  it("requires matching relative intent and comparison bindings", async () => {
+    const context = await comparisonContext("2023-05-01T00:00:00.000Z");
+    const interpretations = context.request_scoped_interpretations ?? [];
+    for (const kind of ["RECENT_COMPLETE_PERIODS", "PERIOD_COMPARISON_RATE"] as const) {
+      expect(
+        resolveSemanticComparisonTimeWindows({
+          ...context,
+          request_scoped_interpretations: interpretations.filter(
+            ({ operator }) => operator.kind === kind,
+          ),
+        }),
+      ).toEqual([]);
+    }
+    expect(() =>
+      resolveSemanticComparisonTimeWindows({
+        ...context,
+        request_scoped_interpretations: interpretations.map((entry) =>
+          entry.operator.kind === "PERIOD_COMPARISON_RATE"
+            ? { ...entry, operator: { ...entry.operator, time_dimension_id: "dimension.other" } }
+            : entry,
+        ),
+      }),
+    ).toThrow("SEMANTIC_COMPARISON_TIME_BINDING_INVALID");
+  });
+
   it.each([
     { count: 12, end: "2024-11-01T00:00:00.000Z", start: "2023-11-01T00:00:00.000Z" },
     { count: 1, end: "2024-11-01T00:00:00.000Z", start: "2024-10-01T00:00:00.000Z" },

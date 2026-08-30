@@ -789,6 +789,22 @@ describe("PostgreSQL Text2SQL query runtime", () => {
       expect(JSON.parse(prepared.context_text).semantic_context.resolved_time_window).toEqual(
         prepared.requested_time_window,
       );
+      expect(
+        JSON.parse(prepared.context_text).semantic_context.resolved_comparison_time_windows,
+      ).toEqual([
+        {
+          metric_id: "metric.order-count",
+          dimension_id: "dimension.customer-id",
+          start: "2023-01-01T00:00:00.000Z",
+          end: "2023-11-01T00:00:00.000Z",
+          empty: false,
+          requested_start: "2022-11-01T00:00:00.000Z",
+          requested_end: "2023-11-01T00:00:00.000Z",
+          semantics: "HALF_OPEN",
+          timezone: "Asia/Shanghai",
+          comparison_offset: { unit: "YEAR", value: 1 },
+        },
+      ]);
     },
   );
 

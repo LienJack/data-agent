@@ -223,6 +223,8 @@ export interface ResolvedSemanticRequestTimeWindow {
   readonly period_count: number;
 }
 
+const COMPLETE_MONTH_BOUNDARY = /^(\d{4})-(\d{2})-01(T00:00:00(?:\.000)?(?:Z|[+-]\d{2}:\d{2}))?$/u;
+
 export function resolveSemanticRequestTimeWindow(input: {
   readonly metrics: readonly z.infer<typeof semanticMetricSchema>[];
   readonly dimensions: readonly z.infer<typeof semanticDimensionSchema>[];
@@ -255,7 +257,7 @@ export function resolveSemanticRequestTimeWindow(input: {
   }
   const end = domain?.max_time;
   // Preserve the published calendar-boundary encoding, including its explicit offset.
-  const boundary = end?.match(/^(\d{4})-(\d{2})-01(T00:00:00(?:\.000)?(?:Z|[+-]\d{2}:\d{2}))?$/u);
+  const boundary = end?.match(COMPLETE_MONTH_BOUNDARY);
   if (
     domain?.calendar !== "gregorian" ||
     !domain.timezone ||
@@ -286,6 +288,81 @@ export function resolveSemanticRequestTimeWindow(input: {
     period_unit: "MONTH",
     period_count: request.period_count,
   });
+}
+
+export interface ResolvedSemanticComparisonTimeWindow {
+  readonly metric_id: string;
+  readonly dimension_id: string;
+  readonly requested_start: string;
+  readonly requested_end: string;
+  readonly start: string;
+  readonly end: string;
+  readonly empty: boolean;
+  readonly semantics: "HALF_OPEN";
+  readonly timezone: string;
+  readonly comparison_offset: Readonly<{ unit: "YEAR"; value: 1 }>;
+}
+
+export function resolveSemanticComparisonTimeWindows(
+  input: Parameters<typeof resolveSemanticRequestTimeWindow>[0],
+): readonly ResolvedSemanticComparisonTimeWindow[] {
+  const current = resolveSemanticRequestTimeWindow(input);
+  if (!current) return Object.freeze([]);
+  const operators = (input.request_scoped_interpretations ?? []).map(({ operator }) => operator);
+  const relative = operators.find((operator) => operator.kind === "RECENT_COMPLETE_PERIODS");
+  const result = new Map<string, ResolvedSemanticComparisonTimeWindow>();
+  for (const operator of operators) {
+    if (operator.kind !== "PERIOD_COMPARISON_RATE") continue;
+    if (
+      operator.metric_id !== relative?.metric_id ||
+      operator.time_dimension_id !== current.dimension_id
+    ) {
+      throw new TypeError("SEMANTIC_COMPARISON_TIME_BINDING_INVALID");
+    }
+    const domain = input.metrics.find(
+      ({ metric_id }) => metric_id === operator.metric_id,
+    )?.time_domain;
+    if (
+      !domain ||
+      (domain.min_time !== null &&
+        (!COMPLETE_MONTH_BOUNDARY.test(domain.min_time) ||
+          !Number.isFinite(Date.parse(domain.min_time))))
+    ) {
+      throw new TypeError("SEMANTIC_COMPARISON_TIME_COVERAGE_UNAVAILABLE");
+    }
+    const shiftYear = (boundary: string): string => {
+      const year = Number(boundary.slice(0, 4)) - operator.comparison_offset.value;
+      if (year < 1) throw new TypeError("SEMANTIC_COMPARISON_TIME_COVERAGE_UNAVAILABLE");
+      return `${String(year).padStart(4, "0")}${boundary.slice(4)}`;
+    };
+    const requestedStart = shiftYear(current.start);
+    const requestedEnd = shiftYear(current.end);
+    const start =
+      domain.min_time !== null && Date.parse(domain.min_time) > Date.parse(requestedStart)
+        ? domain.min_time
+        : requestedStart;
+    const end =
+      domain.max_time !== null && Date.parse(domain.max_time) < Date.parse(requestedEnd)
+        ? domain.max_time
+        : requestedEnd;
+    const empty = Date.parse(start) >= Date.parse(end);
+    result.set(
+      operator.metric_id,
+      Object.freeze({
+        metric_id: operator.metric_id,
+        dimension_id: operator.time_dimension_id,
+        requested_start: requestedStart,
+        requested_end: requestedEnd,
+        start,
+        end: empty ? start : end,
+        empty,
+        semantics: "HALF_OPEN",
+        timezone: current.timezone,
+        comparison_offset: Object.freeze({ unit: "YEAR", value: 1 }),
+      }),
+    );
+  }
+  return Object.freeze([...result.values()]);
 }
 
 export const semanticQueryQualityConstraintSchema = z.strictObject({

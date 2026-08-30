@@ -181,6 +181,12 @@ describe("direct run-bound provider retry policy", () => {
     expect(prompt).toContain("TEXT2SQL_SQL_TIME_COVERAGE_REQUIRED");
     expect(prompt).toContain("Clip each source window to the intersection");
     expect(prompt).toContain("including each comparison CTE or self-join alias");
+    expect(prompt).toContain(
+      "delegation objective as a description of intent, not temporal authority",
+    );
+    expect(prompt).toContain("resolved_comparison_time_windows");
+    expect(prompt).toContain("not requested_start/requested_end");
+    expect(prompt).toContain("Do not subtract a year again");
   });
 
   it("binds analysis-program parameters to the frozen method schema", () => {

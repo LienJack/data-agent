@@ -5,6 +5,7 @@ import {
 import {
   type QueryEvidenceSemanticBinding,
   type ResolvedSemanticRequestTimeWindow,
+  resolveSemanticComparisonTimeWindows,
   resolveSemanticRequestTimeWindow,
   type SemanticQueryContext,
   verifySemanticQueryContext,
@@ -332,6 +333,7 @@ function semanticProjection(
       unresolved_ambiguities: semanticQueryContext.unresolved_ambiguities,
       request_scoped_interpretations: semanticQueryContext.request_scoped_interpretations ?? [],
       resolved_time_window: resolveSemanticRequestTimeWindow(semanticQueryContext),
+      resolved_comparison_time_windows: resolveSemanticComparisonTimeWindows(semanticQueryContext),
       executable: {
         metrics: semanticQueryContext.metrics,
         dimensions: semanticQueryContext.dimensions,

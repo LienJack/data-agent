@@ -283,3 +283,22 @@ published_time_coverage?: readonly {
 - Wrong: accept a valid `candidate.time_window` and assume every comparison source observes it.
 - Correct: freeze source constraints from verified authority, prove each scan before I/O, then independently judge the returned business
   values. Passing this restricted SQL guard alone does not prove complete requested duration, year alignment or correct growth arithmetic.
+
+## Host-resolved comparison windows and delegation conflicts
+
+- For a paired `RECENT_COMPLETE_PERIODS` + `PERIOD_COMPARISON_RATE` on the same primary metric/time dimension,
+  `resolveSemanticComparisonTimeWindows` shifts the resolved current complete-month window by the typed year offset, then intersects it
+  with published coverage. Provider context receives `semantic_context.resolved_comparison_time_windows` with metric/dimension, requested
+  prior bounds, effective `start/end`, half-open semantics, timezone, offset and `empty`.
+- Use effective `start/end` as comparison source predicates. Requested prior bounds explain unavailable coverage, not permission to scan
+  it. If no prior period is eligible, equal effective bounds describe an empty source; current output rows must still survive LEFT JOIN.
+- Preserve calendar boundary encoding and explicit offset. Reject a partial-month published lower bound rather than presenting a partial
+  comparison as complete. This current implementation requires one shared primary relative window; mismatched comparison bindings fail
+  with `SEMANTIC_COMPARISON_TIME_BINDING_INVALID`. Unsupported coverage fails with `SEMANTIC_COMPARISON_TIME_COVERAGE_UNAVAILABLE`.
+- With no paired relative/comparison intent, do not invent dates. Derivation is pure and does not add fields to historical SemanticQueryContext
+  documents, alter context hashes or publish a term. Runtime behavior is bound to the frozen Worker build.
+- Delegation objectives are intent descriptions, not authority. Dates proposed by Root cannot override Host-resolved current/prior windows.
+  Do not subtract another year or shift the published frontier forward during repair. AST source coverage, exact current-window admission
+  and business value/rate checks remain mandatory: publishing derived parameters to a model is not proof that the model used them.
+- Required regressions: full/partial/absent prior coverage, all-unavailable empty source, leap year and preserved offsets, partial-month
+  boundary rejection, missing paired intent, mismatched bindings, actual prepare/provider projection and unchanged historical context hashes.
