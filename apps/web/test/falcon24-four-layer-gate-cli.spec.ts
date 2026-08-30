@@ -5,6 +5,7 @@ import {
 import { describe, expect, it } from "vitest";
 import {
   falcon24FourLayerBindingIdentity,
+  falcon24FourLayerConversationMatchesDefaults,
   stableFalcon24FourLayerUuid,
 } from "../src/cli/falcon24-four-layer-control-identity";
 
@@ -35,6 +36,38 @@ async function turns() {
 }
 
 describe("Falcon24 four-layer control identities", () => {
+  it("accepts the profile-aware conversation projection returned by persistence", () => {
+    const datasourceId = id(20);
+    const modelProfileId = id(21);
+
+    expect(
+      falcon24FourLayerConversationMatchesDefaults({
+        conversation: {
+          datasource_id: datasourceId,
+          model_id: modelProfileId,
+          model_profile_id: modelProfileId,
+        },
+        defaults: {
+          datasource_resource_id: datasourceId,
+          model_resource_id: modelProfileId,
+        },
+      }),
+    ).toBe(true);
+    expect(
+      falcon24FourLayerConversationMatchesDefaults({
+        conversation: {
+          datasource_id: datasourceId,
+          model_id: null,
+          model_profile_id: modelProfileId,
+        },
+        defaults: {
+          datasource_resource_id: datasourceId,
+          model_resource_id: modelProfileId,
+        },
+      }),
+    ).toBe(false);
+  });
+
   it("derives stable UUIDs while keeping every Run unique", async () => {
     const frozen = await turns();
     const bindings = frozen.map((turn) =>

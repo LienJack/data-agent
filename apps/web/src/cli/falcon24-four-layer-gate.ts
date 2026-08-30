@@ -35,7 +35,10 @@ import {
   smokeFalcon24FourLayerConversationAt390,
 } from "./falcon24-four-layer-browser-gate";
 import { evaluateFalcon24FourLayerBusiness } from "./falcon24-four-layer-business-gate";
-import { falcon24FourLayerBindingIdentity } from "./falcon24-four-layer-control-identity";
+import {
+  falcon24FourLayerBindingIdentity,
+  falcon24FourLayerConversationMatchesDefaults,
+} from "./falcon24-four-layer-control-identity";
 import {
   createFalcon24FourLayerController,
   falcon24FourLayerBrowserSession,
@@ -354,9 +357,13 @@ async function main(): Promise<void> {
     );
   }
   if (
-    conversation.datasource_id !== defaults.datasource.resource_id ||
-    conversation.model_id !== null ||
-    conversation.model_profile_id !== defaults.model.resource_id
+    !falcon24FourLayerConversationMatchesDefaults({
+      conversation,
+      defaults: {
+        datasource_resource_id: defaults.datasource.resource_id,
+        model_resource_id: defaults.model.resource_id,
+      },
+    })
   ) {
     throw new Error("FALCON24_FOUR_LAYER_CONVERSATION_RESOURCE_MISMATCH");
   }

@@ -10,6 +10,24 @@ export function stableFalcon24FourLayerUuid(material: string): string {
   return `${value.slice(0, 8)}-${value.slice(8, 12)}-${value.slice(12, 16)}-${value.slice(16, 20)}-${value.slice(20)}`;
 }
 
+export function falcon24FourLayerConversationMatchesDefaults(input: {
+  readonly conversation: {
+    readonly datasource_id: string | null;
+    readonly model_id: string | null;
+    readonly model_profile_id?: string | null;
+  };
+  readonly defaults: {
+    readonly datasource_resource_id: string;
+    readonly model_resource_id: string;
+  };
+}): boolean {
+  return (
+    input.conversation.datasource_id === input.defaults.datasource_resource_id &&
+    input.conversation.model_id === input.defaults.model_resource_id &&
+    input.conversation.model_profile_id === input.defaults.model_resource_id
+  );
+}
+
 export function falcon24FourLayerBindingIdentity(input: {
   readonly workspace_id: string;
   readonly principal_id: string;
