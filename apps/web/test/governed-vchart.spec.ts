@@ -1,6 +1,9 @@
 import type { ArtifactPreviewResultV2, ArtifactPreviewResultV3 } from "@data-agent/contracts";
 import { describe, expect, it } from "vitest";
-import { toGovernedVChartSpec } from "@/components/workbench/governed-vchart-spec";
+import {
+  toGovernedVChartPanels,
+  toGovernedVChartSpec,
+} from "@/components/workbench/governed-vchart-spec";
 
 function projection(chartType: "LINE" | "BAR" | "PIE"): ArtifactPreviewResultV2["projection"] {
   return {
@@ -28,6 +31,51 @@ function projection(chartType: "LINE" | "BAR" | "PIE"): ArtifactPreviewResultV2[
 }
 
 describe("governed VChart spec mapper", () => {
+  it.each(["LINE", "BAR"] as const)(
+    "renders all %s measures on separate named axes without mixing amount and ratio",
+    (chartType) => {
+      const source = projection(chartType);
+      source.y_keys = ["current", "prior", "ratio"];
+      source.legend.visible = true;
+      source.table.columns = [
+        { key: "month", label: "月份", data_type: "STRING" },
+        { key: "current", label: "本期收入", data_type: "NUMBER" },
+        { key: "prior", label: "上年同期收入", data_type: "NUMBER" },
+        { key: "ratio", label: "同比增速", data_type: "NUMBER" },
+      ];
+      source.table.rows = [
+        { month: "2026-01", current: 110, prior: null, ratio: null },
+        { month: "2026-02", current: 120, prior: 100, ratio: 0.2 },
+      ];
+      const panels = toGovernedVChartPanels(source);
+      expect(panels.map(({ key, label }) => ({ key, label }))).toEqual([
+        { key: "current", label: "本期收入" },
+        { key: "prior", label: "上年同期收入" },
+        { key: "ratio", label: "同比增速" },
+      ]);
+      expect(panels.map(({ spec }) => (spec as { yField?: string }).yField)).toEqual([
+        "current",
+        "prior",
+        "ratio",
+      ]);
+      for (const panel of panels) {
+        expect(panel.spec).toMatchObject({
+          invalidType: "break",
+          legends: { visible: false },
+          data: [
+            {
+              values: [
+                { month: "2026-01", current: 110, prior: null, ratio: null },
+                { month: "2026-02", current: 120, prior: 100, ratio: 0.2 },
+              ],
+            },
+          ],
+        });
+      }
+      expect(source.y_keys).toEqual(["current", "prior", "ratio"]);
+      expect(() => toGovernedVChartSpec(source)).toThrow("VCHART_MULTIPLE_MEASURES_REQUIRE_PANELS");
+    },
+  );
   it("formats the time axis from the sealed column display and leaves the dataset untouched", () => {
     const source = projection("LINE");
     source.table.columns[0] = {

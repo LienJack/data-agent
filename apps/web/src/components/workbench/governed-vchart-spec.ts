@@ -6,6 +6,22 @@ type ChartProjection =
   | ArtifactPreviewResultV2["projection"]
   | ArtifactPreviewResultV3["projection"];
 
+export function toGovernedVChartPanels(
+  projection: ChartProjection,
+): readonly { key: string; label: string | null; spec: ISpec }[] {
+  if (
+    ["LINE", "BAR", "HORIZONTAL_BAR", "SIGNED_CONTRIBUTION"].includes(projection.chart_type) &&
+    projection.y_keys.length > 1
+  ) {
+    return projection.y_keys.map((key) => ({
+      key,
+      label: projection.table.columns.find((column) => column.key === key)?.label ?? key,
+      spec: toGovernedVChartSpec({ ...projection, y_keys: [key] }),
+    }));
+  }
+  return [{ key: "chart", label: null, spec: toGovernedVChartSpec(projection) }];
+}
+
 export function toGovernedVChartSpec(projection: ChartProjection): ISpec {
   const values = projection.table.rows.map((row) =>
     Object.fromEntries(
@@ -60,16 +76,19 @@ export function toGovernedVChartSpec(projection: ChartProjection): ISpec {
     } as ISpec;
   }
   const horizontal = ["HORIZONTAL_BAR", "SIGNED_CONTRIBUTION"].includes(projection.chart_type);
+  if (projection.y_keys.length !== 1)
+    throw new TypeError("VCHART_MULTIPLE_MEASURES_REQUIRE_PANELS");
+  const seriesKey = "series_key" in projection ? (projection.series_key ?? undefined) : undefined;
   return {
     ...base,
     type: projection.chart_type === "LINE" ? ("line" as const) : ("bar" as const),
     invalidType: "break" as const,
     direction: horizontal ? ("horizontal" as const) : undefined,
-    xField: horizontal ? [...projection.y_keys] : projection.x_key,
-    yField: horizontal ? projection.x_key : [...projection.y_keys],
-    seriesField: "series_key" in projection ? (projection.series_key ?? undefined) : undefined,
+    xField: horizontal ? projection.y_keys[0] : projection.x_key,
+    yField: horizontal ? projection.x_key : projection.y_keys[0],
+    seriesField: seriesKey,
     point: projection.chart_type === "LINE" ? { visible: true } : undefined,
-    legends: { visible: projection.legend.visible, orient: "top" as const },
+    legends: { visible: Boolean(seriesKey) && projection.legend.visible, orient: "top" as const },
     axes: [
       { orient: "bottom" as const, type: horizontal ? ("linear" as const) : ("band" as const) },
       {

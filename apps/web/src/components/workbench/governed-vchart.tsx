@@ -3,7 +3,7 @@
 import type { ArtifactPreviewResultV2, ArtifactPreviewResultV3 } from "@data-agent/contracts";
 import VChartCore from "@visactor/vchart/esm/vchart-simple";
 import { useEffect, useMemo, useRef, useState } from "react";
-import { toGovernedVChartSpec } from "./governed-vchart-spec";
+import { toGovernedVChartPanels } from "./governed-vchart-spec";
 
 type ChartProjection =
   | ArtifactPreviewResultV2["projection"]
@@ -16,37 +16,62 @@ export default function GovernedVChart({
   readonly projection: ChartProjection;
   readonly describedBy?: string;
 }) {
-  const container = useRef<HTMLDivElement>(null);
+  const containers = useRef(new Map<string, HTMLDivElement>());
   const [renderState, setRenderState] = useState<"PENDING" | "READY" | "FAILED">("PENDING");
-  const spec = useMemo(() => toGovernedVChartSpec(projection), [projection]);
+  const panels = useMemo(() => toGovernedVChartPanels(projection), [projection]);
 
   useEffect(() => {
-    const target = container.current;
-    if (!target) return;
     setRenderState("PENDING");
-    let chart: VChartCore | null = null;
+    const charts: VChartCore[] = [];
     try {
-      chart = new VChartCore(spec, { dom: target, autoFit: true });
-      chart.renderSync();
+      for (const panel of panels) {
+        const target = containers.current.get(panel.key);
+        if (!target) throw new Error("VCHART_PANEL_TARGET_MISSING");
+        const chart = new VChartCore(panel.spec, { dom: target, autoFit: true });
+        charts.push(chart);
+        chart.renderSync();
+      }
       setRenderState("READY");
     } catch {
-      chart?.release();
+      for (const chart of charts) chart.release();
       setRenderState("FAILED");
       return;
     }
-    return () => chart?.release();
-  }, [spec]);
+    return () => {
+      for (const chart of charts) chart.release();
+    };
+  }, [panels]);
 
   return (
     <div
-      className="relative h-[320px] w-full"
+      className="relative w-full"
       role="img"
-      aria-label={`${projection.title}图表`}
+      aria-label={`${projection.title}图表${panels.length > 1 ? `：${panels.map((panel) => panel.label).join("、")}` : ""}`}
       aria-describedby={describedBy}
       data-testid="governed-chart"
       data-chart-render-state={renderState}
     >
-      <div className="h-full w-full" ref={container} />
+      {panels.length > 1 ? (
+        <p className="mb-3 text-xs text-[var(--color-text-muted)]">
+          按指标分图，各图使用独立纵轴。
+        </p>
+      ) : null}
+      {panels.map((panel) => (
+        <div key={panel.key} data-chart-measure={panel.key}>
+          {panel.label ? (
+            <h3 className="mt-4 text-xs font-medium text-[var(--color-text-primary)]">
+              {panel.label}
+            </h3>
+          ) : null}
+          <div
+            className={panels.length > 1 ? "h-[240px] w-full" : "h-[320px] w-full"}
+            ref={(node) => {
+              if (node) containers.current.set(panel.key, node);
+              else containers.current.delete(panel.key);
+            }}
+          />
+        </div>
+      ))}
       {renderState === "FAILED" ? (
         <div className="absolute inset-0 grid place-items-center px-4 text-center text-xs text-[var(--color-text-muted)]">
           <p>
