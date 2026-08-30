@@ -95,6 +95,12 @@ describe("direct run-bound provider retry policy", () => {
       "TEXT2SQL_SQL_RELATION_BINDING_REJECTED means replace every physical relation with an exact schema-qualified relation",
     );
     expect(prompt).toContain(
+      "TEXT2SQL_SQL_PRIMITIVE_DENIED means remove every function, operator, cast, type, or SQL construct not explicitly permitted",
+    );
+    expect(prompt).toContain(
+      "TEXT2SQL_SQL_PROJECTION_SHAPE_REJECTED means give every SELECT target an explicit unique ASCII alias",
+    );
+    expect(prompt).toContain(
       "DATASOURCE_ADAPTER_SQL_REJECTED means replace invalid PostgreSQL syntax",
     );
     expect(prompt).toContain(
