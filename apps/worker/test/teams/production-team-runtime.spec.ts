@@ -540,16 +540,50 @@ describe("Production Team runtime", () => {
       "report-writing-agent:evidence.read",
       "report-writing-agent:report.project",
     ]);
-    const statuses = events
+    const agentEvents = events
       .filter((event) => (event as { kind: string }).kind === "agent_status")
-      .map((event) => (event as { status: string }).status);
-    expect(statuses).toEqual([
+      .map((event) => event as { profile_id: string; status: string; phase: string });
+    expect(agentEvents.map(({ profile_id: profileId }) => profileId)).toEqual([
+      "data-agent-orchestrator",
+      "data-agent-orchestrator",
+      "governed-text2sql-agent",
+      "governed-text2sql-agent",
+      "governed-text2sql-agent",
+      "data-agent-orchestrator",
+      "data-agent-orchestrator",
+      "data-agent-orchestrator",
+      "report-writing-agent",
+      "report-writing-agent",
+      "report-writing-agent",
+      "data-agent-orchestrator",
+    ]);
+    expect(agentEvents.map(({ status }) => status)).toEqual([
+      "PENDING",
+      "RUNNING",
       "PENDING",
       "RUNNING",
       "COMPLETED",
+      "COMPLETED",
+      "PENDING",
+      "RUNNING",
       "PENDING",
       "RUNNING",
       "COMPLETED",
+      "COMPLETED",
+    ]);
+    expect(agentEvents.map(({ phase }) => phase)).toEqual([
+      "root.task.created",
+      "root.delegation.started",
+      "root.subagent.selected",
+      "context.activated",
+      "acceptance.committed",
+      "root.delegation.completed",
+      "root.task.created",
+      "root.delegation.started",
+      "root.subagent.selected",
+      "context.activated",
+      "acceptance.committed",
+      "root.delegation.completed",
     ]);
     const secondHandoff = calls.findLastIndex(({ operation }) => operation === "PREPARE_HANDOFF");
     const secondHandoffDocument = calls[secondHandoff]?.document as
@@ -641,6 +675,14 @@ describe("Production Team runtime", () => {
     });
     expect(tool).not.toHaveBeenCalled();
     expect(calls.map(({ operation }) => operation)).toEqual(["LOAD_RUN"]);
+    expect(events).toContainEqual(
+      expect.objectContaining({
+        kind: "agent_status",
+        profile_id: "data-agent-orchestrator",
+        status: "COMPLETED",
+        phase: "root.accepted-replay.completed",
+      }),
+    );
     expect(events).not.toContainEqual(expect.objectContaining({ kind: "answer_delta" }));
   });
 

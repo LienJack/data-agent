@@ -626,6 +626,7 @@ export function createProductionTeamRuntime(
     async execute(input: Parameters<DataAgentProductTeamRuntimePort["execute"]>[0]) {
       const timestamp = stableStartedAt(input.lease);
       const rootId = identity(input.lease.run_id, `task:root:${input.root_turn_index}`);
+      let rootAgentStarted = false;
       try {
         const executionOrder = selectedExecutionOrder(input);
         const observations: RootToolObservation[] = [];
@@ -692,6 +693,18 @@ export function createProductionTeamRuntime(
               });
             }),
           );
+          await emit(input.execution_context, {
+            kind: "agent_status",
+            key: `team.agent.${rootId}.accepted-replay-completed`,
+            profile_id: "data-agent-orchestrator",
+            task_id: rootId,
+            status: "COMPLETED",
+            phase: "root.accepted-replay.completed",
+            title: "Data Agent Orchestrator",
+            summary: "主 Agent 已核验并重放全部受治理接受结果。",
+            duration_ms: Math.max(0, now().getTime() - Date.parse(timestamp)),
+            error_code: null,
+          });
           return {
             status: "COMPLETED",
             reason_code: "TEAM_ACCEPTED_REPLAY",
@@ -747,6 +760,31 @@ export function createProductionTeamRuntime(
           capability: dependencies.capability,
           issued_at: timestamp,
         });
+        await emit(input.execution_context, {
+          kind: "agent_status",
+          key: `team.agent.${root.task_id}.pending`,
+          profile_id: root.profile_id,
+          task_id: root.task_id,
+          status: "PENDING",
+          phase: "root.task.created",
+          title: "Data Agent Orchestrator",
+          summary: "主 Agent Task 与受治理执行能力已持久化。",
+          duration_ms: null,
+          error_code: null,
+        });
+        await emit(input.execution_context, {
+          kind: "agent_status",
+          key: `team.agent.${root.task_id}.running`,
+          profile_id: root.profile_id,
+          task_id: root.task_id,
+          status: "RUNNING",
+          phase: "root.delegation.started",
+          title: "Data Agent Orchestrator",
+          summary: "主 Agent 开始执行已准入的专职 Agent 委派。",
+          duration_ms: null,
+          error_code: null,
+        });
+        rootAgentStarted = true;
 
         const coverageHash = await sha256ContentHash({
           semantic_context_ref: input.semantic_context_ref,
@@ -944,6 +982,18 @@ export function createProductionTeamRuntime(
         completed.forEach((observation, executionIndex) => {
           observations[executionIndex] = observation;
         });
+        await emit(input.execution_context, {
+          kind: "agent_status",
+          key: `team.agent.${root.task_id}.completed`,
+          profile_id: root.profile_id,
+          task_id: root.task_id,
+          status: "COMPLETED",
+          phase: "root.delegation.completed",
+          title: "Data Agent Orchestrator",
+          summary: "主 Agent 已完成全部委派并接收受治理输出。",
+          duration_ms: Math.max(0, now().getTime() - Date.parse(timestamp)),
+          error_code: null,
+        });
         return { status: "COMPLETED", reason_code: "TEAM_ACCEPTED", observations };
       } catch (error) {
         const code =
@@ -952,6 +1002,20 @@ export function createProductionTeamRuntime(
             : error instanceof Error && /^[A-Z][A-Z0-9_]*$/.test(error.message)
               ? error.message
               : "DATA_AGENT_TEAM_RUNTIME_FAILED";
+        if (rootAgentStarted) {
+          await emit(input.execution_context, {
+            kind: "agent_status",
+            key: `team.agent.${rootId}.failed`,
+            profile_id: "data-agent-orchestrator",
+            task_id: rootId,
+            status: "FAILED",
+            phase: "root.delegation.failed",
+            title: "Data Agent Orchestrator",
+            summary: "主 Agent 委派执行未能完成。",
+            duration_ms: Math.max(0, now().getTime() - Date.parse(timestamp)),
+            error_code: code,
+          });
+        }
         return { status: "FAILED", reason_code: code };
       }
     },
