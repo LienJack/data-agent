@@ -578,6 +578,9 @@ issueCapabilityDeliveryReceipt(
   exact physical binding 的共同证明封存；不得冒充 Metric。AnalysisInputMaterializationReceipt 保留该 role/object_id，
   source_binding_hash 继续绑定完整 QueryEvidence 公式证明；Arrow 数值转换不产生新的语义权威。
   Analysis 方法授权仍只使用真正的 Metric，Report/Chart/Trace 继续沿原 exact QueryEvidence 引用链读取。
+- 新 QueryEvidence 的 `time_window=null` 不得掩盖 SQL 中的时间选择。compile/执行前与 acceptance 共用 AST/CTE
+  时间依赖反向校验；文本日期从已选 Metric 的绑定关系定位，不能因缺少独立时间 Dimension 跳过。
+  仅投影/分组/最新行排序不要求窗口；完整规则见 `backend/text2sql-resolved-context.md`。旧证据 hash/历史不改写。
 - Root TABLE 正文保留 exact current-Run accepted-ref 校验，输出有界 Markdown 表（最多前 100 行）、总行数、显式时区与 NULL 说明，转义单元格文本；不得把内部 JSON dump 当成业务答案，也不得为排版新增模型事实。数值显示最多 12 位有效数字，整数不截精度，完整原值在表格提示与原始导出保留；不凭列名猜测币种/百分比。
 
 ### 7. Wrong vs Correct

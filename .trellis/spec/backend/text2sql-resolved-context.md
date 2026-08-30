@@ -370,3 +370,55 @@ published_time_coverage?: readonly {
 
 Wrong：`formula.foo` 不被旧 enum 接受，就声明成 `metric.foo` 或 `metric.revenue`。
 Correct：精确校验已有 Formula 与物理表达式，保留 Formula 身份；后续 Analysis 不因此获得一个新的 Published Metric。
+
+## 未声明时间选择的反向校验
+
+### 1. Scope / Trigger
+
+`time_window=null` 表示 SQL 没有时间选择条件，不只是模型没有填写窗口字段。修改 Candidate compile、只读执行或
+QueryEvidence acceptance 时，必须同时检查“声明与 SQL 相符”和“SQL 有时间选择却未声明”两个方向。
+
+### 2. Signatures
+
+- `assertPostgresqlQueryTemporalSelection`：Worker compile/adapter validate_statement 与 Platform evidence acceptance 共用。
+- `assertPostgresqlTemporalSelectionDeclared`：纯 PostgreSQL AST/CTE 依赖分析；只拒绝遗漏，不生成 SQL 或证明已声明的窗口。
+
+### 3. Contracts
+
+- 时间来源包括 exact snapshot 的 date/timestamp/timestamptz 列、selected 时间 Dimension，以及 selected Metric 的
+  time_column_id。文本日期列从该 Metric 的 active physical dependency 绑定定位到 exact relation 后验证 snapshot；
+  不要求另有时间 Dimension 才能拒绝遗漏，也不会因此授权一个未选 Dimension。显式时间 cast/date_part/date_trunc 同样追踪。
+- 无窗口时，WHERE/HAVING/JOIN ON、聚合 FILTER、CASE 条件引用上述时间来源即拒绝。CTE 输出逐级传递时间依赖，
+  不因改 alias、转换为日期桶/布尔标志或把条件移动到外层就消失。各 SELECT 使用自己的 relation/CTE scope。
+- 当前为保守有界合同：日期非空判断、时间列相等 JOIN 和时间 CASE 条件也属于时间选择，不能当作无窗口的普通过滤。
+  不做谓词等价推断；unsupported/recursive CTE、歧义 alias 等失败关闭，原全量 SQL policy 仍先执行。
+- 日期投影、分组及普通 latest-row 排序可保持 null；非时间 WHERE/FILTER/CASE 不受影响。
+- 有声明时继续使用原请求窗口、Dimension membership、覆盖范围、参数与半开区间证明；本守卫的返回不构成这些证明。
+  不修改历史 Candidate/QueryEvidence schema、hash 或已接纳记录。
+
+### 4. Validation & Error Matrix
+
+| 条件 | 结果 |
+| --- | --- |
+| SQL 时间选择但 time_window=null | compile/evidence 拒绝，`TEXT2SQL_SQL_TIME_WINDOW_REQUIRED` |
+| 直接调用 adapter 执行同一候选 | 既有脱敏 `DATASOURCE_ADAPTER_SQL_REJECTED`，零 explain/query I/O |
+| 原请求明确有时间限制 | 不得删限制；取得缺失 governed Dimension/context 后重新编译 |
+| 原请求是无界总量，但候选自行加覆盖期筛选 | 同时移除未请求的 SQL 时间条件与声明；不得只删声明 |
+| 发布 coverage 域存在 | 只代表覆盖元数据，本身不授权给无界总量默认加时间筛选 |
+
+### 5. Good / Base / Bad Cases
+
+Good：全渠道总量保留原发布 Formula、聚合全量；最新十条仅按日期排序。
+Base：明确请求窗口仍走原 exact bounds 校验。
+Bad：COMPILE 提示时间 Dimension 越界后只将 time_window 改成 null，留下原 WHERE。
+
+### 6. Tests Required
+
+原始/文本时间列、无独立时间绑定、CTE 改名与多级时间桶/布尔派生、所有条件位置、schema/alias 隔离、无界 Formula、
+日期展示/排序非误报、compile/execute 零 I/O、acceptance 重验、诊断白名单与 bounded repair。业务必须另用冻结 source oracle
+核对全部请求数据；Run SUCCEEDED 或 Formula 身份合法都不能替代业务 PASS。
+
+### 7. Wrong vs Correct
+
+Wrong：`if (!candidate.time_window) return null` 直接跳过 SQL 时间语义。
+Correct：先证明不存在未声明的时间选择，再允许签发 null-window evidence；已声明窗口仍须完整正向证明。

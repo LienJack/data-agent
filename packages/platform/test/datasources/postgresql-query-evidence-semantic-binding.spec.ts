@@ -12,6 +12,7 @@ import {
 import { describe, expect, it } from "vitest";
 import { createPhysicalSchemaSnapshot } from "../../src/catalog/physical-schema.js";
 import {
+  assertPostgresqlQueryTemporalSelection,
   buildPostgresqlQueryEvidenceSemanticBinding,
   PostgresqlQueryEvidenceSemanticBindingError,
   postgresqlQueryEvidenceSemanticBindingInternals,
@@ -528,6 +529,59 @@ async function formulaFixture() {
 }
 
 describe("PostgreSQL QueryEvidence semantic binding", () => {
+  it.each(["date", "text"] as const)(
+    "rejects an undeclared temporal selection on a %s source",
+    async (physicalType) => {
+      const input = await fixture(physicalType);
+      if (physicalType === "text") {
+        input.candidate.sql = input.candidate.sql.replaceAll(
+          "o.order_date",
+          "o.order_date::timestamp",
+        );
+      }
+      await expect(
+        buildPostgresqlQueryEvidenceSemanticBinding({
+          ...input,
+          candidate: { ...input.candidate, time_window: null },
+        }),
+      ).rejects.toMatchObject({ diagnostic_code: "TEXT2SQL_SQL_TIME_WINDOW_REQUIRED" });
+    },
+  );
+
+  it("uses a selected Metric's physical relation to identify a text time column without granting a time Dimension", async () => {
+    const input = await fixture("text");
+    await expect(
+      assertPostgresqlQueryTemporalSelection({
+        ...input,
+        candidate: { ...input.candidate, time_window: null },
+        semantic_catalog: {
+          ...input.semantic_catalog,
+          executable: {
+            ...input.semantic_catalog.executable,
+            dimensions: [],
+            physical_bindings: input.semantic_catalog.executable.physical_bindings.filter(
+              (binding) => binding.column_name !== "order_date",
+            ),
+          },
+        },
+      }),
+    ).rejects.toMatchObject({ diagnostic_code: "TEXT2SQL_SQL_TIME_WINDOW_REQUIRED" });
+  });
+
+  it("does not accept a correctly bound Formula with a hidden time restriction", async () => {
+    const input = await formulaFixture();
+    await expect(
+      buildPostgresqlQueryEvidenceSemanticBinding({
+        ...input,
+        candidate: {
+          ...input.candidate,
+          sql: `${input.candidate.sql} where o.order_date >= $2 and o.order_date < $3`,
+          parameters: [0, "2026-01-01", "2026-03-01"],
+        },
+      }),
+    ).rejects.toMatchObject({ diagnostic_code: "TEXT2SQL_SQL_TIME_WINDOW_REQUIRED" });
+  });
+
   it("proves a standalone published Formula before execution and retains its exact authority in evidence", async () => {
     const input = await formulaFixture();
     const proof = await resolvePostgresqlPublishedFormulaBindings(input);

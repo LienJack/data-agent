@@ -1463,3 +1463,17 @@ E13 scratch 的只读诊断确认：gen2 `formula.marketing_roas` 是独立 Form
 - 首版只证明单个物理 FROM 的直接 typed aggregate/算术/CASE 输出；CTE、join、cast、window、DATE_BUCKET/GROUP_COUNT
   失败关闭。除法另校验 PostgreSQL 数值提升，避免同形 SQL 的整数截断；不通过加 SQL 模板或自动 cast 偷换口径。
   相同证明用于 compile/execute 前与 evidence acceptance；accepted Context 排除的 Metric 不得用于 Formula 依赖。
+
+### 25.10 无窗口证据必须排除未声明的时间选择
+
+`506c3cb8` scratch E13 canary 成功绑定 Formula，但保留 SQL 日期 WHERE、删除 time_window 的候选被接纳；
+Run SUCCEEDED 而全量渠道 oracle 全部 FAIL。业务失败立即封存，QA/Trace 不运行，live 仍 E12。
+
+compile/adapter admission/evidence acceptance 共用纯 AST/CTE 时间依赖检查：native 时间列、selected Metric 的
+text-backed time_column_id 与 selected 时间 Dimension 通过 exact physical snapshot/binding 定位。WHERE/HAVING/
+JOIN/FILTER/CASE 里的时间选择必须声明窗口，派生 alias/布尔列不能隐藏；没有时间 Dimension 不是跳过限制的理由。
+当前保守子集拒绝时间非空判断和时间相等 JOIN；普通日期投影、分组/latest-row 排序保持合法。该检查只作拒绝，
+不发布 Dimension、不重写 SQL，也不替代已声明窗口的原有正向证明。新错误仅加到原安全诊断/repair 白名单。
+
+新 clean build 后使用 fresh physical scratch 重做原题全量 oracle；不能变更 oracle 去迎合不完整结果，也不能重用
+失败 build 的 PASS。只有业务、QA、Trace 均通过才允许正常 live E13 activation 与从 L1 开始的全新正式 attempt。

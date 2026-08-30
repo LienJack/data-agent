@@ -34,7 +34,7 @@ function column(name: string, ordinal: number, type = "text") {
   };
 }
 
-async function fixture(includeFormulaSelection = false) {
+async function fixture(includeFormulaSelection = false, includeTimeColumn = false) {
   const baseConfig = await buildWorkerEffectiveConfigFixture({
     scope,
     workspace_id: scope.tenant_id,
@@ -164,7 +164,7 @@ async function fixture(includeFormulaSelection = false) {
     grain: { grain_id: "grain.order", granularity: "atomic" as const },
     unit: null,
     time_domain: null,
-    time_column_id: null,
+    time_column_id: includeTimeColumn ? "created_at" : null,
     additivity: "additive" as const,
     null_policy: "preserve" as const,
     fanout_policy: "reject" as const,
@@ -1004,6 +1004,63 @@ describe("PostgreSQL Text2SQL query runtime", () => {
     ).rejects.toBeDefined();
     expect(connect).not.toHaveBeenCalled();
   });
+
+  it.each(["compile", "execute"] as const)(
+    "rejects an undeclared text-backed time filter before %s query I/O",
+    async (phase) => {
+      const { config, semanticCatalog, semanticContext, snapshot } = await fixture(false, true);
+      const connect = vi.fn();
+      const bind = vi.fn();
+      const runtime = createPostgresqlText2SqlQueryRuntime({
+        pool: { connect } as never,
+        capability: {},
+        schema_snapshots: {} as never,
+        datasources: {} as never,
+        secrets: {} as never,
+        bind_query_evidence: bind,
+      });
+      const prepared = {
+        context_text: "{}",
+        datasource_id: config.datasource.resource_id,
+        schema_snapshot_id: config.schema_snapshot.resource_id,
+        schema_snapshot_hash: config.schema_snapshot.resource_hash,
+        allowed_relations: ["falcon_db_24.orders"],
+        target_capability_hash: hash("c"),
+        reader_role: "falcon_demo_reader",
+        semantic_query_context_hash: null,
+        binding_authority: {
+          physical_snapshot: snapshot,
+          semantic_context: semanticContext,
+          semantic_catalog: semanticCatalog,
+          datasource_ref: config.datasource,
+        },
+      };
+      const query = {
+        ...candidate(
+          "select o.customer_id as customer_id, count(o.amount) as order_count from falcon_db_24.orders o where o.created_at >= $1 and o.created_at < $2 group by o.customer_id",
+        ),
+        parameters: ["2023-05-01", "2024-11-01"],
+      };
+      await expect(
+        phase === "compile"
+          ? runtime.compileCandidate({ prepared, candidate: query })
+          : runtime.execute({
+              effective_config: config as never,
+              prepared,
+              candidate: query,
+              timeout_ms: 5_000,
+              max_rows: 100,
+              max_bytes: 64_000,
+            }),
+      ).rejects.toMatchObject(
+        phase === "compile"
+          ? { diagnostic_code: "TEXT2SQL_SQL_TIME_WINDOW_REQUIRED" }
+          : { code: "DATASOURCE_ADAPTER_SQL_REJECTED" },
+      );
+      expect(connect).not.toHaveBeenCalled();
+      expect(bind).not.toHaveBeenCalled();
+    },
+  );
 
   it("executes a generic aggregation through EXPLAIN and read-only transactions", async () => {
     const { config, semanticCatalog, semanticContext, snapshot } = await fixture();

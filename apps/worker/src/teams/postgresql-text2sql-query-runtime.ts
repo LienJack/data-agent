@@ -21,6 +21,7 @@ import type { PortResult } from "@data-agent/contracts/ports";
 import type { WorkspaceDatasource } from "@data-agent/contracts/workspaces";
 import type { PostgresSchemaSnapshotStore } from "@data-agent/platform/catalog";
 import {
+  assertPostgresqlQueryTemporalSelection,
   assertPostgresqlText2SqlCandidatePolicy,
   buildBuiltinDatasourceAdapterDescriptors,
   buildPostgresqlQueryEvidenceSemanticBinding,
@@ -163,6 +164,9 @@ async function validateCandidate(
       ? { published_time_coverage: prepared.published_time_coverage }
       : {}),
   });
+  if (prepared.binding_authority) {
+    await assertPostgresqlQueryTemporalSelection({ candidate, ...prepared.binding_authority });
+  }
   if (
     candidate.result_columns.some(
       ({ semantic_binding }) => semantic_binding.object_kind === "FORMULA",

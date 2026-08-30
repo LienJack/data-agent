@@ -25,6 +25,10 @@ import {
   verifyGovernedDatasourceQueryResult,
 } from "@data-agent/contracts/datasources";
 import {
+  assertPostgresqlTemporalSelectionDeclared,
+  type PostgresqlTemporalColumn,
+} from "./postgresql-temporal-selection-policy.js";
+import {
   hasExactPostgresqlPhysicalColumnProjections,
   resolvePostgresqlFormulaProjectionSlots,
 } from "./postgresql-text2sql-policy.js";
@@ -220,6 +224,79 @@ function physicalSources(input: {
     reject("QUERY_EVIDENCE_PHYSICAL_BINDING_INVALID");
   }
   return sources;
+}
+
+/** Restriction metadata is not permission to select a temporal Dimension. */
+export async function assertPostgresqlQueryTemporalSelection(
+  input: Pick<
+    PostgresqlQueryEvidenceSemanticBindingInput,
+    "candidate" | "physical_snapshot" | "semantic_context" | "semantic_catalog" | "datasource_ref"
+  >,
+): Promise<void> {
+  if (input.candidate.time_window) return;
+  const snapshot = input.physical_snapshot;
+  const temporalColumns: PostgresqlTemporalColumn[] = snapshot.content.relations.flatMap(
+    (relation) =>
+      relation.columns
+        .filter((column) =>
+          ["date", "timestamp", "timestamptz"].includes(column.type_identity.type_name),
+        )
+        .map((column) => ({ ...relation.identity, column_name: column.column_name })),
+  );
+  const selected = selectedSemanticObjects(input.semantic_context);
+  const catalog = input.semantic_catalog.executable;
+  for (const metric of catalog.metrics) {
+    if (!selected.has(metric.metric_id) || !metric.time_column_id) continue;
+    // The Metric's exact physical relation also identifies its text-backed time column.
+    // No independent time Dimension/binding is needed to forbid an undeclared restriction.
+    const timeId = physicalColumnId(metric.table_id, metric.time_column_id);
+    const prefix = `column.${metric.table_id}.`;
+    if (!timeId.startsWith(prefix)) reject("QUERY_EVIDENCE_PHYSICAL_BINDING_INVALID");
+    const timeColumn = timeId.slice(prefix.length);
+    const sources = physicalSources({
+      object_id: metric.metric_id,
+      object_kind: "METRIC",
+      table_id: metric.table_id,
+      column_ids: metric.dependency_column_ids,
+      datasource_id: input.datasource_ref.resource_id,
+      bindings: catalog.physical_bindings,
+      snapshot,
+    });
+    for (const source of sources) {
+      const relation = snapshot.content.relations.find(
+        ({ identity }) =>
+          identity.schema_name === source.schema_name &&
+          identity.relation_name === source.relation_name,
+      );
+      if (!relation?.columns.some((column) => column.column_name === timeColumn)) {
+        reject("QUERY_EVIDENCE_PHYSICAL_BINDING_STALE");
+      }
+      temporalColumns.push({ ...source, column_name: timeColumn });
+    }
+  }
+  for (const dimension of catalog.dimensions) {
+    if (
+      !selected.has(dimension.dimension_id) ||
+      !["date", "timestamp", "timestamptz"].includes(dimension.data_type)
+    )
+      continue;
+    temporalColumns.push(
+      ...physicalSources({
+        object_id: dimension.dimension_id,
+        object_kind: "DIMENSION",
+        table_id: dimension.table_id,
+        column_ids: [dimension.column_id],
+        datasource_id: input.datasource_ref.resource_id,
+        bindings: catalog.physical_bindings,
+        snapshot,
+      }),
+    );
+  }
+  await assertPostgresqlTemporalSelectionDeclared({
+    sql: input.candidate.sql,
+    has_declared_window: false,
+    temporal_columns: temporalColumns,
+  });
 }
 
 /** Shared by pre-I/O compilation and post-query evidence acceptance. Never constructs SQL. */
@@ -540,6 +617,7 @@ export async function buildPostgresqlQueryEvidenceSemanticBinding(
   }
 
   const selected = selectedSemanticObjects(context);
+  await assertPostgresqlQueryTemporalSelection(input);
   const selectedColumns = selectedPhysicalColumns(context, input.semantic_catalog);
   const metrics = input.semantic_catalog.executable.metrics;
   const dimensions = input.semantic_catalog.executable.dimensions;

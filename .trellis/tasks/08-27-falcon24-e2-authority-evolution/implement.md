@@ -1500,6 +1500,19 @@ Diagnostic/Q1/C1任一正式首次失败必须写既有 authority支持的 immut
 - 下一步：scoped commit → 新 clean force build/attestation/full unit → fresh NAS 物理 scratch → 单次 ROAS 业务/QA/Trace canary。
   通过后才能正常认证/Finalizer 激活 live E13、创建全新 attempt 从 L1 开始。live 仍 E12，production isolation=false/HOLD。
 
+**Formula canary 业务失败与未声明时间选择修复（2026-08-31）**
+
+- `506c3cb8` clean force build 9/9、full unit 15/15（6 cached）通过；NAS fresh physical clone 55465 的 manifest/
+  dataset proof 完整匹配。正常认证/Finalizer 只激活 scratch E13，live E12 未变。
+- canary Run `e0deb349-fc57-83f8-ad96-b7bd8ce82dd5` SUCCEEDED，独立 Formula 绑定成立，但 SQL 含日期过滤而
+  evidence.time_window=null，原题全量四渠道 oracle 全 FAIL。封存为 `UNDECLARED_TEMPORAL_FILTER`，QA/Trace=null；
+  Web/Worker/OpenSandbox/browser 停止、临时 auth vault 删除，失败库与生成物保留。
+- 共享 AST/CTE 反向检查补到 compile、执行前和 evidence acceptance；覆盖文本日期的 selected Metric 物理关系，
+  所有时间条件位置与 alias 派生，不生成 SQL、不改变 gen2。新增安全诊断指导同时修复 SQL/声明，保留 adapter 原脱敏合同。
+- Platform 11 suites/179 tests、Worker 40 suites/277 tests、两端 typecheck、11 owned TS Biome 通过。
+  细节和五维分析见 `research/e13-undeclared-temporal-selection.md`。下一步 scoped commit、新 clean build/fresh scratch，
+  通过后 fresh live E13/15 回合；旧 E12 与两个 E13 failed canary 均只作为历史，不拼接 PASS。
+
 **F6 READY 轮次恢复边界（2026-08-30，历史）**
 
 - `e676a450-5768-48d9-a264-ab7890fe0323` 的旧构建在 L1 前三题自动门禁 PASS 后，人工页面复核发现 Root 标签及失败
