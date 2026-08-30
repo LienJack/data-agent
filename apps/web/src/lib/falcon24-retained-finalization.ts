@@ -329,6 +329,7 @@ export async function finalizeFalcon24RetainedAuthority(input: {
         input.recovery.kind !== "FOUR_LAYER_FAILURE") ||
       (input.recovery.kind === "TERMINAL_DIAGNOSTIC" && targetOrdinal < 9n) ||
       (input.recovery.kind === "FINALIZATION_FAILURE" && targetOrdinal < 10n) ||
+      (targetOrdinal >= 12n && input.recovery.kind !== "FOUR_LAYER_FAILURE") ||
       (input.recovery.kind === "FOUR_LAYER_FAILURE" && targetOrdinal < 12n)
     ) {
       throw new TypeError("FALCON24_RECOVERY_ACTIVATION_KIND_MISMATCH");

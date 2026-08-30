@@ -1423,6 +1423,11 @@ catalog/model/deployment -> target baseline/staging receipt；仅 STAGED/inactiv
 幂等重放必须绑定原 command hash 与 exact failure/stage；并发或 stale predecessor 不能制造第二个 current authority。旧协议及
 旧 RPC 内核保留，内部入口不授予 backend/browser，历史失败表只读，不增加第二套 publisher、Diagnostic 或失败权威。
 
+旧内核不保存外层恢复 command hash，因此增加与 activation attempt 一对一的只追加
+`falcon24_retained_recovery_activation_receipts`（command/result + hashes）。只由原 activation RPC 在同一事务写入，用于拒绝
+同 activation ID 的异内容重放；不修改旧 activation/失败行，不作为新的 current pointer。旧 request@2–7 仅保留其 E2–E11
+目标范围；E12+ 必须走 request@8，不能通过公开 RPC 的旧版本分支绕过真实失败与 fresh certification 检查。
+
 验证必须覆盖 unknown/missing/null 字段、hash 篡改、错 epoch/scope/principal/baseline/build/Run/首失败、PASS 冒充失败、不同
 manifest 拼接、fresh stage 与 result 错配、权限和并发 CAS；先跑 focused tests，再在 NAS 专用物理库执行完整 fresh-prefix 及
 populated rollback/replay/history hash 守卫。以上通过前不迁移或激活 live。新代码 clean build 后还要 fresh scratch canary，

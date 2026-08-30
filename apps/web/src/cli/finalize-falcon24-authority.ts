@@ -138,6 +138,9 @@ export function resolveFalcon24RetainedRecoveryKind(input: {
     }
     return "FOUR_LAYER_FAILURE";
   }
+  if (ordinal >= 12n) {
+    throw new TypeError("FALCON24_FOUR_LAYER_RECOVERY_CONFIGURATION_REQUIRED");
+  }
   if (ordinal < 7n) {
     if (hasStage || hasDiagnostic || hasClosureFailure || hasFinalizationFailure) {
       throw new TypeError("FALCON24_RECOVERY_ACTIVATION_EPOCH_INVALID");

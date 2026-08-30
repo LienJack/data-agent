@@ -118,6 +118,13 @@ describe("Falcon24 versioned authority finalization", () => {
       predecessor_four_layer_attempt_id: "00000000-0000-4000-8000-000000000002",
     };
     expect(resolveFalcon24RetainedRecoveryKind(candidate)).toBe("FOUR_LAYER_FAILURE");
+    expect(() =>
+      resolveFalcon24RetainedRecoveryKind({
+        authority_epoch: "E12",
+        llm_execution_stage_id: candidate.llm_execution_stage_id,
+        predecessor_diagnostic_attempt_id: candidate.predecessor_four_layer_attempt_id,
+      }),
+    ).toThrow("FALCON24_FOUR_LAYER_RECOVERY_CONFIGURATION_REQUIRED");
     for (const authority_epoch of ["E6", "E7", "E8", "E9", "E10", "E11"]) {
       expect(() =>
         resolveFalcon24RetainedRecoveryKind({ ...candidate, authority_epoch }),
