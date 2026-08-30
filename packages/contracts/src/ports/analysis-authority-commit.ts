@@ -404,10 +404,20 @@ const analysisPublicationV2MaterialSchema = z
     authority: falcon24AuthorityBindingV2Schema,
   })
   .superRefine((publication, context) => {
-    const { authority: _authority, ...versionedMaterial } = publication;
     const legacyProjection = e1AnalysisPublicationMaterialSchema.safeParse({
-      ...versionedMaterial,
       schema_version: "e1-analysis-publication@1.0.0",
+      scope: publication.scope,
+      run_id: publication.run_id,
+      principal_id: publication.principal_id,
+      attempt_id: publication.attempt_id,
+      worker_fence: publication.worker_fence,
+      idempotency_key: publication.idempotency_key,
+      analysis_program_ref: publication.analysis_program_ref,
+      nodes: publication.nodes,
+      l2_artifact_commands: publication.l2_artifact_commands,
+      chart_documents: publication.chart_documents,
+      report_document: publication.report_document,
+      public_event_id: publication.public_event_id,
     });
     if (!legacyProjection.success) {
       for (const issue of legacyProjection.error.issues) {
