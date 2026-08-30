@@ -28,8 +28,8 @@ describe("workspace migration identity inventory", () => {
     );
 
     expect(result.violations).toEqual([]);
-    expect(result.frontier).toBe("20260725010797");
-    expect(result.nextSequence).toBe("20260725010798");
+    expect(result.frontier).toBe("20260725010805");
+    expect(result.nextSequence).toBe("20260725010806");
   });
 
   it("rejects a new duplicate 14 digit sequence", () => {
