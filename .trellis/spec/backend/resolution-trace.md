@@ -265,3 +265,43 @@ query_hash: product.provenance.candidate_hash;
 candidate_hash: product.provenance.candidate_hash;
 query_hash: null;
 ```
+
+## Scenario: Current Profile cards in Team Trace
+
+### 1. Scope / Trigger
+
+- Team 页签读取当前 Profile cards 时，必须显式请求 V2；不能把 V1 registry 空集解释为“未启用 Agent”。
+
+### 2. Signatures
+
+- `GET /api/workspaces/{workspaceId}/agent-profiles?schema_version=agent-product-profile-list-result@2.0.0`
+- 同一 API 使用既有 `listDiscoverable(capability)`，仅 READ；返回 `agent-product-profile-list-result@2.0.0`。
+
+### 3. Contracts
+
+- V2 仅列出当前可发现的已启用、已批准 Profiles，继续使用现有 Profile/Skill closure；不是管理列表或历史内容补齐器。
+- 默认/V1 请求与原 POST 保持既有合同；当前 Trace client 固定请求和验证 V2，不回退 V1。未识别版本在任何 registry 调用前拒绝。
+- Client 对每个 V2 Revision 严格解析及验 hash；Team card 只有 exact profile/revision/hash 匹配任务时可作为该任务内容。未匹配的历史任务继续明确 unavailable，不套用当前名称/Workflow。
+
+### 4. Validation & Error Matrix
+
+- 未识别 list version → `AGENT_PROFILE_INPUT_INVALID`；无 registry 调用。
+- 当前 client 收到 V1 或 Revision hash 漂移 → reject；不渲染伪当前 Profile。
+
+### 5. Good/Base/Bad Cases
+
+- Good：当前 Trace 请求 V2，复用 Root discovery reader。
+- Base：真正无可发现 Profile 时返回空 V2 列表。
+- Bad：用 V1 空集判定未配置；创建另一套 Profile 表；读取时隐式迁移或批准 Profile。
+
+### 6. Tests Required
+
+- Route 验证 READ、V2 reader、无 commit、默认 V1 合同与未知版本拒绝；client 验证版本明确且不接受 V1。
+- 原 Team card/Trace SSR、Web typecheck 保持通过；后续真实 UI canary 必须覆盖非空 V2 cards。
+
+### 7. Wrong vs Correct
+
+```text
+Wrong: Trace -> default V1 list -> empty -> "not enabled"
+Correct: Trace -> explicit V2 list -> existing listDiscoverable -> exact revision/hash cards
+```

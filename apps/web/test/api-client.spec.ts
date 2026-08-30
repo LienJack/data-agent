@@ -1,6 +1,7 @@
 import { afterEach, describe, expect, it, vi } from "vitest";
 import {
   createQaRun,
+  fetchAgentProfiles,
   fetchResolutionTrace,
   fetchResolutionTraceDetail,
 } from "../src/lib/api-client";
@@ -10,6 +11,27 @@ afterEach(() => {
 });
 
 describe("workspace API client errors", () => {
+  it("reads current V2 profiles explicitly and rejects a legacy projection", async () => {
+    const fetchMock = vi
+      .fn()
+      .mockResolvedValueOnce(
+        Response.json({
+          data: { schema_version: "agent-product-profile-list-result@2.0.0", items: [] },
+        }),
+      )
+      .mockResolvedValueOnce(
+        Response.json({
+          data: { schema_version: "agent-product-profile-list-result@1.0.0", items: [] },
+        }),
+      );
+    vi.stubGlobal("fetch", fetchMock);
+    const workspaceId = "00000000-0000-4000-8000-000000000010";
+    await expect(fetchAgentProfiles(workspaceId)).resolves.toEqual([]);
+    expect(fetchMock.mock.calls[0]?.[0]).toBe(
+      `/api/workspaces/${workspaceId}/agent-profiles?schema_version=agent-product-profile-list-result@2.0.0`,
+    );
+    await expect(fetchAgentProfiles(workspaceId)).rejects.toThrow();
+  });
   it("forwards an exact four-layer fence without converting it to legacy acceptance", async () => {
     const fetchMock = vi
       .fn()

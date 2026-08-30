@@ -116,6 +116,35 @@ describe("workspace Agent Profile route", () => {
     expect(state.listEnabled).toEqual([true]);
   });
 
+  it("serves explicitly versioned current profiles through the existing V2 discovery reader", async () => {
+    const route = await import("../src/app/api/workspaces/[workspaceId]/agent-profiles/route");
+    const response = await route.GET(
+      new NextRequest(
+        "http://localhost/agent-profiles?schema_version=agent-product-profile-list-result@2.0.0",
+      ),
+      { params: Promise.resolve({ workspaceId }) },
+    );
+    expect(response.status).toBe(200);
+    expect(await response.json()).toEqual({
+      data: { schema_version: "agent-product-profile-list-result@2.0.0", items: [] },
+    });
+    expect(state.accesses).toEqual(["READ"]);
+    expect(state.discoverableReads).toBe(1);
+    expect(state.listEnabled).toEqual([]);
+    expect(state.commits).toEqual([]);
+  });
+
+  it("rejects unsupported profile list versions without consulting either registry", async () => {
+    const route = await import("../src/app/api/workspaces/[workspaceId]/agent-profiles/route");
+    const response = await route.GET(
+      new NextRequest("http://localhost/agent-profiles?schema_version=unknown"),
+      { params: Promise.resolve({ workspaceId }) },
+    );
+    expect(response.status).toBe(400);
+    expect(state.discoverableReads).toBe(0);
+    expect(state.listEnabled).toEqual([]);
+  });
+
   it("projects only public discovery fields from the Subagent capability endpoint", async () => {
     const route = await import(
       "../src/app/api/workspaces/[workspaceId]/subagent-capabilities/route"

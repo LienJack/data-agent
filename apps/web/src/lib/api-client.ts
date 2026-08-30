@@ -1,9 +1,9 @@
 "use client";
 
 import {
-  type AgentProductProfileRegistryItem,
+  type AgentProductProfileRegistryItemV2,
   type AgentTeamPublicTrace,
-  agentProductProfileListResultSchema,
+  agentProductProfileListResultV2Schema,
   type ConversationTrajectory,
   contractErrorSchema,
   conversationTrajectorySchema,
@@ -12,7 +12,7 @@ import {
   type ResolutionTrace,
   type ResolutionTraceDetail,
   type SqlHistoryResult,
-  verifyAgentProductProfileRevision,
+  verifyAgentProductProfileRevisionV2,
   verifyAgentTeamPublicTrace,
   verifyResolutionTrace,
   verifyResolutionTraceDetail,
@@ -407,17 +407,17 @@ export async function fetchSqlHistory(
 
 export async function fetchAgentProfiles(
   workspaceId?: string,
-): Promise<readonly AgentProductProfileRegistryItem[]> {
+): Promise<readonly AgentProductProfileRegistryItemV2[]> {
   const resolvedWorkspace = workspaceId?.trim() || resolveWorkspaceId();
   if (!resolvedWorkspace) throw new Error("请先选择工作空间");
   const response = await request<{ data: unknown }>(
-    `/api/workspaces/${encodeURIComponent(resolvedWorkspace)}/agent-profiles`,
+    `/api/workspaces/${encodeURIComponent(resolvedWorkspace)}/agent-profiles?schema_version=agent-product-profile-list-result@2.0.0`,
     {},
     resolvedWorkspace,
   );
-  const result = agentProductProfileListResultSchema.parse(response.data);
+  const result = agentProductProfileListResultV2Schema.parse(response.data);
   await Promise.all(
-    result.items.map(({ revision }) => verifyAgentProductProfileRevision(revision)),
+    result.items.map(({ revision }) => verifyAgentProductProfileRevisionV2(revision)),
   );
   return result.items;
 }

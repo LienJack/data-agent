@@ -23,12 +23,28 @@ export async function GET(request: NextRequest, context: RouteContext) {
   const { workspaceId } = await context.params;
   const authorized = await authorizeWorkspaceRequest(request, workspaceId, "READ");
   if (!authorized.ok) return workspaceErrorResponse(authorized.error);
+  const schemaVersion =
+    request.nextUrl.searchParams.get("schema_version") ?? "agent-product-profile-list-result@1.0.0";
+  if (
+    schemaVersion !== "agent-product-profile-list-result@1.0.0" &&
+    schemaVersion !== "agent-product-profile-list-result@2.0.0"
+  ) {
+    return workspaceErrorResponse({
+      code: "AGENT_PROFILE_INPUT_INVALID",
+      message: "Unsupported Agent Profile list schema version.",
+      retryable: false,
+    });
+  }
   const enabledOnly = request.nextUrl.searchParams.get("enabled_only") === "true";
-  const result = await getAgentProfileRegistry().list(authorized.value.capability, enabledOnly);
+  const registry = getAgentProfileRegistry();
+  const result =
+    schemaVersion === "agent-product-profile-list-result@2.0.0"
+      ? await registry.listDiscoverable(authorized.value.capability)
+      : await registry.list(authorized.value.capability, enabledOnly);
   return result.ok
     ? NextResponse.json({
         data: {
-          schema_version: "agent-product-profile-list-result@1.0.0",
+          schema_version: schemaVersion,
           items: result.value,
         },
       })

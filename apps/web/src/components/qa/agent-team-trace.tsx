@@ -1,6 +1,10 @@
 "use client";
 
-import type { AgentProductProfileRegistryItem, AgentTeamPublicTrace } from "@data-agent/contracts";
+import type {
+  AgentProductProfileRegistryItem,
+  AgentProductProfileRegistryItemV2,
+  AgentTeamPublicTrace,
+} from "@data-agent/contracts";
 import { FlowArrow, Hammer, ShieldCheck } from "@phosphor-icons/react";
 import type { ReactNode } from "react";
 import { useWorkspaceI18n } from "@/i18n";
@@ -25,7 +29,10 @@ export function AgentTeamTrace({
   trace,
   error = null,
 }: {
-  readonly profiles: readonly AgentProductProfileRegistryItem[];
+  readonly profiles: readonly (
+    | AgentProductProfileRegistryItem
+    | AgentProductProfileRegistryItemV2
+  )[];
   readonly trace: AgentTeamPublicTrace | null;
   readonly error?: string | null;
 }) {
