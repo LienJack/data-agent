@@ -661,6 +661,7 @@ function referenceFromFixtureRow<const T extends ArtifactReference["artifact_typ
 
 async function falcon24DerivedAuthorityRows(
   evidence: Awaited<ReturnType<typeof productTeamQueryEvidenceRow>>,
+  options: { readonly input_ref?: ArtifactReference } = {},
 ) {
   const stageId = id(50);
   const resultRow = await analysisSystemPublishedRow({
@@ -864,6 +865,7 @@ async function falcon24DerivedAuthorityRows(
     content_hash: hash("d"),
   };
   const queryEvidenceRef = evidence.document_json.artifact_ref;
+  const materializedInputRef = options.input_ref ?? queryEvidenceRef;
   const receiptMaterial = {
     schema_version: "analysis-sandbox-execution-receipt@1.0.0" as const,
     workspace_id: scope.tenant_id,
@@ -899,9 +901,9 @@ async function falcon24DerivedAuthorityRows(
         name: "query_result",
         format: "JSON" as const,
         query_evidence_ref: queryEvidenceRef,
-        input_ref: queryEvidenceRef,
+        input_ref: materializedInputRef,
         materialization_receipt_ref: materializationReceiptRef,
-        content_sha256: queryEvidenceRef.content_hash,
+        content_sha256: materializedInputRef.content_hash,
         bytes: 128,
       },
     ],
@@ -2031,6 +2033,46 @@ describe("PostgreSQL Resolution Trace projector", () => {
       if (text.includes("from runs as run")) return { rows: [authorityRow()], rowCount: 1 };
       if (text.includes("from run_events")) return { rows: [row], rowCount: 1 };
       if (text.includes("from artifacts")) return { rows: [program, brief], rowCount: 2 };
+      return undefined;
+    });
+
+    const result = await createPostgresResolutionTraceProjector({ pool, authorizer }).loadTrace(
+      capability,
+      { scope, run_id: ids.run },
+    );
+
+    expect(result).toMatchObject({ ok: true });
+  });
+
+  it("accepts a protected analysis input without exposing a run-local Artifact mirror", async () => {
+    const row = await eventRow();
+    const sql = await productTeamSqlArtifactRow();
+    const evidence = await productTeamQueryEvidenceRow(sql);
+    const analysis = await falcon24DerivedAuthorityRows(evidence, {
+      input_ref: {
+        artifact_id: id(82),
+        artifact_type: "SensitiveExecutionArtifact",
+        ...scope,
+        run_id: ids.run,
+        revision: 1,
+        content_hash: hash("d"),
+      },
+    });
+    const { capability, authorizer } = issueCapability();
+    const { pool } = scriptedPool((text) => {
+      if (text.includes("from runs as run")) return { rows: [authorityRow()], rowCount: 1 };
+      if (text.includes("from run_events")) return { rows: [row], rowCount: 1 };
+      if (text.includes("from artifacts")) {
+        const rows = [
+          sql,
+          evidence,
+          analysis.derivedRow,
+          analysis.receiptRow,
+          ...analysis.resultRows,
+          ...analysis.supportRows,
+        ];
+        return { rows, rowCount: rows.length };
+      }
       return undefined;
     });
 

@@ -855,7 +855,9 @@ function artifactInputReferences(
       document.analysis_program_ref,
       ...document.inputs.flatMap((input) => [
         input.query_evidence_ref,
-        input.input_ref,
+        ...(input.input_ref.artifact_type === "SensitiveExecutionArtifact"
+          ? []
+          : [input.input_ref]),
         input.materialization_receipt_ref,
       ]),
       ...document.outputs.map(({ reference }) => reference),
