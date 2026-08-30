@@ -92,6 +92,9 @@ describe("direct run-bound provider retry policy", () => {
     expect(prompt).toContain("Never write a type name as a prefix");
     expect(prompt).toContain("TEXT2SQL_SQL_DANGEROUS means replace every unlisted function");
     expect(prompt).toContain(
+      "TEXT2SQL_SQL_RELATION_BINDING_REJECTED means replace every physical relation with an exact schema-qualified relation",
+    );
+    expect(prompt).toContain(
       "DATASOURCE_ADAPTER_SQL_REJECTED means replace invalid PostgreSQL syntax",
     );
     expect(prompt).toContain(
