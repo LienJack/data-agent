@@ -28,6 +28,26 @@ function projection(chartType: "LINE" | "BAR" | "PIE"): ArtifactPreviewResultV2[
 }
 
 describe("governed VChart spec mapper", () => {
+  it("keeps missing observations as explicit gaps, not zero or connected lines", () => {
+    const source = projection("LINE");
+    source.table.rows.splice(1, 0, { month: "2026-01-gap", order_count: null });
+    source.table.total_rows = 3;
+    const spec = toGovernedVChartSpec(source);
+    expect(spec).toMatchObject({
+      invalidType: "break",
+      data: [
+        {
+          values: [
+            { month: "2026-01", order_count: 41 },
+            { month: "2026-01-gap", order_count: null },
+            { month: "2026-02", order_count: 73 },
+          ],
+        },
+      ],
+    });
+    expect(source.table.rows[1]?.order_count).toBeNull();
+  });
+
   it.each([
     ["LINE", "line"],
     ["BAR", "bar"],

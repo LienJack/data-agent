@@ -570,6 +570,8 @@ issueCapabilityDeliveryReceipt(
 - Chart document 必须原子携带完整 bounded dataset（LINE ≤100、BAR ≤30、PIE ≤12，`total_rows === rows.length`），并把 source ref、transform version、dataset hash 与 Resolved Context package/receipt identity 纳入 document hash。
 - PostgreSQL commit 必须在有效 Worker fence 下重验 exact source revision/hash；VChart spec、Provider/模型 JSON、客户端行或 Tool output 都不是 Artifact authority。
 - Preview 只返回 strict V1/V2 projection。V2 dataset/hash/document hash 任一不一致时失败关闭，不得回退到 `document_json` 或 raw Tool output。
+- `query-evidence-chart@1.1.0` 保留 LINE/BAR 中缺失观测的行与 NULL，不因某个同比序列缺值删除整个时期。至少两个时期含真实数值；PIE 必须完整且非负，不得丢弃缺失类别后计算占比。历史 `@1.0.0` 文档及 hash 保持可读。
+- nullable chart 的 dataset hash 包含 NULL，NULL → 0 或丢行均是内容变更；Web 使用 `invalidType=break`，不补零、不跨缺口连线，等价表保留完整受限数据集。
 
 ### 7. Wrong vs Correct
 

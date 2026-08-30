@@ -6,6 +6,7 @@ import {
   type ProductTeamArtifactDocument,
   verifyProductTeamArtifactDocument,
 } from "@data-agent/contracts";
+import { QUERY_EVIDENCE_CHART_NULLABLE_TRANSFORM_VERSION } from "@data-agent/contracts/artifacts";
 
 export type QueryEvidenceVisualizationIntent = "TREND" | "COMPARISON" | "COMPOSITION";
 
@@ -70,7 +71,7 @@ export async function buildQueryEvidenceChartDocument(input: {
   const rows = evidence.projection.rows.flatMap((row) => {
     const x = scalarLabel(row[xColumn.key] ?? null);
     const values = yColumns.map(({ key }) => numeric(row[key] ?? null));
-    if (!x || values.some((value) => value === null)) return [];
+    if (!x) return [];
     return [
       Object.fromEntries([
         [xColumn.key, x],
@@ -82,11 +83,22 @@ export async function buildQueryEvidenceChartDocument(input: {
 
   const primaryKey = yColumns[0]?.key;
   if (!primaryKey) return null;
+  if (rows.filter((row) => yColumns.some(({ key }) => row[key] !== null)).length < 2) return null;
+  if (input.intent === "COMPOSITION" && rows.some((row) => row[primaryKey] === null)) return null;
   rows.sort((left, right) => {
     if (input.intent === "TREND") {
       return compareLabels(left[xColumn.key], right[xColumn.key]);
     }
-    const byValue = Number(right[primaryKey]) - Number(left[primaryKey]);
+    const leftValue = numeric(left[primaryKey] ?? null);
+    const rightValue = numeric(right[primaryKey] ?? null);
+    const byValue =
+      leftValue === null
+        ? rightValue === null
+          ? 0
+          : 1
+        : rightValue === null
+          ? -1
+          : rightValue - leftValue;
     return byValue || compareLabels(left[xColumn.key], right[xColumn.key]);
   });
 
@@ -122,7 +134,7 @@ export async function buildQueryEvidenceChartDocument(input: {
     document_ref: input.document_ref,
     source_refs: [evidence.artifact_ref],
     provenance: {
-      transform_version: "query-evidence-chart@1.0.0",
+      transform_version: QUERY_EVIDENCE_CHART_NULLABLE_TRANSFORM_VERSION,
       dataset_hash: `sha256:${"0".repeat(64)}`,
       semantic_context: input.semantic_context,
     },

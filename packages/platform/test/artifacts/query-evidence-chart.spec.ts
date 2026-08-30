@@ -12,6 +12,7 @@ async function evidence(
     { month: "2026-02", order_count: 149 },
     { month: "2026-01", order_count: 137 },
   ],
+  numericKeys: readonly string[] = ["order_count"],
 ) {
   const sqlRef = {
     artifact_id: id(9),
@@ -55,20 +56,20 @@ async function evidence(
           semantic_role: "DIMENSION",
           semantic_object_id: "dimension.month",
         },
-        {
-          name: "order_count",
-          logical_type: "NUMBER",
-          nullable: rows.some(({ order_count: orderCount }) => orderCount === null),
-          semantic_role: "METRIC",
+        ...numericKeys.map((key) => ({
+          name: key,
+          logical_type: "NUMBER" as const,
+          nullable: rows.some((row) => row[key] === null),
+          semantic_role: "METRIC" as const,
           semantic_object_id: "metric.order_count",
-        },
+        })),
       ]),
     },
     projection: {
       kind: "TABLE",
       columns: [
         { key: "month", label: "月份", data_type: "STRING" },
-        { key: "order_count", label: "订单量", data_type: "NUMBER" },
+        ...numericKeys.map((key) => ({ key, label: key, data_type: "NUMBER" as const })),
       ],
       rows,
       total_rows: rows.length,
@@ -148,6 +149,79 @@ describe("QueryEvidence chart projection", () => {
         evidence: await evidence([
           { month: "A", order_count: null },
           { month: "B", order_count: 1 },
+        ]),
+        semantic_context: semanticContext,
+      }),
+    ).resolves.toBeNull();
+  });
+
+  it("preserves missing periods as gaps without changing accepted evidence", async () => {
+    const source = await evidence([
+      { month: "2026-01", order_count: 137 },
+      { month: "2026-02", order_count: null },
+      { month: "2026-03", order_count: 149 },
+    ]);
+    const chart = await buildQueryEvidenceChartDocument({
+      intent: "TREND",
+      document_ref: documentRef,
+      evidence: source,
+      semantic_context: semanticContext,
+    });
+    expect(chart?.projection.table.rows).toEqual([
+      { month: "2026-01", order_count: 137 },
+      { month: "2026-02", order_count: null },
+      { month: "2026-03", order_count: 149 },
+    ]);
+    expect(chart?.projection.table.total_rows).toBe(3);
+    expect(chart?.source_refs).toEqual([source.artifact_ref]);
+    if (!chart) throw new Error("expected chart");
+    const preview = await projectArtifactDocument(chart, chart.document_ref, {
+      offset: 0,
+      limit: 100,
+    });
+    expect(preview.projection).toEqual(chart.projection);
+  });
+
+  it.each(["TREND", "COMPARISON"] as const)(
+    "preserves current observations with missing comparisons in %s",
+    async (intent) => {
+      const source = await evidence(
+        [
+          { month: "2026-01", current: 137, prior: null },
+          { month: "2026-02", current: 149, prior: 120 },
+        ],
+        ["current", "prior"],
+      );
+      const chart = await buildQueryEvidenceChartDocument({
+        intent,
+        document_ref: documentRef,
+        evidence: source,
+        semantic_context: semanticContext,
+      });
+      expect(chart?.projection.table.total_rows).toBe(2);
+      expect(chart?.projection.table.rows).toContainEqual({
+        month: "2026-01",
+        current: 137,
+        prior: null,
+      });
+      expect(chart?.projection.table.rows).toContainEqual({
+        month: "2026-02",
+        current: 149,
+        prior: 120,
+      });
+      expect(chart?.provenance.transform_version).toBe("query-evidence-chart@1.1.0");
+    },
+  );
+
+  it("does not create a composition from incomplete observations", async () => {
+    await expect(
+      buildQueryEvidenceChartDocument({
+        intent: "COMPOSITION",
+        document_ref: documentRef,
+        evidence: await evidence([
+          { month: "A", order_count: 137 },
+          { month: "B", order_count: null },
+          { month: "C", order_count: 149 },
         ]),
         semantic_context: semanticContext,
       }),

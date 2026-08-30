@@ -55,6 +55,7 @@ export function toGovernedVChartSpec(projection: ChartProjection): ISpec {
   return {
     ...base,
     type: projection.chart_type === "LINE" ? ("line" as const) : ("bar" as const),
+    invalidType: "break" as const,
     direction: horizontal ? ("horizontal" as const) : undefined,
     xField: horizontal ? [...projection.y_keys] : projection.x_key,
     yField: horizontal ? projection.x_key : [...projection.y_keys],

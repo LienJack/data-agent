@@ -147,6 +147,52 @@ describe("Artifact Workspace V2 chart", () => {
     ).toBe(false);
   });
 
+  it.each(["LINE", "BAR", "PIE"] as const)(
+    "treats nullable %s observations according to chart semantics",
+    async (chartType) => {
+      const base = await document(chartType);
+      const candidate = {
+        ...base,
+        provenance: { ...base.provenance, transform_version: "query-evidence-chart@1.1.0" },
+        projection: {
+          ...base.projection,
+          table: {
+            ...base.projection.table,
+            rows: [
+              base.projection.table.rows[0],
+              { month: "2026-01-gap", order_count: null },
+              base.projection.table.rows[1],
+            ],
+            total_rows: 3,
+          },
+        },
+      };
+      if (chartType === "PIE") {
+        await expect(buildArtifactWorkspaceChartDocumentV2(candidate)).rejects.toThrow();
+        return;
+      }
+      const sealed = await buildArtifactWorkspaceChartDocumentV2(candidate);
+      await expect(verifyArtifactWorkspaceChartDocumentV2(sealed)).resolves.toEqual(sealed);
+      expect(sealed.projection.table.rows[1]).toEqual({ month: "2026-01-gap", order_count: null });
+      await expect(
+        verifyArtifactWorkspaceChartDocumentV2({
+          ...sealed,
+          projection: {
+            ...sealed.projection,
+            table: {
+              ...sealed.projection.table,
+              rows: [
+                sealed.projection.table.rows[0],
+                { month: "2026-01-gap", order_count: 0 },
+                sealed.projection.table.rows[2],
+              ],
+            },
+          },
+        }),
+      ).rejects.toThrow("ARTIFACT_WORKSPACE_CHART_DATASET_HASH_MISMATCH");
+    },
+  );
+
   it("fails closed when point limits are exceeded", async () => {
     const rows = Array.from({ length: 101 }, (_, index) => ({
       month: `2026-${String(index + 1).padStart(3, "0")}`,

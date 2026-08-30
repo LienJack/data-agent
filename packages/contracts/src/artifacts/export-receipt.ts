@@ -18,6 +18,7 @@ import { semanticQueryContextSchema } from "./semantic-query-context.js";
 export const ARTIFACT_WORKSPACE_RENDERER_VERSION = "artifact-workspace-renderer@1.0.0";
 export const ARTIFACT_WORKSPACE_RENDERER_VERSION_V2 = "artifact-workspace-renderer@2.0.0";
 export const QUERY_EVIDENCE_CHART_TRANSFORM_VERSION = "query-evidence-chart@1.0.0";
+export const QUERY_EVIDENCE_CHART_NULLABLE_TRANSFORM_VERSION = "query-evidence-chart@1.1.0";
 export const ARTIFACT_WORKSPACE_RENDERER_VERSION_V3 = "artifact-workspace-renderer@3.0.0";
 export const DERIVED_ANALYSIS_CHART_TRANSFORM_VERSION = "derived-analysis-chart@1.0.0";
 export const ARTIFACT_WORKSPACE_EXPORTER_VERSION = "artifact-workspace-exporter@1.0.0";
@@ -216,6 +217,7 @@ export const artifactWorkspaceChartProjectionV2Schema = z
       });
     }
     let pieTotal = 0;
+    let observedRows = 0;
     for (const [rowIndex, row] of rows.entries()) {
       const label = row[projection.x_key];
       if (label === null || String(label).length > 200) {
@@ -225,8 +227,10 @@ export const artifactWorkspaceChartProjectionV2Schema = z
           path: ["table", "rows", rowIndex, projection.x_key],
         });
       }
+      if (projection.y_keys.some((key) => typeof row[key] === "number")) observedRows += 1;
       for (const key of projection.y_keys) {
         const value = row[key];
+        if (value === null && projection.chart_type !== "PIE") continue;
         if (typeof value !== "number" || !Number.isFinite(value)) {
           ctx.addIssue({
             code: "custom",
@@ -247,6 +251,13 @@ export const artifactWorkspaceChartProjectionV2Schema = z
         }
       }
     }
+    if (observedRows < 2) {
+      ctx.addIssue({
+        code: "custom",
+        message: "Chart 至少需要两个含观测值的数据点。",
+        path: ["table", "rows"],
+      });
+    }
     if (projection.chart_type === "PIE" && pieTotal <= 0) {
       ctx.addIssue({
         code: "custom",
@@ -260,7 +271,10 @@ export const artifactWorkspaceChartProjectionV2Schema = z
   });
 
 const artifactWorkspaceChartProvenanceV2Schema = z.strictObject({
-  transform_version: z.literal(QUERY_EVIDENCE_CHART_TRANSFORM_VERSION),
+  transform_version: z.enum([
+    QUERY_EVIDENCE_CHART_TRANSFORM_VERSION,
+    QUERY_EVIDENCE_CHART_NULLABLE_TRANSFORM_VERSION,
+  ]),
   dataset_hash: contentHashSchema,
   semantic_context: artifactWorkspaceSemanticContextIdentitySchema,
 });
