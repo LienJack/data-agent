@@ -77,6 +77,7 @@ Data Agent 前端组件只格式化已经在边界解析完成的领域投影。
 - 流式正文只对容器设置节流后的 `aria-busy`；不得把每个 token 作为 live-region 更新播报。
 - 用户消息始终是纯文本；legacy Assistant、Report、Hypothesis 仍经过同一安全 Markdown renderer。
 - Canvas 图表必须有可访问标题/说明和原生等价表；`summary`、分页按钮与 Inspector action 保持键盘可达。
+- Artifact 表格与图表横轴复用 Contracts 的 `formatArtifactTableCell`，仅消费 server 派生并解析的 column display；月份按显式时区/粒度展示，NULL 保留为空，原值不改写且表格保留原值提示。不得从字符串/列名猜测日期、金额币种或百分比，也不使用浏览器默认时区解释业务月份。
 - 图表运行时是动态 client leaf；loading/error/empty 均有文本状态，`prefers-reduced-motion` 下不得依赖动画传递信息，effect 必须释放第三方实例。
 - 答案入口 Trace 验证必须在滚动后等待真实点击命中目标按钮；异步 Artifact 渲染和返回答案时的平滑定位可能再次改变位置。桌面、Run 切换和窄屏 smoke 共用同一可点击等待，持续遮挡失败关闭；禁止隐藏 Composer、强制点击或直接用 Trace URL 绕过入口。
 - Q&A 活动身份必须区分 Root/Analysis/Semantic/Text2SQL/Report；未知 Profile 显示原标识，不得默认成 Report。Run 完成后遗留的非终态任务不得显示为运行中或伪造完成：有同任务失败 Tool 时保留失败，否则展示缺少完成证据的中断状态。QA gate 同时核验可见 Agent 标签、角色、终态和必需的已完成 Profile，不能仅检查 spinner。

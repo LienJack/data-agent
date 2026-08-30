@@ -31,6 +31,7 @@ import {
   verifyArtifactWorkspaceDocument,
   verifyProductTeamArtifactDocument,
 } from "@data-agent/contracts";
+import { projectQueryEvidenceTablePresentation } from "@data-agent/contracts/artifacts";
 
 const textEncoder = new TextEncoder();
 
@@ -197,6 +198,15 @@ export async function projectArtifactDocument(
     if (productTeamDocument) {
       requireSourceIdentity(sourceReference, productTeamDocument.artifact_ref);
       projection = productTeamDocument.projection;
+      if (
+        projection.kind === "TABLE" &&
+        productTeamDocument.provenance?.kind === "GOVERNED_QUERY_RESULT"
+      ) {
+        projection = projectQueryEvidenceTablePresentation(
+          projection,
+          productTeamDocument.provenance.semantic_binding,
+        );
+      }
     } else {
       const sandbox = sandboxResultSchema.safeParse(documentInput);
       if (sandbox.success) {

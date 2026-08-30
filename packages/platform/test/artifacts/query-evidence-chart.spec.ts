@@ -1,4 +1,7 @@
-import { buildProductTeamArtifactDocument } from "@data-agent/contracts";
+import {
+  buildProductTeamArtifactDocument,
+  buildQueryEvidenceSemanticBinding,
+} from "@data-agent/contracts";
 import { describe, expect, it } from "vitest";
 import { projectArtifactDocument } from "../../src/artifacts/artifact-workspace-service.js";
 import { buildQueryEvidenceChartDocument } from "../../src/artifacts/query-evidence-chart.js";
@@ -97,6 +100,91 @@ const semanticContext = {
 };
 
 describe("QueryEvidence chart projection", () => {
+  it("projects verified temporal binding into table and chart display without changing facts", async () => {
+    const base = await evidence([
+      { month: "2023-10-31T16:00:00.000Z", order_count: 137 },
+      { month: "2023-11-30T16:00:00.000Z", order_count: 149 },
+    ]);
+    if (base.provenance?.kind !== "GOVERNED_QUERY_RESULT") throw new Error("expected binding");
+    const { binding_hash: _hash, ...binding } = base.provenance.semantic_binding;
+    const source = await buildProductTeamArtifactDocument({
+      ...base,
+      provenance: {
+        ...base.provenance,
+        semantic_binding: await buildQueryEvidenceSemanticBinding({
+          ...binding,
+          columns: binding.columns.map((column) =>
+            column.output_name === "month"
+              ? {
+                  ...column,
+                  logical_type: "DATETIME",
+                  grain: { grain_id: "month", granularity: "month" },
+                }
+              : column,
+          ),
+          time_window: {
+            dimension_id: "dimension.month",
+            start: "2023-11-01",
+            end: "2024-01-01",
+            semantics: "HALF_OPEN",
+            timezone: "Asia/Shanghai",
+          },
+        }),
+      },
+    });
+    const preview = await projectArtifactDocument(source, source.artifact_ref, {
+      offset: 0,
+      limit: 100,
+    });
+    const display = {
+      kind: "TEMPORAL",
+      logical_type: "DATETIME",
+      granularity: "month",
+      timezone: "Asia/Shanghai",
+    };
+    expect(preview.projection).toMatchObject({
+      columns: [expect.objectContaining({ display }), expect.anything()],
+      rows: source.projection.kind === "TABLE" ? source.projection.rows : [],
+    });
+    const chart = await buildQueryEvidenceChartDocument({
+      intent: "TREND",
+      document_ref: documentRef,
+      evidence: source,
+      semantic_context: semanticContext,
+    });
+    expect(chart?.projection.table.columns[0]).toMatchObject({ display });
+    expect(chart?.projection.table.rows[0]?.month).toBe("2023-10-31T16:00:00.000Z");
+    expect(source.projection.kind === "TABLE" && source.projection.columns[0]).not.toHaveProperty(
+      "display",
+    );
+    if (source.provenance?.kind !== "GOVERNED_QUERY_RESULT") throw new Error("expected binding");
+    const { binding_hash: _observedHash, ...publishedBinding } = source.provenance.semantic_binding;
+    if (!publishedBinding.time_window) throw new Error("expected time window");
+    for (const time_window of [
+      null,
+      { ...publishedBinding.time_window, dimension_id: "other.dimension" },
+      { ...publishedBinding.time_window, timezone: null },
+    ]) {
+      const withoutTimezone = await buildProductTeamArtifactDocument({
+        ...source,
+        provenance: {
+          ...base.provenance,
+          semantic_binding: await buildQueryEvidenceSemanticBinding({
+            ...publishedBinding,
+            time_window,
+          }),
+        },
+      });
+      const unformatted = await projectArtifactDocument(
+        withoutTimezone,
+        withoutTimezone.artifact_ref,
+        { offset: 0, limit: 100 },
+      );
+      if (unformatted.projection.kind !== "TABLE") throw new Error("expected table");
+      expect(unformatted.projection.columns[0]).not.toHaveProperty("display");
+      expect(unformatted.projection.rows[0]?.month).toBe("2023-10-31T16:00:00.000Z");
+    }
+  });
   it("projects ordered trend evidence into a sealed V2 chart preview", async () => {
     const chart = await buildQueryEvidenceChartDocument({
       intent: "TREND",

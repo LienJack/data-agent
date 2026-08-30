@@ -4,6 +4,7 @@ import type {
   ArtifactPreviewResult,
   ArtifactWorkspaceTableProjection,
 } from "@data-agent/contracts";
+import { formatArtifactTableCell } from "@data-agent/contracts/artifacts";
 import dynamic from "next/dynamic";
 import { useId } from "react";
 
@@ -80,7 +81,7 @@ function ArtifactWorkspaceTable({
               >
                 {column.label}
                 <span className="ml-1 font-mono text-[9px] font-normal text-[var(--color-text-muted)]">
-                  {column.data_type}
+                  {column.display ? (column.display.timezone ?? "日期") : column.data_type}
                 </span>
               </th>
             ))}
@@ -93,6 +94,7 @@ function ArtifactWorkspaceTable({
                 <td
                   className="border-b border-[var(--color-border-default)] px-3 py-2 align-top tabular-nums"
                   key={column.key}
+                  title={row[column.key] === null ? "空值" : String(row[column.key])}
                 >
                   {row[column.key] === null ? (
                     <>
@@ -102,7 +104,7 @@ function ArtifactWorkspaceTable({
                       </span>
                     </>
                   ) : (
-                    String(row[column.key])
+                    formatArtifactTableCell(row[column.key] ?? null, column)
                   )}
                 </td>
               ))}

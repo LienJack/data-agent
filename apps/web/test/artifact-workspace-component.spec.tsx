@@ -15,6 +15,41 @@ const sourceRef = {
 };
 
 describe("ArtifactWorkspace", () => {
+  it("renders governed calendar months and readable numbers while exposing exact raw values", () => {
+    const preview: ArtifactPreviewResult = {
+      schema_version: "artifact-preview-result@1.0.0",
+      source_ref: { ...sourceRef, artifact_type: "QueryEvidence" },
+      renderer_version: "artifact-workspace-renderer@1.0.0",
+      projection: {
+        kind: "TABLE",
+        columns: [
+          {
+            key: "month",
+            label: "月份",
+            data_type: "STRING",
+            display: {
+              kind: "TEMPORAL",
+              logical_type: "DATETIME",
+              granularity: "month",
+              timezone: "Asia/Shanghai",
+            },
+          },
+          { key: "amount", label: "收入", data_type: "NUMBER" },
+          { key: "prior", label: "同期", data_type: "NUMBER" },
+        ],
+        rows: [{ month: "2023-10-31T16:00:00.000Z", amount: 567783.7399999999, prior: null }],
+        total_rows: 1,
+      },
+      viewport: { offset: 0, limit: 100, total_rows: 1, truncated: false },
+    };
+    const markup = renderToStaticMarkup(<ArtifactWorkspace preview={preview} />);
+    expect(markup).toContain(">2023-11<");
+    expect(markup).toContain(">567,783.74<");
+    expect(markup).toContain('title="567783.7399999999"');
+    expect(markup).toContain("Asia/Shanghai");
+    expect(markup).toContain("空值");
+    expect(markup).not.toContain(">2023-10-31T16:00:00.000Z<");
+  });
   it("renders exact SQL content as code instead of stopping at the Artifact ID", () => {
     const preview: ArtifactPreviewResult = {
       schema_version: "artifact-preview-result@1.0.0",

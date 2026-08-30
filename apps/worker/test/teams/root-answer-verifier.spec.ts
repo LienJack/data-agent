@@ -8,6 +8,7 @@ import {
   createRootAnswerVerifier,
   rootAnswerVerifierInternals,
 } from "../../src/teams/root-answer-verifier.js";
+import { buildTestQueryEvidenceSemanticBinding } from "../analysis/support/query-evidence-semantic-binding.js";
 
 const id = (suffix: number) => `97000000-0000-4000-8000-${String(suffix).padStart(12, "0")}`;
 const hash = (character: string) => `sha256:${character.repeat(64)}`;
@@ -105,6 +106,121 @@ async function semanticContextDocument() {
 }
 
 describe("Root answer verifier", () => {
+  it("renders verified table facts as bounded readable Markdown, not internal JSON", async () => {
+    const document = await buildProductTeamArtifactDocument({
+      schema_version: "product-team-artifact@2.0.0",
+      artifact_ref: {
+        ...scope,
+        artifact_id: id(60),
+        artifact_type: "QueryEvidence",
+        run_id: id(3),
+        revision: 1,
+        content_hash: hash("0"),
+      },
+      profile_id: "governed-text2sql-agent",
+      task_id: id(61),
+      source_refs: [
+        {
+          ...scope,
+          artifact_id: id(62),
+          artifact_type: "SqlArtifact",
+          run_id: id(3),
+          revision: 1,
+          content_hash: hash("2"),
+        },
+      ],
+      provenance: {
+        kind: "GOVERNED_QUERY_RESULT",
+        query_id: id(63),
+        request_hash: hash("3"),
+        result_hash: hash("4"),
+        row_count: 2,
+        byte_count: 500,
+        elapsed_ms: 1,
+        truncated: false,
+        semantic_binding: await buildTestQueryEvidenceSemanticBinding({
+          columns: [
+            {
+              name: "month",
+              logical_type: "DATETIME",
+              nullable: false,
+              semantic_role: "DIMENSION",
+              semantic_object_id: "dimension.month",
+              grain: { grain_id: "month", granularity: "month" },
+            },
+            {
+              name: "revenue",
+              logical_type: "NUMBER",
+              nullable: false,
+              semantic_role: "METRIC",
+              semantic_object_id: "metric.revenue",
+            },
+            {
+              name: "prior",
+              logical_type: "NUMBER",
+              nullable: true,
+              semantic_role: "METRIC",
+              semantic_object_id: "metric.revenue",
+            },
+          ],
+          time_window: {
+            dimension_id: "dimension.month",
+            start: "2023-11-01",
+            end: "2024-01-01",
+            semantics: "HALF_OPEN",
+            timezone: "Asia/Shanghai",
+          },
+        }),
+      },
+      projection: {
+        kind: "TABLE",
+        columns: [
+          { key: "month", label: "月份", data_type: "STRING" },
+          { key: "revenue", label: "本期收入", data_type: "NUMBER" },
+          { key: "prior", label: "<img>同期|收入", data_type: "NUMBER" },
+        ],
+        rows: [
+          { month: "2023-10-31T16:00:00.000Z", revenue: 567783.7399999999, prior: null },
+          { month: "2023-11-30T16:00:00.000Z", revenue: 0, prior: 100 },
+        ],
+        total_rows: 2,
+      },
+      committed_at: "2026-08-30T12:00:00.000Z",
+    });
+    const verifier = createRootAnswerVerifier({
+      artifacts: { resolveCommitted: async () => ({ ok: true, value: document }) },
+    });
+    const result = await verifier.verify({
+      decision: {
+        schema_version: "root-agent-turn-candidate@1.0.0",
+        kind: "FINAL_ANSWER",
+        scope,
+        run_id: id(3),
+        catalog_snapshot_hash: hash("1"),
+        sections: [
+          {
+            kind: "ARTIFACT_FACTS",
+            artifact_ref: document.artifact_ref,
+            fact_selectors: ["projection.columns", "projection.rows", "projection.total_rows"],
+          },
+        ],
+        public_summary: "结果",
+      },
+      visible_message_refs: [],
+      accepted_artifact_refs: [document.artifact_ref],
+    });
+    expect(result.status).toBe("ACCEPTED");
+    expect(result.rendered_text).toContain("共 2 行");
+    expect(result.rendered_text).toContain("| 月份 | 本期收入 | &lt;img&gt;同期\\|收入 |");
+    expect(result.rendered_text).toContain("| 2023-11 | 567,783.74 | — |");
+    expect(result.rendered_text).toContain("| 2023-12 | 0 | 100 |");
+    expect(result.rendered_text).toContain("Asia/Shanghai");
+    expect(result.rendered_text).toContain("不代表 0");
+    expect(result.rendered_text).not.toMatch(
+      /total_rows=|columns=|rows=|<img>|567783\.7399999999/u,
+    );
+    expect(result.evidence_refs).toEqual([document.artifact_ref]);
+  });
   it("accepts general knowledge without requiring a Subagent", async () => {
     const verifier = createRootAnswerVerifier({
       artifacts: { resolveCommitted: async () => ({ ok: true, value: null }) },

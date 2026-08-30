@@ -82,6 +82,10 @@ export * from "./semantic-lifecycle.js";
 export * from "./semantic-query-context.js";
 export * from "./semantic-relationship-index.js";
 export * from "./sensitive-execution-artifact.js";
+export {
+  formatArtifactTableCell,
+  projectQueryEvidenceTablePresentation,
+} from "./table-presentation.js";
 export * from "./tabular-import.js";
 export * from "./text2sql-evidence.js";
 export {

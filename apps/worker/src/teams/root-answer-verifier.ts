@@ -7,6 +7,10 @@ import {
   type RootAgentDecisionCandidate,
   verifyProductTeamArtifactDocument,
 } from "@data-agent/contracts";
+import {
+  formatArtifactTableCell,
+  projectQueryEvidenceTablePresentation,
+} from "@data-agent/contracts/artifacts";
 
 export type RootAnswerVerification = Readonly<
   | {
@@ -78,17 +82,58 @@ function renderArtifactFacts(
     ) {
       return null;
     }
+    const table =
+      document.provenance?.kind === "GOVERNED_QUERY_RESULT"
+        ? projectQueryEvidenceTablePresentation(
+            document.projection,
+            document.provenance.semantic_binding,
+          )
+        : document.projection;
+    const cell = (value: string) =>
+      value
+        .replaceAll("&", "&amp;")
+        .replaceAll("<", "&lt;")
+        .replaceAll(">", "&gt;")
+        .replace(/([\\|`*_[\]{}()#!])/gu, "\\$1")
+        .replace(/[\r\n]+/gu, " ");
     const fields: string[] = [];
     if (selectors.includes("projection.total_rows")) {
-      fields.push(`total_rows=${document.projection.total_rows}`);
+      fields.push(`查询结果共 ${table.total_rows} 行。`);
     }
-    if (selectors.includes("projection.columns")) {
-      fields.push(`columns=${JSON.stringify(document.projection.columns)}`);
+    if (selectors.includes("projection.columns") && !selectors.includes("projection.rows")) {
+      fields.push(`字段：${table.columns.map((column) => cell(column.label)).join("、")}。`);
     }
     if (selectors.includes("projection.rows")) {
-      fields.push(`rows=${JSON.stringify(document.projection.rows)}`);
+      const rows = table.rows.slice(0, 100);
+      const line = (values: readonly string[]) => `| ${values.join(" | ")} |`;
+      fields.push(
+        [
+          line(table.columns.map((column) => cell(column.label))),
+          line(table.columns.map(() => "---")),
+          ...rows.map((row) =>
+            line(
+              table.columns.map((column) =>
+                cell(formatArtifactTableCell(row[column.key] ?? null, column)),
+              ),
+            ),
+          ),
+        ].join("\n"),
+      );
+      const timezones = [
+        ...new Set(
+          table.columns.flatMap((column) =>
+            column.display?.timezone ? [column.display.timezone] : [],
+          ),
+        ),
+      ];
+      if (timezones.length > 0) fields.push(`时间按 ${timezones.map(cell).join("、")} 展示。`);
+      if (rows.some((row) => Object.values(row).some((value) => value === null))) {
+        fields.push("— 表示缺失或不可计算，不代表 0。");
+      }
+      if (table.total_rows > rows.length)
+        fields.push(`正文展示前 ${rows.length} 行，其余结果见数据表。`);
     }
-    return fields.join("\n");
+    return fields.join("\n\n");
   }
   if (document.projection.kind === "SEMANTIC_CONTEXT") {
     const semanticContext = document.projection.context;

@@ -37,6 +37,29 @@ const columnKeySchema = z
   .max(128)
   .regex(/^[A-Za-z_][A-Za-z0-9_.-]*$/);
 
+const artifactTemporalDisplaySchema = z
+  .strictObject({
+    kind: z.literal("TEMPORAL"),
+    logical_type: z.enum(["DATE", "DATETIME"]),
+    granularity: z.enum(["atomic", "hour", "day", "week", "month", "quarter", "year"]),
+    timezone: z.string().min(1).max(64).nullable(),
+  })
+  .superRefine((display, ctx) => {
+    if (display.logical_type === "DATETIME" && display.timezone === null) {
+      ctx.addIssue({
+        code: "custom",
+        message: "Datetime presentation requires an explicit timezone.",
+      });
+    }
+    if (display.timezone !== null) {
+      try {
+        new Intl.DateTimeFormat("en", { timeZone: display.timezone });
+      } catch {
+        ctx.addIssue({ code: "custom", message: "Invalid presentation timezone." });
+      }
+    }
+  });
+
 export const artifactWorkspaceTableProjectionSchema = z
   .strictObject({
     kind: z.literal("TABLE"),
@@ -46,6 +69,7 @@ export const artifactWorkspaceTableProjectionSchema = z
           key: columnKeySchema,
           label: z.string().min(1).max(500),
           data_type: z.enum(["STRING", "NUMBER", "BOOLEAN", "NULL", "MIXED"]),
+          display: artifactTemporalDisplaySchema.optional(),
         }),
       )
       .min(1)
@@ -55,6 +79,15 @@ export const artifactWorkspaceTableProjectionSchema = z
   })
   .superRefine((projection, ctx) => {
     const keys = projection.columns.map(({ key }) => key);
+    for (const [index, column] of projection.columns.entries()) {
+      if (column.display && column.data_type !== "STRING") {
+        ctx.addIssue({
+          code: "custom",
+          message: "Temporal presentation requires a STRING column.",
+          path: ["columns", index, "display"],
+        });
+      }
+    }
     if (new Set(keys).size !== keys.length) {
       ctx.addIssue({ code: "custom", message: "Table column key 必须唯一。", path: ["columns"] });
     }

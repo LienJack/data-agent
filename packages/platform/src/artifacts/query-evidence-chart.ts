@@ -6,7 +6,10 @@ import {
   type ProductTeamArtifactDocument,
   verifyProductTeamArtifactDocument,
 } from "@data-agent/contracts";
-import { QUERY_EVIDENCE_CHART_NULLABLE_TRANSFORM_VERSION } from "@data-agent/contracts/artifacts";
+import {
+  projectQueryEvidenceTablePresentation,
+  QUERY_EVIDENCE_CHART_NULLABLE_TRANSFORM_VERSION,
+} from "@data-agent/contracts/artifacts";
 
 export type QueryEvidenceVisualizationIntent = "TREND" | "COMPARISON" | "COMPOSITION";
 
@@ -62,8 +65,15 @@ export async function buildQueryEvidenceChartDocument(input: {
   ) {
     return null;
   }
-  const xColumn = evidence.projection.columns.find(({ data_type: type }) => type === "STRING");
-  const yColumns = evidence.projection.columns
+  const table =
+    evidence.provenance?.kind === "GOVERNED_QUERY_RESULT"
+      ? projectQueryEvidenceTablePresentation(
+          evidence.projection,
+          evidence.provenance.semantic_binding,
+        )
+      : evidence.projection;
+  const xColumn = table.columns.find(({ data_type: type }) => type === "STRING");
+  const yColumns = table.columns
     .filter(({ data_type: type }) => type === "NUMBER")
     .slice(0, input.intent === "COMPOSITION" ? 1 : 4);
   if (!xColumn || yColumns.length === 0) return null;

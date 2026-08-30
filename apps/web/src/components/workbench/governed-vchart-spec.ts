@@ -1,4 +1,5 @@
 import type { ArtifactPreviewResultV2, ArtifactPreviewResultV3 } from "@data-agent/contracts";
+import { formatArtifactTableCell } from "@data-agent/contracts/artifacts";
 import type { ISpec } from "@visactor/vchart";
 
 type ChartProjection =
@@ -7,7 +8,14 @@ type ChartProjection =
 
 export function toGovernedVChartSpec(projection: ChartProjection): ISpec {
   const values = projection.table.rows.map((row) =>
-    Object.fromEntries(projection.table.columns.map(({ key }) => [key, row[key] ?? null])),
+    Object.fromEntries(
+      projection.table.columns.map((column) => [
+        column.key,
+        column.display && column.key === projection.x_key && row[column.key] !== null
+          ? formatArtifactTableCell(row[column.key] ?? null, column)
+          : (row[column.key] ?? null),
+      ]),
+    ),
   );
   const base = {
     animation: false,

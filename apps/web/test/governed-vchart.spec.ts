@@ -28,6 +28,35 @@ function projection(chartType: "LINE" | "BAR" | "PIE"): ArtifactPreviewResultV2[
 }
 
 describe("governed VChart spec mapper", () => {
+  it("formats the time axis from the sealed column display and leaves the dataset untouched", () => {
+    const source = projection("LINE");
+    source.table.columns[0] = {
+      key: "month",
+      label: "月份",
+      data_type: "STRING",
+      display: {
+        kind: "TEMPORAL",
+        logical_type: "DATETIME",
+        granularity: "month",
+        timezone: "Asia/Shanghai",
+      },
+    };
+    source.table.rows = [
+      { month: "2023-10-31T16:00:00.000Z", order_count: 41 },
+      { month: "2023-11-30T16:00:00.000Z", order_count: 73 },
+    ];
+    expect(toGovernedVChartSpec(source)).toMatchObject({
+      data: [
+        {
+          values: [
+            { month: "2023-11", order_count: 41 },
+            { month: "2023-12", order_count: 73 },
+          ],
+        },
+      ],
+    });
+    expect(source.table.rows[0]?.month).toBe("2023-10-31T16:00:00.000Z");
+  });
   it("keeps missing observations as explicit gaps, not zero or connected lines", () => {
     const source = projection("LINE");
     source.table.rows.splice(1, 0, { month: "2026-01-gap", order_count: null });
