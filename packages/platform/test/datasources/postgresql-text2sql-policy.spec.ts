@@ -268,6 +268,37 @@ describe("PostgreSQL model-authored Text2SQL policy", () => {
     ).resolves.toBeUndefined();
   });
 
+  it.each(["interval '1 year'", "cast('1 year' as pg_catalog.interval)"])(
+    "preserves identical shifted-month grouping when parameterizing %s",
+    async (intervalExpression) => {
+      const compiled = await parameterizePostgresqlText2SqlCandidate({
+        sql: `select date_trunc('month', o.created_at::timestamp) + ${intervalExpression} as month,
+          sum(o.amount) as revenue from falcon_db_24.orders as o
+          group by date_trunc('month', o.created_at::timestamp) + ${intervalExpression}`,
+        parameters: [],
+      });
+      expect(compiled.parameters).toEqual(["month", "1 year"]);
+      expect(compiled.sql.match(/\$2\b/gu)).toHaveLength(2);
+      await expect(
+        assertPostgresqlText2SqlCandidatePolicy({
+          ...compiled,
+          parameter_count: compiled.parameters.length,
+          allowed_relations: allowed,
+        }),
+      ).resolves.toBeUndefined();
+    },
+  );
+
+  it("keeps different interval values and unrelated typed literals separate", async () => {
+    const compiled = await parameterizePostgresqlText2SqlCandidate({
+      sql: `select o.created_at + interval '1 year' as next_year,
+        o.created_at + interval '2 years' as later_year,
+        '1 year'::text as label from falcon_db_24.orders as o`,
+      parameters: [],
+    });
+    expect(compiled.parameters).toEqual(["1 year", "2 years", "1 year"]);
+  });
+
   it("preserves a parameterized monthly self-join through the actual compiler round trip", async () => {
     const compiled = await parameterizePostgresqlText2SqlCandidate({
       sql: `with monthly as (

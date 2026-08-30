@@ -140,3 +140,14 @@ const authority = createPostgresText2SqlSandboxAuthority({
 - Required regressions: upper/lower overflow, exact boundaries, interior windows, offset-equivalent published bounds, null bounds,
   invalid/reversed authority bounds, safe rejection diagnostics and successful/failed bounded repair. Business acceptance must still
   independently verify the requested month buckets and values; Run success alone is insufficient.
+
+## Parameterization must preserve grouped temporal expressions
+
+- Repeated string literals in the same explicit `interval` cast context must share a generated parameter, just as matching
+  `date_trunc` / `date_part` units do. Otherwise an originally identical SELECT/GROUP BY expression becomes `$n` versus `$m`, which
+  PostgreSQL rejects with `42803` even when both bound values are equal.
+- Keep original explicit parameter indices unchanged, and do not globally deduplicate untyped literals or merge different cast contexts.
+  Different interval values remain distinct; all AST/relation/column/type/limit restrictions still run after rewriting.
+- Regression proof includes real read-only PostgreSQL EXPLAIN before/after parameterization, both INTERVAL-literal and explicit CAST
+  syntax, different values, and same text in a non-interval context. A model repair cannot reliably fix a rewrite that reintroduces the
+  same structural mismatch; inspect database error statements before adding more model retries.
