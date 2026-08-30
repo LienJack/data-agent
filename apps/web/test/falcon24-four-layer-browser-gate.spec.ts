@@ -1,3 +1,4 @@
+import { buildAgentTeamPublicTrace } from "@data-agent/contracts/agents";
 import type { ArtifactReference } from "@data-agent/contracts/artifacts";
 import {
   buildFalcon24FourLayerBusinessReceipt,
@@ -7,7 +8,11 @@ import {
   type Falcon24FourLayerBusinessReceipt,
   type Falcon24FourLayerManifestTurn,
 } from "@data-agent/contracts/evals";
-import type { ResolutionTrace, ResolutionTraceDetail } from "@data-agent/contracts/runs";
+import {
+  buildSqlHistoryEntry,
+  type ResolutionTrace,
+  type ResolutionTraceDetail,
+} from "@data-agent/contracts/runs";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 import {
   observeFalcon24FourLayerQaUi,
@@ -15,6 +20,7 @@ import {
   preflightFalcon24FourLayerBrowserSubmission,
   smokeFalcon24FourLayerConversationAt390,
   verifyFalcon24FourLayerTraceEvidence,
+  verifyFalcon24TraceReadViews,
 } from "../src/cli/falcon24-four-layer-browser-gate";
 
 const execFileAsyncMock = vi.hoisted(() => vi.fn());
@@ -214,6 +220,11 @@ function traceFixture(reference: ArtifactReference) {
     },
   ] as const;
   const trace = {
+    scope: {
+      app_id: reference.app_id,
+      tenant_id: reference.tenant_id,
+      environment: reference.environment,
+    },
     run_id: runId,
     conversation_id: conversationId,
     trace_hash: hash("4"),
@@ -234,6 +245,69 @@ function traceFixture(reference: ArtifactReference) {
     detail(nodes[4]),
   ];
   return { trace, details };
+}
+
+async function teamFixture(reference: ArtifactReference) {
+  const root = {
+    task_id: id(60),
+    parent_task_id: null,
+    depth: 0,
+    profile_id: "data-agent-orchestrator",
+    profile_revision: 1,
+    profile_hash: hash("1"),
+    task_revision: 1,
+    attempt_id: id(70),
+    worker_fence: 1,
+    status: "COMPLETED",
+    created_at: now,
+    goal_revision: 1,
+    bounds: {
+      max_context_bytes: 1000,
+      max_input_tokens: 1000,
+      max_output_tokens: 1000,
+      max_tool_calls: 2,
+      timeout_ms: 1000,
+    },
+    required_artifact_types: ["QueryEvidence"],
+    artifact_refs: [],
+    context_epoch_ref: null,
+    completion: null,
+    acceptance: null,
+    status_source: {
+      kind: "RUN_EVENT",
+      event_id: id(80),
+      sequence: 1,
+      event_hash: hash("2"),
+      occurred_at: now,
+      status: "COMPLETED",
+    },
+  };
+  return buildAgentTeamPublicTrace({
+    schema_version: "agent-team-public-trace@3.0.0",
+    scope: {
+      app_id: reference.app_id,
+      tenant_id: reference.tenant_id,
+      environment: reference.environment,
+    },
+    run_id: runId,
+    tasks: [
+      root,
+      {
+        ...root,
+        task_id: id(61),
+        parent_task_id: id(60),
+        depth: 1,
+        profile_id: "semantic-management-agent",
+        status: "ACCEPTED",
+        completion: { output_ref: reference, completed_at: now },
+        acceptance: { status: "ACCEPTED", reason: null, accepted_at: now },
+        status_source: { kind: "TEAM_RECEIPT" },
+      },
+    ],
+    handoffs: [],
+    epochs: [],
+    verifier_decisions: [],
+  });
 }
 
 function commandResult(data: Record<string, unknown> = {}) {
@@ -405,12 +479,93 @@ describe("Falcon24 four-layer browser gate", () => {
     ).toHaveLength(2);
   });
 
-  it("opens Root, Subagent, Tool and accepted Artifact evidence, then switches exact Runs", async () => {
+  it.each([
+    "PASS",
+    "MISSING_TEAM_TASK",
+    "MISSING_PROFILE",
+    "WRONG_SQL_RUN",
+    "REFRESH_DRIFT",
+  ] as const)("checks Team and SQL DOM before exact Run switching: %s", async (mismatch) => {
     const { business, reference } = await fixture();
     const qa = await qaReceipt(business);
     const { trace, details } = traceFixture(reference);
+    const team = await teamFixture(reference);
+    const sqlRef = { ...reference, artifact_id: id(90), artifact_type: "SqlArtifact" as const };
+    const sqlEntry = await buildSqlHistoryEntry({
+      schema_version: "sql-history-entry@2.0.0",
+      scope: trace.scope,
+      run_id: runId,
+      conversation_id: conversationId,
+      sql_artifact_ref: sqlRef,
+      query_evidence_ref: { ...reference, artifact_type: "QueryEvidence" },
+      execution_receipt_ref: null,
+      result_ref: null,
+      schema_snapshot_ref: null,
+      schema_snapshot_hash: hash("1"),
+      compiler_version: null,
+      ast_hash: null,
+      query_hash: null,
+      statement_hash: hash("2"),
+      parameter_hash: hash("3"),
+      candidate_hash: hash("4"),
+      target_binding_hash: hash("5"),
+      status: "VALIDATED",
+      occurred_at: now,
+      conversation_href: `/w/${workspaceId}/qa?conversation=${conversationId}&run=${runId}&tab=conversation`,
+    });
+    const traceWithSql = {
+      ...trace,
+      nodes: trace.nodes.map((node, index) =>
+        index === 3 ? { ...node, artifact_refs: [reference, sqlRef] } : node,
+      ),
+    };
+    let viewReads = 0;
     execFileAsyncMock.mockImplementation(async (_file: string, args: readonly string[]) => {
       const script = decodedScript(args);
+      if (script.includes("TRACE_READ_VIEW_HTTP_")) {
+        viewReads += 1;
+        return commandResult({
+          result: {
+            team,
+            sql: {
+              schema_version: "sql-history-result@1.0.0",
+              items: [sqlEntry],
+              next_cursor: null,
+            },
+          },
+        });
+      }
+      if (script.includes("agent-profile-card"))
+        return commandResult({
+          result: {
+            tasks: (mismatch === "MISSING_TEAM_TASK" ? team.tasks.slice(1) : team.tasks).map(
+              ({ task_id, profile_id, status }) => ({
+                task_id,
+                profile_id,
+                status,
+              }),
+            ),
+            profiles:
+              mismatch === "MISSING_PROFILE"
+                ? []
+                : [
+                    "semantic-management-agent",
+                    ...(mismatch === "REFRESH_DRIFT" && viewReads > 1
+                      ? ["report-writing-agent"]
+                      : []),
+                  ],
+          },
+        });
+      if (script.includes("resolution-trace-sql-entry"))
+        return commandResult({
+          result: [
+            {
+              entry_hash: sqlEntry.entry_hash,
+              run_id: mismatch === "WRONG_SQL_RUN" ? previousRunId : runId,
+              status: "VALIDATED",
+            },
+          ],
+        });
       const matchingDetail = details.find(({ node_id: nodeId }) => script.includes(nodeId));
       if (script.includes("node_id:element.getAttribute") && matchingDetail) {
         return commandResult({
@@ -457,26 +612,47 @@ describe("Falcon24 four-layer browser gate", () => {
       { run_id: runId, trace_hash: trace.trace_hash },
     ];
 
-    await expect(
-      observeFalcon24FourLayerTraceUi({
-        session: "falcon24-e11-l4-trace",
-        web_base_url: "https://data-agent.example",
-        screenshot_path: "/tmp/falcon24-l4",
-        workspace_id: workspaceId,
-        business,
-        qa,
-        trace,
-        details,
-        expected_web_build: webBuild,
-        conversation_traces: conversationTraces,
-        viewport: { width: 1440, height: 900 },
-        now: () => new Date(now),
-      }),
-    ).resolves.toMatchObject({ status: "PASS", exact_run_focused: true });
+    const observed = observeFalcon24FourLayerTraceUi({
+      session: "falcon24-e11-l4-trace",
+      web_base_url: "https://data-agent.example",
+      screenshot_path: "/tmp/falcon24-l4",
+      workspace_id: workspaceId,
+      business,
+      qa,
+      trace: traceWithSql,
+      details,
+      expected_web_build: webBuild,
+      conversation_traces: conversationTraces,
+      viewport: { width: 1440, height: 900 },
+      now: () => new Date(now),
+    });
+    if (mismatch !== "PASS") {
+      await expect(observed).rejects.toThrow(
+        mismatch === "WRONG_SQL_RUN"
+          ? "FALCON24_SQL_VIEW_DOM_MISMATCH"
+          : mismatch === "REFRESH_DRIFT"
+            ? "FALCON24_TRACE_READ_VIEWS_REFRESH_DRIFT"
+            : "FALCON24_TEAM_VIEW_DOM_MISMATCH",
+      );
+      return;
+    }
+    await expect(observed).resolves.toMatchObject({ status: "PASS", exact_run_focused: true });
     const commands = execFileAsyncMock.mock.calls.map(([, args]) =>
       (args as readonly string[]).join(" "),
     );
+    for (const [, args] of execFileAsyncMock.mock.calls) {
+      const script = decodedScript(args as readonly string[]);
+      if (script) new Script(script);
+    }
     expect(commands.some((command) => command.includes("resolution-trace-artifact"))).toBe(true);
+    expect(commands.some((command) => command.includes("resolution-trace-tab-team"))).toBe(true);
+    expect(commands.some((command) => command.includes("resolution-trace-tab-sql"))).toBe(true);
+    expect(
+      commands.some(
+        (command) =>
+          command.includes("resolution-trace-sql-open") && command.includes(sqlEntry.entry_hash),
+      ),
+    ).toBe(true);
     expect(commands.some((command) => command.includes(previousRunId))).toBe(true);
     expect(commands.filter((command) => command.includes("resolution-trace-node"))).toHaveLength(
       details.length * 2,
@@ -491,6 +667,47 @@ describe("Falcon24 four-layer browser gate", () => {
     expect(commands.filter((command) => command.includes("elementFromPoint"))).toHaveLength(
       exactRunClicks.length,
     );
+  });
+
+  it("rejects missing Team and SQL read views even when primary Trace nodes are valid", async () => {
+    const { business, reference } = await fixture();
+    const { trace } = traceFixture(reference);
+    const team = await teamFixture(reference);
+    const sql = { schema_version: "sql-history-result@1.0.0", items: [], next_cursor: null };
+    await expect(
+      verifyFalcon24TraceReadViews({ business, trace, team: null, sql }),
+    ).rejects.toThrow("FALCON24_TEAM_VIEW_MISSING");
+    await expect(
+      verifyFalcon24TraceReadViews({ business, trace, team, sql }),
+    ).resolves.toMatchObject({ team: { trace_hash: team.trace_hash } });
+    await expect(
+      verifyFalcon24TraceReadViews({
+        business,
+        trace,
+        team: { ...team, trace_hash: hash("9") },
+        sql,
+      }),
+    ).rejects.toThrow("HASH_MISMATCH");
+    const withSql = {
+      ...trace,
+      nodes: trace.nodes.map((node, index) =>
+        index === 0
+          ? {
+              ...node,
+              artifact_refs: [
+                {
+                  ...reference,
+                  artifact_type: "SqlArtifact" as const,
+                  artifact_id: id(90),
+                },
+              ],
+            }
+          : node,
+      ),
+    };
+    await expect(
+      verifyFalcon24TraceReadViews({ business, trace: withSql, team, sql }),
+    ).rejects.toThrow("FALCON24_SQL_VIEW_CLOSURE_INVALID");
   });
 
   it("fails closed when public Trace lacks a completed Tool node", async () => {
@@ -590,3 +807,5 @@ describe("Falcon24 four-layer browser gate", () => {
     ).toBe(false);
   });
 });
+
+import { Script } from "node:vm";

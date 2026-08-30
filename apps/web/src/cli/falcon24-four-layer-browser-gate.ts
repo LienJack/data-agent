@@ -1,4 +1,5 @@
 import { readFile } from "node:fs/promises";
+import { verifyAgentTeamPublicTrace } from "@data-agent/contracts/agents";
 import { type ArtifactReference, artifactReferenceIdentity } from "@data-agent/contracts/artifacts";
 import { sha256ContentHash } from "@data-agent/contracts/common";
 import {
@@ -10,7 +11,11 @@ import {
   type Falcon24FourLayerTraceUiReceipt,
   falcon24FourLayerSubmitFenceSchema,
 } from "@data-agent/contracts/evals";
-import type { ResolutionTrace, ResolutionTraceDetail } from "@data-agent/contracts/runs";
+import {
+  type ResolutionTrace,
+  type ResolutionTraceDetail,
+  verifySqlHistoryResult,
+} from "@data-agent/contracts/runs";
 import { z } from "zod";
 import { messagesByLocale } from "../i18n/messages";
 import { publicAgentLabel } from "../lib/qa-event-assembler";
@@ -623,6 +628,7 @@ export async function observeFalcon24FourLayerTraceUi(input: {
     }
     openedArtifacts.push(reference);
   }
+  const readViews = await observeTraceReadViews(input);
   const observation = await evaluateFalcon24Browser(
     input.session,
     `(async () => { const ready=document.querySelector(${JSON.stringify(readySelector)}); const response=await fetch('/api/ready',{cache:'no-store'}); const build=await response.json(); return {run_id:ready?.getAttribute('data-run-id')??null,trace_hash:ready?.getAttribute('data-trace-hash')??null,location:window.location.href,horizontal_overflow:document.documentElement.scrollWidth>document.documentElement.clientWidth,error_banners:[...document.querySelectorAll('[role="alert"]')].map((element)=>element.textContent?.trim()||''),web_build:{build_id:build.build_id,generation_id:build.generation_id}}; })()`,
@@ -630,6 +636,12 @@ export async function observeFalcon24FourLayerTraceUi(input: {
   );
   await executeFalcon24AgentBrowser(input.session, ["reload"]);
   await executeFalcon24AgentBrowser(input.session, ["wait", readySelector]);
+  const refreshedReadViews = await observeTraceReadViews({
+    ...input,
+    screenshot_path: `${input.screenshot_path}.refreshed`,
+  });
+  if (readViews.view_hash !== refreshedReadViews.view_hash)
+    throw new Error("FALCON24_TRACE_READ_VIEWS_REFRESH_DRIFT");
   const screenshotPath = `${input.screenshot_path}.1440.trace.png`;
   await executeFalcon24AgentBrowser(input.session, ["screenshot", "--full", screenshotPath]);
   const screenshotHash = sha256Falcon24BrowserBytes(await readFile(screenshotPath));
@@ -682,6 +694,8 @@ export async function observeFalcon24FourLayerTraceUi(input: {
       observation,
       opened_nodes: openedNodes,
       opened_artifact_refs: openedArtifacts,
+      team_and_sql_views: readViews,
+      refreshed_team_and_sql_views: refreshedReadViews,
       switched_runs: switchedRuns,
     }),
     screenshot_hash: screenshotHash,
@@ -689,6 +703,148 @@ export async function observeFalcon24FourLayerTraceUi(input: {
     failure_code: passed ? null : TRACE_FAILURE_CODE,
     observed_at: (input.now?.() ?? new Date()).toISOString(),
   });
+}
+
+export async function verifyFalcon24TraceReadViews(input: {
+  readonly team: unknown;
+  readonly sql: unknown;
+  readonly trace: ResolutionTrace;
+  readonly business: Falcon24FourLayerBusinessReceipt;
+}) {
+  if (input.team === null) throw new Error("FALCON24_TEAM_VIEW_MISSING");
+  const team = await verifyAgentTeamPublicTrace(input.team);
+  const sql = await verifySqlHistoryResult(input.sql);
+  if (
+    team.schema_version !== "agent-team-public-trace@3.0.0" ||
+    team.run_id !== input.business.run_id ||
+    team.scope.app_id !== input.trace.scope.app_id ||
+    team.scope.tenant_id !== input.trace.scope.tenant_id ||
+    team.scope.environment !== input.trace.scope.environment ||
+    !team.tasks.some((task) => task.depth === 0 && task.status === "COMPLETED") ||
+    !input.business.actual_profile_ids.every((profile) =>
+      team.tasks.some((task) => task.profile_id === profile && task.status === "ACCEPTED"),
+    )
+  ) {
+    throw new Error("FALCON24_TEAM_VIEW_CLOSURE_INVALID");
+  }
+  const expectedSql = new Set(
+    input.trace.nodes
+      .flatMap((node) => node.artifact_refs)
+      .filter((ref) => ref.artifact_type === "SqlArtifact")
+      .map(artifactReferenceIdentity),
+  );
+  const actualSql = new Set(
+    sql.items.map((entry) => artifactReferenceIdentity(entry.sql_artifact_ref)),
+  );
+  if (
+    sql.next_cursor !== null ||
+    sql.items.length !== actualSql.size ||
+    expectedSql.size !== actualSql.size ||
+    [...expectedSql].some((identity) => !actualSql.has(identity)) ||
+    sql.items.some(
+      (entry) =>
+        entry.run_id !== input.business.run_id ||
+        entry.conversation_id !== input.business.conversation_id ||
+        entry.scope.app_id !== input.trace.scope.app_id ||
+        entry.scope.tenant_id !== input.trace.scope.tenant_id ||
+        entry.scope.environment !== input.trace.scope.environment,
+    )
+  ) {
+    throw new Error("FALCON24_SQL_VIEW_CLOSURE_INVALID");
+  }
+  return { team, sql };
+}
+
+async function observeTraceReadViews(input: {
+  readonly session: string;
+  readonly workspace_id: string;
+  readonly business: Falcon24FourLayerBusinessReceipt;
+  readonly trace: ResolutionTrace;
+  readonly screenshot_path: string;
+}) {
+  const base = `/api/workspaces/${encodeURIComponent(input.workspace_id)}`;
+  const teamUrl = `${base}/runs/${input.business.run_id}/team-trace`;
+  const sqlUrl = `${base}/sql-history?run_id=${input.business.run_id}&conversation_id=${input.business.conversation_id}&limit=100`;
+  const responses = await evaluateFalcon24Browser(
+    input.session,
+    `(async () => { const read=async(url)=>{const response=await fetch(url,{cache:'no-store'});if(!response.ok)throw new Error('TRACE_READ_VIEW_HTTP_'+response.status);return (await response.json()).data;};return {team:await read(${JSON.stringify(teamUrl)}),sql:await read(${JSON.stringify(sqlUrl)})}; })()`,
+    z.strictObject({ team: z.unknown(), sql: z.unknown() }),
+  );
+  const { team, sql } = await verifyFalcon24TraceReadViews({ ...input, ...responses });
+  await executeFalcon24AgentBrowser(input.session, [
+    "click",
+    '[data-testid="resolution-trace-tab-team"]',
+  ]);
+  const teamSelector = `[data-testid="agent-team-trace"][data-run-id="${team.run_id}"][data-trace-hash="${team.trace_hash}"]`;
+  await executeFalcon24AgentBrowser(input.session, ["wait", teamSelector]);
+  const teamDom = await evaluateFalcon24Browser(
+    input.session,
+    `(() => { const team=document.querySelector(${JSON.stringify(teamSelector)});return {tasks:[...(team?.querySelectorAll('[data-testid="agent-team-task"]')??[])].map(element=>({task_id:element.getAttribute('data-task-id'),profile_id:element.getAttribute('data-profile-id'),status:element.getAttribute('data-status')})),profiles:[...(team?.querySelectorAll('[data-testid="agent-profile-card"]')??[])].map(element=>element.getAttribute('data-profile-id'))}; })()`,
+    z.strictObject({
+      tasks: z.array(
+        z.strictObject({ task_id: z.uuid(), profile_id: z.string(), status: z.string() }),
+      ),
+      profiles: z.array(z.string()),
+    }),
+  );
+  if (
+    JSON.stringify(teamDom.tasks) !==
+      JSON.stringify(
+        team.tasks.map(({ task_id, profile_id, status }) => ({ task_id, profile_id, status })),
+      ) ||
+    !input.business.actual_profile_ids.every((profile) => teamDom.profiles.includes(profile))
+  ) {
+    throw new Error("FALCON24_TEAM_VIEW_DOM_MISMATCH");
+  }
+  const teamScreenshot = `${input.screenshot_path}.1440.team.png`;
+  await executeFalcon24AgentBrowser(input.session, ["screenshot", "--full", teamScreenshot]);
+  const teamScreenshotHash = sha256Falcon24BrowserBytes(await readFile(teamScreenshot));
+  await executeFalcon24AgentBrowser(input.session, [
+    "click",
+    '[data-testid="resolution-trace-tab-sql"]',
+  ]);
+  const firstSql = sql.items[0];
+  if (firstSql)
+    await executeFalcon24AgentBrowser(input.session, [
+      "wait",
+      `[data-testid="resolution-trace-sql-entry"][data-entry-hash="${firstSql.entry_hash}"]`,
+    ]);
+  const sqlDom = await evaluateFalcon24Browser(
+    input.session,
+    `(() => [...document.querySelectorAll('[data-testid="resolution-trace-sql-entry"]')].map(element=>({entry_hash:element.getAttribute('data-entry-hash'),run_id:element.getAttribute('data-run-id'),status:element.getAttribute('data-status')})))()`,
+    z.array(
+      z.strictObject({ entry_hash: contentHashSchema, run_id: z.uuid(), status: z.string() }),
+    ),
+  );
+  if (
+    JSON.stringify(sqlDom) !==
+    JSON.stringify(
+      sql.items.map(({ entry_hash, run_id, status }) => ({ entry_hash, run_id, status })),
+    )
+  ) {
+    throw new Error("FALCON24_SQL_VIEW_DOM_MISMATCH");
+  }
+  for (const entry of sql.items) {
+    await executeFalcon24AgentBrowser(input.session, [
+      "click",
+      `[data-testid="resolution-trace-sql-open"][data-entry-hash="${entry.entry_hash}"]`,
+    ]);
+    const ref = entry.sql_artifact_ref;
+    await executeFalcon24AgentBrowser(input.session, [
+      "wait",
+      `[data-testid="artifact-preview-ready"][data-run-id="${ref.run_id}"][data-artifact-id="${ref.artifact_id}"][data-content-hash="${ref.content_hash}"][data-artifact-revision="${ref.revision}"]`,
+    ]);
+  }
+  const sqlScreenshot = `${input.screenshot_path}.1440.sql.png`;
+  await executeFalcon24AgentBrowser(input.session, ["screenshot", "--full", sqlScreenshot]);
+  const sqlScreenshotHash = sha256Falcon24BrowserBytes(await readFile(sqlScreenshot));
+  const views = { team_trace_hash: team.trace_hash, team_dom: teamDom, sql_entries: sqlDom };
+  return {
+    ...views,
+    view_hash: await sha256ContentHash(views),
+    team_screenshot_hash: teamScreenshotHash,
+    sql_screenshot_hash: sqlScreenshotHash,
+  };
 }
 
 export async function smokeFalcon24FourLayerConversationAt390(input: {

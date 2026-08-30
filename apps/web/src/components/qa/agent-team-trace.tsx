@@ -52,12 +52,12 @@ export function AgentTeamTrace({
     );
   }
   const taskById = new Map(trace?.tasks.map((task) => [task.task_id, task]) ?? []);
-  const exactProfileFor = (task: NonNullable<typeof trace>["tasks"][number]) =>
+  const currentRuntimeProfileFor = (task: NonNullable<typeof trace>["tasks"][number]) =>
     profiles.find(
       ({ revision }) =>
-        revision.profile_id === task.profile_id &&
-        revision.revision === task.profile_revision &&
-        revision.revision_hash === task.profile_hash,
+        revision.runtime_profile_ref.profile_id === task.profile_id &&
+        revision.runtime_profile_ref.revision === task.profile_revision &&
+        revision.runtime_profile_ref.profile_hash === task.profile_hash,
     );
   return (
     <div
@@ -149,17 +149,18 @@ export function AgentTeamTrace({
                         : "仅有任务记录，尚无执行状态事件"}
                   </p>
                 )}
-                {!exactProfileFor(task) && task.profile_id !== "data-agent-orchestrator" && (
-                  <p className="mt-1 text-[10px] text-amber-700">
-                    历史 Profile 内容不可用；保留 exact r{task.profile_revision} 身份
-                  </p>
-                )}
+                {!currentRuntimeProfileFor(task) &&
+                  task.profile_id !== "data-agent-orchestrator" && (
+                    <p className="mt-1 text-[10px] text-amber-700">
+                      当前配置未匹配历史 Runtime Profile；保留 exact r{task.profile_revision} 身份
+                    </p>
+                  )}
                 <details className="mt-2 text-[9px] text-[var(--color-text-muted)]">
                   <summary className="cursor-pointer">身份与来源</summary>
                   <dl className="mt-1 grid grid-cols-[80px_minmax(0,1fr)] gap-1 font-mono">
                     <dt>Task ID</dt>
                     <dd className="break-all">{task.task_id}</dd>
-                    <dt>Profile</dt>
+                    <dt>Runtime Profile</dt>
                     <dd className="break-all">
                       {task.profile_id} · r{task.profile_revision} ·{" "}
                       {shortIdentity(task.profile_hash)}
@@ -260,9 +261,21 @@ export function AgentTeamTrace({
             </TraceDisclosure>
           </div>
         )}
+      {profiles.length > 0 && (
+        <p className="px-5 pt-4 text-[10px] text-[var(--color-text-muted)]">
+          当前可发现 Agent Profiles（不代表历史 Run 的完整配置）
+        </p>
+      )}
       <ul className="divide-y divide-[var(--color-border-default)]">
         {profiles.map(({ revision, head }) => (
-          <li key={revision.profile_id} className="px-5 py-4">
+          <li
+            key={revision.profile_id}
+            className="px-5 py-4"
+            data-testid="agent-profile-card"
+            data-profile-id={revision.profile_id}
+            data-profile-revision={revision.revision}
+            data-profile-hash={revision.revision_hash}
+          >
             <div className="flex flex-wrap items-start justify-between gap-3">
               <div className="min-w-0">
                 <div className="flex items-center gap-2">

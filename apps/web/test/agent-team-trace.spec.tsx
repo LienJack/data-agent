@@ -207,7 +207,8 @@ describe("Agent Team trace", () => {
     expect(html).toContain("负责规划并汇总本次 Agent Team 执行");
     expect(html).toContain("evidence.read, report.project");
     expect(html).toContain("outputs AnalysisReport");
-    expect(html).toContain("历史 Profile 内容不可用");
+    expect(html).toContain("当前配置未匹配历史 Runtime Profile");
+    expect(html).toContain("不代表历史 Run 的完整配置");
     expect(html).toContain("Tasks");
     expect(html).toContain("Handoffs · 1");
     expect(html).toContain("Context epochs · 1");
@@ -267,6 +268,42 @@ describe("Agent Team trace", () => {
     expect(currentHtml).toContain("状态来源：Team 完成／验收回执");
     expect(currentHtml).toContain(id(50));
     expect(currentHtml).toContain(currentTrace.trace_hash);
+    const matchedRuntimeTrace = await buildAgentTeamPublicTrace({
+      ...legacyDraft,
+      tasks: legacyDraft.tasks.map((task) =>
+        task.depth === 1
+          ? {
+              ...task,
+              profile_revision: revision.runtime_profile_ref.revision,
+              profile_hash: revision.runtime_profile_ref.profile_hash,
+            }
+          : task,
+      ),
+    });
+    const matchedHtml = renderToStaticMarkup(
+      <WorkspaceI18nProvider initialLocale="en-US">
+        <AgentTeamTrace
+          trace={matchedRuntimeTrace}
+          profiles={[
+            {
+              schema_version: "agent-product-profile-registry-item@1.0.0",
+              revision,
+              head: {
+                schema_version: "agent-product-profile-head@1.0.0",
+                scope,
+                profile_id: revision.profile_id,
+                active_revision: revision.revision,
+                active_revision_hash: revision.revision_hash,
+                lifecycle: "ENABLED",
+                version: 1,
+                updated_at: "2026-08-18T12:00:00.000Z",
+              },
+            },
+          ]}
+        />
+      </WorkspaceI18nProvider>,
+    );
+    expect(matchedHtml).not.toContain("当前配置未匹配历史 Runtime Profile");
     expect(html).not.toMatch(/system prompt|private reasoning|raw context|credential/i);
   });
 });

@@ -28,3 +28,10 @@ Build `8921c4cf`, Run `179081c9-a6ae-8dc1-b51e-b51d91383c60`: business/QA pass, 
 - Current source reads old Run `179081c9-a6ae-8dc1-b51e-b51d91383c60` stably as 4 tasks / 2 handoffs / 10 epochs / 2 verifier decisions. Two Root statuses are COMPLETED from exact events #15/#33; two specialists are ACCEPTED from existing receipts.
 - V3 trace hash `sha256:d3bea3825ef6e9add2a27bec26ebc5d7ff224822f566835b537646847101ada7`; audit `/Users/lienli/.codex/audit/falcon24-e1-authority-reset/f6-team-read-802bf9a5/result.json` is explicitly NON_SCORING, dirty-source diagnostic, zero provider calls and live writes.
 - This is not a formal PASS. Remaining: browser gate Team/SQL coverage, clean full build and new canary, fresh-prefix migration verification before live cutover, forward-epoch actual-failure recovery (next migration now 10814), formal four-layer closure.
+
+## Read-view browser gate and Profile identity correction
+
+- Formal browser observer now opens Team and SQL before and after refresh. It verifies API hashes, exact scope/run/conversation and SQL reference set, compares task/card/entry DOM, opens each exact SQL preview, and binds distinct pane screenshot hashes into the UI observation. A missing pane, wrong Run or refresh drift fails closed.
+- Actual current Profile registry contains four V2 items. Text2SQL Product r5 binds Runtime r1; Semantic Product r6 binds Runtime r4. Task profile identity is the Runtime reference, not Product revision/hash (confirmed in `production-team-runtime.ts` child writer/replay checks). UI now compares runtime refs and clearly labels the lower cards as current configuration, not historical full configuration.
+- Isolated read proof matches both specialists to their current runtime refs; evidence `f6-team-read-802bf9a5/profile-runtime-identity.json`. No provider call or live write; not formal/UI evidence.
+- Web focused gate/Team/Trace tests: 32 passed; Web typecheck and five-file Biome check passed. Tests include non-empty SQL preview, missing Team/task/Profile, wrong SQL Run, refresh drift and injected-JavaScript parse checks. Fresh clean-build real browser canary still required.

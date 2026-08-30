@@ -1374,6 +1374,10 @@ function SqlList({ entries }: { entries: readonly SqlHistoryEntry[] }) {
             {entries.map((entry) => (
               <tr
                 key={entry.entry_hash}
+                data-testid="resolution-trace-sql-entry"
+                data-entry-hash={entry.entry_hash}
+                data-run-id={entry.run_id}
+                data-status={entry.status}
                 className={
                   selected?.entry_hash === entry.entry_hash
                     ? "bg-[color-mix(in_srgb,var(--color-accent)_8%,transparent)]"
@@ -1384,6 +1388,8 @@ function SqlList({ entries }: { entries: readonly SqlHistoryEntry[] }) {
                 <td className="px-4 py-3">
                   <button
                     type="button"
+                    data-testid="resolution-trace-sql-open"
+                    data-entry-hash={entry.entry_hash}
                     onClick={() => setSelectedHash(entry.entry_hash)}
                     className="text-left underline-offset-2 hover:underline"
                   >

@@ -281,7 +281,8 @@ query_hash: null;
 
 - V2 仅列出当前可发现的已启用、已批准 Profiles，继续使用现有 Profile/Skill closure；不是管理列表或历史内容补齐器。
 - 默认/V1 请求与原 POST 保持既有合同；当前 Trace client 固定请求和验证 V2，不回退 V1。未识别版本在任何 registry 调用前拒绝。
-- Client 对每个 V2 Revision 严格解析及验 hash；Team card 只有 exact profile/revision/hash 匹配任务时可作为该任务内容。未匹配的历史任务继续明确 unavailable，不套用当前名称/Workflow。
+- Client 对每个 V2 Revision 严格解析及验 hash。Task 的 profile_revision/hash 属于 `runtime_profile_ref`，不是 Product revision/hash；用 runtime ref 三元组判断当前卡片是否包含该 Runtime 身份。
+- 当前 Product cards 单独标注“当前可发现配置，不代表历史 Run 的完整配置”；即使 runtime ref 匹配，也不能据此证明历史 Product Profile 的完整模型/Workflow/Skill 配置。历史任务身份保持不变，不套用当前版本。
 
 ### 4. Validation & Error Matrix
 
@@ -351,4 +352,48 @@ Correct: Trace -> explicit V2 list -> existing listDiscoverable -> exact revisio
 ```text
 Wrong: table grant -> assume owner sees runs -> empty means no Team
 Correct: exact-principal RLS -> verified existing Team RPC + same-snapshot events -> V3 tasks
+```
+
+## Scenario: Four-layer Trace read-view browser gate
+
+### 1. Scope / Trigger
+
+- 业务与 QA PASS 后，从答案入口进入 same-Run Trace，必须覆盖 Team、SQL；主节点列表正常不足以判定整页通过。
+
+### 2. Signatures
+
+- `verifyFalcon24TraceReadViews({team, sql, trace, business})` 校验 API DTO/hash 与身份集合。
+- `observeFalcon24FourLayerTraceUi` 在刷新前后均实际打开 Team/SQL，保留页签截图哈希和 DOM 身份。
+
+### 3. Contracts
+
+- Team 必须是 same Run/Scope V3，包含已完成 Root 与业务实际 Specialist 的 ACCEPTED 任务。DOM task ID/Profile/status 列表必须精确匹配已验 Team trace，并展示相关当前 Profile cards。
+- SQL 必须是全部页面（next_cursor=null），每个 SqlArtifact exact ref 与主 Trace 集合一致；Run/Scope/conversation 不可漂移，所有 entry hash 复验。
+- 点击每个 SQL 记录，等待 exact Run/artifact/revision/content-hash 的 Artifact preview READY；不直接把 API PASS 充当 UI PASS。
+- 刷新前后的 Team hash/task DOM/Profile cards/SQL entries 身份哈希一致。截图分开留存，不能覆盖前一次证据。
+- 所有行为均为只读浏览器检查，不提交第二条问题、不调用模型、不修改历史权威。
+
+### 4. Validation & Error Matrix
+
+- Team 缺失/身份不闭合 → `FALCON24_TEAM_VIEW_MISSING` / `FALCON24_TEAM_VIEW_CLOSURE_INVALID`。
+- SQL 集合/身份不闭合 → `FALCON24_SQL_VIEW_CLOSURE_INVALID`。
+- 可见 task/card/SQL Run 与 API 不匹配 → `FALCON24_TEAM_VIEW_DOM_MISMATCH` / `FALCON24_SQL_VIEW_DOM_MISMATCH`。
+- 刷新后身份变化 → `FALCON24_TRACE_READ_VIEWS_REFRESH_DRIFT`；任何上述失败不得写 UI PASS。
+
+### 5. Good/Base/Bad Cases
+
+- Good：主 Trace、Team、SQL、exact Artifact preview 与刷新后视图全部闭合。
+- Base：该 Run 确实没有 SqlArtifact 时允许空 SQL 集合。
+- Bad：SQL 已落库但页签为空；仅通过 API 而不打开页签；当前配置冒充历史配置。
+
+### 6. Tests Required
+
+- 正例实际观察 SQL preview；缺 Team/task/Profile、SQL 缺项/错 Run、刷新漂移负例。
+- 自动检查注入浏览器的 JavaScript 可解析；Profile runtime hash 与 Product hash 不同时仍正确标注。
+
+### 7. Wrong vs Correct
+
+```text
+Wrong: main graph renders -> entire Trace PASS
+Correct: main graph + Team + SQL + exact previews + stable refresh -> Trace UI receipt
 ```
