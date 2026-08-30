@@ -355,6 +355,36 @@ describe("Root answer verifier", () => {
     expect(rendered).toContain("orders[customer_id] → customers[id]");
   });
 
+  it("renders the published average-order-value formula with its cumulative-total distinction", () => {
+    const rendered = rootAnswerVerifierInternals.renderArtifactFacts(
+      {
+        projection: {
+          kind: "SEMANTIC_CONTEXT",
+          context: {
+            formulas: [
+              {
+                node_id: "formula.average_order_value",
+                name: "average_order_value",
+                expression: {
+                  kind: "CASE",
+                  branches: [],
+                  otherwise: { kind: "LITERAL", value: null },
+                },
+              },
+            ],
+          },
+        },
+      } as never,
+      ["projection.context.formulas"],
+    );
+
+    expect(rendered).toContain("SUM(order_total) / NULLIF(COUNT(DISTINCT order_id), 0)");
+    expect(rendered).toContain("每笔订单的平均金额");
+    expect(rendered).toContain("客户订单总金额");
+    expect(rendered).toContain("不除以订单数");
+    expect(rendered).not.toContain('"kind":"CASE"');
+  });
+
   it("renders the governed complete-period boundary instead of hiding it behind an id", () => {
     const rendered = rootAnswerVerifierInternals.renderArtifactFacts(
       {

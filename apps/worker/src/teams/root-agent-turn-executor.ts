@@ -81,6 +81,9 @@ function semanticFactSelectors(
 ): readonly string[] {
   return [
     ...(context.dimensions.length > 0 ? ["projection.context.dimensions"] : []),
+    ...(context.formulas.length > 0 && context.metrics.length === 0
+      ? ["projection.context.formulas"]
+      : []),
     ...(context.metrics.length > 0 ? ["projection.context.metrics"] : []),
     ...(context.quality_constraints.length > 0 ? ["projection.context.quality_constraints"] : []),
     ...(context.relationships.length > 0 ? ["projection.context.relationships"] : []),

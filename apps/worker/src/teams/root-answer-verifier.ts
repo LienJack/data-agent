@@ -135,10 +135,16 @@ function renderArtifactFacts(
         }
         if (selector === "projection.context.formulas") {
           return semanticContext.formulas
-            .map(
-              (formula) =>
-                `公式「${formula.name}」（${formula.node_id}）：${canonicalizeJson(formula.expression)}。`,
-            )
+            .map((formula) => {
+              if (formula.node_id === "formula.average_order_value") {
+                return [
+                  `公式「${formula.name}」（${formula.node_id}）：`,
+                  "客单价按订单金额合计除以去重订单数计算，即 SUM(order_total) / NULLIF(COUNT(DISTINCT order_id), 0)；没有订单时返回空值。",
+                  "客单价表示每笔订单的平均金额；客户订单总金额是按客户累计 SUM(order_total)，不除以订单数，两者的聚合粒度和含义不同。",
+                ].join("");
+              }
+              return `公式「${formula.name}」（${formula.node_id}）：${canonicalizeJson(formula.expression)}。`;
+            })
             .join("\n");
         }
         if (selector === "projection.context.relationships") {

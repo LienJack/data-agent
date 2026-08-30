@@ -41,7 +41,7 @@ describe("Root Agent normal turn", () => {
     ]);
   });
 
-  it("requires Root synthesis instead of exposing a formula-only AST as the answer", () => {
+  it("selects formula-only semantic facts for the Host's friendly renderer", () => {
     expect(
       rootAgentTurnExecutorInternals.semanticFactSelectors({
         dimensions: [],
@@ -52,7 +52,7 @@ describe("Root Agent normal turn", () => {
         request_scoped_interpretations: [],
         time_semantics: [],
       } as never),
-    ).toEqual([]);
+    ).toEqual(["projection.context.formulas"]);
   });
 
   it("invokes exactly one logical provider call per normal turn", async () => {
