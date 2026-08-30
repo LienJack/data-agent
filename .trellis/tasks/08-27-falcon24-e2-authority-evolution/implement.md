@@ -1365,11 +1365,39 @@ Diagnostic/Q1/C1任一正式首次失败必须写既有 authority支持的 immut
 
 ### F4 — 无模型的低成本预检
 
-- [ ] worktree clean、owned commit/build identity、migration checksum、retained assets、Semantic Release/Profile/Datasource/Sandbox attestation核对。
-- [ ] Contracts/Agent Runtime/Platform/Worker/Web focused/full、typecheck/build、Trellis/spec、forbidden scan先通过；失败只在本阶段修复。
-- [ ] exact predecessor physical clone上应用新migration，证明protected history零漂移与all-old/all-new activation。
-- [ ] 启动attested scratch Web/Worker/OpenSandbox，用一个非正式趋势问题完成动态Semantic/Text2SQL/Analysis/Chart和答案入口Trace。
-- [ ] scratch失败进入自动修复环，不触碰live successor；PASS后清理scratch并冻结clean build。
+- [x] worktree clean、owned commit/build identity、migration checksum、retained assets、Semantic Release/Profile/Datasource/Sandbox attestation核对。
+- [x] Contracts/Agent Runtime/Platform/Worker/Web focused/full、typecheck/build、Trellis/spec、forbidden scan先通过；失败只在本阶段修复。
+- [x] exact predecessor physical clone上应用新migration，证明protected history零漂移与all-old/all-new activation。
+- [x] 启动attested scratch Web/Worker/OpenSandbox，用一个非正式趋势问题完成动态Semantic/Text2SQL/Analysis/Chart和答案入口Trace。
+- [x] scratch失败进入自动修复环，不触碰live successor；PASS后清理scratch并冻结clean build。
+
+**F4 evidence（2026-08-30）**
+
+- 冻结代码为 `7ca87e75e23bb8715e3e0f8594c4d4302a36debe`，attestation generation/Web/Worker SHA-256 依次为
+  `30d5e08bd45a3432cbb2b25aeb676cd0a9bc7d496fb3e7bf14ee9a466632b329`、
+  `f149fc406330149a147f3ba8e6e76d5dd61f4649216acb372bbbc4c663b63d36`、
+  `b96a84003a133023d5881c57d2e29f6f4823b24184c2b9fc50d3b0186a3d724a`，build manifest记录
+  `dirty=false`。NAS-only runtime、gen2 Semantic Release `18472091-59b1-5d86-b399-9605ca627040`、Falcon datasource、
+  sandbox镜像与显式binding均通过readback；OrbStack全程保持关闭。
+- 单并发full unit gate 15/15 tasks、typecheck 16/16、force production build 8/8、migration render/inventory、Trellis validate、
+  forbidden scan、diff check和F4修复涉及的15个owned TypeScript文件Biome均PASS。一次误用默认并发的full unit运行因本机资源争用
+  出现跨包timeout；同批失败套件隔离重跑14/14与99/99、随后单并发full gate全部通过。整仓`pnpm lint`仍报告20个error和
+  53个warning，均位于本轮owned修复之外的既有文件；本轮没有借F4扩大范围改写该历史lint债务。
+- exact predecessor clone在10803-10805迁移后共有215条ledger；截至10802的213条前序记录与live E10逐字闭合，MD5均为
+  `f52a83b88310288133fd90cc128a5027`。10803 checksum为
+  `sha256:ff25d3e347e3645634f280bec34f26d0718ce727a0638e7f9316b9155b351892`；scratch激活只发生在隔离物理库，
+  live E10仍停在212条应用ledger且authority bytes未变。
+- 真实composer只提交一次“最近 12 个完整月的订单收入趋势如何？请按月展示，并生成折线图。”；Conversation
+  `4ca296d8-fc48-42ae-ba54-b956ec408e18`、Run `25bcddbd-5503-8b85-9d87-ac664e02101e`最终
+  `SUCCEEDED`，共58个event、2个side-effect commit。Root动态完成Semantic -> Text2SQL -> Analysis -> Chart；首次Report
+  因`NameError`失败后在同Run重新派发成功，没有resume旧Run或手工修库。
+- 同一答案包含12行QueryEvidence `a4272859-e98e-8dbf-96e7-b4fdd81c5a38`、AnalysisReport
+  `c04710a0-9f4f-5c17-b5c1-b26be604eb57`、折线图 `fa673cbe-a092-59ab-9ae2-414a6fac3d8b`与
+  DerivedAnalysisEvidence `2f1a20d5-221a-5b77-adfa-8ce6a2be2439`。答案入口打开exact Run/event 58 Trace，核对
+  74 nodes、41 calls、Root/Subagent/Tool、accepted Artifact lineage/preview和Publisher；刷新后仍恢复同一Run/event，返回答案页通过。
+- terminal前后sandbox sweep均为`residual=0`。证据冻结后已停止本轮Web/Worker/browser/OpenSandbox，删除当前canary专用容器
+  `data-agent-falcon24-f4-month-c5b14db1`、同名pgdata卷、Keychain credential和55446转发；55433 live、55448 datasource
+  以及接管边界要求保留的既有physical/audit scratch资产未被触碰。F4至此PASS，允许进入F5，旧失败Run保持immutable。
 
 ### F5 — Live activation 与四层正式门禁
 
