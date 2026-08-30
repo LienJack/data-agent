@@ -38,6 +38,7 @@ import { evaluateFalcon24FourLayerBusiness } from "./falcon24-four-layer-busines
 import {
   falcon24FourLayerBindingIdentity,
   falcon24FourLayerConversationMatchesDefaults,
+  falcon24FourLayerShouldLoadRubricEvidence,
 } from "./falcon24-four-layer-control-identity";
 import {
   createFalcon24FourLayerController,
@@ -439,7 +440,11 @@ async function main(): Promise<void> {
         turn,
         run: terminalRunSchema.parse(run),
         public_events: publicEvents,
-        rubric_evidence: rubricEvidencePath ? await readJson(root, rubricEvidencePath) : undefined,
+        rubric_evidence:
+          rubricEvidencePath &&
+          falcon24FourLayerShouldLoadRubricEvidence(run.status, rubricEvidencePath)
+            ? await readJson(root, rubricEvidencePath)
+            : undefined,
         accepted_input_artifact_refs: await loadArtifactReferences(root, acceptedInputPath),
       });
     },

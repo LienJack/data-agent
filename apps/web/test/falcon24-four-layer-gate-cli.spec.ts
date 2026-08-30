@@ -6,6 +6,7 @@ import { describe, expect, it } from "vitest";
 import {
   falcon24FourLayerBindingIdentity,
   falcon24FourLayerConversationMatchesDefaults,
+  falcon24FourLayerShouldLoadRubricEvidence,
   stableFalcon24FourLayerUuid,
 } from "../src/cli/falcon24-four-layer-control-identity";
 
@@ -36,6 +37,13 @@ async function turns() {
 }
 
 describe("Falcon24 four-layer control identities", () => {
+  it("loads rubric evidence only for successful terminal Runs", () => {
+    expect(falcon24FourLayerShouldLoadRubricEvidence("SUCCEEDED", "/tmp/rubric.json")).toBe(true);
+    expect(falcon24FourLayerShouldLoadRubricEvidence("FAILED", "/tmp/rubric.json")).toBe(false);
+    expect(falcon24FourLayerShouldLoadRubricEvidence("CANCELLED", "/tmp/rubric.json")).toBe(false);
+    expect(falcon24FourLayerShouldLoadRubricEvidence("SUCCEEDED", undefined)).toBe(false);
+  });
+
   it("accepts the profile-aware conversation projection returned by persistence", () => {
     const datasourceId = id(20);
     const modelProfileId = id(21);

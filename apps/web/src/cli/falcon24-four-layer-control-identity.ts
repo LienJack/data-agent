@@ -10,6 +10,13 @@ export function stableFalcon24FourLayerUuid(material: string): string {
   return `${value.slice(0, 8)}-${value.slice(8, 12)}-${value.slice(12, 16)}-${value.slice(16, 20)}-${value.slice(20)}`;
 }
 
+export function falcon24FourLayerShouldLoadRubricEvidence(
+  runStatus: "QUEUED" | "RUNNING" | "WAITING" | "SUCCEEDED" | "FAILED" | "CANCELLED",
+  rubricEvidencePath: string | undefined,
+): boolean {
+  return runStatus === "SUCCEEDED" && rubricEvidencePath !== undefined;
+}
+
 export function falcon24FourLayerConversationMatchesDefaults(input: {
   readonly conversation: {
     readonly datasource_id: string | null;
