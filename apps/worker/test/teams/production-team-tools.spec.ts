@@ -167,6 +167,9 @@ describe("Production Team governed chart publication", () => {
         "TEXT2SQL_SQL_PARAMETER_BINDING_REJECTED",
       ),
     ).toBe("TEXT2SQL_SQL_PARAMETER_BINDING_REJECTED");
+    expect(
+      productionTeamToolsInternals.text2SqlCandidateFailureCode("TEXT2SQL_SQL_FUNCTION_DENIED"),
+    ).toBe("TEXT2SQL_SQL_FUNCTION_DENIED");
     expect(productionTeamToolsInternals.text2SqlCandidateFailureCode("DATABASE_URL_LEAK")).toBe(
       "TEAM_TEXT2SQL_CANDIDATE_POLICY_REJECTED",
     );

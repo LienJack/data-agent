@@ -158,7 +158,7 @@ describe("PostgreSQL model-authored Text2SQL policy", () => {
       }),
     ).rejects.toMatchObject({
       code: "TEXT2SQL_SQL_SHAPE_REJECTED",
-      diagnostic_code: "TEXT2SQL_SQL_PROJECTION_SHAPE_REJECTED",
+      diagnostic_code: "TEXT2SQL_SQL_TARGET_ALIAS_REQUIRED",
     });
     await expect(
       assertPostgresqlText2SqlCandidatePolicy({
@@ -168,7 +168,27 @@ describe("PostgreSQL model-authored Text2SQL policy", () => {
       }),
     ).rejects.toMatchObject({
       code: "TEXT2SQL_SQL_DANGEROUS",
-      diagnostic_code: "TEXT2SQL_SQL_PRIMITIVE_DENIED",
+      diagnostic_code: "TEXT2SQL_SQL_FUNCTION_DENIED",
+    });
+    await expect(
+      assertPostgresqlText2SqlCandidatePolicy({
+        sql: "select o.customer_id::pg_catalog.jsonb as customer_id from falcon_db_24.orders as o",
+        parameter_count: 0,
+        allowed_relations: allowed,
+      }),
+    ).rejects.toMatchObject({
+      code: "TEXT2SQL_SQL_DANGEROUS",
+      diagnostic_code: "TEXT2SQL_SQL_CAST_DENIED",
+    });
+    await expect(
+      assertPostgresqlText2SqlCandidatePolicy({
+        sql: "select o.customer_id as customer_id from falcon_db_24.orders as o where o.customer_id like $1",
+        parameter_count: 1,
+        allowed_relations: allowed,
+      }),
+    ).rejects.toMatchObject({
+      code: "TEXT2SQL_SQL_DANGEROUS",
+      diagnostic_code: "TEXT2SQL_SQL_OPERATOR_DENIED",
     });
   });
 });

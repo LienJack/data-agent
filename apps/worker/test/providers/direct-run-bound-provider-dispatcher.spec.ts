@@ -101,6 +101,12 @@ describe("direct run-bound provider retry policy", () => {
       "TEXT2SQL_SQL_PROJECTION_SHAPE_REJECTED means give every SELECT target an explicit unique ASCII alias",
     );
     expect(prompt).toContain(
+      "TEXT2SQL_SQL_TARGET_ALIAS_REQUIRED means add AS ascii_alias to every SELECT item",
+    );
+    expect(prompt).toContain("TEXT2SQL_SQL_FUNCTION_DENIED means remove the unlisted function");
+    expect(prompt).toContain("TEXT2SQL_SQL_OPERATOR_DENIED means replace the denied operator");
+    expect(prompt).toContain("TEXT2SQL_SQL_CAST_DENIED means replace the denied cast");
+    expect(prompt).toContain(
       "DATASOURCE_ADAPTER_SQL_REJECTED means replace invalid PostgreSQL syntax",
     );
     expect(prompt).toContain(
