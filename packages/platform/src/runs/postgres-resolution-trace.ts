@@ -825,6 +825,7 @@ const traceArtifactTypes = new Set<ArtifactReference["artifact_type"]>([
   "AnalysisCompletionReceipt",
   "AnalysisReport",
   "ArtifactWorkspaceDocument",
+  "SemanticQueryContext",
   "SchemaSnapshot",
   "SandboxExecutionReceipt",
   "SandboxResult",
@@ -1359,6 +1360,13 @@ function artifactPublicSummary(artifact: VerifiedArtifact): string {
         return `${document.projection.title} · ${document.projection.sections.length} 个章节`;
       case "CHART":
         return `${document.projection.title} · ${"mark" in document.projection ? document.projection.mark : document.projection.chart_type} · ${document.projection.table.total_rows} 行`;
+      case "SEMANTIC_CONTEXT":
+        return [
+          document.projection.context.answer_scope,
+          `${document.projection.context.metrics.length} metrics`,
+          `${document.projection.context.dimensions.length} dimensions`,
+          `${document.projection.context.relationships.length} relationships`,
+        ].join(" · ");
     }
   }
   if ("payload" in document && "protocol_version" in document.payload) {

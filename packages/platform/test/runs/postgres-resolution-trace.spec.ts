@@ -4,6 +4,7 @@ import {
   buildArtifactWorkspaceChartDocumentV2,
   buildArtifactWorkspaceChartDocumentV3,
   buildProductTeamArtifactDocument,
+  buildSemanticQueryContext,
   canonicalizeJson,
   collectL2ResearchPayloadArtifactReferences,
   computeL2ArtifactContentHash,
@@ -137,18 +138,7 @@ async function eventRow(sequence = 1, eventHash?: string) {
   };
 }
 
-async function toolCompletedEventRow(
-  artifactRefs: readonly {
-    readonly artifact_id: string;
-    readonly artifact_type: "QueryEvidence";
-    readonly app_id: string;
-    readonly tenant_id: string;
-    readonly environment: "test";
-    readonly run_id: string;
-    readonly revision: number;
-    readonly content_hash: string;
-  }[],
-) {
+async function toolCompletedEventRow(artifactRefs: readonly ArtifactReference[]) {
   const event = runRuntimeEventSchema.parse({
     schema_version: "run-runtime-event@2.0.0",
     event_id: ids.event,
@@ -325,6 +315,87 @@ async function productTeamSqlArtifactRow() {
       dialect: "postgresql",
       sql: "select count(*) from orders",
     },
+    committed_at: occurredAt,
+  });
+  return {
+    artifact_id: document.artifact_ref.artifact_id,
+    artifact_type: document.artifact_ref.artifact_type,
+    revision: document.artifact_ref.revision,
+    content_hash: document.artifact_ref.content_hash,
+    document_json: document,
+    created_at: occurredAt,
+  };
+}
+
+async function productTeamSemanticContextRow() {
+  const datasourceId = id(201);
+  const context = await buildSemanticQueryContext({
+    schema_version: "semantic-query-context@1.0.0",
+    answer_scope: "SEMANTIC_FACTS_ONLY",
+    scope,
+    run_id: ids.run,
+    semantic_domain: "commerce",
+    semantic_release: {
+      resource_id: id(202),
+      resource_revision: 1,
+      resource_hash: hash("2"),
+      datasource_id: datasourceId,
+      semantic_generation: 1,
+      publication_status: "PUBLISHED",
+    },
+    schema_snapshot: {
+      resource_id: id(203),
+      resource_revision: 1,
+      resource_hash: hash("3"),
+      datasource_id: datasourceId,
+      semantic_release_id: id(202),
+      semantic_generation: 1,
+    },
+    datasource: {
+      resource_id: datasourceId,
+      resource_revision: 1,
+      resource_hash: hash("4"),
+    },
+    semantic_context_ref: {
+      package_id: id(204),
+      package_hash: hash("5"),
+      receipt_id: id(205),
+      receipt_hash: hash("6"),
+      retrieval_receipt_hash: hash("7"),
+      inference_receipt_hash: hash("8"),
+    },
+    requested_object_ids: ["quality.orders_nonnegative"],
+    metrics: [],
+    dimensions: [],
+    formulas: [],
+    relationships: [],
+    physical_bindings: [],
+    time_semantics: [],
+    quality_constraints: [
+      {
+        constraint_id: "quality.orders_nonnegative",
+        expression: "orders.amount >= 0",
+        severity: "ERROR",
+        sensitivity: "INTERNAL",
+      },
+    ],
+    unresolved_ambiguities: [],
+  });
+  const document = await buildProductTeamArtifactDocument({
+    schema_version: "product-team-artifact@2.0.0",
+    artifact_ref: {
+      artifact_id: id(206),
+      artifact_type: "SemanticQueryContext",
+      ...scope,
+      run_id: ids.run,
+      revision: 1,
+      content_hash: hash("0"),
+    },
+    profile_id: "semantic-management-agent",
+    task_id: ids.attempt,
+    source_refs: [],
+    provenance: null,
+    projection: { kind: "SEMANTIC_CONTEXT", context },
     committed_at: occurredAt,
   });
   return {
@@ -1677,6 +1748,44 @@ describe("PostgreSQL Resolution Trace projector", () => {
         kind: "PRODUCED",
       },
     ]);
+  });
+
+  it("projects a verified SemanticQueryContext referenced by a public Tool event", async () => {
+    const semantic = await productTeamSemanticContextRow();
+    const semanticReference = semantic.document_json.artifact_ref;
+    const row = await toolCompletedEventRow([semanticReference]);
+    const { capability, authorizer } = issueCapability();
+    const { pool } = scriptedPool((text) => {
+      if (text.includes("from runs as run")) return { rows: [authorityRow()], rowCount: 1 };
+      if (text.includes("from run_events")) return { rows: [row], rowCount: 1 };
+      if (text.includes("from artifacts")) return { rows: [semantic], rowCount: 1 };
+      return undefined;
+    });
+
+    const result = await createPostgresResolutionTraceProjector({ pool, authorizer }).loadTrace(
+      capability,
+      { scope, run_id: ids.run },
+    );
+
+    expect(result.ok && result.value?.nodes).toEqual(
+      expect.arrayContaining([
+        expect.objectContaining({
+          node_id: `artifact:${semantic.artifact_id}:${semantic.revision}`,
+          title: "SemanticQueryContext",
+          status: "AVAILABLE",
+          summary: "SEMANTIC_FACTS_ONLY · 0 metrics · 0 dimensions · 0 relationships",
+        }),
+      ]),
+    );
+    expect(result.ok && result.value?.edges).toEqual(
+      expect.arrayContaining([
+        {
+          from_node_id: `event:${ids.event}`,
+          to_node_id: `artifact:${semantic.artifact_id}:${semantic.revision}`,
+          kind: "PRODUCED",
+        },
+      ]),
+    );
   });
 
   it("fails closed when an active Artifact references an inactive exact source revision", async () => {
