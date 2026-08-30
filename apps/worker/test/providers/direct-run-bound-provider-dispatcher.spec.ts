@@ -168,6 +168,18 @@ describe("direct run-bound provider retry policy", () => {
     expect(prompt).toContain("aggregates numerator and denominator separately before division");
   });
 
+  it("explains calendar alignment separately from comparison coverage and missing data", () => {
+    const prompt = directRunBoundProviderDispatcherInternals.text2SqlSpecialistSystemPrompt(
+      '{"semantic_context":{"request_scoped_interpretations":[{"operator":{"kind":"PERIOD_COMPARISON_RATE","comparison_offset":{"unit":"YEAR","value":1}}}]}}',
+    );
+
+    expect(prompt).toContain("Align comparison buckets using the declared comparison_offset");
+    expect(prompt).toContain("current_bucket = comparison_bucket + interval '1 year'");
+    expect(prompt).toContain("Do not equate unshifted current-year and prior-year timestamps");
+    expect(prompt).toContain("Apply the shift exactly once");
+    expect(prompt).toContain("Restrict the comparison source to published coverage");
+  });
+
   it("binds analysis-program parameters to the frozen method schema", () => {
     const prompt = directRunBoundProviderDispatcherInternals.analysisProgramSpecialistSystemPrompt(
       '{"method_registry":{"entries":[{"method_id":"published-trend@1","parameter_schema":{"type":"object","properties":{},"additionalProperties":false}}]}}',

@@ -180,6 +180,10 @@ resolveSemanticRequestTimeWindow({ metrics, dimensions, request_scoped_interpret
 - Text2SQL receives `semantic_context.resolved_time_window`, also frozen into its prepared context. Missing/changed current-window
   declarations or parameter values fail before datasource I/O with `TEXT2SQL_REQUEST_TIME_WINDOW_MISMATCH`, through the existing bounded
   repair path. This supplements, not replaces, AST admission, exact SQL predicate binding and published coverage checks.
+- `PERIOD_COMPARISON_RATE.comparison_offset` governs bucket alignment separately from source filtering. For a one-year comparison,
+  align `current_bucket = comparison_bucket + interval '1 year'` (parameterized), or shift the comparison projection once before the join.
+  Do not join unshifted timestamps or apply the shift twice. LEFT JOIN alone proves neither alignment nor unavailable prior data.
+  Provider guidance is not a new SQL proof: the independent business oracle must still validate covered prior values and rates.
 
 ### 4. Validation & Error Matrix
 
@@ -207,6 +211,8 @@ resolveSemanticRequestTimeWindow({ metrics, dimensions, request_scoped_interpret
   independent operations, exact time-column binding, historical context verification without inserted defaults.
 - Runtime: actual prepare/provider projection, omitted/wrong/shortened windows rejected before query I/O, exact window admitted, safe repair code.
 - Business: twelve actual current buckets with independently checked amounts and unavailable prior periods kept NULL; no cross-Run evidence.
+- Comparison regression: on a known covered month, unshifted joins reproduce a missing prior value while parameterized yearly alignment
+  returns the independently known prior amount. Never mark an all-NULL prior column correct merely because current amounts match.
 
 ### 7. Wrong vs Correct
 
