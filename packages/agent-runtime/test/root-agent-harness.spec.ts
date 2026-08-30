@@ -281,6 +281,15 @@ describe("Root Agent Harness", () => {
     expect(message).toContain("FINAL_ANSWER_EVIDENCE");
     expect(message).toContain("CONTINUATION_INPUT");
     expect(message).toContain("simple database lookup");
+    expect(message).toContain(
+      "depends on a governed metric, derived formula, period comparison, ratio, complete-period boundary, or relationship contract",
+    );
+    expect(message).toContain(
+      "delegate Semantic with CONTINUATION_INPUT before delegating Text2SQL",
+    );
+    expect(message).toContain(
+      "A physical-row lookup of explicit fields does not require this semantic prerequisite",
+    );
     expect(message).toContain("completed governed-analysis-agent observation");
     expect(message).toContain('fact_selectors:["projection.sections","projection.title"]');
     expect(message).toContain("must not delegate another analysis");
