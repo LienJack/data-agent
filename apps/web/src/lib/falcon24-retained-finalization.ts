@@ -2,6 +2,10 @@ import "server-only";
 
 import type { SemanticSuccessorStageEnvelope } from "@data-agent/contracts/artifacts";
 import { canonicalizeJson } from "@data-agent/contracts/common";
+import {
+  verifyFalcon24FourLayerGateManifest,
+  verifyFalcon24FourLayerTerminalReceipt,
+} from "@data-agent/contracts/evals";
 import type { PortResult } from "@data-agent/contracts/ports";
 import type { ModelExecutionCertificationClaims } from "@data-agent/contracts/providers";
 import {
@@ -10,15 +14,18 @@ import {
   buildFalcon24ActivationRequestV5,
   buildFalcon24ActivationRequestV6,
   buildFalcon24ActivationRequestV7,
+  buildFalcon24ActivationRequestV8,
   buildFalcon24RetainedSemanticReleaseAuthorityProof,
   type Falcon24AuthorityBindingV2,
   type Falcon24EpochClosureFailureReceipt,
   type Falcon24FinalizationFailureReceipt,
   type Falcon24LlmExecutionAuthorityProof,
+  type Falcon24PredecessorFourLayerFailureRef,
   type Falcon24RetainedActivationResultV4,
   type Falcon24RetainedActivationResultV5,
   type Falcon24RetainedActivationResultV6,
   type Falcon24RetainedActivationResultV7,
+  type Falcon24RetainedActivationResultV8,
   type Falcon24RetainedSemanticReleaseAuthorityProof,
   type Falcon24SemanticAuthorityClosure,
   type Falcon24TerminalDiagnosticFailureReceiptRef,
@@ -28,6 +35,7 @@ import {
   falcon24FinalizationFailureReceiptSchema,
   falcon24PredecessorDiagnosticFailureSchema,
   falcon24TerminalDiagnosticFailureReceiptRefSchema,
+  verifyFalcon24FourLayerRecoveryEvidence,
   verifyFalcon24LlmExecutionAuthorityProof,
 } from "@data-agent/contracts/runs";
 import type { RuntimeBuildIdentity } from "@data-agent/contracts/server";
@@ -58,6 +66,10 @@ interface RetainedEpochPort {
     capability: unknown,
     input: unknown,
   ): Promise<PortResult<Falcon24RetainedActivationResultV7>>;
+  activateRetainedWithFourLayerFailureRecovery(
+    capability: unknown,
+    input: unknown,
+  ): Promise<PortResult<Falcon24RetainedActivationResultV8>>;
 }
 
 interface RetainedReadback {
@@ -112,6 +124,14 @@ export interface Falcon24RetainedFinalizationResult {
         provider_execution_profile: ProviderExecutionProfile;
         current_execution_certification: ModelExecutionCertificationClaims;
       }>
+    | Readonly<{
+        kind: "FOUR_LAYER_FAILURE";
+        llm_execution_proof: Falcon24LlmExecutionAuthorityProof;
+        predecessor_four_layer_failure_receipt: Falcon24PredecessorFourLayerFailureRef;
+        activation_result: Falcon24RetainedActivationResultV8;
+        provider_execution_profile: ProviderExecutionProfile;
+        current_execution_certification: ModelExecutionCertificationClaims;
+      }>
     | null;
 }
 
@@ -135,6 +155,12 @@ type Falcon24RetainedRecoveryInput =
       kind: "FINALIZATION_FAILURE";
       llm_execution_proof: unknown;
       predecessor_finalization_failure: unknown;
+    }>
+  | Readonly<{
+      kind: "FOUR_LAYER_FAILURE";
+      llm_execution_proof: unknown;
+      predecessor_manifest: unknown;
+      predecessor_terminal_receipt: unknown;
     }>;
 
 function exact(left: unknown, right: unknown): boolean {
@@ -267,6 +293,15 @@ export async function finalizeFalcon24RetainedAuthority(input: {
       generation_id: input.worker_build_identity.generation_id,
     },
   });
+  const predecessorFourLayer =
+    input.recovery?.kind === "FOUR_LAYER_FAILURE"
+      ? {
+          manifest: await verifyFalcon24FourLayerGateManifest(input.recovery.predecessor_manifest),
+          terminal_receipt: await verifyFalcon24FourLayerTerminalReceipt(
+            input.recovery.predecessor_terminal_receipt,
+          ),
+        }
+      : null;
   const staged = await input.stage_falcon_authority({
     semantic_release_digest: proof.semantic_release.release_digest as `sha256:${string}`,
     retained_semantic_proof_hash: proof.proof_hash as `sha256:${string}`,
@@ -290,9 +325,11 @@ export async function finalizeFalcon24RetainedAuthority(input: {
       (closureRecoveryRequired && input.recovery.kind !== "CLOSURE_FAILURE") ||
       (terminalRecoveryRequired &&
         input.recovery.kind !== "TERMINAL_DIAGNOSTIC" &&
-        input.recovery.kind !== "FINALIZATION_FAILURE") ||
+        input.recovery.kind !== "FINALIZATION_FAILURE" &&
+        input.recovery.kind !== "FOUR_LAYER_FAILURE") ||
       (input.recovery.kind === "TERMINAL_DIAGNOSTIC" && targetOrdinal < 9n) ||
-      (input.recovery.kind === "FINALIZATION_FAILURE" && targetOrdinal < 10n)
+      (input.recovery.kind === "FINALIZATION_FAILURE" && targetOrdinal < 10n) ||
+      (input.recovery.kind === "FOUR_LAYER_FAILURE" && targetOrdinal < 12n)
     ) {
       throw new TypeError("FALCON24_RECOVERY_ACTIVATION_KIND_MISMATCH");
     }
@@ -309,7 +346,7 @@ export async function finalizeFalcon24RetainedAuthority(input: {
       predecessorDiagnosticReceipt = falcon24TerminalDiagnosticFailureReceiptRefSchema.parse(
         input.recovery.predecessor_diagnostic_receipt,
       );
-    } else {
+    } else if (input.recovery.kind === "FINALIZATION_FAILURE") {
       predecessorFinalizationFailure = falcon24FinalizationFailureReceiptSchema.parse(
         input.recovery.predecessor_finalization_failure,
       );
@@ -330,8 +367,47 @@ export async function finalizeFalcon24RetainedAuthority(input: {
   let closureRecoveryResult: Falcon24RetainedActivationResultV5 | null = null;
   let terminalDiagnosticRecoveryResult: Falcon24RetainedActivationResultV6 | null = null;
   let finalizationFailureRecoveryResult: Falcon24RetainedActivationResultV7 | null = null;
+  let fourLayerRecoveryResult: Falcon24RetainedActivationResultV8 | null = null;
   try {
-    if (llmProof && predecessorFinalizationFailure) {
+    if (llmProof && predecessorFourLayer) {
+      const terminal = predecessorFourLayer.terminal_receipt;
+      const request = await buildFalcon24ActivationRequestV8({
+        schema_version: "falcon24-activation-request@8.0.0",
+        scope: proof.scope,
+        authority_epoch: input.authority_epoch,
+        attempt_id: staged.activation_attempt_ref.activation_attempt_id,
+        baseline_id: staged.baseline_ref.baseline_id,
+        expected_baseline_hash: staged.baseline_ref.baseline_hash,
+        expected_current_authority: proof.expected_current_authority,
+        expected_semantic_release: proof.semantic_release,
+        expected_versions: proof.expected_versions,
+        retained_semantic_proof_hash: proof.proof_hash,
+        predecessor_four_layer_failure_receipt: {
+          attempt_id: terminal.attempt_id,
+          manifest_hash: terminal.manifest_hash,
+          turn_ordinal: terminal.turn_ordinal,
+          run_id: terminal.run_id,
+          receipt_hash: terminal.receipt_hash,
+          failure_code: terminal.failure_code,
+        },
+        llm_execution_stage_ref: { stage_id: llmProof.stage_id, proof_hash: llmProof.proof_hash },
+      });
+      await verifyFalcon24FourLayerRecoveryEvidence(
+        request,
+        predecessorFourLayer.manifest,
+        terminal,
+      );
+      fourLayerRecoveryResult = required(
+        await input.epoch.activateRetainedWithFourLayerFailureRecovery(input.capability, {
+          request,
+          retained_semantic_proof: proof,
+          llm_execution_proof: llmProof,
+          predecessor_manifest: predecessorFourLayer.manifest,
+          predecessor_terminal_receipt: terminal,
+        }),
+      );
+      authority = falcon24AuthorityBindingV2Schema.parse(fourLayerRecoveryResult.authority);
+    } else if (llmProof && predecessorFinalizationFailure) {
       const request = await buildFalcon24ActivationRequestV7({
         schema_version: "falcon24-activation-request@7.0.0",
         scope: proof.scope,
@@ -524,7 +600,8 @@ export async function finalizeFalcon24RetainedAuthority(input: {
       llmProof &&
       ((closureRecoveryResult && predecessorClosureFailure) ||
         (terminalDiagnosticRecoveryResult && predecessorDiagnosticReceipt) ||
-        (finalizationFailureRecoveryResult && predecessorFinalizationFailure))
+        (finalizationFailureRecoveryResult && predecessorFinalizationFailure) ||
+        (fourLayerRecoveryResult && predecessorFourLayer))
     ) {
       if (!input.load_provider_execution_profiles) {
         throw new TypeError("FALCON24_RETAINED_PROVIDER_PROFILE_READBACK_REQUIRED");
@@ -553,7 +630,8 @@ export async function finalizeFalcon24RetainedAuthority(input: {
       providerExecutionProfile = profile;
       if (
         (terminalDiagnosticRecoveryResult && predecessorDiagnosticReceipt) ||
-        (finalizationFailureRecoveryResult && predecessorFinalizationFailure)
+        (finalizationFailureRecoveryResult && predecessorFinalizationFailure) ||
+        (fourLayerRecoveryResult && predecessorFourLayer)
       ) {
         const resolveCurrentCertification =
           targetOrdinal >= 10n
@@ -594,6 +672,28 @@ export async function finalizeFalcon24RetainedAuthority(input: {
       throw error;
     }
     throw new TypeError("FALCON24_RETAINED_POST_ACTIVATION_READBACK_FAILED", { cause: error });
+  }
+  if (
+    llmProof &&
+    fourLayerRecoveryResult &&
+    providerExecutionProfile &&
+    currentExecutionCertification
+  ) {
+    return Object.freeze({
+      semantic_proof: proof,
+      authority,
+      readback: after,
+      published_release: reloaded,
+      recovery: Object.freeze({
+        kind: "FOUR_LAYER_FAILURE" as const,
+        llm_execution_proof: llmProof,
+        predecessor_four_layer_failure_receipt:
+          fourLayerRecoveryResult.predecessor_four_layer_failure_receipt,
+        activation_result: fourLayerRecoveryResult,
+        provider_execution_profile: providerExecutionProfile,
+        current_execution_certification: currentExecutionCertification,
+      }),
+    });
   }
   return Object.freeze({
     semantic_proof: proof,

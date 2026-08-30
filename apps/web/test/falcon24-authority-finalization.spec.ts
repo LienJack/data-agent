@@ -51,7 +51,7 @@ describe("Falcon24 versioned authority finalization", () => {
     });
   });
 
-  it.each(["E5", "E6", "E7", "E8", "E9", "E10", "E11"])(
+  it.each(["E5", "E6", "E7", "E8", "E9", "E10", "E11", "E12"])(
     "recognizes %s as an explicit retained-authority target before confirmation",
     async (authorityEpoch) => {
       await expect(
@@ -109,6 +109,28 @@ describe("Falcon24 versioned authority finalization", () => {
         llm_execution_stage_id: "00000000-0000-4000-8000-000000000001",
       }),
     ).toThrow("FALCON24_TERMINAL_RECOVERY_CONFIGURATION_REQUIRED");
+  });
+
+  it("selects only an explicit, exclusive four-layer predecessor for E12+", () => {
+    const candidate = {
+      authority_epoch: "E12",
+      llm_execution_stage_id: "00000000-0000-4000-8000-000000000001",
+      predecessor_four_layer_attempt_id: "00000000-0000-4000-8000-000000000002",
+    };
+    expect(resolveFalcon24RetainedRecoveryKind(candidate)).toBe("FOUR_LAYER_FAILURE");
+    for (const authority_epoch of ["E6", "E7", "E8", "E9", "E10", "E11"]) {
+      expect(() =>
+        resolveFalcon24RetainedRecoveryKind({ ...candidate, authority_epoch }),
+      ).toThrow();
+    }
+    for (const patch of [
+      { llm_execution_stage_id: undefined },
+      { predecessor_diagnostic_attempt_id: candidate.predecessor_four_layer_attempt_id },
+      { predecessor_closure_failure_receipt_id: candidate.predecessor_four_layer_attempt_id },
+      { predecessor_finalization_failure_receipt_id: candidate.predecessor_four_layer_attempt_id },
+    ]) {
+      expect(() => resolveFalcon24RetainedRecoveryKind({ ...candidate, ...patch })).toThrow();
+    }
   });
 
   it("imports only the generation-2 combined activation path", () => {

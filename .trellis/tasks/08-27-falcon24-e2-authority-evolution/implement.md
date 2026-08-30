@@ -1425,7 +1425,8 @@ Diagnostic/Q1/C1任一正式首次失败必须写既有 authority支持的 immut
   `f6-yoy-canary-b076864a/result.json`。这不是正式四层 PASS。Web/Worker/OpenSandbox 已停止，未写 live authority。
 - [x] Contracts request@8/result@8：严格引用真实四层首失败 turn receipt，不伪造 attempt terminal 或 Diagnostic。
   新恢复契约 5 tests 与既有 authority 契约 14 tests 全通过，Contracts typecheck 通过；数据库持久化首失败/权限验证仍待实现。
-- [ ] Platform/Finalizer/CLI：从现有 four-layer port 读取并验证 predecessor，沿既有 activation RPC 传递 exact evidence。
+- [x] Platform/Finalizer/CLI：从现有 four-layer port 读取并验证 predecessor，沿既有 activation RPC 传递 exact evidence。
+  Platform 17 tests、Web recovery/finalization/preflight 40 tests 与两包 typecheck 通过；不代表尚未实施的数据库迁移或正式验收通过。
 - [ ] 10814：版本分派、真实失败闭包、同事务 certification promotion、scope/lock/replay/ACL/null 防护。
 - [ ] 完整 fresh-prefix 与 populated rollback/replay/concurrency/history guard；通过后才允许 live migration。
 - [ ] 新 clean build 的 scratch canary；fresh live stage/epoch/attempt，正式 15 题重新从 L1 开始。

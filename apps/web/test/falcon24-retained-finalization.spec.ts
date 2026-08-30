@@ -2,9 +2,17 @@ import {
   buildSemanticSuccessorStage,
   type SemanticSuccessorStageEnvelope,
 } from "@data-agent/contracts/artifacts";
+import {
+  buildFalcon24FourLayerGateManifest,
+  buildFalcon24FourLayerManifestTurns,
+  buildFalcon24FourLayerTerminalReceipt,
+} from "@data-agent/contracts/evals";
 import type { ModelExecutionCertificationClaims } from "@data-agent/contracts/providers";
 import type { Falcon24SemanticAuthorityClosure } from "@data-agent/contracts/runs";
-import { buildFalcon24LlmExecutionAuthorityProof } from "@data-agent/contracts/runs";
+import {
+  buildFalcon24LlmExecutionAuthorityProof,
+  falcon24ActivationRequestV8Schema,
+} from "@data-agent/contracts/runs";
 import type { RuntimeBuildIdentity } from "@data-agent/contracts/server";
 import type { ProviderExecutionProfile } from "@data-agent/contracts/workspaces";
 import { beforeEach, describe, expect, it, vi } from "vitest";
@@ -104,6 +112,13 @@ const e11Authority = {
   baseline_hash: hash("a"),
   activation_attempt_id: id(69),
 } as const;
+const e12Authority = {
+  ...e11Authority,
+  authority_epoch: "E12",
+  baseline_id: id(78),
+  baseline_hash: hash("b"),
+  activation_attempt_id: id(79),
+} as const;
 const versions = {
   semantic_pointer: 3,
   semantic_runtime: 3,
@@ -188,7 +203,8 @@ async function arrange(
       | typeof e7Authority
       | typeof e8Authority
       | typeof e9Authority
-      | typeof e10Authority;
+      | typeof e10Authority
+      | typeof e11Authority;
     readonly target:
       | typeof e5Authority
       | typeof e6Authority
@@ -196,7 +212,8 @@ async function arrange(
       | typeof e8Authority
       | typeof e9Authority
       | typeof e10Authority
-      | typeof e11Authority;
+      | typeof e11Authority
+      | typeof e12Authority;
   } = { current: e4Authority, target: e5Authority },
 ) {
   const published = await promotedEnvelope();
@@ -373,6 +390,31 @@ async function arrange(
       };
     },
   );
+  const activateRetainedWithFourLayerFailureRecovery = vi.fn(
+    async (_capability: unknown, envelope: unknown) => {
+      events.push("activate-four-layer-failure-recovery-e12");
+      const typed = envelope as {
+        request: unknown;
+        llm_execution_proof: Awaited<ReturnType<typeof buildFalcon24LlmExecutionAuthorityProof>>;
+      };
+      const request = falcon24ActivationRequestV8Schema.parse(typed.request);
+      return {
+        ok: true as const,
+        value: {
+          schema_version: "falcon24-retained-activation-result@8.0.0" as const,
+          activation_command_hash: request.command_hash,
+          authority: authorities.target,
+          predecessor_four_layer_failure_receipt: request.predecessor_four_layer_failure_receipt,
+          llm_execution_certification: {
+            stage_id: typed.llm_execution_proof.stage_id,
+            proof_hash: typed.llm_execution_proof.proof_hash,
+            certification_receipt_ref: typed.llm_execution_proof.certification_receipt_ref,
+            execution_profile_hash: typed.llm_execution_proof.execution_profile_hash,
+          },
+        },
+      };
+    },
+  );
   const loadProviderExecutionProfiles = vi.fn(
     async (): Promise<readonly ProviderExecutionProfile[]> => [],
   );
@@ -405,6 +447,7 @@ async function arrange(
         activateRetainedWithClosureRecovery,
         activateRetainedWithTerminalDiagnosticRecovery,
         activateRetainedWithFinalizationFailureRecovery,
+        activateRetainedWithFourLayerFailureRecovery,
       },
       readback: { loadCurrentClosure, loadPublishedRelease },
       load_provider_execution_profiles: loadProviderExecutionProfiles,
@@ -422,6 +465,7 @@ async function arrange(
       activateRetainedWithClosureRecovery,
       activateRetainedWithTerminalDiagnosticRecovery,
       activateRetainedWithFinalizationFailureRecovery,
+      activateRetainedWithFourLayerFailureRecovery,
       loadProviderExecutionProfiles,
       resolveCurrentExecutionCertification,
       resolveCurrentExecutionCertificationV2,
@@ -1012,6 +1056,183 @@ describe("Falcon24 retained semantic finalization", () => {
       model_config_version: llmProof.model_config_version,
       certification_receipt_ref: llmProof.certification_receipt_ref,
     });
+  });
+
+  it("advances E11 to E12 from four-layer failure without a Diagnostic", async () => {
+    const arranged = await arrange({ current: e11Authority, target: e12Authority });
+    const llmProof = await buildFalcon24LlmExecutionAuthorityProof({
+      schema_version: "falcon24-llm-execution-authority-proof@1.0.0",
+      scope,
+      target_authority_epoch: "E12",
+      staging_id: id(70),
+      stage_id: id(71),
+      model_profile_id: id(72),
+      model_config_version: 6,
+      model_resource_hash: hash("1"),
+      provider: "deepseek",
+      model_id: "deepseek-v4-flash",
+      certification_receipt_ref: {
+        artifact_id: id(73),
+        artifact_type: "ModelCertificationReceipt",
+        app_id: scope.app_id,
+        tenant_id: scope.tenant_id,
+        environment: scope.environment,
+        run_id: id(74),
+        revision: 1,
+        content_hash: hash("2"),
+      },
+      execution_profile_hash: hash("3"),
+      deployment_id: id(75),
+      deployment_hash: hash("4"),
+      recovery_capabilities: ["AT_LEAST_ONCE_ONLY"],
+      worker_build: {
+        build_id: workerBuild.build_id,
+        generation_id: workerBuild.generation_id,
+      },
+    });
+    const manifest = await buildFalcon24FourLayerGateManifest({
+      schema_version: "falcon24-four-layer-gate-manifest@1.0.0",
+      gate_id: "E11-FL1",
+      attempt_id: id(76),
+      authority_epoch: "E11",
+      authority_baseline_id: e11Authority.baseline_id,
+      authority_baseline_hash: e11Authority.baseline_hash,
+      authority_activation_attempt_id: e11Authority.activation_attempt_id,
+      source_commit: "1".repeat(40),
+      worker_build_hash: hash("2"),
+      worker_generation_hash: hash("3"),
+      web_build_hash: hash("4"),
+      web_generation_hash: hash("5"),
+      semantic_release_hash: release.release_digest,
+      datasource_binding_hash: hash("6"),
+      model_config_hash: hash("7"),
+      runtime_attestation_hash: hash("8"),
+      turns: await buildFalcon24FourLayerManifestTurns(),
+    });
+    const first = manifest.turns[0];
+    if (!first) throw new Error("Missing frozen first turn");
+    const terminal = await buildFalcon24FourLayerTerminalReceipt({
+      schema_version: "falcon24-four-layer-turn-terminal-receipt@1.0.0",
+      gate_id: manifest.gate_id,
+      attempt_id: manifest.attempt_id,
+      manifest_hash: manifest.manifest_hash,
+      turn_ordinal: 0,
+      turn_id: first.turn_id,
+      layer: first.layer,
+      scenario_id: first.scenario_id,
+      scenario_turn_index: first.scenario_turn_index,
+      question_hash: first.question_hash,
+      conversation_id: id(80),
+      conversation_resource_version: 1,
+      run_id: id(77),
+      worker_build_hash: manifest.worker_build_hash,
+      worker_generation_hash: manifest.worker_generation_hash,
+      semantic_release_hash: manifest.semantic_release_hash,
+      business_receipt_hash: hash("9"),
+      qa_ui_receipt_hash: null,
+      trace_ui_receipt_hash: null,
+      status: "FAILED",
+      failure_code: "FALCON24_RUN_FAILED",
+      finalized_at: "2026-08-30T03:38:32.519Z",
+    });
+    const failure = {
+      attempt_id: manifest.attempt_id,
+      manifest_hash: manifest.manifest_hash,
+      turn_ordinal: 0,
+      run_id: terminal.run_id,
+      receipt_hash: terminal.receipt_hash,
+      failure_code: "FALCON24_RUN_FAILED",
+    };
+    const availableProfile: ProviderExecutionProfile = {
+      model_profile_id: llmProof.model_profile_id,
+      model_config_version: llmProof.model_config_version,
+      resource_hash: llmProof.model_resource_hash,
+      profile_version: `model-profile@${llmProof.model_config_version}` as const,
+      provider: llmProof.provider,
+      model_id: llmProof.model_id,
+      display_name: "DeepSeek Falcon24 E12",
+      adapter_version: "deepseek-adapter@1",
+      certification_receipt_ref: {
+        ...llmProof.certification_receipt_ref,
+        artifact_type: "ModelCertificationReceipt" as const,
+      },
+      execution_profile_hash: llmProof.execution_profile_hash,
+      recovery_capabilities: llmProof.recovery_capabilities,
+      connection: {
+        kind: "SYSTEM_DEPLOYMENT" as const,
+        deployment_id: llmProof.deployment_id,
+        deployment_revision: 1,
+        deployment_hash: llmProof.deployment_hash,
+      },
+      effective_context_ceiling_tokens: 32_768,
+      effective_output_ceiling_tokens: 8_192,
+      readiness: "AVAILABLE" as const,
+      selectable: true as const,
+      unavailable_reason: null,
+    };
+    const certification = {
+      profile_id: llmProof.model_profile_id,
+      model_config_version: llmProof.model_config_version,
+      provider: llmProof.provider,
+      model_id: llmProof.model_id,
+      execution_profile_hash: llmProof.execution_profile_hash,
+      receipt_ref: llmProof.certification_receipt_ref,
+    } as ModelExecutionCertificationClaims;
+    arranged.calls.loadProviderExecutionProfiles.mockResolvedValueOnce([availableProfile]);
+    arranged.calls.resolveCurrentExecutionCertificationV2.mockResolvedValueOnce(certification);
+
+    const result = await finalizeFalcon24RetainedAuthority({
+      ...arranged.input,
+      recovery: {
+        kind: "FOUR_LAYER_FAILURE",
+        llm_execution_proof: llmProof,
+        predecessor_manifest: manifest,
+        predecessor_terminal_receipt: terminal,
+      },
+    });
+
+    expect(arranged.calls.activateRetainedWithFinalizationFailureRecovery).not.toHaveBeenCalled();
+    expect(arranged.calls.activateRetainedWithFourLayerFailureRecovery).toHaveBeenCalledTimes(1);
+    expect(arranged.events).toContain("activate-four-layer-failure-recovery-e12");
+    expect(result.authority).toEqual(e12Authority);
+    expect(result.recovery).toMatchObject({
+      kind: "FOUR_LAYER_FAILURE",
+      predecessor_four_layer_failure_receipt: failure,
+      provider_execution_profile: availableProfile,
+      current_execution_certification: certification,
+    });
+    expect(
+      arranged.calls.activateRetainedWithFourLayerFailureRecovery.mock.calls[0]?.[1],
+    ).toMatchObject({
+      request: {
+        schema_version: "falcon24-activation-request@8.0.0",
+        authority_epoch: "E12",
+        predecessor_four_layer_failure_receipt: failure,
+      },
+    });
+    expect(arranged.calls.resolveCurrentExecutionCertification).not.toHaveBeenCalled();
+    expect(arranged.calls.resolveCurrentExecutionCertificationV2).toHaveBeenCalledWith({
+      model_profile_id: llmProof.model_profile_id,
+      model_config_version: llmProof.model_config_version,
+      certification_receipt_ref: llmProof.certification_receipt_ref,
+    });
+
+    expect(arranged.calls.activateRetainedWithTerminalDiagnosticRecovery).not.toHaveBeenCalled();
+    for (const patch of [{ run_id: id(99) }, { worker_build_hash: hash("f") }]) {
+      const invalid = await arrange({ current: e11Authority, target: e12Authority });
+      await expect(
+        finalizeFalcon24RetainedAuthority({
+          ...invalid.input,
+          recovery: {
+            kind: "FOUR_LAYER_FAILURE",
+            llm_execution_proof: llmProof,
+            predecessor_manifest: manifest,
+            predecessor_terminal_receipt: { ...terminal, ...patch },
+          },
+        }),
+      ).rejects.toThrow("FALCON24_FOUR_LAYER_RECEIPT_HASH_INVALID");
+      expect(invalid.calls.activateRetainedWithFourLayerFailureRecovery).not.toHaveBeenCalled();
+    }
   });
 
   it("freezes after E8 commit when the production provider reader is not exact AVAILABLE", async () => {

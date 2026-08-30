@@ -16,6 +16,11 @@ import {
   FALCON24_E1_EXPECTED_CATALOG_INVENTORY_HASH,
   falconSourceManifestSchema,
   verifyFalcon24AuthorityBaselineDocument,
+  verifyFalcon24FourLayerBusinessReceipt,
+  verifyFalcon24FourLayerGateManifest,
+  verifyFalcon24FourLayerQaUiReceipt,
+  verifyFalcon24FourLayerTerminalReceipt,
+  verifyFalcon24FourLayerTraceUiReceipt,
   verifyFalcon24RetainedAssetsManifest,
 } from "@data-agent/contracts/evals";
 import {
@@ -23,6 +28,7 @@ import {
   type Falcon24E1StagingReceipt,
   type Falcon24LlmExecutionAuthorityProof,
   type Falcon24StagingReceiptV2,
+  falcon24AuthorityBindingV2Schema,
   falcon24AuthorityEpochOrdinal,
   falcon24AuthorityEpochSchema,
   type falcon24SuccessorAuthorityEpochSchema,
@@ -40,6 +46,7 @@ import {
   createPostgresEffectiveConfigResolver,
   createPostgresFalcon24AuthorityEpoch,
   createPostgresFalcon24DiagnosticAuthority,
+  createPostgresFalcon24FourLayerGateAuthority,
   createPostgresFalcon24SemanticClosureReader,
 } from "@data-agent/platform/runs";
 import { loadRuntimeEnvironment } from "@data-agent/platform/runtime-config";
@@ -103,7 +110,8 @@ export type Falcon24RetainedRecoveryKind =
   | "DIAGNOSTIC"
   | "CLOSURE_FAILURE"
   | "TERMINAL_DIAGNOSTIC"
-  | "FINALIZATION_FAILURE";
+  | "FINALIZATION_FAILURE"
+  | "FOUR_LAYER_FAILURE";
 
 export function resolveFalcon24RetainedRecoveryKind(input: {
   readonly authority_epoch: string;
@@ -111,12 +119,25 @@ export function resolveFalcon24RetainedRecoveryKind(input: {
   readonly predecessor_diagnostic_attempt_id?: string;
   readonly predecessor_closure_failure_receipt_id?: string;
   readonly predecessor_finalization_failure_receipt_id?: string;
+  readonly predecessor_four_layer_attempt_id?: string;
 }): Falcon24RetainedRecoveryKind | null {
   const ordinal = falcon24AuthorityEpochOrdinal(input.authority_epoch);
   const hasStage = Boolean(input.llm_execution_stage_id);
   const hasDiagnostic = Boolean(input.predecessor_diagnostic_attempt_id);
   const hasClosureFailure = Boolean(input.predecessor_closure_failure_receipt_id);
   const hasFinalizationFailure = Boolean(input.predecessor_finalization_failure_receipt_id);
+  if (input.predecessor_four_layer_attempt_id) {
+    if (
+      ordinal < 12n ||
+      !hasStage ||
+      hasDiagnostic ||
+      hasClosureFailure ||
+      hasFinalizationFailure
+    ) {
+      throw new TypeError("FALCON24_FOUR_LAYER_RECOVERY_CONFIGURATION_REQUIRED");
+    }
+    return "FOUR_LAYER_FAILURE";
+  }
   if (ordinal < 7n) {
     if (hasStage || hasDiagnostic || hasClosureFailure || hasFinalizationFailure) {
       throw new TypeError("FALCON24_RECOVERY_ACTIVATION_EPOCH_INVALID");
@@ -150,6 +171,174 @@ export function resolveFalcon24RetainedRecoveryKind(input: {
   return hasDiagnostic ? "TERMINAL_DIAGNOSTIC" : "FINALIZATION_FAILURE";
 }
 
+export async function loadFalcon24FourLayerRecoveryPredecessor(input: {
+  readonly gate: Pick<
+    ReturnType<typeof createPostgresFalcon24FourLayerGateAuthority>,
+    "loadAttempt" | "loadTurn"
+  >;
+  readonly capability: unknown;
+  readonly scope: {
+    readonly app_id: string;
+    readonly tenant_id: string;
+    readonly environment: string;
+  };
+  readonly principal_id: string;
+  readonly current_authority: unknown;
+  readonly predecessor_attempt_id: unknown;
+}) {
+  const predecessorId = z.uuid().parse(input.predecessor_attempt_id);
+  const current = falcon24AuthorityBindingV2Schema.parse(input.current_authority);
+  const attempt = requireValue(
+    await input.gate.loadAttempt(input.capability, { attempt_id: predecessorId }),
+  );
+  const invalid = () => new TypeError("FALCON24_FOUR_LAYER_RECOVERY_PREFLIGHT_MISMATCH");
+  if (
+    attempt?.status !== "FAILED" ||
+    attempt.attempt_id !== predecessorId ||
+    attempt.first_failure_turn_ordinal === null ||
+    !attempt.first_failure_run_id ||
+    !attempt.first_failure_code ||
+    attempt.authority_epoch !== current.authority_epoch ||
+    attempt.authority_baseline_id !== current.baseline_id ||
+    attempt.authority_baseline_hash !== current.baseline_hash ||
+    attempt.authority_activation_attempt_id !== current.activation_attempt_id ||
+    attempt.app_id !== input.scope.app_id ||
+    attempt.tenant_id !== input.scope.tenant_id ||
+    attempt.environment !== input.scope.environment ||
+    attempt.principal_id !== input.principal_id
+  )
+    throw invalid();
+  const manifest = await verifyFalcon24FourLayerGateManifest(attempt.manifest_document);
+  for (const key of [
+    "gate_id",
+    "attempt_id",
+    "authority_epoch",
+    "authority_baseline_id",
+    "authority_baseline_hash",
+    "authority_activation_attempt_id",
+    "source_commit",
+    "worker_build_hash",
+    "worker_generation_hash",
+    "web_build_hash",
+    "web_generation_hash",
+    "semantic_release_hash",
+    "datasource_binding_hash",
+    "model_config_hash",
+    "runtime_attestation_hash",
+    "manifest_hash",
+  ] as const) {
+    if (attempt[key] !== manifest[key]) throw invalid();
+  }
+  const turn = requireValue(
+    await input.gate.loadTurn(input.capability, {
+      attempt_id: predecessorId,
+      turn_ordinal: attempt.first_failure_turn_ordinal,
+    }),
+  );
+  if (
+    turn?.status !== "FAILED" ||
+    turn.attempt_id !== predecessorId ||
+    turn.turn_ordinal !== attempt.first_failure_turn_ordinal ||
+    turn.run_id !== attempt.first_failure_run_id ||
+    turn.app_id !== attempt.app_id ||
+    turn.tenant_id !== attempt.tenant_id ||
+    turn.environment !== attempt.environment ||
+    turn.principal_id !== attempt.principal_id ||
+    !turn.terminal_receipt ||
+    !turn.business_receipt
+  )
+    throw invalid();
+  const terminal = await verifyFalcon24FourLayerTerminalReceipt(turn.terminal_receipt);
+  const business = await verifyFalcon24FourLayerBusinessReceipt(turn.business_receipt);
+  const qa = turn.qa_ui_receipt
+    ? await verifyFalcon24FourLayerQaUiReceipt(turn.qa_ui_receipt)
+    : null;
+  const trace = turn.trace_ui_receipt
+    ? await verifyFalcon24FourLayerTraceUiReceipt(turn.trace_ui_receipt)
+    : null;
+  const blueprint = manifest.turns[turn.turn_ordinal];
+  if (
+    !blueprint ||
+    terminal.status !== "FAILED" ||
+    terminal.failure_code !== attempt.first_failure_code ||
+    terminal.receipt_hash !== turn.terminal_receipt_hash ||
+    terminal.attempt_id !== predecessorId ||
+    terminal.manifest_hash !== manifest.manifest_hash ||
+    terminal.gate_id !== manifest.gate_id ||
+    terminal.run_id !== turn.run_id ||
+    terminal.turn_ordinal !== turn.turn_ordinal ||
+    terminal.conversation_id !== turn.conversation_id ||
+    terminal.conversation_resource_version !== turn.conversation_resource_version ||
+    terminal.worker_build_hash !== manifest.worker_build_hash ||
+    terminal.worker_generation_hash !== manifest.worker_generation_hash ||
+    terminal.semantic_release_hash !== manifest.semantic_release_hash ||
+    terminal.business_receipt_hash !== business.receipt_hash ||
+    business.receipt_hash !== turn.business_receipt_hash ||
+    terminal.qa_ui_receipt_hash !== (qa?.receipt_hash ?? null) ||
+    terminal.qa_ui_receipt_hash !== turn.qa_ui_receipt_hash ||
+    terminal.trace_ui_receipt_hash !== (trace?.receipt_hash ?? null) ||
+    terminal.trace_ui_receipt_hash !== turn.trace_ui_receipt_hash
+  )
+    throw invalid();
+  for (const key of [
+    "turn_id",
+    "layer",
+    "scenario_id",
+    "scenario_turn_index",
+    "question_hash",
+  ] as const) {
+    if (terminal[key] !== turn[key] || turn[key] !== blueprint[key]) throw invalid();
+  }
+  for (const receipt of [business, qa, trace]) {
+    if (!receipt) continue;
+    for (const key of [
+      "gate_id",
+      "attempt_id",
+      "manifest_hash",
+      "turn_ordinal",
+      "turn_id",
+      "layer",
+      "scenario_id",
+      "scenario_turn_index",
+      "conversation_id",
+      "conversation_resource_version",
+      "run_id",
+      "question_hash",
+      "worker_build_hash",
+      "worker_generation_hash",
+      "semantic_release_hash",
+    ] as const) {
+      if (receipt[key] !== terminal[key]) throw invalid();
+    }
+  }
+  for (const receipt of [qa, trace]) {
+    if (
+      receipt &&
+      (receipt.web_build_hash !== manifest.web_build_hash ||
+        receipt.web_generation_hash !== manifest.web_generation_hash)
+    )
+      throw invalid();
+  }
+  if (qa && qa.answer_hash !== business.answer_hash) throw invalid();
+  if (
+    trace &&
+    (trace.public_event_hash !== business.public_event_hash ||
+      trace.accepted_artifact_refs_hash !==
+        (await sha256ContentHash(business.accepted_artifact_refs)))
+  )
+    throw invalid();
+  const failedStage =
+    business.status === "FAIL" && !qa && !trace
+      ? business
+      : business.status === "PASS" && qa?.status === "FAIL" && !trace
+        ? qa
+        : business.status === "PASS" && qa?.status === "PASS" && trace?.status === "FAIL"
+          ? trace
+          : null;
+  if (!failedStage || failedStage.failure_code !== terminal.failure_code) throw invalid();
+  return Object.freeze({ predecessor_manifest: manifest, predecessor_terminal_receipt: terminal });
+}
+
 const configurationSchema = z
   .strictObject({
     database_url: z.string().min(1),
@@ -163,6 +352,7 @@ const configurationSchema = z
     predecessor_diagnostic_attempt_id: z.uuid().optional(),
     predecessor_closure_failure_receipt_id: z.uuid().optional(),
     predecessor_finalization_failure_receipt_id: z.uuid().optional(),
+    predecessor_four_layer_attempt_id: z.uuid().optional(),
     environment: z.string().regex(/^[A-Za-z0-9][A-Za-z0-9._-]{0,63}$/u),
     web_build_identity_file: z.string().min(1).max(4_096).refine(isAbsolute),
     worker_build_identity_file: z.string().min(1).max(4_096).refine(isAbsolute),
@@ -904,6 +1094,7 @@ export async function runFalcon24AuthorityFinalization(
       environment.FALCON24_PREDECESSOR_CLOSURE_FAILURE_RECEIPT_ID,
     predecessor_finalization_failure_receipt_id:
       environment.FALCON24_PREDECESSOR_FINALIZATION_FAILURE_RECEIPT_ID,
+    predecessor_four_layer_attempt_id: environment.FALCON24_PREDECESSOR_FOUR_LAYER_ATTEMPT_ID,
   });
   const retainedE1 = await verifyFalcon24RetainedAssetsManifest(
     json(resolve(REPOSITORY_ROOT, "infra/falcon/e1/retained-assets-manifest.json")),
@@ -1076,6 +1267,24 @@ export async function runFalcon24AuthorityFinalization(
                 failure_class: predecessorDiagnostic.failure_class,
                 failure_code: predecessorDiagnostic.failure_code,
               }),
+            });
+          }
+          if (recoveryKind === "FOUR_LAYER_FAILURE") {
+            const predecessor = await loadFalcon24FourLayerRecoveryPredecessor({
+              gate: createPostgresFalcon24FourLayerGateAuthority({
+                pool: sqlPool,
+                authorizer: authority.authorizer,
+              }),
+              capability,
+              scope: capability.scope,
+              principal_id: configuration.principal_id,
+              current_authority: currentAuthority,
+              predecessor_attempt_id: configuration.predecessor_four_layer_attempt_id,
+            });
+            return Object.freeze({
+              kind: "FOUR_LAYER_FAILURE" as const,
+              llm_execution_proof: llmExecutionProof,
+              ...predecessor,
             });
           }
           const finalizationFailureReceiptId =
