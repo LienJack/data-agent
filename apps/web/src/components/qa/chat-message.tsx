@@ -32,7 +32,7 @@ export function ChatMessage({ message, events = [] }: ChatMessageProps) {
 
   return (
     <div
-      id={message.runId ? `chat-run-${message.runId}` : undefined}
+      id={!isUser && message.runId ? `chat-run-${message.runId}` : undefined}
       className={`mb-8 flex ${isUser ? "justify-end" : "justify-start"} scroll-m-20`}
     >
       <div

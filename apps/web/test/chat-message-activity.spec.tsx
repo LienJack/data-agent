@@ -32,6 +32,7 @@ describe("ChatMessage activity ownership", () => {
     expect(html).toContain("统计数据库表数量");
     expect(html).not.toContain("不应出现在用户消息中");
     expect(html).not.toContain("Data Agent");
+    expect(html).not.toContain(`id="chat-run-${runId}"`);
   });
 
   it("keeps user Markdown as plain text", () => {
@@ -94,5 +95,6 @@ describe("ChatMessage activity ownership", () => {
     expect(html).toContain('data-testid="qa-result-trace-entry"');
     expect(html).toContain(`data-run-id="${runId}"`);
     expect(html).toContain('data-terminal-status="COMPLETED"');
+    expect(html).toContain(`id="chat-run-${runId}"`);
   });
 });
