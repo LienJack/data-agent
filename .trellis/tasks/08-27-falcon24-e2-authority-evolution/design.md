@@ -1403,3 +1403,27 @@ Agent 只可准备 DRAFT/review packet，不能冒充 reviewer；该分支等待
 
 严禁修改 E1-E10 history、复用失败 Run、Direct QA、固定 SQL/业务 DAG、API-only UI PASS、把 assistant 文本当证据、把 request-scoped
 语义解释静默发布为全局定义，或将 `production_isolation=false` 描述为生产 GO。
+
+### 25.8 F6 四层失败的前向恢复输入
+
+2026-08-31 只读复核：live E11 baseline `4afa8ded-1d65-5eea-90ee-d0b7c27031bb` 未变；其原冻结 build 的
+attempt `46b61e31-a57a-4d50-8202-8c592b323d7c` 与首题均为 FAILED，真实 terminal turn receipt 为
+`sha256:d5b4587294162d3e825e46587e9f753cfe07b03a41b42ec4a2bd752ead3a1b8e`。Attempt terminal receipt 为空是现有
+阶段模型的合法状态，不能补造。E11 没有 Diagnostic，故现有 request@6/@7 不能表达这个恢复原因。
+
+在既有 retained Finalizer 与 `activate_falcon24_authority(jsonb)` 上增加 request@8/result@8；只接受 exact successor
+且 target >= E12，保留 gen2 语义权威。输入绑定 predecessor attempt、manifest hash、首个失败 turn ordinal/Run、真实 turn
+terminal receipt hash 与 failure code；CLI 从现有 four-layer read port 读取，不能从调用者文本合成失败证据。Manifest 与 receipt
+均重新校验内容 hash、baseline/activation/release/build 和题目 identity。服务器另外验证同 principal/scope 的持久化 FAILED
+attempt/turn、首失败一致性、阶段 receipt 闭包，以及 predecessor baseline 的冻结 source/Web build。
+
+前向迁移使用经 inventory 分配的 10814，复用同一 RPC 的版本分派与既有 retained activation 内核。锁顺序延续
+semantic fence -> activation advisory -> current/pointer/runtime/defaults -> failed attempt/turn -> LLM stage/certification ->
+catalog/model/deployment -> target baseline/staging receipt；仅 STAGED/inactive 的 fresh certification 可随新 epoch 原子提升。
+幂等重放必须绑定原 command hash 与 exact failure/stage；并发或 stale predecessor 不能制造第二个 current authority。旧协议及
+旧 RPC 内核保留，内部入口不授予 backend/browser，历史失败表只读，不增加第二套 publisher、Diagnostic 或失败权威。
+
+验证必须覆盖 unknown/missing/null 字段、hash 篡改、错 epoch/scope/principal/baseline/build/Run/首失败、PASS 冒充失败、不同
+manifest 拼接、fresh stage 与 result 错配、权限和并发 CAS；先跑 focused tests，再在 NAS 专用物理库执行完整 fresh-prefix 及
+populated rollback/replay/history hash 守卫。以上通过前不迁移或激活 live。新代码 clean build 后还要 fresh scratch canary，
+随后新 epoch 的正式 attempt 从 L1 开始；任何旧 build 的 PASS 均不拼入。

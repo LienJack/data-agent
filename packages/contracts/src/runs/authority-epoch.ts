@@ -13,6 +13,10 @@ import {
   falcon24AuthorityBaselineV2Schema,
 } from "../evals/falcon24-authority-baseline.js";
 import {
+  verifyFalcon24FourLayerGateManifest,
+  verifyFalcon24FourLayerTerminalReceipt,
+} from "../evals/falcon24-four-layer-gate.js";
+import {
   FALCON24_E1_AUTHORITY_EPOCH,
   falcon24AuthorityEpochOrdinal,
   falcon24AuthorityEpochSchema,
@@ -782,6 +786,135 @@ export const falcon24RetainedActivationResultV7Schema = z.strictObject({
   }),
 });
 
+export const falcon24PredecessorFourLayerFailureRefSchema = z.strictObject({
+  attempt_id: immutableIdSchema,
+  manifest_hash: contentHashSchema,
+  turn_ordinal: z.number().int().min(0).max(14),
+  run_id: immutableIdSchema,
+  receipt_hash: contentHashSchema,
+  failure_code: stableFailureCodeSchema,
+});
+
+export const falcon24ActivationRequestV8MaterialSchema = z
+  .strictObject({
+    schema_version: z.literal("falcon24-activation-request@8.0.0"),
+    scope: semanticScopeSchema,
+    authority_epoch: falcon24SuccessorAuthorityEpochSchema,
+    attempt_id: immutableIdSchema,
+    baseline_id: immutableIdSchema,
+    expected_baseline_hash: contentHashSchema,
+    expected_current_authority: falcon24AuthorityBindingV2Schema,
+    expected_semantic_release: semanticSuccessorCandidateReleaseReferenceSchema,
+    expected_versions: retainedSemanticExpectedVersionsSchema,
+    retained_semantic_proof_hash: contentHashSchema,
+    predecessor_four_layer_failure_receipt: falcon24PredecessorFourLayerFailureRefSchema,
+    llm_execution_stage_ref: llmExecutionStageReferenceSchema,
+  })
+  .superRefine((document, context) => {
+    addRetainedSemanticEpochIssues(document, context);
+    if (falcon24AuthorityEpochOrdinal(document.authority_epoch) < 12n) {
+      context.addIssue({
+        code: "custom",
+        message: "FALCON24_FOUR_LAYER_RECOVERY_EPOCH_INVALID",
+        path: ["authority_epoch"],
+      });
+    }
+    if (
+      document.baseline_id === document.expected_current_authority.baseline_id ||
+      document.attempt_id === document.expected_current_authority.activation_attempt_id
+    ) {
+      context.addIssue({ code: "custom", message: "FALCON24_FOUR_LAYER_RECOVERY_ID_REUSED" });
+    }
+  });
+
+export const falcon24ActivationRequestV8Schema = falcon24ActivationRequestV8MaterialSchema.extend({
+  command_hash: contentHashSchema,
+});
+
+function falcon24ActivationRequestV8Material(input: unknown) {
+  const full = falcon24ActivationRequestV8Schema.safeParse(input);
+  if (!full.success) return falcon24ActivationRequestV8MaterialSchema.parse(input);
+  const { command_hash: _commandHash, ...material } = full.data;
+  return falcon24ActivationRequestV8MaterialSchema.parse(material);
+}
+
+export async function buildFalcon24ActivationRequestV8(input: unknown) {
+  const material = falcon24ActivationRequestV8Material(input);
+  return falcon24ActivationRequestV8Schema.parse({
+    ...material,
+    command_hash: await sha256ContentHash(material),
+  });
+}
+
+export async function verifyFalcon24ActivationRequestV8(input: unknown) {
+  const command = falcon24ActivationRequestV8Schema.parse(input);
+  if (
+    (await sha256ContentHash(falcon24ActivationRequestV8Material(command))) !== command.command_hash
+  ) {
+    throw new TypeError("FALCON24_FOUR_LAYER_RECOVERY_COMMAND_HASH_INVALID");
+  }
+  return command;
+}
+
+// This checks content-addressed evidence, not database authority. The activation RPC must
+// also check persisted scope/principal, first-failure state, stage closure and baseline build.
+export async function verifyFalcon24FourLayerRecoveryEvidence(
+  request: unknown,
+  manifestInput: unknown,
+  terminalInput: unknown,
+) {
+  const [command, manifest, terminal] = await Promise.all([
+    verifyFalcon24ActivationRequestV8(request),
+    verifyFalcon24FourLayerGateManifest(manifestInput),
+    verifyFalcon24FourLayerTerminalReceipt(terminalInput),
+  ]);
+  const failure = command.predecessor_four_layer_failure_receipt;
+  const predecessor = command.expected_current_authority;
+  const turn = manifest.turns[failure.turn_ordinal];
+  if (
+    manifest.authority_epoch !== predecessor.authority_epoch ||
+    manifest.authority_baseline_id !== predecessor.baseline_id ||
+    manifest.authority_baseline_hash !== predecessor.baseline_hash ||
+    manifest.authority_activation_attempt_id !== predecessor.activation_attempt_id ||
+    manifest.semantic_release_hash !== command.expected_semantic_release.release_digest ||
+    manifest.attempt_id !== failure.attempt_id ||
+    manifest.manifest_hash !== failure.manifest_hash ||
+    terminal.status !== "FAILED" ||
+    terminal.receipt_hash !== failure.receipt_hash ||
+    terminal.attempt_id !== failure.attempt_id ||
+    terminal.manifest_hash !== failure.manifest_hash ||
+    terminal.turn_ordinal !== failure.turn_ordinal ||
+    terminal.run_id !== failure.run_id ||
+    terminal.failure_code !== failure.failure_code ||
+    terminal.gate_id !== manifest.gate_id ||
+    terminal.worker_build_hash !== manifest.worker_build_hash ||
+    terminal.worker_generation_hash !== manifest.worker_generation_hash ||
+    terminal.semantic_release_hash !== manifest.semantic_release_hash ||
+    !turn ||
+    terminal.turn_id !== turn.turn_id ||
+    terminal.layer !== turn.layer ||
+    terminal.scenario_id !== turn.scenario_id ||
+    terminal.scenario_turn_index !== turn.scenario_turn_index ||
+    terminal.question_hash !== turn.question_hash
+  ) {
+    throw new TypeError("FALCON24_FOUR_LAYER_RECOVERY_EVIDENCE_MISMATCH");
+  }
+  return { manifest, terminal_receipt: terminal };
+}
+
+export const falcon24RetainedActivationResultV8Schema = z.strictObject({
+  schema_version: z.literal("falcon24-retained-activation-result@8.0.0"),
+  activation_command_hash: contentHashSchema,
+  authority: falcon24AuthorityBindingV2Schema,
+  predecessor_four_layer_failure_receipt: falcon24PredecessorFourLayerFailureRefSchema,
+  llm_execution_certification: z.strictObject({
+    stage_id: immutableIdSchema,
+    proof_hash: contentHashSchema,
+    certification_receipt_ref: artifactReferenceSchema,
+    execution_profile_hash: contentHashSchema,
+  }),
+});
+
 const combinedFalcon24SemanticActivationExpectedVersionsSchema = z.strictObject({
   semantic_pointer: z.number().int().min(1).max(Number.MAX_SAFE_INTEGER),
   semantic_runtime: z.number().int().min(1).max(Number.MAX_SAFE_INTEGER),
@@ -1233,6 +1366,13 @@ export type Falcon24PredecessorFinalizationFailureRef = z.infer<
 >;
 export type Falcon24RetainedActivationResultV7 = z.infer<
   typeof falcon24RetainedActivationResultV7Schema
+>;
+export type Falcon24ActivationRequestV8 = z.infer<typeof falcon24ActivationRequestV8Schema>;
+export type Falcon24PredecessorFourLayerFailureRef = z.infer<
+  typeof falcon24PredecessorFourLayerFailureRefSchema
+>;
+export type Falcon24RetainedActivationResultV8 = z.infer<
+  typeof falcon24RetainedActivationResultV8Schema
 >;
 export type Falcon24LlmExecutionAuthorityProof = z.infer<
   typeof falcon24LlmExecutionAuthorityProofSchema
