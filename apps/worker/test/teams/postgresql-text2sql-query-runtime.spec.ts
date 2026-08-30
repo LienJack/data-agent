@@ -510,6 +510,80 @@ describe("PostgreSQL Text2SQL query runtime", () => {
     ).rejects.toMatchObject({ code: "TEXT2SQL_SEMANTIC_BINDING_OUT_OF_RANGE" });
   });
 
+  it("admits the exact published time dependency of a retrieved metric", async () => {
+    const { config, datasource, semanticCatalog, semanticContext, semanticQueryContext, snapshot } =
+      await fixture();
+    const catalog = semanticCatalog as unknown as {
+      readonly executable: {
+        readonly metrics: readonly Readonly<Record<string, unknown>>[];
+      };
+      readonly restrictions: Readonly<Record<string, unknown>>;
+    };
+    const timeDomain = {
+      time_domain_id: "time.order-month",
+      calendar: "gregorian" as const,
+      timezone: "Asia/Shanghai",
+      min_time: null,
+      max_time: null,
+    };
+    const selectedMetric = {
+      ...catalog.executable.metrics[0],
+      time_domain: timeDomain,
+      time_column_id: "orders.created_at",
+    };
+    const catalogWithTimeDependency = {
+      ...catalog,
+      executable: {
+        ...catalog.executable,
+        metrics: [selectedMetric, ...catalog.executable.metrics.slice(1)],
+      },
+      restrictions: {
+        ...catalog.restrictions,
+        time_semantics: [timeDomain],
+      },
+    };
+    const { context_hash: _contextHash, ...draft } = semanticQueryContext;
+    const contextWithTimeDependency = await buildSemanticQueryContext({
+      ...draft,
+      requested_object_ids: ["metric.order-count", "time.order-month"],
+      metrics: [selectedMetric],
+      time_semantics: [timeDomain],
+    });
+    const runtime = createPostgresqlText2SqlQueryRuntime({
+      pool: { connect: vi.fn() } as never,
+      capability: {},
+      schema_snapshots: {
+        getSnapshot: vi.fn(async () => ({ ok: true as const, value: snapshot })),
+      },
+      datasources: {
+        getDatasource: vi.fn(async () => ({ ok: true as const, value: datasource })),
+      },
+      secrets: {
+        get: vi.fn(async () => ({
+          ok: true as const,
+          value: {
+            ref: `secretref:${id(7)}` as const,
+            name: "falcon-reader",
+            version: 1,
+            status: "ACTIVE" as const,
+          },
+        })),
+      },
+    });
+
+    await expect(
+      runtime.prepare({
+        effective_config: config as never,
+        semantic_context: semanticContext,
+        semantic_catalog: catalogWithTimeDependency as never,
+        semantic_query_context: contextWithTimeDependency,
+        max_context_bytes: 32_000,
+      }),
+    ).resolves.toMatchObject({
+      semantic_query_context_hash: contextWithTimeDependency.context_hash,
+    });
+  });
+
   it.each(["run", "release", "schema", "datasource", "out-of-range"] as const)(
     "rejects %s SemanticQueryContext drift before schema/datasource or target I/O",
     async (variant) => {

@@ -443,9 +443,6 @@ async function validateSemanticQueryContextBinding(input: {
     ...packageDocument.inference_receipt.mandatory_object_ids,
     ...packageDocument.inference_receipt.mandatory_relationship_ids,
   ]);
-  if ([...requestedIds].some((id) => !allowedIds.has(id))) {
-    throw new Text2SqlQueryRuntimeError("TEXT2SQL_SEMANTIC_CONTEXT_OUT_OF_RANGE");
-  }
 
   const metricById = new Map(
     catalog.executable.metrics.map((metric) => [metric.metric_id, metric] as const),
@@ -471,6 +468,15 @@ async function validateSemanticQueryContextBinding(input: {
       (constraint) => [constraint.constraint_id, constraint] as const,
     ),
   );
+  const allowedRequestedIds = new Set(allowedIds);
+  for (const requestedId of requestedIds) {
+    if (!allowedIds.has(requestedId)) continue;
+    const timeDomainId = metricById.get(requestedId)?.time_domain?.time_domain_id;
+    if (timeDomainId) allowedRequestedIds.add(timeDomainId);
+  }
+  if ([...requestedIds].some((id) => !allowedRequestedIds.has(id))) {
+    throw new Text2SqlQueryRuntimeError("TEXT2SQL_SEMANTIC_CONTEXT_OUT_OF_RANGE");
+  }
   const allKnownIds = new Set([
     ...metricById.keys(),
     ...dimensionById.keys(),
