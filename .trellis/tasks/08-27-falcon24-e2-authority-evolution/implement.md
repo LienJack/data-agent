@@ -1434,7 +1434,8 @@ Diagnostic/Q1/C1任一正式首次失败必须写既有 authority支持的 immut
   新空库 `data-agent-falcon24-f6-prefix-9fdd38f3`（55458）跑通完整 migration prefix、runner 的必选历史/锁检查及
   10814 selected assertions；未声称全部 post-prefix assertions 通过。live 写入和 provider 调用均为 0。
   正向认证/激活、activation rollback/replay/concurrency 仍待下一验证步骤，不把安装或负例通过当成恢复验收。
-- [ ] 完整 fresh-prefix 与 populated rollback/replay/concurrency/history guard；通过后才允许 live migration。
+- [x] forward migration prefix、必选 history/lock、selected assertions 与 populated rollback/replay/concurrency/history guard；
+  未声称全部 post-prefix assertions 通过。下述 `e82471c5` fresh 实证完成后才进入 live migration。
 - `7fd7676c` clean build 8/8 tasks、单并发 full unit gate 15/15 tasks 通过。首次逻辑克隆 Finalizer 在 dataset
   predecessor proof 处 HOLD（激活 RPC=0）；9 表逻辑 hash 相同但两表物理行序不同。失败克隆与认证保留且容器停止。
 - 从 live 在线物理备份建立独立克隆 `data-agent-falcon24-f6-physical-recovery-7fd7676c`（55460，独立 volume，
@@ -1451,6 +1452,25 @@ Diagnostic/Q1/C1任一正式首次失败必须写既有 authority支持的 immut
   （55461）完整 prefix/必选历史与锁检查/10815 selected assertions 通过；并非全部 post-prefix assertions。
   新 clean build 下的 fresh certification、首次并发激活和完整 Finalizer readback 仍需重新证明，不能拼接此次历史验证作正式 PASS。
 - [ ] 新 clean build 的 scratch canary；fresh live stage/epoch/attempt，正式 15 题重新从 L1 开始。
+
+**E12 实证与 L2-02 恢复缺陷（2026-08-31）**
+
+- `e82471c5` clean force build 8/8、单并发 full unit 15/15 tasks 通过。独立物理克隆 55462 上的正常 Finalizer
+  request@8 完成 promotion 后失败全回滚、激活后回滚、并发首提交/第二次 exact replay、冲突拒绝和 ACTIVE readback。
+  非计分同比 canary Run `491821bb-e564-80f7-8429-5b44ffc2a6f7` 的业务 oracle、同 Run QA、42/42 Trace 节点和
+  3/3 Artifact 预览通过；原克隆和失败历史保留，服务停止。
+- live 55433 在迁移前完成 `pg_basebackup` + `pg_verifybackup`，备份 volume
+  `data-agent-falcon24-e11-pre-e12-e82471c5-backup` 从未启动。10812–10815 逐项安装后，346 张既有表与旧 ledger 的
+  canonical count/hash 均未变化。首次认证失败保留；独立只读 capability probe 5/5 后，fresh stage 的正常认证通过。
+- E12 baseline `2d6419d1-af40-514e-b46b-1131600497cb`、activation `ab1617ff-e709-5234-a463-860228fe77ba`
+  由正常 Finalizer 激活。formal attempt `94cd5014-e6a1-4da5-a491-865e760fb9cf` 的 L1 5/5 和 L2-01 通过业务/QA/Trace。
+  L2-02 Run `e0fa0832-8eb0-8516-be9e-753a27299108` 只返回定义，真实 business FAIL；QA/Trace 未运行，后续 8 题未提交。
+- 失败 checkpoint 证明 Root 明确要求 `CONTINUATION_INPUT`，但 Semantic 快捷终止漏查 usage。已补双条件守卫与恢复回归，
+  详见 `research/e12-semantic-continuation-regression.md`。四步串行链的最终收敛预算风险须另行确定性验证。
+- 从从未启动的备份另建无网络、默认只读审计克隆，346 张表均匹配迁移前指纹；live 的旧行无删除，除 current epoch 指针、
+  capability 撤销/heads 前进外旧行无变化。审计 `e12-history-diff-1788116086100.json` 保留，克隆已停止，backup volume 未修改。
+- E12 的六题通过前缀仅为该失败 attempt 的历史证据，不能拼入下一构建。Web/Worker/OpenSandbox 与本轮 browser 已停止；
+  任务保持 in_progress，production isolation 仍为 false/HOLD。下一步是修复验证、scoped commit、fresh scratch/epoch/attempt。
 
 **F6 READY 轮次恢复边界（2026-08-30）**
 

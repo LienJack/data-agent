@@ -106,6 +106,7 @@ async function terminalSemanticFactsDecision(input: {
       (candidate) =>
         candidate.status === "COMPLETED" &&
         candidate.profile_id === "semantic-management-agent" &&
+        candidate.output_usage === "FINAL_ANSWER_EVIDENCE" &&
         candidate.output_ref.artifact_type === "SemanticQueryContext" &&
         candidate.safe_projection.projection_kind === "SEMANTIC_CONTEXT",
     );

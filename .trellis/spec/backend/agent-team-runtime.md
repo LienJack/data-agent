@@ -37,6 +37,10 @@ Root turn 0..3 (AUTO)
 - Subagent terminal results return to Root as strict safe Tool Results. A later turn may pass an exact accepted output only through ordinary `input_artifact_refs`。
 - 已创建的 child task 在 Tool、Context、执行或验收失败时，必须先发出绑定其 exact Profile/Task 的 `agent_status=FAILED`，再向 Root 传播稳定错误码；仅发 Root 委派失败会使公开 Trace 与 Q&A 中的 child 永久停在 RUNNING。不得用后续新 task 的成功覆盖原 task 失败。
 - `output_usage` 同样约束 `AnalysisReport`：只有 `FINAL_ANSWER_EVIDENCE` 可触发 Host 自动完成及 Provider delegation 关闭；`CONTINUATION_INPUT` 必须保留下一次 Root 决策。不得仅凭 Artifact 类型提前结束，也不得由 Host 固定插入报告步骤；后续能力仍须满足冻结 Catalog 的输入契约与剩余预算。
+- `SemanticQueryContext` 的自动完成必须同时满足 Root 的 `output_usage=FINAL_ANSWER_EVIDENCE` 与专职结果的
+  `answer_scope=SEMANTIC_FACTS_ONLY`。后者仅描述此次专职任务的回答范围，不能覆盖 Root 对整个用户请求的继续执行约定。
+  `CONTINUATION_INPUT` 即使包含完整定义且没有歧义，也必须原样返回下一次 Root 决策；失败后恢复同样适用，不得删除旧失败观察。
+  必须交叉测试 Semantic/Report 的两种 usage，证明 continuation 会调用下一次 Root，而 semantic-only final 不额外调用模型。
 - Specialist Provider logical call identity必须绑定 exact `run_id + accepted child task_id + stage + call_index`。同一 task的同一
   call replay仍拒绝重复；不同 Root turn创建的不同 child task即使选择相同 Profile/stage也不得碰撞。`call_index`只表示同一
   task内部的有界候选修复，不能替代 task identity。
