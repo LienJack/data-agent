@@ -10,7 +10,10 @@ import {
   versionIdentifierSchema,
 } from "../common/index.js";
 import { artifactReferenceFor, artifactReferenceSchema } from "./envelope.js";
-import { artifactWorkspaceProjectionSchema } from "./export-receipt.js";
+import {
+  artifactWorkspaceProjectionSchema,
+  artifactWorkspaceTableProjectionSchema,
+} from "./export-receipt.js";
 import { verifySemanticQueryContext } from "./semantic-query-context.js";
 
 const productArtifactReferenceSchema = z.union([
@@ -231,7 +234,65 @@ const productTeamArtifactProvenanceSchema = z.discriminatedUnion("kind", [
     truncated: z.literal(false),
     semantic_binding: queryEvidenceSemanticBindingSchema,
   }),
+  z.strictObject({
+    kind: z.literal("ACCEPTED_TABLE_INPUT"),
+    acceptance_id: immutableIdSchema,
+    accepted_by_principal_id: immutableIdSchema,
+    accepted_at: timestampSchema,
+    table_hash: contentHashSchema,
+    row_count: z.number().int().nonnegative().safe(),
+  }),
 ]);
+
+const acceptedTableInputProvenanceMaterialSchema = z.strictObject({
+  acceptance_id: immutableIdSchema,
+  accepted_by_principal_id: immutableIdSchema,
+  accepted_at: timestampSchema,
+  projection: artifactWorkspaceTableProjectionSchema,
+});
+
+export async function computeAcceptedTableInputHash(input: unknown) {
+  const material = acceptedTableInputProvenanceMaterialSchema.parse(input);
+  return sha256ContentHash({
+    hash_domain: "accepted-table-input@1.0.0",
+    value: material.projection,
+  });
+}
+
+export async function buildAcceptedTableInputProvenance(input: unknown) {
+  const material = acceptedTableInputProvenanceMaterialSchema.parse(input);
+  return productTeamArtifactProvenanceSchema.parse({
+    kind: "ACCEPTED_TABLE_INPUT",
+    acceptance_id: material.acceptance_id,
+    accepted_by_principal_id: material.accepted_by_principal_id,
+    accepted_at: material.accepted_at,
+    table_hash: await computeAcceptedTableInputHash(material),
+    row_count: material.projection.total_rows,
+  });
+}
+
+async function verifyAcceptedTableInput(document: ProductTeamArtifactDocument): Promise<void> {
+  if (
+    document.artifact_ref.artifact_type !== "QueryEvidence" ||
+    document.provenance?.kind !== "ACCEPTED_TABLE_INPUT" ||
+    document.projection.kind !== "TABLE"
+  ) {
+    return;
+  }
+  if (
+    document.provenance.table_hash !==
+      (await computeAcceptedTableInputHash({
+        acceptance_id: document.provenance.acceptance_id,
+        accepted_by_principal_id: document.provenance.accepted_by_principal_id,
+        accepted_at: document.provenance.accepted_at,
+        projection: document.projection,
+      })) ||
+    document.provenance.row_count !== document.projection.total_rows ||
+    document.projection.rows.length !== document.projection.total_rows
+  ) {
+    throw new TypeError("ACCEPTED_TABLE_INPUT_HASH_MISMATCH");
+  }
+}
 
 const productTeamArtifactDraftSchema = z
   .strictObject({
@@ -289,13 +350,17 @@ const productTeamArtifactDraftSchema = z
     }
     if (
       document.artifact_ref.artifact_type === "QueryEvidence" &&
-      (document.provenance?.kind !== "GOVERNED_QUERY_RESULT" ||
-        document.source_refs.length !== 1 ||
-        document.source_refs[0]?.artifact_type !== "SqlArtifact")
+      !(
+        (document.provenance?.kind === "GOVERNED_QUERY_RESULT" &&
+          document.source_refs.length === 1 &&
+          document.source_refs[0]?.artifact_type === "SqlArtifact") ||
+        (document.provenance?.kind === "ACCEPTED_TABLE_INPUT" && document.source_refs.length === 0)
+      )
     ) {
       ctx.addIssue({
         code: "custom",
-        message: "QueryEvidence 必须封存查询 receipt 并精确引用一个 SqlArtifact。",
+        message:
+          "QueryEvidence 必须封存查询 receipt 并引用一个 SqlArtifact，或封存完整的已验收表格输入。",
         path: ["provenance"],
       });
     }
@@ -419,6 +484,7 @@ export async function computeProductTeamArtifactHash(input: unknown) {
 
 export async function buildProductTeamArtifactDocument(input: unknown) {
   const document = productTeamArtifactDocumentSchema.parse(input);
+  await verifyAcceptedTableInput(document);
   if (document.projection.kind === "SEMANTIC_CONTEXT") {
     await verifySemanticQueryContext(document.projection.context);
   }
@@ -433,6 +499,7 @@ export async function buildProductTeamArtifactDocument(input: unknown) {
 
 export async function verifyProductTeamArtifactDocument(input: unknown) {
   const document = productTeamArtifactDocumentSchema.parse(input);
+  await verifyAcceptedTableInput(document);
   if (document.projection.kind === "SEMANTIC_CONTEXT") {
     await verifySemanticQueryContext(document.projection.context);
   }

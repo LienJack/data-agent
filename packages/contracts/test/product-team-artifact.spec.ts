@@ -1,5 +1,6 @@
 import { describe, expect, it } from "vitest";
 import {
+  buildAcceptedTableInputProvenance,
   buildProductTeamArtifactDocument,
   buildQueryEvidenceSemanticBinding,
   verifyProductTeamArtifactDocument,
@@ -9,6 +10,54 @@ const id = (suffix: number) => `00000000-0000-4000-8000-${String(suffix).padStar
 const hash = (character: string) => `sha256:${character.repeat(64)}`;
 
 describe("Product Team Artifact", () => {
+  it("seals a complete user-accepted table as QueryEvidence without inventing SQL lineage", async () => {
+    const projection = {
+      kind: "TABLE" as const,
+      columns: [
+        { key: "channel", label: "渠道", data_type: "STRING" as const },
+        { key: "revenue", label: "收入", data_type: "NUMBER" as const },
+      ],
+      rows: [
+        { channel: "邮件", revenue: 160_000 },
+        { channel: "搜索广告", revenue: 360_000 },
+      ],
+      total_rows: 2,
+    };
+    const provenance = await buildAcceptedTableInputProvenance({
+      acceptance_id: id(20),
+      accepted_by_principal_id: id(21),
+      accepted_at: "2026-08-30T04:00:00.000Z",
+      projection,
+    });
+    const document = await buildProductTeamArtifactDocument({
+      schema_version: "product-team-artifact@2.0.0",
+      artifact_ref: {
+        artifact_id: id(22),
+        artifact_type: "QueryEvidence",
+        app_id: id(2),
+        tenant_id: id(3),
+        environment: "test",
+        run_id: id(4),
+        revision: 1,
+        content_hash: hash("0"),
+      },
+      profile_id: "data-agent-orchestrator",
+      task_id: id(23),
+      source_refs: [],
+      provenance,
+      projection,
+      committed_at: "2026-08-30T04:00:00.000Z",
+    });
+
+    await expect(verifyProductTeamArtifactDocument(document)).resolves.toEqual(document);
+    await expect(
+      verifyProductTeamArtifactDocument({
+        ...document,
+        provenance: { ...provenance, table_hash: hash("f") },
+      }),
+    ).rejects.toThrow("ACCEPTED_TABLE_INPUT_HASH_MISMATCH");
+  });
+
   it("seals an exact previewable QueryEvidence document", async () => {
     const sqlRef = {
       artifact_id: id(6),
