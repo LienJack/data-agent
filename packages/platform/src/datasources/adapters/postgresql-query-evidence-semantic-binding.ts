@@ -337,6 +337,22 @@ function timeWindow(input: {
   if (domains.some((domain) => domain.timezone !== timezone)) {
     reject("QUERY_EVIDENCE_TIME_WINDOW_INVALID");
   }
+  const startTime = Date.parse(start);
+  const endTime = Date.parse(end);
+  for (const domain of domains) {
+    const minTime = domain.min_time === null ? null : Date.parse(domain.min_time);
+    const maxTime = domain.max_time === null ? null : Date.parse(domain.max_time);
+    if (
+      (minTime !== null && !Number.isFinite(minTime)) ||
+      (maxTime !== null && !Number.isFinite(maxTime)) ||
+      (minTime !== null && maxTime !== null && minTime >= maxTime)
+    ) {
+      reject("QUERY_EVIDENCE_TIME_DOMAIN_INVALID");
+    }
+    if ((minTime !== null && startTime < minTime) || (maxTime !== null && endTime > maxTime)) {
+      reject("QUERY_EVIDENCE_TIME_WINDOW_OUT_OF_RANGE");
+    }
+  }
   return {
     dimension_id: dimension.dimension_id,
     start,

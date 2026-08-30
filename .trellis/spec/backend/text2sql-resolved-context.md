@@ -125,3 +125,18 @@ const authority = createPostgresText2SqlSandboxAuthority({
 - Required regression: actual parameterization/deparse/policy round trip for a monthly self-join; rejection of missing CTE aliases,
   unqualified physical relations, out-of-scope schemas, ONLY, duplicate Host allowlists; stable Worker error propagation and targeted repair
   guidance. Existing forbidden SQL and schema bounds must remain rejected.
+
+## Published time coverage at QueryEvidence acceptance
+
+- A declared `HALF_OPEN` window must remain within every contributing temporal metric's non-null published `min_time` / `max_time`.
+  The lower bound is inclusive; the upper bound is the exclusive frontier. Equality at either published boundary is allowed.
+  Compare parsed instants, not lexicographic timestamp strings; published offset timestamps and UTC equivalents must agree.
+- Reject an out-of-range candidate with `QUERY_EVIDENCE_TIME_WINDOW_OUT_OF_RANGE`; preserve the safe code through the existing bounded
+  specialist repair turn and candidate rejection event. Repair SQL parameters and the declaration together, without deleting the window,
+  shortening the request or altering authority. Invalid/reversed published bounds produce `QUERY_EVIDENCE_TIME_DOMAIN_INVALID` and are not
+  a model-repairable error. Null bounds remain unbounded; they do not prove complete historical data.
+- This check prevents accepting a falsely governed result after the existing read-only execution. It is not a pre-I/O ACL, a proof of all
+  CTE/comparison-window coverage, or a proof that an omitted optional window is correct. Row-level unbounded requests remain supported.
+- Required regressions: upper/lower overflow, exact boundaries, interior windows, offset-equivalent published bounds, null bounds,
+  invalid/reversed authority bounds, safe rejection diagnostics and successful/failed bounded repair. Business acceptance must still
+  independently verify the requested month buckets and values; Run success alone is insufficient.

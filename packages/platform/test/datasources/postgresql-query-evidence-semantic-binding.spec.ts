@@ -964,6 +964,63 @@ describe("PostgreSQL QueryEvidence semantic binding", () => {
     ).rejects.toMatchObject({ code: "QUERY_EVIDENCE_TIME_WINDOW_INVALID" });
   });
 
+  it.each([
+    { start: "2026-01-01", end: "2026-04-01", accepted: false },
+    { start: "2025-12-01", end: "2026-03-01", accepted: false },
+    { start: "2026-01-01", end: "2026-03-01", accepted: true },
+    { start: "2026-01-15", end: "2026-02-15", accepted: true },
+  ])("checks published half-open coverage for $start to $end", async ({ start, end, accepted }) => {
+    const input = await fixture();
+    const result = buildPostgresqlQueryEvidenceSemanticBinding({
+      ...input,
+      candidate: { ...input.candidate, parameters: [start, end] },
+      semantic_catalog: {
+        ...input.semantic_catalog,
+        executable: {
+          ...input.semantic_catalog.executable,
+          metrics: input.semantic_catalog.executable.metrics.map((metric) => ({
+            ...metric,
+            time_domain: {
+              ...metric.time_domain,
+              min_time: "2026-01-01T08:00:00.000+08:00",
+              max_time: "2026-03-01T00:00:00.000Z",
+            },
+          })),
+        },
+      },
+    });
+    if (accepted) {
+      await expect(result).resolves.toMatchObject({ time_window: { start, end } });
+    } else {
+      await expect(result).rejects.toMatchObject({
+        code: "QUERY_EVIDENCE_TIME_WINDOW_OUT_OF_RANGE",
+      });
+    }
+  });
+
+  it.each([
+    { min_time: "invalid", max_time: null },
+    { min_time: null, max_time: "invalid" },
+    { min_time: "2026-03-01", max_time: "2026-01-01" },
+  ])("fails closed for malformed published time bounds %j", async (bounds) => {
+    const input = await fixture();
+    await expect(
+      buildPostgresqlQueryEvidenceSemanticBinding({
+        ...input,
+        semantic_catalog: {
+          ...input.semantic_catalog,
+          executable: {
+            ...input.semantic_catalog.executable,
+            metrics: input.semantic_catalog.executable.metrics.map((metric) => ({
+              ...metric,
+              time_domain: { ...metric.time_domain, ...bounds },
+            })),
+          },
+        },
+      }),
+    ).rejects.toMatchObject({ code: "QUERY_EVIDENCE_TIME_DOMAIN_INVALID" });
+  });
+
   it("recognizes the equivalent parameter-first half-open predicates", () => {
     expect(
       postgresqlQueryEvidenceSemanticBindingInternals.hasHalfOpenPredicate({

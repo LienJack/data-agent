@@ -213,6 +213,16 @@ describe("Production Team governed chart publication", () => {
   it("repairs result binding drift but never retries frozen authority drift", () => {
     expect(
       productionTeamToolsInternals.repairableQueryExecutionFailure(
+        "QUERY_EVIDENCE_TIME_WINDOW_OUT_OF_RANGE",
+      ),
+    ).toBe(true);
+    expect(
+      productionTeamToolsInternals.repairableQueryExecutionFailure(
+        "QUERY_EVIDENCE_TIME_DOMAIN_INVALID",
+      ),
+    ).toBe(false);
+    expect(
+      productionTeamToolsInternals.repairableQueryExecutionFailure(
         "QUERY_EVIDENCE_RESULT_BINDING_MISMATCH",
       ),
     ).toBe(true);
@@ -1250,9 +1260,15 @@ describe("Production Team governed chart publication", () => {
     expect(commit).not.toHaveBeenCalled();
   });
 
-  it.each(["accepted", "rejected"] as const)(
+  it.each(
+    (["accepted", "rejected"] as const).flatMap((repairOutcome) =>
+      ["QUERY_EVIDENCE_RESULT_BINDING_MISMATCH", "QUERY_EVIDENCE_TIME_WINDOW_OUT_OF_RANGE"].map(
+        (executionCode) => ({ repairOutcome, executionCode }),
+      ),
+    ),
+  )(
     "keeps accepted evidence and preserves diagnostics when a repair is %s",
-    async (repairOutcome) => {
+    async ({ repairOutcome, executionCode }) => {
       const scope = { app_id: id(1), tenant_id: id(2), environment: "test" } as const;
       const lease = {
         scope,
@@ -1576,7 +1592,7 @@ describe("Production Team governed chart publication", () => {
 
       text2sqlExecute.mockRejectedValueOnce(
         Object.assign(new TypeError("private database error must not be published"), {
-          code: "QUERY_EVIDENCE_RESULT_BINDING_MISMATCH",
+          code: executionCode,
         }),
       );
       if (repairOutcome === "rejected") {
@@ -1596,7 +1612,7 @@ describe("Production Team governed chart publication", () => {
           expect.objectContaining({
             stage: "EXECUTE",
             attempt: 1,
-            reason_code: "QUERY_EVIDENCE_RESULT_BINDING_MISMATCH",
+            reason_code: executionCode,
             candidate_hash: expect.stringMatching(/^sha256:[0-9a-f]{64}$/u),
             parameter_types: [],
           }),
@@ -1624,7 +1640,7 @@ describe("Production Team governed chart publication", () => {
         turn: {
           kind: "SPECIALIST",
           stage: "TEXT2SQL",
-          context_text: expect.stringContaining("QUERY_EVIDENCE_RESULT_BINDING_MISMATCH"),
+          context_text: expect.stringContaining(executionCode),
         },
       });
       expect(text2sqlExecute).toHaveBeenCalledTimes(3);

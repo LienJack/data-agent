@@ -135,6 +135,9 @@ describe("direct run-bound provider retry policy", () => {
     expect(prompt).toContain("Before returning, scan the outer SELECT and every CTE SELECT");
     expect(prompt).toContain("Never compute current time with current_date");
     expect(prompt).toContain("frozen min_time and max_time");
+    expect(prompt).toContain("max_time is the exclusive coverage frontier");
+    expect(prompt).toContain("subtract N calendar months from that frontier");
+    expect(prompt).toContain("QUERY_EVIDENCE_TIME_WINDOW_OUT_OF_RANGE means recompute");
     expect(prompt).toContain("TEXT2SQL_SQL_OPERATOR_DENIED means replace the denied operator");
     expect(prompt).toContain("TEXT2SQL_SQL_CAST_DENIED means replace the denied cast");
     expect(prompt).toContain("TEXT2SQL_SQL_LIMIT_SHAPE_REJECTED means remove OFFSET");
