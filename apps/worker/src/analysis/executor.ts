@@ -137,6 +137,37 @@ export function buildAnalysisNarrativeProjection(document: unknown) {
   });
 }
 
+export function buildAnalysisFinalMessages(input: {
+  readonly stage_id: string;
+  readonly stage_hash: string;
+  readonly result_summary: unknown;
+  readonly artifacts: unknown;
+  readonly oracle_result: unknown;
+  readonly limitation_codes: readonly string[];
+}) {
+  return [
+    Object.freeze({
+      role: "system" as const,
+      content:
+        'Return exactly one JSON object with only these two properties: {"schema_version":"analysis-agent-final@1.0.0","summary_zh":"..."}. Put all disclosed limitations inside summary_zh. The root property limitations and every other additional property are forbidden.',
+    }),
+    Object.freeze({
+      role: "user" as const,
+      content: JSON.stringify({
+        kind: "ANALYSIS_STAGE_ORACLE_VERIFIED",
+        stage_id: input.stage_id,
+        stage_hash: input.stage_hash,
+        result_summary: input.result_summary,
+        artifacts: input.artifacts,
+        oracle_result: input.oracle_result,
+        limitation_codes: input.limitation_codes,
+        instruction:
+          "Explain this immutable Oracle-verified summary in Chinese. State that the complete data table and chart are attached authoritative artifacts, and do not recreate omitted rows or claim causality beyond the accepted analysis. Return only schema_version and summary_zh; express every disclosed limitation inside summary_zh and never add a limitations property.",
+      }),
+    }),
+  ];
+}
+
 export interface AnalysisArtifactCommitPort {
   prepareL2?(input: {
     readonly lease: RunWorkLease;
@@ -833,26 +864,18 @@ export function createAnalysisProgramExecutor(dependencies: AnalysisExecutorDepe
             phase: "FINAL",
             result_contract: node.result_contract,
             allowed_tool_names: [],
-            messages: [
-              {
-                role: "user",
-                content: JSON.stringify({
-                  kind: "ANALYSIS_STAGE_ORACLE_VERIFIED",
-                  stage_id: execution.stage.stage_id,
-                  stage_hash: execution.stage.stage_hash,
-                  result_summary: buildAnalysisNarrativeProjection(
-                    JSON.parse(
-                      new TextDecoder("utf-8", { fatal: true }).decode(resultArtifact.content),
-                    ),
-                  ),
-                  artifacts: execution.tool_loop.published_result.observation.artifacts,
-                  oracle_result: expectation.result,
-                  limitation_codes: expectation.limitation_codes,
-                  instruction:
-                    "Explain this immutable Oracle-verified summary in Chinese. State that the complete data table and chart are attached authoritative artifacts, include every disclosed limitation, and do not recreate omitted rows or claim causality beyond the accepted analysis.",
-                }),
-              },
-            ],
+            messages: buildAnalysisFinalMessages({
+              stage_id: execution.stage.stage_id,
+              stage_hash: execution.stage.stage_hash,
+              result_summary: buildAnalysisNarrativeProjection(
+                JSON.parse(
+                  new TextDecoder("utf-8", { fatal: true }).decode(resultArtifact.content),
+                ),
+              ),
+              artifacts: execution.tool_loop.published_result.observation.artifacts,
+              oracle_result: expectation.result,
+              limitation_codes: expectation.limitation_codes,
+            }),
             max_output_tokens: 8_192,
           });
           if (finalTurn.phase !== "FINAL") {

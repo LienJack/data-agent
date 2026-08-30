@@ -1,5 +1,8 @@
 import { describe, expect, it } from "vitest";
-import { buildAnalysisNarrativeProjection } from "../../src/analysis/executor.js";
+import {
+  buildAnalysisFinalMessages,
+  buildAnalysisNarrativeProjection,
+} from "../../src/analysis/executor.js";
 
 describe("analysis executor narrative projection", () => {
   it("keeps bounded verified findings while leaving full rows and method evidence in artifacts", () => {
@@ -25,5 +28,30 @@ describe("analysis executor narrative projection", () => {
       omitted_authority_fields: ["method_evidence"],
     });
     expect(JSON.stringify(projection).length).toBeLessThan(24 * 1024);
+  });
+
+  it("pins the final explanation to the exact two-field response contract", () => {
+    const messages = buildAnalysisFinalMessages({
+      stage_id: "stage-1",
+      stage_hash: "sha256:stage",
+      result_summary: { fields: { conclusion: "收入下降。" } },
+      artifacts: [{ artifact_kind: "CHART" }],
+      oracle_result: { verdict: "PASS" },
+      limitation_codes: ["SEASONALITY_NOT_CORRECTED"],
+    });
+
+    expect(messages).toHaveLength(2);
+    expect(messages[0]).toEqual({
+      role: "system",
+      content:
+        'Return exactly one JSON object with only these two properties: {"schema_version":"analysis-agent-final@1.0.0","summary_zh":"..."}. Put all disclosed limitations inside summary_zh. The root property limitations and every other additional property are forbidden.',
+    });
+    expect(JSON.parse(messages[1]?.content ?? "null")).toMatchObject({
+      kind: "ANALYSIS_STAGE_ORACLE_VERIFIED",
+      limitation_codes: ["SEASONALITY_NOT_CORRECTED"],
+      instruction: expect.stringContaining(
+        "Return only schema_version and summary_zh; express every disclosed limitation inside summary_zh",
+      ),
+    });
   });
 });
