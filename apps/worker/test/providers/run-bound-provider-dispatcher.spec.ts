@@ -271,5 +271,56 @@ describe("audited run-bound Root provider coordinator", () => {
     });
     expect(invocation?.envelope.invocation_id).toBe(ids.command);
     expect(invocation?.envelope.projection.payload_hash).toMatch(/^sha256:/u);
+
+    const analysisReportRef = {
+      artifact_id: ids.history,
+      artifact_type: "AnalysisReport" as const,
+      ...scope,
+      run_id: ids.run,
+      revision: 1,
+      content_hash: hash("f"),
+    };
+    const closureResult = await dispatcher.invoke({
+      lease: workerLease,
+      effective_config: config,
+      context_receipt: contextReceipt,
+      logical_call_id: ids.event,
+      turn: {
+        kind: "ROOT",
+        turn_index: 1,
+        tool_observations: [
+          {
+            schema_version: "root-tool-observation@1.0.0",
+            tool_call_id: "analysis-call",
+            profile_id: "governed-analysis-agent",
+            status: "COMPLETED",
+            output_ref: analysisReportRef,
+            safe_projection: {
+              schema_version: "root-tool-safe-projection@1.0.0",
+              artifact_ref: analysisReportRef,
+              projection_kind: "REPORT",
+              title: "Monthly order revenue trend",
+              summary: "1 accepted governed report section is available.",
+              column_keys: [],
+              total_rows: null,
+              source_artifact_refs: [],
+              semantic_query_context: null,
+            },
+            error_code: null,
+          },
+        ],
+        verifier_feedback: null,
+      },
+      signal: new AbortController().signal,
+    });
+
+    expect(closureResult).toMatchObject({
+      ok: false,
+      error: { code: "PROVIDER_FAKE_TERMINAL" },
+    });
+    expect(auditedInvoke.mock.calls[1]?.[0]?.payload).toMatchObject({
+      tool_allowlist: [],
+      budget: { max_tool_calls: 0 },
+    });
   });
 });

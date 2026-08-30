@@ -63,6 +63,17 @@ const rootTurnRequestSchema = z.strictObject({
   verifier_feedback: rootVerifierFeedbackSchema.nullable(),
 });
 
+export function hasCompletedGovernedAnalysisReport(
+  observations: readonly z.infer<typeof rootAgentToolResultSchema>[],
+): boolean {
+  return observations.some(
+    (observation) =>
+      observation.status === "COMPLETED" &&
+      observation.profile_id === "governed-analysis-agent" &&
+      observation.output_ref?.artifact_type === "AnalysisReport",
+  );
+}
+
 export function buildRootLoopMessages(input: unknown) {
   const request = rootTurnRequestSchema.parse(input);
   return [
@@ -534,8 +545,13 @@ export function createDirectRunBoundProviderDispatcher(input: {
       const maxInputTokens = Math.max(1, config.context_policy.max_context_tokens);
       const maxOutputTokens =
         analysisAgent?.max_output_tokens ?? analysisPython?.max_output_tokens ?? 2_048;
+      const rootMustFinalize =
+        parsedRootRequest?.success === true &&
+        hasCompletedGovernedAnalysisReport(parsedRootRequest.data.tool_observations);
       const toolAllowlist = rootTurn
-        ? ROOT_AGENT_TOOL_ALLOWLIST
+        ? rootMustFinalize
+          ? []
+          : ROOT_AGENT_TOOL_ALLOWLIST
         : (analysisAgent?.allowed_tool_names ?? []);
       let request: ReturnType<typeof createDirectModelProviderInvocation>;
       try {
@@ -583,7 +599,9 @@ export function createDirectRunBoundProviderDispatcher(input: {
             max_input_tokens: maxInputTokens,
             max_output_tokens: maxOutputTokens,
             max_tool_calls: rootTurn
-              ? Math.min(8, config.execution_safety_policy.max_tool_calls)
+              ? rootMustFinalize
+                ? 0
+                : Math.min(8, config.execution_safety_policy.max_tool_calls)
               : analysisAgent?.phase === "TOOL"
                 ? 1
                 : 0,

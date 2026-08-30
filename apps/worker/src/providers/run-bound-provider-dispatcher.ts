@@ -20,7 +20,10 @@ import type {
   AuditedModelProvider,
   AuditedModelProviderResult,
 } from "./audited-model-provider.js";
-import { buildRootLoopMessages } from "./direct-run-bound-provider-dispatcher.js";
+import {
+  buildRootLoopMessages,
+  hasCompletedGovernedAnalysisReport,
+} from "./direct-run-bound-provider-dispatcher.js";
 import type { PostgresAgentDataProjectionReceiptStore } from "./postgres-agent-data-projection-receipt-store.js";
 import type { ProviderTaskArtifactAuthority } from "./postgres-provider-task-artifact.js";
 import {
@@ -198,7 +201,8 @@ export function createRunBoundProviderDispatcher(input: {
       });
       if (!inspected.ok) return inspected;
 
-      const toolAllowlist = ROOT_AGENT_TOOL_ALLOWLIST;
+      const rootMustFinalize = hasCompletedGovernedAnalysisReport(request.turn.tool_observations);
+      const toolAllowlist = rootMustFinalize ? [] : ROOT_AGENT_TOOL_ALLOWLIST;
       const trustedInputTokenUpperBound = computeTrustedInputTokenUpperBoundForRequestMessages({
         messages: [...inspected.value.messages],
         tool_names: toolAllowlist,
@@ -241,7 +245,9 @@ export function createRunBoundProviderDispatcher(input: {
           timeout_ms: Math.min(config.execution_safety_policy.max_elapsed_ms, 600_000),
           max_input_tokens: effectiveContextCeiling,
           max_output_tokens: maxOutputTokens,
-          max_tool_calls: Math.min(8, config.execution_safety_policy.max_tool_calls),
+          max_tool_calls: rootMustFinalize
+            ? 0
+            : Math.min(8, config.execution_safety_policy.max_tool_calls),
         },
       } as const;
       const payloadHash = await computeModelProviderPayloadHash(providerRequest);

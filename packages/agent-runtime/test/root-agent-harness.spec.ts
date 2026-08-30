@@ -244,6 +244,9 @@ describe("Root Agent Harness", () => {
     expect(message).toContain("Decide only the next useful action");
     expect(message).toContain("only through input_artifact_refs");
     expect(message).toContain("Multiple calls in one response");
+    expect(message).toContain("completed governed-analysis-agent observation");
+    expect(message).toContain('fact_selectors:["projection.sections","projection.title"]');
+    expect(message).toContain("must not delegate another analysis");
     expect(message).toContain("request_scoped_interpretation");
     expect(message).toContain("current Run only");
     expect(message).toContain("Do not expose internal index");
