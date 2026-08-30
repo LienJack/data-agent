@@ -457,6 +457,9 @@ describe("Falcon24 four-layer browser gate", () => {
       (command) => command.includes("scrollintoview") && command.includes("qa-result-trace-entry"),
     );
     expect(exactRunScrolls).toHaveLength(exactRunClicks.length);
+    expect(commands.filter((command) => command.includes("elementFromPoint"))).toHaveLength(
+      exactRunClicks.length,
+    );
   });
 
   it("fails closed when public Trace lacks a completed Tool node", async () => {
@@ -473,6 +476,38 @@ describe("Falcon24 four-layer browser gate", () => {
         business,
       }),
     ).toThrow("FALCON24_FOUR_LAYER_TRACE_RUNTIME_CLOSURE_INVALID");
+  });
+
+  it("does not click a Trace entry that remains covered after scrolling", async () => {
+    const { business, reference } = await fixture();
+    const qa = await qaReceipt(business);
+    const { trace, details } = traceFixture(reference);
+    execFileAsyncMock.mockImplementation(async (_file: string, args: readonly string[]) => {
+      if (args.includes("wait") && args.includes("--fn")) {
+        throw new Error("The composer still covers the entry");
+      }
+      return commandResult();
+    });
+    await expect(
+      observeFalcon24FourLayerTraceUi({
+        session: "falcon24-covered-entry",
+        web_base_url: "https://data-agent.example",
+        screenshot_path: "/tmp/falcon24-covered-entry",
+        workspace_id: workspaceId,
+        business,
+        qa,
+        trace,
+        details,
+        expected_web_build: webBuild,
+        conversation_traces: [{ run_id: runId, trace_hash: trace.trace_hash }],
+        viewport: { width: 1440, height: 900 },
+      }),
+    ).rejects.toThrow("FALCON24_TRACE_ENTRY_NOT_ACTIONABLE");
+    expect(
+      execFileAsyncMock.mock.calls.some(([, args]) =>
+        (args as readonly string[]).includes("click"),
+      ),
+    ).toBe(false);
   });
 
   it("runs the 390 smoke against retained results without a composer submission", async () => {

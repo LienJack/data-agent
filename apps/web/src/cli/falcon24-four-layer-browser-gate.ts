@@ -122,6 +122,30 @@ function exactRunSelector(runId: string): string {
   return `[data-testid="qa-result-trace-entry"][data-run-id="${falcon24BrowserSelectorValue(runId)}"][data-terminal-status="COMPLETED"]`;
 }
 
+async function clickRunEntry(session: string, selector: string): Promise<void> {
+  try {
+    await executeFalcon24AgentBrowser(session, ["scrollintoview", selector]);
+    await executeFalcon24AgentBrowser(session, [
+      "wait",
+      "--fn",
+      `(() => {
+        const entry = document.querySelector(${JSON.stringify(selector)});
+        if (!entry || entry.disabled) return false;
+        entry.scrollIntoView({behavior: "instant", block: "center", inline: "nearest"});
+        const rect = entry.getBoundingClientRect();
+        const x = rect.left + rect.width / 2;
+        const y = rect.top + rect.height / 2;
+        if (!rect.width || !rect.height || x < 0 || y < 0 || x >= innerWidth || y >= innerHeight) return false;
+        const hit = document.elementFromPoint(x, y);
+        return hit !== null && entry.contains(hit);
+      })()`,
+    ]);
+    await executeFalcon24AgentBrowser(session, ["click", selector]);
+  } catch (error) {
+    throw new Error("FALCON24_TRACE_ENTRY_NOT_ACTIONABLE", { cause: error });
+  }
+}
+
 function exactTraceSelector(binding: Falcon24FourLayerConversationTrace): string {
   return `[data-testid="resolution-trace-ready"][data-run-id="${falcon24BrowserSelectorValue(binding.run_id)}"][data-trace-hash="${falcon24BrowserSelectorValue(binding.trace_hash)}"]`;
 }
@@ -474,8 +498,7 @@ export async function observeFalcon24FourLayerTraceUi(input: {
   await executeFalcon24AgentBrowser(input.session, ["open", startUrl.toString()]);
   const resultSelector = exactRunSelector(input.business.run_id);
   await executeFalcon24AgentBrowser(input.session, ["wait", resultSelector]);
-  await executeFalcon24AgentBrowser(input.session, ["scrollintoview", resultSelector]);
-  await executeFalcon24AgentBrowser(input.session, ["click", resultSelector]);
+  await clickRunEntry(input.session, resultSelector);
   const readySelector = exactTraceSelector(currentBinding);
   await executeFalcon24AgentBrowser(input.session, ["wait", readySelector]);
   await executeFalcon24AgentBrowser(input.session, [
@@ -564,8 +587,7 @@ export async function observeFalcon24FourLayerTraceUi(input: {
   const switchedRuns: string[] = [];
   for (const binding of input.conversation_traces) {
     const conversationRunSelector = exactRunSelector(binding.run_id);
-    await executeFalcon24AgentBrowser(input.session, ["scrollintoview", conversationRunSelector]);
-    await executeFalcon24AgentBrowser(input.session, ["click", conversationRunSelector]);
+    await clickRunEntry(input.session, conversationRunSelector);
     await executeFalcon24AgentBrowser(input.session, ["wait", exactTraceSelector(binding)]);
     switchedRuns.push(binding.run_id);
     await executeFalcon24AgentBrowser(input.session, [
@@ -640,7 +662,7 @@ export async function smokeFalcon24FourLayerConversationAt390(input: {
     `(() => { const entry=document.querySelector(${JSON.stringify(resultSelector)}); const run=document.getElementById(${JSON.stringify(`chat-run-${input.binding.run_id}`)}); const answer=run?.querySelector('.agent-answer'); const visible=(element)=>Boolean(element&&element.getBoundingClientRect().width>0&&element.getBoundingClientRect().height>0); return {run_id:entry?.getAttribute('data-run-id')??null,answer_visible:visible(answer)&&Boolean(answer?.textContent?.trim()),horizontal_overflow:document.documentElement.scrollWidth>document.documentElement.clientWidth,error_banners:[...document.querySelectorAll('[role="alert"]')].map((element)=>element.textContent?.trim()||'')}; })()`,
     narrowSmokeObservationSchema,
   );
-  await executeFalcon24AgentBrowser(input.session, ["click", resultSelector]);
+  await clickRunEntry(input.session, resultSelector);
   await executeFalcon24AgentBrowser(input.session, ["wait", exactTraceSelector(input.binding)]);
   const trace = await evaluateFalcon24Browser(
     input.session,
