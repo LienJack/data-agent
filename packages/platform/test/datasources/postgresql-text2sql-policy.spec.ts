@@ -53,7 +53,7 @@ describe("PostgreSQL model-authored Text2SQL policy", () => {
         }),
       ).rejects.toMatchObject({
         code: "TEXT2SQL_SQL_SHAPE_REJECTED",
-        diagnostic_code: "TEXT2SQL_SQL_SELECT_SHAPE_REJECTED",
+        diagnostic_code: "TEXT2SQL_SQL_LIMIT_SHAPE_REJECTED",
       });
     },
   );
@@ -165,7 +165,7 @@ describe("PostgreSQL model-authored Text2SQL policy", () => {
       }),
     ).rejects.toMatchObject({
       code: "TEXT2SQL_SQL_SHAPE_REJECTED",
-      diagnostic_code: "TEXT2SQL_SQL_SELECT_SHAPE_REJECTED",
+      diagnostic_code: "TEXT2SQL_SQL_LIMIT_SHAPE_REJECTED",
     });
   });
 
@@ -269,6 +269,27 @@ describe("PostgreSQL model-authored Text2SQL policy", () => {
   });
 
   it("classifies safe structural rejection branches without retaining model SQL", async () => {
+    await expect(
+      assertPostgresqlText2SqlCandidatePolicy({
+        sql: "select o.customer_id as customer_id from falcon_db_24.orders as o limit $1 offset $2",
+        parameter_count: 2,
+        parameters: [10, 0],
+        allowed_relations: allowed,
+      }),
+    ).rejects.toMatchObject({
+      code: "TEXT2SQL_SQL_SHAPE_REJECTED",
+      diagnostic_code: "TEXT2SQL_SQL_LIMIT_SHAPE_REJECTED",
+    });
+    await expect(
+      assertPostgresqlText2SqlCandidatePolicy({
+        sql: "select o.customer_id as customer_id from falcon_db_24.orders as o, falcon_db_24.customers as c",
+        parameter_count: 0,
+        allowed_relations: allowed,
+      }),
+    ).rejects.toMatchObject({
+      code: "TEXT2SQL_SQL_SHAPE_REJECTED",
+      diagnostic_code: "TEXT2SQL_SQL_FROM_SHAPE_REJECTED",
+    });
     await expect(
       assertPostgresqlText2SqlCandidatePolicy({
         sql: "select o.customer_id as customer_id from orders as o",

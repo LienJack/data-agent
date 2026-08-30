@@ -129,7 +129,9 @@ describe("direct run-bound provider retry policy", () => {
     expect(prompt).toContain("frozen min_time and max_time");
     expect(prompt).toContain("TEXT2SQL_SQL_OPERATOR_DENIED means replace the denied operator");
     expect(prompt).toContain("TEXT2SQL_SQL_CAST_DENIED means replace the denied cast");
-    expect(prompt).toContain("TEXT2SQL_SQL_SELECT_SHAPE_REJECTED means remove OFFSET");
+    expect(prompt).toContain("TEXT2SQL_SQL_LIMIT_SHAPE_REJECTED means remove OFFSET");
+    expect(prompt).toContain("LIMIT $n::pg_catalog.int2|int4|int8");
+    expect(prompt).toContain("TEXT2SQL_SQL_FROM_SHAPE_REJECTED means use exactly one FROM item");
     expect(prompt).toContain(
       "TEXT2SQL_SQL_ORDERING_SHAPE_REJECTED means order by a declared output alias or an exact column reference",
     );

@@ -5,6 +5,13 @@ export type PostgresqlText2SqlPolicyDiagnosticCode =
   | "TEXT2SQL_SQL_PARAMETERIZATION_REJECTED"
   | "TEXT2SQL_SQL_STATEMENT_SHAPE_REJECTED"
   | "TEXT2SQL_SQL_SELECT_SHAPE_REJECTED"
+  | "TEXT2SQL_SQL_SELECT_KEYS_REJECTED"
+  | "TEXT2SQL_SQL_TARGET_LIST_REJECTED"
+  | "TEXT2SQL_SQL_LIMIT_SHAPE_REJECTED"
+  | "TEXT2SQL_SQL_SET_OPERATION_REJECTED"
+  | "TEXT2SQL_SQL_FROM_SHAPE_REJECTED"
+  | "TEXT2SQL_SQL_WITH_SHAPE_REJECTED"
+  | "TEXT2SQL_SQL_DISTINCT_SHAPE_REJECTED"
   | "TEXT2SQL_SQL_CTE_SHAPE_REJECTED"
   | "TEXT2SQL_SQL_RELATION_BINDING_REJECTED"
   | "TEXT2SQL_SQL_JOIN_SHAPE_REJECTED"
@@ -519,32 +526,52 @@ export async function assertPostgresqlText2SqlCandidatePolicy(
             "havingClause",
             "sortClause",
             "limitCount",
+            "limitOffset",
             "limitOption",
             "withClause",
             "op",
           ],
-          "TEXT2SQL_SQL_SELECT_SHAPE_REJECTED",
+          "TEXT2SQL_SQL_SELECT_KEYS_REJECTED",
         );
         if (
           !Array.isArray(node.targetList) ||
           node.targetList.length === 0 ||
-          node.targetList.some((target) => wrappedNodeName(target) !== "ResTarget") ||
+          node.targetList.some((target) => wrappedNodeName(target) !== "ResTarget")
+        ) {
+          reject("TEXT2SQL_SQL_SHAPE_REJECTED", "TEXT2SQL_SQL_TARGET_LIST_REJECTED");
+        }
+        if (
+          node.limitOffset !== undefined ||
           (node.limitCount === undefined
             ? node.limitOption !== "LIMIT_OPTION_DEFAULT"
             : node.limitOption !== "LIMIT_OPTION_COUNT") ||
-          node.op !== "SETOP_NONE" ||
-          !validLimitCount(node.limitCount, input.parameters) ||
-          (node.fromClause !== undefined &&
-            (!Array.isArray(node.fromClause) || node.fromClause.length !== 1)) ||
-          (node.withClause !== undefined &&
-            (!isRecord(node.withClause) || node.withClause.recursive === true)) ||
-          (node.distinctClause !== undefined &&
-            (!Array.isArray(node.distinctClause) ||
-              node.distinctClause.length !== 1 ||
-              !isRecord(node.distinctClause[0]) ||
-              Object.keys(node.distinctClause[0]).length !== 0))
+          !validLimitCount(node.limitCount, input.parameters)
         ) {
-          reject("TEXT2SQL_SQL_SHAPE_REJECTED", "TEXT2SQL_SQL_SELECT_SHAPE_REJECTED");
+          reject("TEXT2SQL_SQL_SHAPE_REJECTED", "TEXT2SQL_SQL_LIMIT_SHAPE_REJECTED");
+        }
+        if (node.op !== "SETOP_NONE") {
+          reject("TEXT2SQL_SQL_SHAPE_REJECTED", "TEXT2SQL_SQL_SET_OPERATION_REJECTED");
+        }
+        if (
+          node.fromClause !== undefined &&
+          (!Array.isArray(node.fromClause) || node.fromClause.length !== 1)
+        ) {
+          reject("TEXT2SQL_SQL_SHAPE_REJECTED", "TEXT2SQL_SQL_FROM_SHAPE_REJECTED");
+        }
+        if (
+          node.withClause !== undefined &&
+          (!isRecord(node.withClause) || node.withClause.recursive === true)
+        ) {
+          reject("TEXT2SQL_SQL_SHAPE_REJECTED", "TEXT2SQL_SQL_WITH_SHAPE_REJECTED");
+        }
+        if (
+          node.distinctClause !== undefined &&
+          (!Array.isArray(node.distinctClause) ||
+            node.distinctClause.length !== 1 ||
+            !isRecord(node.distinctClause[0]) ||
+            Object.keys(node.distinctClause[0]).length !== 0)
+        ) {
+          reject("TEXT2SQL_SQL_SHAPE_REJECTED", "TEXT2SQL_SQL_DISTINCT_SHAPE_REJECTED");
         }
         break;
       }
