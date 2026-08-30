@@ -8,7 +8,10 @@ import {
 } from "@data-agent/contracts";
 import { describe, expect, it, vi } from "vitest";
 import { createRunExecutionContext } from "../../src/runs/run-execution-context.js";
-import { createRootAgentTurnExecutor } from "../../src/teams/root-agent-turn-executor.js";
+import {
+  createRootAgentTurnExecutor,
+  rootAgentTurnExecutorInternals,
+} from "../../src/teams/root-agent-turn-executor.js";
 import {
   buildWorkerEffectiveConfigFixture,
   createEffectiveConfigFixtureLoader,
@@ -18,6 +21,26 @@ import {
 const id = (suffix: number) => `81000000-0000-4000-8000-${String(suffix).padStart(12, "0")}`;
 
 describe("Root Agent normal turn", () => {
+  it("prioritizes the request-scoped explanation without exposing a redundant Formula AST", () => {
+    expect(
+      rootAgentTurnExecutorInternals.semanticFactSelectors({
+        dimensions: [{}],
+        formulas: [{}],
+        metrics: [{}],
+        quality_constraints: [],
+        relationships: [{}],
+        request_scoped_interpretations: [{}],
+        time_semantics: [{}],
+      } as never),
+    ).toEqual([
+      "projection.context.dimensions",
+      "projection.context.metrics",
+      "projection.context.relationships",
+      "projection.context.request_scoped_interpretations",
+      "projection.context.time_semantics",
+    ]);
+  });
+
   it("invokes exactly one logical provider call per normal turn", async () => {
     const scope = { app_id: id(1), tenant_id: id(2), environment: "test" } as const;
     const runId = id(3);

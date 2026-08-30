@@ -354,4 +354,27 @@ describe("Root answer verifier", () => {
     expect(rendered).toContain("粒度 customer；正式公式：SUM(orders.amount)");
     expect(rendered).toContain("orders[customer_id] → customers[id]");
   });
+
+  it("renders the governed complete-period boundary instead of hiding it behind an id", () => {
+    const rendered = rootAnswerVerifierInternals.renderArtifactFacts(
+      {
+        projection: {
+          kind: "SEMANTIC_CONTEXT",
+          context: {
+            time_semantics: [
+              {
+                time_domain_id: "time.complete_month_frontier",
+                calendar: "gregorian",
+                timezone: "Asia/Shanghai",
+                description: "Observed complete-month frontier; windows are half-open.",
+              },
+            ],
+          },
+        },
+      } as never,
+      ["projection.context.time_semantics"],
+    );
+
+    expect(rendered).toContain("Observed complete-month frontier; windows are half-open.");
+  });
 });

@@ -63,6 +63,33 @@ export type RootAgentTurnState = Readonly<{
   verifier_feedback: RootVerifierFeedback | null;
 }>;
 
+function semanticFactSelectors(
+  context: Pick<
+    Awaited<ReturnType<typeof verifySemanticQueryContext>>,
+    | "dimensions"
+    | "formulas"
+    | "metrics"
+    | "quality_constraints"
+    | "relationships"
+    | "request_scoped_interpretations"
+    | "time_semantics"
+  >,
+): readonly string[] {
+  return [
+    ...(context.dimensions.length > 0 ? ["projection.context.dimensions"] : []),
+    ...(context.formulas.length > 0 && context.metrics.length === 0
+      ? ["projection.context.formulas"]
+      : []),
+    ...(context.metrics.length > 0 ? ["projection.context.metrics"] : []),
+    ...(context.quality_constraints.length > 0 ? ["projection.context.quality_constraints"] : []),
+    ...(context.relationships.length > 0 ? ["projection.context.relationships"] : []),
+    ...((context.request_scoped_interpretations?.length ?? 0) > 0
+      ? ["projection.context.request_scoped_interpretations"]
+      : []),
+    ...(context.time_semantics.length > 0 ? ["projection.context.time_semantics"] : []),
+  ].sort();
+}
+
 async function terminalSemanticFactsDecision(input: {
   readonly scope: Parameters<RunWorkflowExecutorPort["execute"]>[0]["lease"]["scope"];
   readonly run_id: string;
@@ -90,17 +117,7 @@ async function terminalSemanticFactsDecision(input: {
   if (context.answer_scope !== "SEMANTIC_FACTS_ONLY") return null;
   if (context.unresolved_ambiguities.length > 0) return null;
 
-  const selectors = [
-    ...(context.dimensions.length > 0 ? ["projection.context.dimensions"] : []),
-    ...(context.formulas.length > 0 ? ["projection.context.formulas"] : []),
-    ...(context.metrics.length > 0 ? ["projection.context.metrics"] : []),
-    ...(context.quality_constraints.length > 0 ? ["projection.context.quality_constraints"] : []),
-    ...(context.relationships.length > 0 ? ["projection.context.relationships"] : []),
-    ...((context.request_scoped_interpretations?.length ?? 0) > 0
-      ? ["projection.context.request_scoped_interpretations"]
-      : []),
-    ...(context.time_semantics.length > 0 ? ["projection.context.time_semantics"] : []),
-  ].sort();
+  const selectors = semanticFactSelectors(context);
   if (selectors.length === 0) return null;
 
   return rootAgentDecisionCandidateSchema.parse({
@@ -119,6 +136,8 @@ async function terminalSemanticFactsDecision(input: {
     public_summary: "已按当前发布语义权威解释所需指标、公式与口径。",
   });
 }
+
+export const rootAgentTurnExecutorInternals = Object.freeze({ semanticFactSelectors });
 
 export function createRootAgentTurnExecutor(): RootAgentTurnPort {
   return Object.freeze({

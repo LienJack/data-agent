@@ -153,7 +153,7 @@ function renderArtifactFacts(
           return semanticContext.time_semantics
             .map(
               (time) =>
-                `时间口径 ${time.time_domain_id}：${time.calendar} 日历，时区 ${time.timezone}。`,
+                `时间口径 ${time.time_domain_id}：${time.calendar} 日历，时区 ${time.timezone}；${time.description}`,
             )
             .join("\n");
         }
