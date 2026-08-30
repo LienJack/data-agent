@@ -35,6 +35,7 @@ const ids = {
 } as const;
 const hash = (value: string) => `sha256:${value.repeat(64)}` as const;
 const scope = { app_id: ids.app, tenant_id: ids.workspace, environment: "test" } as const;
+const reportUsages = ["FINAL_ANSWER_EVIDENCE", "CONTINUATION_INPUT"] as const;
 
 function baseLease(): RunWorkLease {
   return {
@@ -61,7 +62,7 @@ function baseLease(): RunWorkLease {
 }
 
 describe("audited run-bound Root provider coordinator", () => {
-  it("binds the frozen conversation and Tool Results to a durable provider invocation", async () => {
+  it.each(reportUsages)("binds conversation and %s report usage", async (reportUsage) => {
     const config = await buildWorkerEffectiveConfigFixture({
       scope,
       workspace_id: ids.workspace,
@@ -293,7 +294,7 @@ describe("audited run-bound Root provider coordinator", () => {
             schema_version: "root-tool-observation@1.0.0",
             tool_call_id: "analysis-call",
             profile_id: "governed-analysis-agent",
-            output_usage: "FINAL_ANSWER_EVIDENCE",
+            output_usage: reportUsage,
             status: "COMPLETED",
             output_ref: analysisReportRef,
             safe_projection: {
@@ -320,8 +321,8 @@ describe("audited run-bound Root provider coordinator", () => {
       error: { code: "PROVIDER_FAKE_TERMINAL" },
     });
     expect(auditedInvoke.mock.calls[1]?.[0]?.payload).toMatchObject({
-      tool_allowlist: [],
-      budget: { max_tool_calls: 0 },
+      tool_allowlist: reportUsage === "FINAL_ANSWER_EVIDENCE" ? [] : ["delegate_to_subagent@2"],
+      ...(reportUsage === "FINAL_ANSWER_EVIDENCE" ? { budget: { max_tool_calls: 0 } } : {}),
     });
   });
 });

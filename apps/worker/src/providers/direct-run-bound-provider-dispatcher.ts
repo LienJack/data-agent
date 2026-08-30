@@ -72,6 +72,7 @@ export function hasCompletedGovernedAnalysisReport(
     (observation) =>
       observation.status === "COMPLETED" &&
       observation.profile_id === "governed-analysis-agent" &&
+      observation.output_usage === "FINAL_ANSWER_EVIDENCE" &&
       observation.output_ref?.artifact_type === "AnalysisReport",
   );
 }

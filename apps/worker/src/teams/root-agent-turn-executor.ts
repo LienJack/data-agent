@@ -152,6 +152,7 @@ function terminalAcceptedReportDecision(input: {
     .find(
       (candidate) =>
         candidate.status === "COMPLETED" &&
+        candidate.output_usage === "FINAL_ANSWER_EVIDENCE" &&
         candidate.output_ref.artifact_type === "AnalysisReport" &&
         candidate.safe_projection.projection_kind === "REPORT",
     );

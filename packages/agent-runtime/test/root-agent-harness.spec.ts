@@ -291,6 +291,8 @@ describe("Root Agent Harness", () => {
       "A physical-row lookup of explicit fields does not require this semantic prerequisite",
     );
     expect(message).toContain("completed governed-analysis-agent observation");
+    expect(message).toContain("AnalysisReport with CONTINUATION_INPUT is not terminal");
+    expect(message).toContain("distinct management synthesis from accepted analytical findings");
     expect(message).toContain('fact_selectors:["projection.sections","projection.title"]');
     expect(message).toContain("must not delegate another analysis");
     expect(message).toContain("request_scoped_interpretation");

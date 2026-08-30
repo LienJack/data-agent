@@ -19,6 +19,7 @@ import {
 } from "../runs/support/effective-config-fixture.js";
 
 const id = (suffix: number) => `81000000-0000-4000-8000-${String(suffix).padStart(12, "0")}`;
+const reportUsages = ["FINAL_ANSWER_EVIDENCE", "CONTINUATION_INPUT"] as const;
 
 describe("Root Agent normal turn", () => {
   it("prioritizes the request-scoped explanation without exposing a redundant Formula AST", () => {
@@ -113,7 +114,7 @@ describe("Root Agent normal turn", () => {
     ).toBeNull();
   });
 
-  it("invokes exactly one logical provider call per normal turn", async () => {
+  it.each(reportUsages)("honors %s with one provider call per turn", async (reportUsage) => {
     const scope = { app_id: id(1), tenant_id: id(2), environment: "test" } as const;
     const runId = id(3);
     const principalId = id(4);
@@ -325,6 +326,14 @@ describe("Root Agent normal turn", () => {
       revision: 1,
       content_hash: `sha256:${"f".repeat(64)}`,
     };
+    invoke.mockResolvedValueOnce({
+      ok: false,
+      error: {
+        code: "NEXT_ROOT_ACTION_REQUIRED",
+        message: "Continue from accepted input.",
+        retryable: false,
+      },
+    });
     const terminalReportResult = await createRootAgentTurnExecutor().decide(
       {
         lease,
@@ -339,8 +348,8 @@ describe("Root Agent normal turn", () => {
           {
             schema_version: "root-tool-observation@1.0.0",
             tool_call_id: "report-1",
-            profile_id: "report-writing-agent",
-            output_usage: "FINAL_ANSWER_EVIDENCE",
+            profile_id: "governed-analysis-agent",
+            output_usage: reportUsage,
             status: "COMPLETED",
             output_ref: reportArtifactRef,
             safe_projection: {
@@ -360,20 +369,36 @@ describe("Root Agent normal turn", () => {
         verifier_feedback: null,
       },
     );
-    expect(terminalReportResult).toEqual({
-      ok: true,
-      value: expect.objectContaining({
-        kind: "FINAL_ANSWER",
-        sections: [
-          expect.objectContaining({
-            kind: "ARTIFACT_FACTS",
-            artifact_ref: reportArtifactRef,
-            fact_selectors: ["projection.sections", "projection.title"],
-          }),
-        ],
-      }),
-    });
-    expect(invoke).toHaveBeenCalledOnce();
+    if (reportUsage === "CONTINUATION_INPUT") {
+      expect(terminalReportResult).toMatchObject({
+        ok: false,
+        error: { code: "NEXT_ROOT_ACTION_REQUIRED" },
+      });
+      expect(invoke.mock.calls[1]?.[0]).toMatchObject({
+        turn: {
+          turn_index: 2,
+          tool_observations: [
+            expect.objectContaining({ output_usage: reportUsage, output_ref: reportArtifactRef }),
+          ],
+        },
+      });
+    } else {
+      expect(terminalReportResult).toEqual({
+        ok: true,
+        value: expect.objectContaining({
+          kind: "FINAL_ANSWER",
+          sections: [
+            expect.objectContaining({
+              kind: "ARTIFACT_FACTS",
+              artifact_ref: reportArtifactRef,
+              fact_selectors: ["projection.sections", "projection.title"],
+            }),
+          ],
+        }),
+      });
+    }
+    const expectedProviderCalls = reportUsage === "CONTINUATION_INPUT" ? 2 : 1;
+    expect(invoke).toHaveBeenCalledTimes(expectedProviderCalls);
 
     const duplicate = await createRootAgentTurnExecutor().decide(
       {
@@ -389,7 +414,7 @@ describe("Root Agent normal turn", () => {
       ok: false,
       error: expect.objectContaining({ code: "PROVIDER_LOGICAL_CALL_DUPLICATE" }),
     });
-    expect(invoke).toHaveBeenCalledOnce();
+    expect(invoke).toHaveBeenCalledTimes(expectedProviderCalls);
 
     const driftContext = createRunExecutionContext({
       lease,
@@ -427,7 +452,7 @@ describe("Root Agent normal turn", () => {
       ok: false,
       error: expect.objectContaining({ code: "ROOT_AGENT_CONTEXT_BINDING_INVALID" }),
     });
-    expect(invoke).toHaveBeenCalledOnce();
+    expect(invoke).toHaveBeenCalledTimes(expectedProviderCalls);
 
     invoke.mockReset();
     invoke.mockResolvedValueOnce({

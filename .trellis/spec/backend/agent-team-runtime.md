@@ -35,6 +35,7 @@ Root turn 0..3 (AUTO)
 - Root direct answers are limited to `GENERAL_TEXT` based on general knowledge or visible user messages. Workspace facts, semantic definitions/relationships, aggregates, rankings, trends, rows and charts require delegation or accepted Artifact evidence。
 - Root uses server-owned `toolChoice=AUTO` for at most four normal turns. Each turn decides only the current next action or final answer; there is no dedicated review stage or predeclared future call chain。
 - Subagent terminal results return to Root as strict safe Tool Results. A later turn may pass an exact accepted output only through ordinary `input_artifact_refs`。
+- `output_usage` 同样约束 `AnalysisReport`：只有 `FINAL_ANSWER_EVIDENCE` 可触发 Host 自动完成及 Provider delegation 关闭；`CONTINUATION_INPUT` 必须保留下一次 Root 决策。不得仅凭 Artifact 类型提前结束，也不得由 Host 固定插入报告步骤；后续能力仍须满足冻结 Catalog 的输入契约与剩余预算。
 - Specialist Provider logical call identity必须绑定 exact `run_id + accepted child task_id + stage + call_index`。同一 task的同一
   call replay仍拒绝重复；不同 Root turn创建的不同 child task即使选择相同 Profile/stage也不得碰撞。`call_index`只表示同一
   task内部的有界候选修复，不能替代 task identity。
