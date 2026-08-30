@@ -26,6 +26,28 @@ const id = (suffix: number) => `93000000-0000-4000-8000-${String(suffix).padStar
 const hash = (character: string) => `sha256:${character.repeat(64)}`;
 
 describe("Production Team governed chart publication", () => {
+  it("accepts only aligned logical type enums for result-binding repair feedback", () => {
+    const feedback = productionTeamToolsInternals.queryResultTypeFeedback;
+    const error = {
+      code: "QUERY_EVIDENCE_RESULT_BINDING_MISMATCH",
+      observed_result_types: ["STRING", "NUMBER"],
+      message: "private SQL and row values",
+    };
+    expect(feedback(error, 2)).toEqual(["STRING", "NUMBER"]);
+    expect(feedback(error, 3)).toBeNull();
+    expect(feedback({ ...error, code: "DATASOURCE_ADAPTER_PERMISSION_DENIED" }, 2)).toBeNull();
+    for (const value of [
+      undefined,
+      null,
+      [],
+      ["25", "1700"],
+      ["private SQL", "NUMBER"],
+      [{ type: "STRING" }, "NUMBER"],
+    ]) {
+      expect(feedback({ ...error, observed_result_types: value }, 2)).toBeNull();
+    }
+  });
+
   it("preserves requested month count without publishing a calendar definition", async () => {
     const intent = semanticQuerySelectionIntentSchema.parse({
       schema_version: "semantic-query-selection-intent@1.0.0",
@@ -1650,6 +1672,7 @@ describe("Production Team governed chart publication", () => {
       text2sqlExecute.mockRejectedValueOnce(
         Object.assign(new TypeError("private database error must not be published"), {
           code: executionCode,
+          observed_result_types: ["DATETIME", "NUMBER"],
         }),
       );
       if (repairOutcome === "rejected") {
@@ -1680,6 +1703,14 @@ describe("Production Team governed chart publication", () => {
           }),
         ]);
         expect(JSON.stringify(rejections)).not.toMatch(/private|select month|order_count/u);
+        expect(JSON.parse(rejections[0]?.summary ?? "null").observed_result_types).toEqual(
+          executionCode === "QUERY_EVIDENCE_RESULT_BINDING_MISMATCH"
+            ? ["DATETIME", "NUMBER"]
+            : undefined,
+        );
+        expect(JSON.parse(rejections[1]?.summary ?? "null")).not.toHaveProperty(
+          "observed_result_types",
+        );
         expect(text2sqlExecute).toHaveBeenCalledTimes(2);
         return;
       }
@@ -1701,6 +1732,22 @@ describe("Production Team governed chart publication", () => {
         },
       });
       expect(text2sqlExecute).toHaveBeenCalledTimes(3);
+      const repairCall = provider.mock.calls[1]?.[0] as { turn: { context_text: string } };
+      expect(JSON.parse(repairCall.turn.context_text).rejection.observed_result_types).toEqual(
+        executionCode === "QUERY_EVIDENCE_RESULT_BINDING_MISMATCH"
+          ? ["DATETIME", "NUMBER"]
+          : undefined,
+      );
+      expect(repairCall.turn.context_text).not.toContain("private database error");
+      const rejectionEvents = displayEvents
+        .filter((event) => event.kind === "progress")
+        .filter((event) => event.phase === "text2sql.candidate.rejected");
+      expect(JSON.parse(rejectionEvents[0]?.summary ?? "null").observed_result_types).toEqual(
+        executionCode === "QUERY_EVIDENCE_RESULT_BINDING_MISMATCH"
+          ? ["DATETIME", "NUMBER"]
+          : undefined,
+      );
+      expect(JSON.stringify(rejectionEvents)).not.toMatch(/private|select month|order_count/u);
 
       const committedBeforeFailure = [...productDocuments.keys()].sort();
       const chartBeforeFailure = chartDocument;

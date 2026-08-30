@@ -1508,3 +1508,21 @@ compile、adapter admission 与 evidence acceptance 继续共用此守卫；缺�
 
 新 clean build 后 fresh NAS scratch 必须证明最近10笔订单的真实 source oracle、QA 和 Trace；同时复验 semantic-only
 与全量 ROAS 以保护已有边界。全部通过后，使用 E14 首个失败 turn 的真实 receipt 正常前向激活 E15，fresh 15 回合从 L1 开始。
+
+### 25.13 结果类型拒绝必须提供安全且可行动的修复反馈
+
+`e4612435` 的 fresh scratch 最近订单、semantic-only、全量 ROAS 均通过业务/QA/Trace；live E15 正常激活后，
+formal attempt `092a7136-6ec4-4888-a90e-b2129090cb2c` 前三题 PASS，L1-04 Run
+`fdd424d2-6663-83f7-9b9a-a295fb371cbb` FAILED/87 events，8 次 EXECUTE 类型绑定拒绝，无 Artifact。
+它已越过 E14 的 compile 缺陷；不回退跨表时间修复。E15 已封存，后11题未提交，临时服务停止。
+
+历史候选仅有 hash，不能证明具体 SQL 或实际 OID；明确区分未知的历史写法与确定的反馈缺口。
+专用 scratch 的零行只读探针证明 raw text SELECT + timestamp ORDER BY 仍返回 STRING，SELECT date/timestamp cast
+分别返回 DATE/DATETIME。旧 bounded repair 只有错误码/原候选，无法获知真实返回类型。
+
+保留严格 OID 绑定校验；只在列数/名/序对齐时附带受支持逻辑类型。Worker 复用 Candidate 枚举与 exact length
+校验后，把数组加入原 repair rejection 与无值诊断；错误文本、SQL、行值、未知 metadata 不转发。compile 后清除反馈，
+不增加重试或新权威。Prompt 明确 SELECT 与排序 cast 区别，不允许通过重标发布 Dimension 类型绕过语义。
+
+完成离线测试与 scoped commit 后，fresh build/scratch 重验最近订单、semantic-only、全量 ROAS；全通过才可使用
+E15 真实失败 turn receipt 正常激活 E16，并从 L1 重做15回合。E15 的三个 PASS 不可拼接。

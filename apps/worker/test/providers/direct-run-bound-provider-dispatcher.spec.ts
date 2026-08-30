@@ -119,6 +119,9 @@ describe("direct run-bound provider retry policy", () => {
     expect(prompt).toContain("TEXT2SQL_SQL_TIME_WINDOW_REQUIRED means SQL selects by time");
     expect(prompt).toContain("Removing only the declaration is not a repair");
     expect(prompt).toContain("Date projection, grouping and latest-row ordering");
+    expect(prompt).toContain("An ORDER BY cast does not change a SELECT output type");
+    expect(prompt).toContain("rejection.observed_result_types");
+    expect(prompt).toContain("Do not relabel a published DATE dimension as STRING");
     expect(prompt).toContain("never invent a metric id from a formula name");
     expect(prompt).toContain("A time-domain id is not a dimension id");
     expect(prompt).toContain("does not ask for a time filter on an otherwise unbounded total");

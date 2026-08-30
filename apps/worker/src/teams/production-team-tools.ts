@@ -346,6 +346,25 @@ function repairableQueryExecutionFailure(code: string): boolean {
   ].includes(code);
 }
 
+function queryResultTypeFeedback(
+  error: unknown,
+  expectedColumnCount: number,
+): readonly Text2SqlQueryCandidate["result_columns"][number]["semantic_type"][] | null {
+  if (
+    safeErrorCode(error, "") !== "QUERY_EVIDENCE_RESULT_BINDING_MISMATCH" ||
+    typeof error !== "object" ||
+    error === null ||
+    !("observed_result_types" in error)
+  ) {
+    return null;
+  }
+  const parsed = z
+    .array(text2sqlQueryCandidateSchema.shape.result_columns.element.shape.semantic_type)
+    .length(expectedColumnCount)
+    .safeParse(error.observed_result_types);
+  return parsed.success ? parsed.data : null;
+}
+
 async function commitArtifact(
   dependencies: ProductionTeamToolsDependencies,
   factoryInput: ProductionTeamToolFactoryInput,
@@ -852,6 +871,7 @@ export function createProductionTeamTools(
     provider_attempt_count: number;
     rejected_candidate: Text2SqlQueryCandidate | null;
     rejection_code: string | null;
+    observed_result_types: ReturnType<typeof queryResultTypeFeedback>;
   } = {
     prepared: null,
     candidate: null,
@@ -860,6 +880,7 @@ export function createProductionTeamTools(
     provider_attempt_count: 0,
     rejected_candidate: null,
     rejection_code: null,
+    observed_result_types: null,
   };
 
   const recordCandidateRejection = async (
@@ -867,6 +888,7 @@ export function createProductionTeamTools(
     stage: "COMPILE" | "EXECUTE",
     candidate: Text2SqlQueryCandidate,
     code: string,
+    observedResultTypes: ReturnType<typeof queryResultTypeFeedback> = null,
   ): Promise<void> => {
     const context = factoryInput.execution_context;
     if (!context.emitDisplayEvent) return;
@@ -890,6 +912,7 @@ export function createProductionTeamTools(
             value === null ? "null" : typeof value,
           ),
           result_types: candidate.result_columns.map((column) => column.semantic_type),
+          ...(observedResultTypes ? { observed_result_types: observedResultTypes } : {}),
         }),
       }),
     );
@@ -913,6 +936,9 @@ export function createProductionTeamTools(
                 attempt: callIndex,
                 diagnostic_code: state.rejection_code ?? "TEXT2SQL_CANDIDATE_POLICY_REJECTED",
                 rejected_candidate: state.rejected_candidate,
+                ...(state.observed_result_types
+                  ? { observed_result_types: state.observed_result_types }
+                  : {}),
               },
             });
       const parsed = text2sqlQueryCandidateSchema.safeParse(
@@ -936,10 +962,12 @@ export function createProductionTeamTools(
         state.candidate = compiled;
         state.rejected_candidate = null;
         state.rejection_code = null;
+        state.observed_result_types = null;
         return compiled;
       } catch (error) {
         state.rejected_candidate = parsed.data;
         state.rejection_code = text2SqlCandidateDiagnosticCode(error);
+        state.observed_result_types = null;
         await recordCandidateRejection(taskId, "COMPILE", parsed.data, state.rejection_code);
         if (state.provider_attempt_count >= maxText2SqlCandidateAttempts) {
           throw new ProductionTeamToolError(text2SqlCandidateFailureCode(state.rejection_code));
@@ -1127,6 +1155,7 @@ export function createProductionTeamTools(
                 "EXECUTE",
                 candidate,
                 safeErrorCode(error, "TEXT2SQL_QUERY_EXECUTION_FAILED"),
+                queryResultTypeFeedback(error, candidate.result_columns.length),
               );
               throw error;
             }
@@ -1144,6 +1173,10 @@ export function createProductionTeamTools(
             }
             state.rejected_candidate = state.candidate;
             state.rejection_code = code;
+            state.observed_result_types = queryResultTypeFeedback(
+              error,
+              state.candidate.result_columns.length,
+            );
             state.candidate = await generateValidatedText2SqlCandidate(input.task.task_id);
             execution = await executeCandidate(state.candidate);
           }
@@ -1318,6 +1351,7 @@ export function createProductionTeamTools(
 export const productionTeamToolsInternals = Object.freeze({
   buildRequestScopedInterpretations,
   normalizedQueryEvidenceRows,
+  queryResultTypeFeedback,
   repairableQueryExecutionFailure,
   resolveAcceptedSemanticQueryContext,
   safeErrorCode,

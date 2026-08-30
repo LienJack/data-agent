@@ -426,3 +426,51 @@ Bad：COMPILE 提示时间 Dimension 越界后只将 time_window 改成 null，�
 
 Wrong：`if (!candidate.time_window) return null` 直接跳过 SQL 时间语义。
 Correct：先证明不存在未声明的时间选择，再允许签发 null-window evidence；已声明窗口仍须完整正向证明。
+
+## PostgreSQL 结果类型与有界修复反馈
+
+### 1. Scope / Trigger
+
+Candidate 声明的 semantic_type 必须等于真实 PostgreSQL RowDescription 对 SELECT 输出的逻辑类型；
+不能从物理列名称、值的外观或 ORDER BY 中的 cast 推断。修改 evidence binding 或 candidate repair 时遵守本节。
+
+### 2. Signatures
+
+`PostgresqlQueryEvidenceSemanticBindingError` 可携带只读 `observed_result_types`；
+`queryResultTypeFeedback(error, expectedColumnCount)` 在 Worker unknown 边界重新解析白名单，供原 repair context 与诊断使用。
+
+### 3. Contracts
+
+- 列数量、名称、顺序不等仍拒绝；只有这些完全对齐且实际 OID 全部受支持时，类型不匹配错误才附带实际逻辑类型数组。
+- 枚举复用 Candidate 的 NUMBER/STRING/DATE/DATETIME/BOOLEAN，长度严格等于当前候选；不传 OID、列名、SQL、行值或异常文本。
+- 仅 `QUERY_EVIDENCE_RESULT_BINDING_MISMATCH` 可传该字段。缺失、未知枚举、错长度和其他错误码的 metadata 被忽略，错误本身不被吞掉。
+- 原 `text2sql-repair-context@1.0.0` rejection 增加可选字段；compile 成功或失败均清除上次执行反馈，防止污染下一轮。
+  原 Run lease 的尝试预算、logical_call_id、权限/绑定检查不变；反馈不是额外执行授权。
+- raw text SELECT 返回 STRING；SELECT 自身显式 date/timestamp cast 分别返回 DATE/DATETIME。
+  ORDER BY cast 不改变 SELECT 类型；发布 DATE Dimension 应修正 SELECT，而非冒充 STRING 以过门禁。
+- Host 不自动重写 SQL、改语义绑定或放宽 OID 校验；下一候选仍完整经过 compile、执行与 evidence acceptance。
+
+### 4. Validation & Error Matrix
+
+| 输入 | 结果 |
+| --- | --- |
+| 同名同序但 text/timestamp 与 DATE 声明不符 | RESULT_BINDING_MISMATCH + STRING/DATETIME 类型反馈 |
+| 列数量/名称/顺序漂移 | 拒绝，无按位类型反馈 |
+| 未支持 OID | RESULT_TYPE_UNSUPPORTED，无反馈 |
+| metadata 含原始错误/对象/OID/错长度 | Worker 不转发；保留既有失败码与预算 |
+| 正确 SELECT date cast + DATE | 继续完整物理/语义绑定验证，不因反馈获得 PASS |
+
+### 5. Good / Base / Bad Cases
+
+Good：SELECT 日期投影自身 cast 与声明一致。Base：既有合法 native 类型与 date_trunc 月桶保持通过。
+Bad：ORDER BY date cast 后仍 SELECT raw text，却声明 DATE；或把数据库异常全文塞入 repair prompt。
+
+### 6. Tests Required
+
+text/date/timestamp/timestamptz、unsupported OID、alias drift、枚举/长度/错误码白名单、公开诊断脱敏、
+有界修复接收实际类型、compile 失败清空旧反馈、权限错误不重试；真实数据库只读 RowDescription 探针不替代业务门禁。
+
+### 7. Wrong vs Correct
+
+Wrong：收到类型错误后只重发错误码，让模型重复相同候选，或放宽 DATE/STRING 判断。
+Correct：严格拒绝并在既有有界修复上下文中提供已验证的无值类型反馈，下一候选重新验证。

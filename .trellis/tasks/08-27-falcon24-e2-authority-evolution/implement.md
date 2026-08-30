@@ -1551,9 +1551,32 @@ Diagnostic/Q1/C1任一正式首次失败必须写既有 authority支持的 immut
 - 下一步：scoped commit → clean force build/attestation/full unit → fresh scratch 最近订单 + semantic-only + ROAS
   → 正常 live E15 → 新 attempt 全15回合。旧 PASS 不拼接，production isolation=false/HOLD，任务保持 ACTIVE。
 
+**E15 正式结果类型失败与安全修复反馈（2026-08-31）**
+
+- `e4612435` force build 8/8（0 cached）、single-concurrent full unit 15/15（12 cached）通过，build generation
+  `sha256:152c579de60b2e89c48453307ac6e1b867f7b960816c3a433940687ae855247f`。
+  fresh NAS scratch 55468 的最近订单 Run `ec075c4b-8ca8-8b56-a6c1-2df403fe36dd`、semantic-only Run
+  `fbe7536f-65fa-8b74-8ec8-1b4681a60530`、ROAS Run `659607db-f352-8030-b3e9-1687d756bb4b`
+  均业务/QA/Trace PASS。两条数据题独立 source oracle 相等；只读 harness 的 chart 约束/hydration 修正保留失败记录，未重提问题。
+- live 备份 `data-agent-falcon24-e14-pre-e15-e4612435-backup` 已物理验证且 never-started，347 表/ledger 指纹保留。
+  初始 helper 图片 hash 误替换由 guard 在备份/写入前阻断，修正 exact literal 后才执行正常备份和激活。
+  E15 baseline `eb6f538e-257a-57a2-9071-9e97ba8849c0`、activation `05f5c9b5-8b82-5691-8a70-64847a2d447c`。
+- formal attempt `092a7136-6ec4-4888-a90e-b2129090cb2c` 前三题 PASS；L1-04 Run
+  `fdd424d2-6663-83f7-9b9a-a295fb371cbb` FAILED/87 events，无 Artifact，四次 Text2SQL 委派各两候选均发生类型绑定拒绝。
+  首个失败 turn receipt `sha256:2f1ad732fedcc29f5933a5bc8384caa53c93d439bf78284a366424e022fe9360`；
+  QA/Trace=null，后11题未提交。过早只读 terminal/oracle 检查被 guard 拒绝，未产生 PASS；terminal 后正常封存 FAIL。
+  本轮 Web/Worker/OpenSandbox/browser/vault 已停止，所有旧审计与 scratch 保留。
+- 独立零行 scratch RowDescription 探针证明 raw text SELECT 与排序 cast 独立；历史 SQL/OID 未落盘，明确不反推具体写法。
+  修复仅在既有错误、bounded repair context 和无值公开诊断之间传递 exact-length 逻辑类型枚举，保留严格拒绝/权限/原重试预算。
+- Platform focused 122/122、Worker focused 80/80、两包 typecheck、Biome、diff check、Trellis validate 通过。
+  Platform 三个新 observed-type 断言先 RED 后 GREEN；测试联合类型收窄问题已修正并重验。validate 仍有两份历史大文件截断警告，未作无关修改。
+  Trellis before-dev/check/break-loop 约束了原契约复用、跨层脱敏与规范同步；详见 `research/postgresql-result-type-repair-feedback.md`。
+- 下一步：scoped commit → clean force build/attestation/full unit → fresh scratch 最近订单/semantic-only/ROAS
+  → 正常 live E16 → 全新15回合。旧 PASS 不拼接，production isolation=false/HOLD，任务保持 ACTIVE。
+
 **F6 READY 轮次恢复边界（2026-08-30，历史）**
 
-> 以下为历史记录；当前 forward recovery 已到 E14 FAILED，下一 fresh epoch 为 E15，见上一节。
+> 以下为历史记录；当前 forward recovery 已到 E15 FAILED，下一 fresh epoch 为 E16，见上一节。
 
 - `e676a450-5768-48d9-a264-ab7890fe0323` 的旧构建在 L1 前三题自动门禁 PASS 后，人工页面复核发现 Root 标签及失败
   Specialist 活动未闭合；`6443b8a2`、`6d163113` 修复前后端，并加强真实 DOM gate。原收据保留为历史，不能拼入新构建 PASS。

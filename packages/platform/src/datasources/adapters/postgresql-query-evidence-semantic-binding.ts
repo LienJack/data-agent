@@ -65,7 +65,10 @@ export interface PostgresqlQueryEvidenceSemanticBindingInput {
 export class PostgresqlQueryEvidenceSemanticBindingError extends TypeError {
   override readonly name = "PostgresqlQueryEvidenceSemanticBindingError";
 
-  constructor(readonly code: string) {
+  constructor(
+    readonly code: string,
+    readonly observed_result_types?: readonly Text2SqlQueryCandidate["result_columns"][number]["semantic_type"][],
+  ) {
     super(code);
   }
 }
@@ -597,13 +600,20 @@ export async function buildPostgresqlQueryEvidenceSemanticBinding(
   const packageDocument = context.package;
   if (
     result.columns.length !== candidate.result_columns.length ||
-    result.columns.some(
-      (column, index) =>
-        column.name !== candidate.result_columns[index]?.name ||
-        logicalTypeForOid(column.type) !== candidate.result_columns[index]?.semantic_type,
-    )
+    result.columns.some((column, index) => column.name !== candidate.result_columns[index]?.name)
   ) {
     reject("QUERY_EVIDENCE_RESULT_BINDING_MISMATCH");
+  }
+  const observedResultTypes = result.columns.map((column) => logicalTypeForOid(column.type));
+  if (
+    observedResultTypes.some(
+      (type, index) => type !== candidate.result_columns[index]?.semantic_type,
+    )
+  ) {
+    throw new PostgresqlQueryEvidenceSemanticBindingError(
+      "QUERY_EVIDENCE_RESULT_BINDING_MISMATCH",
+      Object.freeze(observedResultTypes),
+    );
   }
   if (
     snapshot.snapshot_id !== packageDocument.schema_snapshot.resource_id ||

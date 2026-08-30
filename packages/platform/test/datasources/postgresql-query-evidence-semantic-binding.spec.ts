@@ -1192,17 +1192,24 @@ describe("PostgreSQL QueryEvidence semantic binding", () => {
     });
   });
 
-  it("rejects a result OID that contradicts the declared semantic type", async () => {
+  it.each([
+    ["25", "STRING"],
+    ["1114", "DATETIME"],
+    ["1184", "DATETIME"],
+  ])("reports only observed logical types for a contradicting result OID %s", async (oid, type) => {
     const input = await fixture();
     await expect(
       buildPostgresqlQueryEvidenceSemanticBinding({
         ...input,
         result: await queryResult([
-          { name: "order_month", type: "25" },
+          { name: "order_month", type: oid },
           { name: "revenue", type: "1700" },
         ]),
       }),
-    ).rejects.toMatchObject({ code: "QUERY_EVIDENCE_RESULT_BINDING_MISMATCH" });
+    ).rejects.toMatchObject({
+      code: "QUERY_EVIDENCE_RESULT_BINDING_MISMATCH",
+      observed_result_types: [type, "NUMBER"],
+    });
   });
 
   it("rejects a result name that contradicts the declared output binding", async () => {
@@ -1215,7 +1222,26 @@ describe("PostgreSQL QueryEvidence semantic binding", () => {
           { name: "revenue", type: "1700" },
         ]),
       }),
-    ).rejects.toMatchObject({ code: "QUERY_EVIDENCE_RESULT_BINDING_MISMATCH" });
+    ).rejects.toMatchObject({
+      code: "QUERY_EVIDENCE_RESULT_BINDING_MISMATCH",
+      observed_result_types: undefined,
+    });
+  });
+
+  it("keeps unsupported PostgreSQL result types fail-closed without repair type feedback", async () => {
+    const input = await fixture();
+    await expect(
+      buildPostgresqlQueryEvidenceSemanticBinding({
+        ...input,
+        result: await queryResult([
+          { name: "order_month", type: "3802" },
+          { name: "revenue", type: "1700" },
+        ]),
+      }),
+    ).rejects.toMatchObject({
+      code: "QUERY_EVIDENCE_RESULT_TYPE_UNSUPPORTED",
+      observed_result_types: undefined,
+    });
   });
 
   it("rejects a semantic type that contradicts the exact physical snapshot column", async () => {
