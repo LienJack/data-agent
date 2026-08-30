@@ -452,6 +452,57 @@ function requiredSemanticObject<T>(
   return value;
 }
 
+function projectSemanticSpecialistCatalog(input: {
+  readonly catalog: FrozenSemanticReleaseCatalog;
+  readonly retrieval: ProductionTeamToolFactoryInput["semantic_context_package"]["retrieval_receipt"];
+  readonly inference: ProductionTeamToolFactoryInput["semantic_context_package"]["inference_receipt"];
+}) {
+  const allowedObjectIds = new Set([
+    ...input.retrieval.selected_object_ids,
+    ...input.inference.mandatory_object_ids,
+  ]);
+  const allowedRelationshipIds = new Set([
+    ...allowedObjectIds,
+    ...input.inference.mandatory_relationship_ids,
+  ]);
+  const metrics = input.catalog.executable.metrics.filter((metric) =>
+    allowedObjectIds.has(metric.metric_id),
+  );
+  const dimensions = input.catalog.executable.dimensions.filter((dimension) =>
+    allowedObjectIds.has(dimension.dimension_id),
+  );
+  const formulaIds = new Set(
+    input.catalog.executable.formulas
+      .filter((formula) => allowedObjectIds.has(formula.node_id))
+      .map((formula) => formula.node_id),
+  );
+  const timeDomainIds = new Set(allowedObjectIds);
+  for (const metric of metrics) {
+    if (metric.formula) formulaIds.add(metric.formula.formula_id);
+    if (metric.time_domain) timeDomainIds.add(metric.time_domain.time_domain_id);
+  }
+
+  return Object.freeze({
+    metrics,
+    dimensions,
+    formulas: input.catalog.executable.formulas.filter((formula) =>
+      formulaIds.has(formula.node_id),
+    ),
+    relationships: input.catalog.relationships.relationships.filter((relationship) =>
+      allowedRelationshipIds.has(relationship.relationship_id),
+    ),
+    restrictions: Object.freeze({
+      ...input.catalog.restrictions,
+      quality_constraints: input.catalog.restrictions.quality_constraints.filter((constraint) =>
+        allowedObjectIds.has(constraint.constraint_id),
+      ),
+      time_semantics: input.catalog.restrictions.time_semantics.filter((timeDomain) =>
+        timeDomainIds.has(timeDomain.time_domain_id),
+      ),
+    }),
+  });
+}
+
 async function projectSemanticQueryContext(input: {
   readonly factory: ProductionTeamToolFactoryInput;
   readonly catalog: FrozenSemanticReleaseCatalog;
@@ -859,6 +910,11 @@ export function createProductionTeamTools(
         const packageDocument = factoryInput.semantic_context_package;
         const retrieval = packageDocument.retrieval_receipt;
         const inference = packageDocument.inference_receipt;
+        const specialistCatalog = projectSemanticSpecialistCatalog({
+          catalog,
+          retrieval,
+          inference,
+        });
         const semanticSelection = semanticQuerySelectionIntentSchema.safeParse(
           await specialistProviderJson({
             factory: factoryInput,
@@ -875,11 +931,11 @@ export function createProductionTeamTools(
                 pruned_object_count: retrieval.pruned_object_ids.length,
               },
               inference,
-              metrics: catalog.executable.metrics,
-              dimensions: catalog.executable.dimensions,
-              formulas: catalog.executable.formulas,
-              relationships: catalog.relationships.relationships,
-              restrictions: catalog.restrictions,
+              metrics: specialistCatalog.metrics,
+              dimensions: specialistCatalog.dimensions,
+              formulas: specialistCatalog.formulas,
+              relationships: specialistCatalog.relationships,
+              restrictions: specialistCatalog.restrictions,
             }),
           }),
         );

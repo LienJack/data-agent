@@ -354,7 +354,7 @@ describe("Production Team governed chart publication", () => {
       principal_id: lease.principal_id,
       run_id: lease.run_id,
     });
-    const semanticProvider = vi.fn(async () => ({
+    const semanticProvider = vi.fn(async (_input: unknown) => ({
       ok: true as const,
       value: {
         output_text: JSON.stringify({
@@ -457,6 +457,33 @@ describe("Production Team governed chart publication", () => {
                 causal_role: "OUTCOME",
               },
             },
+            {
+              metric_id: "metric.unrelated_inventory",
+              name: "无关库存指标",
+              aliases: ["库存"],
+              table_id: "table.inventory",
+              column_id: "inventory.quantity",
+              aggregation: "sum",
+              formula: null,
+              grain: { grain_id: "grain.inventory", granularity: "atomic" },
+              unit: null,
+              time_domain: null,
+              time_column_id: null,
+              additivity: "additive",
+              null_policy: "coalesce-zero",
+              fanout_policy: "reject",
+              dependency_column_ids: ["inventory.quantity"],
+              tags: [],
+              analysis: {
+                primary: false,
+                priority: 99,
+                missing_period_policy: "UNKNOWN",
+                seasonality: null,
+                allowed_dimension_ids: [],
+                capabilities: [],
+                causal_role: null,
+              },
+            },
           ],
           dimensions: [
             {
@@ -467,6 +494,20 @@ describe("Production Team governed chart publication", () => {
               column_id: "orders.created_at",
               grain: { grain_id: "grain.month", granularity: "month" },
               data_type: "timestamp",
+              sensitivity: "PUBLIC",
+              hierarchical: false,
+              parent_dimension_id: null,
+              tags: [],
+              analysis: { groupable: true, pivotable: true, causal_role: null },
+            },
+            {
+              dimension_id: "dimension.unrelated_warehouse",
+              name: "无关仓库维度",
+              aliases: ["仓库"],
+              table_id: "table.inventory",
+              column_id: "inventory.warehouse_id",
+              grain: { grain_id: "grain.warehouse", granularity: "atomic" },
+              data_type: "string",
               sensitivity: "PUBLIC",
               hierarchical: false,
               parent_dimension_id: null,
@@ -499,13 +540,47 @@ describe("Production Team governed chart publication", () => {
                 ontology_path: ["customers", "orders"],
               },
             },
+            {
+              relationship_id: "relationship.unrelated_inventory_warehouse",
+              name: "inventory_warehouse",
+              kind: "physical",
+              left_table_id: "inventory",
+              left_column_ids: ["inventory.warehouse_id"],
+              right_table_id: "warehouses",
+              right_column_ids: ["warehouses.id"],
+              cardinality: "many-to-one",
+              left_row_preservation: "required",
+              right_row_preservation: "optional",
+              proof_kind: "SNAPSHOT_CERTIFIED",
+              proof_detail: "fixed snapshot",
+              tags: [],
+              analysis: {
+                join_allowed: true,
+                fanout_closed: true,
+                ontology_path: ["warehouses", "inventory"],
+              },
+            },
           ],
         },
         restrictions: {
-          quality_constraints: [],
+          quality_constraints: [
+            {
+              constraint_id: "quality.unrelated_inventory_nonnegative",
+              expression: "inventory.quantity >= 0",
+              severity: "ERROR",
+              sensitivity: "PUBLIC",
+            },
+          ],
           time_semantics: [
             {
               time_domain_id: "time.order_month",
+              calendar: "gregorian",
+              timezone: "Asia/Shanghai",
+              min_time: null,
+              max_time: null,
+            },
+            {
+              time_domain_id: "time.unrelated_inventory_day",
               calendar: "gregorian",
               timezone: "Asia/Shanghai",
               min_time: null,
@@ -604,6 +679,23 @@ describe("Production Team governed chart publication", () => {
     expect(result).toMatchObject({ output_ref: { artifact_type: "SemanticQueryContext" } });
     expect(releaseRead).toHaveBeenCalledOnce();
     expect(semanticProvider).toHaveBeenCalledOnce();
+    const providerInput = semanticProvider.mock.calls[0]?.[0] as
+      | { readonly turn: { readonly context_text: string } }
+      | undefined;
+    const specialistContext = JSON.parse(providerInput?.turn.context_text ?? "{}") as Record<
+      string,
+      unknown
+    >;
+    expect(specialistContext).toMatchObject({
+      metrics: [{ metric_id: "metric.order_revenue" }],
+      dimensions: [{ dimension_id: "dimension.order_month" }],
+      relationships: [{ relationship_id: "relationship.order_customer" }],
+      restrictions: {
+        quality_constraints: [],
+        time_semantics: [{ time_domain_id: "time.order_month" }],
+      },
+    });
+    expect(JSON.stringify(specialistContext)).not.toContain("unrelated");
     expect(text2sqlPrepare).not.toHaveBeenCalled();
     expect(text2sqlExecute).not.toHaveBeenCalled();
     expect(committed).toMatchObject({
