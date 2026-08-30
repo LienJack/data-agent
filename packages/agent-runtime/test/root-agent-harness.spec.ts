@@ -273,6 +273,8 @@ describe("Root Agent Harness", () => {
     expect(message).toContain("must not delegate another analysis");
     expect(message).toContain("request_scoped_interpretation");
     expect(message).toContain("current Run only");
+    expect(message).toContain("asks only for the governed definition, formula, time grain");
+    expect(message).toContain("Do not delegate Text2SQL unless the user also requests actual rows");
     expect(message).toContain("Do not expose internal index");
     expect(message).not.toContain("upstream_accepted_output");
     expect(message).not.toContain("producer_delegation_key");
