@@ -78,6 +78,21 @@ describe("direct run-bound provider retry policy", () => {
     ).toBe(true);
   });
 
+  it("binds specialist context length to the frozen run budget instead of a smaller constant", () => {
+    expect(
+      directRunBoundProviderDispatcherInternals.validSpecialistContextText(
+        "x".repeat(100_001),
+        128_000,
+      ),
+    ).toBe(true);
+    expect(
+      directRunBoundProviderDispatcherInternals.validSpecialistContextText(
+        "x".repeat(128_001),
+        128_000,
+      ),
+    ).toBe(false);
+  });
+
   it("keeps month buckets typed and gives the repair turn actionable SQL safety feedback", () => {
     const prompt = directRunBoundProviderDispatcherInternals.text2SqlSpecialistSystemPrompt(
       '{"schema_version":"text2sql-repair-context@1.0.0","rejection":{"diagnostic_code":"TEXT2SQL_SQL_DANGEROUS"}}',

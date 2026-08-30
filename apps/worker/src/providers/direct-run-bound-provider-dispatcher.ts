@@ -236,6 +236,10 @@ function validAnalysisToolAllowlist(
   );
 }
 
+function validSpecialistContextText(contextText: string, maxContextTokens: number): boolean {
+  return contextText.length > 0 && contextText.length <= maxContextTokens;
+}
+
 function projectToolCallCandidate(
   event: Readonly<{
     readonly tool_call_id: string;
@@ -420,8 +424,10 @@ export function createDirectRunBoundProviderDispatcher(input: {
           (specialistTurn.stage === "REPORT" &&
             specialistTurn.profile_id !== "report-writing-agent") ||
           specialistTurn.objective.trim().length === 0 ||
-          specialistTurn.context_text.length === 0 ||
-          specialistTurn.context_text.length > 100_000)
+          !validSpecialistContextText(
+            specialistTurn.context_text,
+            config.context_policy.max_context_tokens,
+          ))
       ) {
         return failure(
           "SPECIALIST_MODEL_REQUEST_INVALID",
@@ -738,5 +744,6 @@ export const directRunBoundProviderDispatcherInternals = Object.freeze({
   retryableReason,
   semanticSpecialistSystemPrompt,
   shouldRetryProviderCall,
+  validSpecialistContextText,
   validAnalysisToolAllowlist,
 });
