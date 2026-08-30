@@ -60,6 +60,23 @@ async function receipt() {
 }
 
 describe("analysis input materialization receipt", () => {
+  it("retains request-derived identity and the exact source binding hash without promoting it to a Metric", async () => {
+    const original = await receipt();
+    const { receipt_hash: _hash, ...material } = original;
+    const bound = await buildAnalysisInputMaterializationReceipt({
+      ...material,
+      columns: material.columns.map((column) => ({
+        ...column,
+        semantic_role: "REQUEST_DERIVED",
+        semantic_object_id: "request-scoped.yoy",
+      })),
+    });
+    expect(bound.source_binding_hash).toBe(original.source_binding_hash);
+    expect(bound.columns.every(({ semantic_role }) => semantic_role === "REQUEST_DERIVED")).toBe(
+      true,
+    );
+    await expect(verifyAnalysisInputMaterializationReceipt(bound)).resolves.toEqual(bound);
+  });
   it("builds one immutable content-addressed receipt", async () => {
     const value = await receipt();
     const { receipt_hash: _receiptHash, ...material } = value;

@@ -329,6 +329,59 @@ const candidate = (sql: string): Text2SqlQueryCandidate => ({
 });
 
 describe("PostgreSQL Text2SQL query runtime", () => {
+  it.each(["missing-selection", "selected-without-authority"])(
+    "rejects request derivation %s before target I/O",
+    async (variant) => {
+      const connect = vi.fn();
+      const runtime = createPostgresqlText2SqlQueryRuntime({
+        pool: { connect } as never,
+        capability: {},
+        schema_snapshots: {} as never,
+        datasources: {} as never,
+        secrets: {} as never,
+      });
+      const prepared = {
+        context_text: "{}",
+        datasource_id: id(30),
+        schema_snapshot_id: id(31),
+        schema_snapshot_hash: hash("d"),
+        allowed_relations: ["falcon_db_24.orders"],
+        target_capability_hash: hash("e"),
+        reader_role: "reader",
+        semantic_query_context_hash: hash("f"),
+        semantic_query_context_binding: {
+          metric_ids: [],
+          dimension_ids: [],
+          formula_ids: [],
+          request_derivation_ids: variant === "missing-selection" ? [] : ["request-scoped.yoy"],
+        },
+      };
+      const query: Text2SqlQueryCandidate = {
+        ...candidate("select sum(o.amount) as growth from falcon_db_24.orders as o"),
+        result_columns: [
+          {
+            name: "growth",
+            semantic_type: "NUMBER",
+            label: "同比",
+            semantic_binding: { object_kind: "REQUEST_DERIVED", object_id: "request-scoped.yoy" },
+          },
+        ],
+        presentation: {
+          title: "同比",
+          summary: "候选",
+          visualization: "TABLE",
+          x_key: null,
+          y_keys: [],
+        },
+      };
+      await expect(runtime.compileCandidate({ prepared, candidate: query })).rejects.toMatchObject(
+        variant === "missing-selection"
+          ? { diagnostic_code: "TEXT2SQL_SEMANTIC_RESULT_BINDING_OUT_OF_RANGE" }
+          : { code: "TEXT2SQL_BINDING_AUTHORITY_REQUIRED" },
+      );
+      expect(connect).not.toHaveBeenCalled();
+    },
+  );
   it("projects PostgreSQL SQLSTATE into bounded repair diagnostics", () => {
     expect(
       postgresqlText2SqlQueryRuntimeInternals.classifiedPostgresqlExecutionError({
@@ -867,6 +920,13 @@ describe("PostgreSQL Text2SQL query runtime", () => {
       expect(JSON.parse(prepared.context_text).semantic_context.resolved_time_window).toEqual(
         prepared.requested_time_window,
       );
+      expect(JSON.parse(prepared.context_text).semantic_context.request_derived_bindings).toEqual([
+        { object_kind: "REQUEST_DERIVED", object_id: "request-scoped.yoy" },
+      ]);
+      expect(prepared.semantic_query_context_binding?.request_derivation_ids).toEqual([
+        "request-scoped.yoy",
+      ]);
+      expect(prepared.binding_authority?.semantic_query_context).toEqual(contextWithTimeDependency);
       expect(
         JSON.parse(prepared.context_text).semantic_context.resolved_comparison_time_windows,
       ).toEqual([

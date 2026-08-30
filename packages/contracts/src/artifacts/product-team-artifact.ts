@@ -14,7 +14,10 @@ import {
   artifactWorkspaceProjectionSchema,
   artifactWorkspaceTableProjectionSchema,
 } from "./export-receipt.js";
-import { verifySemanticQueryContext } from "./semantic-query-context.js";
+import {
+  semanticRequestScopedInterpretationSchema,
+  verifySemanticQueryContext,
+} from "./semantic-query-context.js";
 
 const productArtifactReferenceSchema = z.union([
   artifactReferenceFor("SqlArtifact"),
@@ -42,7 +45,7 @@ const queryEvidenceColumnBindingSchema = z
     output_name: postgresqlOutputAliasSchema,
     logical_type: z.enum(["NUMBER", "STRING", "DATE", "DATETIME", "BOOLEAN"]),
     nullable: z.boolean(),
-    semantic_role: z.enum(["METRIC", "FORMULA", "DIMENSION", "PHYSICAL_COLUMN"]),
+    semantic_role: z.enum(["METRIC", "FORMULA", "DIMENSION", "PHYSICAL_COLUMN", "REQUEST_DERIVED"]),
     semantic_object_id: versionIdentifierSchema,
     formula_hash: contentHashSchema.nullable(),
     aggregate: z.enum(["sum", "count", "count_distinct", "avg", "min", "max"]).nullable(),
@@ -51,8 +54,30 @@ const queryEvidenceColumnBindingSchema = z
       granularity: z.enum(["atomic", "hour", "day", "week", "month", "quarter", "year"]),
     }),
     physical_sources: z.array(queryEvidencePhysicalSourceSchema).min(1).max(64),
+    request_derivation: z
+      .strictObject({
+        semantic_query_context_hash: contentHashSchema,
+        interpretation: semanticRequestScopedInterpretationSchema,
+      })
+      .optional(),
   })
   .superRefine((column, ctx) => {
+    if (
+      column.semantic_role === "REQUEST_DERIVED"
+        ? !column.request_derivation ||
+          column.logical_type !== "NUMBER" ||
+          column.formula_hash === null ||
+          column.aggregate !== null ||
+          column.semantic_object_id !==
+            column.request_derivation.interpretation.interpretation_id ||
+          column.request_derivation.interpretation.operator.kind === "RECENT_COMPLETE_PERIODS"
+        : column.request_derivation !== undefined
+    ) {
+      ctx.addIssue({
+        code: "custom",
+        message: "Request-derived columns require their exact non-published interpretation.",
+      });
+    }
     if (
       (column.semantic_role === "METRIC" &&
         (column.formula_hash === null || column.aggregate === null)) ||

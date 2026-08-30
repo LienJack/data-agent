@@ -581,6 +581,9 @@ issueCapabilityDeliveryReceipt(
 - 新 QueryEvidence 的 `time_window=null` 不得掩盖 SQL 中的时间选择。compile/执行前与 acceptance 共用 AST/CTE
   时间依赖反向校验；文本日期从已选 Metric 的绑定关系定位，不能因缺少独立时间 Dimension 跳过。
   仅投影/分组/最新行排序不要求窗口；完整规则见 `backend/text2sql-resolved-context.md`。旧证据 hash/历史不改写。
+- 请求内同比使用 `REQUEST_DERIVED`，不得冒充已发布 FORMULA/METRIC。exact Context hash、REQUEST_ONLY/NONE 解释和
+  物理来源/算式证明进入 QueryEvidence binding hash；Analysis Arrow 保留 role/id 与 source_binding_hash。
+  compile/admission/acceptance 共用证明，缺失同期列 nullable；限定执行子集与负例见 `backend/text2sql-resolved-context.md`。
 - Root TABLE 正文保留 exact current-Run accepted-ref 校验，输出有界 Markdown 表（最多前 100 行）、总行数、显式时区与 NULL 说明，转义单元格文本；不得把内部 JSON dump 当成业务答案，也不得为排版新增模型事实。数值显示最多 12 位有效数字，整数不截精度，完整原值在表格提示与原始导出保留；不凭列名猜测币种/百分比。
 
 ### 7. Wrong vs Correct

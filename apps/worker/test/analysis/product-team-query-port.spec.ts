@@ -73,7 +73,12 @@ async function documents(input?: {
     readonly name: string;
     readonly logical_type: "NUMBER" | "STRING" | "DATE" | "DATETIME" | "BOOLEAN";
     readonly nullable: boolean;
-    readonly semantic_role: "METRIC" | "FORMULA" | "DIMENSION" | "PHYSICAL_COLUMN";
+    readonly semantic_role:
+      | "METRIC"
+      | "FORMULA"
+      | "DIMENSION"
+      | "PHYSICAL_COLUMN"
+      | "REQUEST_DERIVED";
     readonly semantic_object_id: string;
   }[];
 }) {
@@ -224,37 +229,41 @@ const request = {
 };
 
 describe("Product Team governed analysis query port", () => {
-  it("materializes a Formula column without promoting it to Metric authority", async () => {
-    const fixture = await harness({
-      columns: [{ key: "roas", label: "ROAS", data_type: "NUMBER" }],
-      rows: [{ roas: 3.2 }],
-      bindings: [
-        {
-          name: "roas",
-          logical_type: "NUMBER",
-          nullable: false,
-          semantic_role: "FORMULA",
-          semantic_object_id: "formula.roas",
-        },
-      ],
-    });
-    await fixture.port.execute(request);
-    expect(fixture.materialize).toHaveBeenCalledWith(
-      expect.objectContaining({
-        columns: [
+  it.each(["FORMULA", "REQUEST_DERIVED"] as const)(
+    "materializes a %s column without promoting it to Metric authority",
+    async (role) => {
+      const objectId = role === "FORMULA" ? "formula.roas" : "request-scoped.yoy";
+      const fixture = await harness({
+        columns: [{ key: "roas", label: "ROAS", data_type: "NUMBER" }],
+        rows: [{ roas: 3.2 }],
+        bindings: [
           {
             name: "roas",
-            arrow_type: "FLOAT64",
+            logical_type: "NUMBER",
             nullable: false,
-            semantic_role: "FORMULA",
-            semantic_object_id: "formula.roas",
+            semantic_role: role,
+            semantic_object_id: objectId,
           },
         ],
-        source_binding_hash: fixture.semanticBinding.binding_hash,
-        query_evidence_ref: fixture.evidence.artifact_ref,
-      }),
-    );
-  });
+      });
+      await fixture.port.execute(request);
+      expect(fixture.materialize).toHaveBeenCalledWith(
+        expect.objectContaining({
+          columns: [
+            {
+              name: "roas",
+              arrow_type: "FLOAT64",
+              nullable: false,
+              semantic_role: role,
+              semantic_object_id: objectId,
+            },
+          ],
+          source_binding_hash: fixture.semanticBinding.binding_hash,
+          query_evidence_ref: fixture.evidence.artifact_ref,
+        }),
+      );
+    },
+  );
 
   it("rejects row-level physical-column evidence before analysis materialization", async () => {
     const fixture = await harness({

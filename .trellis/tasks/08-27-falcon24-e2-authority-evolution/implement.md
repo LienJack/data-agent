@@ -1574,9 +1574,37 @@ Diagnostic/Q1/C1任一正式首次失败必须写既有 authority支持的 immut
 - 下一步：scoped commit → clean force build/attestation/full unit → fresh scratch 最近订单/semantic-only/ROAS
   → 正常 live E16 → 全新15回合。旧 PASS 不拼接，production isolation=false/HOLD，任务保持 ACTIVE。
 
+**E16 请求内同比结果绑定失败与修复（2026-08-31）**
+
+- `f76fc2da` force build 8/8（0 cached）、full unit 15/15（12 cached），generation
+  `sha256:5736857faa5eeaac342b65e425465ee5dddfe82356a9e58191519af38adc9159`。
+  fresh NAS E16 scratch container `data-agent-falcon24-e16-f76fc2da`，远端55469/本机55470、独立 volume/cluster。
+  最近订单 `35354a64-df5c-8d7f-8039-20fd747d858f`、semantic-only `e1f1f187-6491-84d9-964d-151b2fde5a1d`、
+  ROAS `7c0bbd95-5f34-8834-be3b-9250c5aa0b23` 业务/QA/Trace 均 PASS。ROAS 曾有一次 Semantic provider 协议错误，
+  在同 Run 正常 bounded recovery 后成功，不能称零错误。harness v5 按 accepted chart refs 等待 hydration，无问题重提。
+- live 前置物理备份 `data-agent-falcon24-e15-pre-e16-f76fc2da-backup` verified/never-started，347表历史与 ledger 指纹保留。
+  live E16 baseline `012151cb-280a-5803-a6b5-d1d8d7600931`、activation `bae3ba83-2440-52a8-899e-4bd8b2e65664`。
+- formal attempt `fdc6192b-007e-4cde-bb95-bba0f1fc82a1` / E16-FL1：L1五题业务/QA/Trace全部 PASS；
+  semantic 三题、订单 Run `961a8e65-ceb8-8383-96b0-9cc674c67f67`、Report Run `dad280bf-e715-8598-980f-f4ae0331b450`
+  均沿本 Run exact artifacts 验收。Report 仅消费明确 accepted table input，没有新增推断。
+- L2-01 Run `54843d21-f9aa-82d5-bca6-7986cf66eb0b` FAILED/74 events，六次 compile
+  `TEXT2SQL_SEMANTIC_RESULT_BINDING_OUT_OF_RANGE`；只有 accepted SemanticQueryContext。
+  已正常封存 attempt FAILED/version29，失败 turn receipt
+  `sha256:636dd3943d248caa8bac548725b960d0edd5ebedb58ce80162f7e7cf56f27c87`。
+  QA/Trace=null，后九题未提交；本任务 Web/Worker/OpenSandbox 与4个剩余 browser sessions 已停止，vault 已删除。
+  原数据库、备份、scratch、audit 全保留；本机55469为无关 browser listener，未触碰。
+- 修复：明确 REQUEST_DERIVED Candidate/QueryEvidence/Analysis 身份，exact Context/解释 hash；compile/admission/acceptance
+  共用单表双 CTE 月度 SUM 的语义证明，重标 Metric 不能逃逸；LEFT JOIN 同期 nullable，严格 OID、原重试预算保留。
+- Contracts 41/41、Platform 163/163、Worker 115/115 focused 通过。重标 Metric 负例先 RED（返回空数组）后 GREEN。
+  真实冻结 Context + E16 scratch 只读探针得到12个月/6个同期 NULL，独立 source sums 一致，真实 OID 1114/701/701/701；
+  provider_calls/authority_writes/artifact_commits 均0。TimeDomain依赖兼容和探针时区/浮点断言问题均在离线阶段解决。
+  证据：`formal-e16-f76fc2da-fdc6192b/runtime/request-derivation-readonly-probe.json`；不是正式 PASS。
+- 下一步：scoped commit → clean force build/full unit/attestation → fresh scratch 新增月度同比业务/QA/Trace，复验订单/semantic/ROAS
+  → 使用 E16 真失败 receipt 正常激活 E17 → 新15回合从 L1。任务保持 ACTIVE，其他派生/多表形态未声明支持，production isolation=false/HOLD。
+
 **F6 READY 轮次恢复边界（2026-08-30，历史）**
 
-> 以下为历史记录；当前 forward recovery 已到 E15 FAILED，下一 fresh epoch 为 E16，见上一节。
+> 以下为历史记录；当前 forward recovery 已到 E16 FAILED，下一 fresh epoch 为 E17，见上一节。
 
 - `e676a450-5768-48d9-a264-ab7890fe0323` 的旧构建在 L1 前三题自动门禁 PASS 后，人工页面复核发现 Root 标签及失败
   Specialist 活动未闭合；`6443b8a2`、`6d163113` 修复前后端，并加强真实 DOM gate。原收据保留为历史，不能拼入新构建 PASS。

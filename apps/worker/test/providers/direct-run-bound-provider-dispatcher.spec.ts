@@ -121,6 +121,11 @@ describe("direct run-bound provider retry policy", () => {
     expect(prompt).toContain("Date projection, grouping and latest-row ordering");
     expect(prompt).toContain("An ORDER BY cast does not change a SELECT output type");
     expect(prompt).toContain("rejection.observed_result_types");
+    expect(prompt).toContain("bind only the growth-rate output to REQUEST_DERIVED");
+    expect(prompt).toContain("same original published METRIC");
+    expect(prompt).toContain("exactly two non-recursive CTEs");
+    expect(prompt).toContain("This is a request-only derivation, not a new publisher");
+    expect(prompt).toContain("TEXT2SQL_REQUEST_DERIVATION_EXPRESSION_MISMATCH");
     expect(prompt).toContain("Do not relabel a published DATE dimension as STRING");
     expect(prompt).toContain("never invent a metric id from a formula name");
     expect(prompt).toContain("A time-domain id is not a dimension id");

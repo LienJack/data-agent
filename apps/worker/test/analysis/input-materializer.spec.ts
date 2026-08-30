@@ -64,7 +64,7 @@ async function queryEvidenceDocument(
         readonly row_count?: number;
         readonly artifact_suffix?: number;
         readonly result_hash?: `sha256:${string}`;
-        readonly value_role?: "METRIC" | "FORMULA";
+        readonly value_role?: "METRIC" | "FORMULA" | "REQUEST_DERIVED";
       } = 2,
 ) {
   const rowCount = typeof input === "number" ? input : (input.row_count ?? 2);
@@ -90,7 +90,12 @@ async function queryEvidenceDocument(
         logical_type: "NUMBER",
         nullable: false,
         semantic_role: valueRole,
-        semantic_object_id: valueRole === "FORMULA" ? "formula.order-total" : "order-total",
+        semantic_object_id:
+          valueRole === "REQUEST_DERIVED"
+            ? "request-scoped.yoy"
+            : valueRole === "FORMULA"
+              ? "formula.order-total"
+              : "order-total",
       },
     ],
   });
@@ -213,7 +218,7 @@ describe("analysis input materializer", () => {
     },
   );
 
-  it.each(["METRIC", "FORMULA"] as const)(
+  it.each(["METRIC", "FORMULA", "REQUEST_DERIVED"] as const)(
     "encrypts %s Arrow bytes and commits the exact QueryEvidence-to-input receipt",
     async (valueRole) => {
       const evidence = await queryEvidenceDocument({ value_role: valueRole });
@@ -222,7 +227,12 @@ describe("analysis input materializer", () => {
           ? {
               ...column,
               semantic_role: valueRole,
-              semantic_object_id: valueRole === "FORMULA" ? "formula.order-total" : "order-total",
+              semantic_object_id:
+                valueRole === "REQUEST_DERIVED"
+                  ? "request-scoped.yoy"
+                  : valueRole === "FORMULA"
+                    ? "formula.order-total"
+                    : "order-total",
             }
           : column,
       );

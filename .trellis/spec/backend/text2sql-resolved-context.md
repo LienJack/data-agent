@@ -2,6 +2,57 @@
 
 > U13 将 U12 Context Package、Published Mapping、Compiler、关系投影与 SQL Sandbox 串成不可旁路的只读执行链。
 
+## Request-scoped comparison result binding
+
+### 1. Scope / Trigger
+
+`SemanticQueryContext` 已接受本请求 `PERIOD_COMPARISON_RATE`，但没有发布同比 Formula 时适用。
+请求内算子不是发布对象，禁止借用源 Metric 身份给增长率列盖章；不改发布目录或旧 Artifact。
+
+### 2. Signatures
+
+`resolvePostgresqlRequestDerivedBindings` 消费原 Candidate、exact verified Context/Release/Snapshot，
+调用纯 `provePostgresqlPeriodComparison`；compile、adapter admission 与 QueryEvidence acceptance 共用该证明。
+Candidate 使用 `object_kind=REQUEST_DERIVED`、exact `interpretation_id`，没有新增执行或发布入口。
+
+### 3. Contracts
+
+- 派生列为 NUMBER、nullable、aggregate=null，`request_derivation` 固定 exact Context hash 与完整 REQUEST_ONLY/NONE
+  interpretation；独立 hash domain 绑定解释、SQL Candidate、原物理来源与证明。本期/同期原始值继续绑定同一个源 Metric。
+- 请求出现 PERIOD_COMPARISON_RATE 时必须恰有一个对应派生输出；删除声明或改为 Metric/Published Formula 不能绕过证明。
+- 验证同 Scope/Run、package/receipt/retrieval/inference、资源 exact refs、选中 Metric/Dimension、发布对象内容与 active
+  physical bindings。Metric 的 TimeDomain 可沿既有发布依赖进入 requested closure，不给其他 Metric/Dimension 扩权。
+- 首个可执行子集为同表单数值来源的 SUM，MONTH 维度、两个直接物理聚合 CTE、各自 exact current/comparison WHERE
+  下上界、单 LEFT JOIN `current.month = comparison.month + $year::interval`，参数值 `1 year`，只投影当前月、两个原始值及
+  `(current-comparison)/NULLIF(comparison,0)`。检查真实源码列、GROUP BY、类型提升、零值、年度对齐与返回值身份。
+- 禁止 DISTINCT/FILTER/AVG、额外过滤/联表/CTE、预先平移、外层条件/聚合/LIMIT、百分比倍乘、补零与错分母。
+  不支持的形态失败关闭，不自动重写 SQL、扩大重试或创建新 Formula。AGGREGATE_RATIO 等其他请求算子尚未获得此执行证明。
+- PostgreSQL OID/type gate 不变；经证明的 LEFT JOIN 同期列即使源列 NOT NULL 也必须 nullable=true，缺失同期值不得补零。
+- 原始值、图表、报告、Trace 沿既有 QueryEvidence 引用链；Analysis Arrow receipt 保留 REQUEST_DERIVED 与 source_binding_hash，
+  不把派生列升级为可授权分析方法的 Published Metric。旧 payload 未携带新字段时 hash 材料不变。
+
+### 4. Validation / Errors
+
+缺 Context/错解释/错资源/重标 Metric → `QUERY_EVIDENCE_REQUEST_DERIVATION_BINDING_INVALID`；
+SQL 证明失败 → `TEXT2SQL_REQUEST_DERIVATION_EXPRESSION_MISMATCH`。错误只经原安全白名单进入 bounded repair，不输出 SQL/参数值。
+
+### 5. Good / Base / Bad
+
+Good：冻结解释 → exact SQL AST 证明 → 真实查询/OID → 同源 Evidence，未覆盖的同期为 NULL。
+Base：只有离线合成 SQL/只读 source oracle，明确不是正式 Run 或发布 PASS。
+Bad：把增长率绑定为收入 Metric，或只新增 enum 而不验证算式/来源/原始值/窗口。
+
+### 6. Required tests
+
+真实 parameterize/deparse round trip；错误聚合、源列、源表、CTE 分组、偏移、分母、补零、原始值、过滤、类型截断；
+Context hash/Run/receipt/Metric/binding/interpretation 漂移与重标绕过；LEFT JOIN NULL；Analysis materialization role/hash；
+compile 前零 target I/O、安全诊断、两次 bounded repair 不扩容。真实 scratch 必须另做业务/QA/Trace，不得拿离线测试替代。
+
+### 7. Wrong / Correct
+
+Wrong：同比结果列声明 `{ object_kind: "METRIC", object_id: "metric.order_revenue" }`。
+Correct：结果列声明 `{ object_kind: "REQUEST_DERIVED", object_id: exactAcceptedInterpretationId }` 并通过同一验证器。
+
 ## Scenario: 从 Resolved Context 编译并执行 PostgreSQL SQL
 
 ### 1. Scope / Trigger

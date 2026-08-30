@@ -8,7 +8,12 @@ export async function buildTestQueryEvidenceSemanticBinding(input: {
     readonly name: string;
     readonly logical_type: "NUMBER" | "STRING" | "DATE" | "DATETIME" | "BOOLEAN";
     readonly nullable: boolean;
-    readonly semantic_role: "METRIC" | "FORMULA" | "DIMENSION" | "PHYSICAL_COLUMN";
+    readonly semantic_role:
+      | "METRIC"
+      | "FORMULA"
+      | "DIMENSION"
+      | "PHYSICAL_COLUMN"
+      | "REQUEST_DERIVED";
     readonly semantic_object_id: string;
     readonly grain?: {
       readonly grain_id: string;
@@ -55,8 +60,31 @@ export async function buildTestQueryEvidenceSemanticBinding(input: {
       nullable: column.nullable,
       semantic_role: column.semantic_role,
       semantic_object_id: column.semantic_object_id,
-      formula_hash:
-        column.semantic_role === "METRIC" || column.semantic_role === "FORMULA" ? hash("7") : null,
+      formula_hash: ["METRIC", "FORMULA", "REQUEST_DERIVED"].includes(column.semantic_role)
+        ? hash("7")
+        : null,
+      ...(column.semantic_role === "REQUEST_DERIVED"
+        ? {
+            request_derivation: {
+              semantic_query_context_hash: hash("8"),
+              interpretation: {
+                interpretation_id: column.semantic_object_id,
+                requested_term: "同比",
+                scope: "REQUEST_ONLY",
+                source_object_ids: ["dimension.month", "metric.revenue"],
+                operator: {
+                  kind: "PERIOD_COMPARISON_RATE",
+                  metric_id: "metric.revenue",
+                  time_dimension_id: "dimension.month",
+                  comparison_offset: { unit: "YEAR", value: 1 },
+                  formula: "(current_value - comparison_value) / NULLIF(comparison_value, 0)",
+                },
+                user_explanation: "测试请求内同比",
+                publication_effect: "NONE",
+              },
+            },
+          }
+        : {}),
       aggregate: column.semantic_role === "METRIC" ? ("sum" as const) : null,
       grain: column.grain ?? {
         grain_id: column.semantic_role === "METRIC" ? "order" : column.semantic_object_id,

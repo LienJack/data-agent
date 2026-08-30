@@ -31,6 +31,7 @@ import {
   type PostgresqlText2SqlTimeCoverage,
   parameterizePostgresqlText2SqlCandidate,
   resolvePostgresqlPublishedFormulaBindings,
+  resolvePostgresqlRequestDerivedBindings,
 } from "@data-agent/platform/datasource-adapters";
 import type { PersistedSecretRef } from "@data-agent/platform/secrets";
 import type pg from "pg";
@@ -66,6 +67,7 @@ export interface PreparedText2SqlContext {
     readonly metric_ids: readonly string[];
     readonly dimension_ids: readonly string[];
     readonly formula_ids: readonly string[];
+    readonly request_derivation_ids?: readonly string[];
   };
   readonly binding_authority?: {
     readonly physical_snapshot: PhysicalSchemaSnapshot;
@@ -73,6 +75,7 @@ export interface PreparedText2SqlContext {
     readonly semantic_catalog: FrozenSemanticReleaseCatalog;
     readonly datasource_ref: EffectiveConfig["datasource"];
     readonly formula_dependency_metric_ids?: readonly string[];
+    readonly semantic_query_context?: SemanticQueryContext;
   };
 }
 
@@ -134,13 +137,16 @@ async function validateCandidate(
     const metricIds = new Set(contextBinding.metric_ids);
     const dimensionIds = new Set(contextBinding.dimension_ids);
     const formulaIds = new Set(contextBinding.formula_ids);
+    const requestIds = new Set(contextBinding.request_derivation_ids ?? []);
     if (
       candidate.result_columns.some(({ semantic_binding: binding }) =>
         binding.object_kind === "METRIC"
           ? !metricIds.has(binding.object_id)
           : binding.object_kind === "FORMULA"
             ? !formulaIds.has(binding.object_id)
-            : !dimensionIds.has(binding.object_id),
+            : binding.object_kind === "REQUEST_DERIVED"
+              ? !requestIds.has(binding.object_id)
+              : !dimensionIds.has(binding.object_id),
       )
     ) {
       throw new Text2SqlQueryRuntimeError(
@@ -166,6 +172,7 @@ async function validateCandidate(
   });
   if (prepared.binding_authority) {
     await assertPostgresqlQueryTemporalSelection({ candidate, ...prepared.binding_authority });
+    await resolvePostgresqlRequestDerivedBindings({ candidate, ...prepared.binding_authority });
   }
   if (
     candidate.result_columns.some(
@@ -177,6 +184,13 @@ async function validateCandidate(
     }
     await resolvePostgresqlPublishedFormulaBindings({ candidate, ...prepared.binding_authority });
   }
+  if (
+    !prepared.binding_authority &&
+    candidate.result_columns.some(
+      ({ semantic_binding }) => semantic_binding.object_kind === "REQUEST_DERIVED",
+    )
+  )
+    throw new Text2SqlQueryRuntimeError("TEXT2SQL_BINDING_AUTHORITY_REQUIRED");
 }
 
 export interface PostgresqlText2SqlQueryRuntimeDependencies {
@@ -363,6 +377,12 @@ function semanticProjection(
       requested_object_ids: semanticQueryContext.requested_object_ids,
       unresolved_ambiguities: semanticQueryContext.unresolved_ambiguities,
       request_scoped_interpretations: semanticQueryContext.request_scoped_interpretations ?? [],
+      request_derived_bindings: (semanticQueryContext.request_scoped_interpretations ?? [])
+        .filter(({ operator }) => operator.kind === "PERIOD_COMPARISON_RATE")
+        .map(({ interpretation_id }) => ({
+          object_kind: "REQUEST_DERIVED",
+          object_id: interpretation_id,
+        })),
       resolved_time_window: resolveSemanticRequestTimeWindow(semanticQueryContext),
       resolved_comparison_time_windows: resolveSemanticComparisonTimeWindows(semanticQueryContext),
       executable: {
@@ -1022,6 +1042,9 @@ export function createPostgresqlText2SqlQueryRuntime(
                 metric_ids: semanticQueryContext.metrics.map(({ metric_id: id }) => id),
                 dimension_ids: semanticQueryContext.dimensions.map(({ dimension_id: id }) => id),
                 formula_ids: semanticQueryContext.formulas.map(({ node_id: id }) => id),
+                request_derivation_ids: (semanticQueryContext.request_scoped_interpretations ?? [])
+                  .filter(({ operator }) => operator.kind === "PERIOD_COMPARISON_RATE")
+                  .map(({ interpretation_id }) => interpretation_id),
               },
             }
           : {}),
@@ -1030,6 +1053,7 @@ export function createPostgresqlText2SqlQueryRuntime(
           semantic_context,
           semantic_catalog,
           datasource_ref: config.datasource,
+          ...(semanticQueryContext ? { semantic_query_context: semanticQueryContext } : {}),
           ...(semanticQueryContext
             ? {
                 formula_dependency_metric_ids: semanticQueryContext.metrics.map(
@@ -1149,6 +1173,9 @@ export function createPostgresqlText2SqlQueryRuntime(
               }
             : {}),
           target_binding_hash: prepared.target_capability_hash,
+          ...(prepared.binding_authority.semantic_query_context
+            ? { semantic_query_context: prepared.binding_authority.semantic_query_context }
+            : {}),
         }),
       });
     },

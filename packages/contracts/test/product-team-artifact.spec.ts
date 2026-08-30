@@ -9,11 +9,36 @@ import {
 
 const id = (suffix: number) => `00000000-0000-4000-8000-${String(suffix).padStart(12, "0")}`;
 const hash = (character: string) => `sha256:${character.repeat(64)}`;
+const requestDerivation = {
+  semantic_query_context_hash: hash("e"),
+  interpretation: {
+    interpretation_id: "request-scoped.yoy",
+    requested_term: "同比",
+    scope: "REQUEST_ONLY",
+    source_object_ids: ["dimension.month", "metric.revenue"],
+    operator: {
+      kind: "PERIOD_COMPARISON_RATE",
+      metric_id: "metric.revenue",
+      time_dimension_id: "dimension.month",
+      comparison_offset: { unit: "YEAR", value: 1 },
+      formula: "(current_value - comparison_value) / NULLIF(comparison_value, 0)",
+    },
+    user_explanation: "本次请求的年度比较",
+    publication_effect: "NONE",
+  },
+};
 
 describe("Product Team Artifact", () => {
-  it.each(["PHYSICAL_COLUMN", "FORMULA"] as const)(
+  it.each(["PHYSICAL_COLUMN", "FORMULA", "REQUEST_DERIVED"] as const)(
     "seals %s without inventing a metric or dimension",
     async (role) => {
+      const numeric = role !== "PHYSICAL_COLUMN";
+      const objectId =
+        role === "REQUEST_DERIVED"
+          ? "request-scoped.yoy"
+          : role === "FORMULA"
+            ? "formula.order-ratio"
+            : "column.orders.order_id";
       const binding = await buildQueryEvidenceSemanticBinding({
         protocol_version: "query-evidence-semantic-binding@1.0.0",
         semantic_release_ref: {
@@ -43,20 +68,20 @@ describe("Product Team Artifact", () => {
         columns: [
           {
             output_name: "order_id",
-            logical_type: role === "FORMULA" ? "NUMBER" : "STRING",
+            logical_type: numeric ? "NUMBER" : "STRING",
             nullable: false,
             semantic_role: role,
-            semantic_object_id:
-              role === "FORMULA" ? "formula.order-ratio" : "column.orders.order_id",
-            formula_hash: role === "FORMULA" ? hash("f") : null,
+            semantic_object_id: objectId,
+            formula_hash: numeric ? hash("f") : null,
+            ...(role === "REQUEST_DERIVED" ? { request_derivation: requestDerivation } : {}),
             aggregate: null,
             grain: { grain_id: "grain.physical.orders", granularity: "atomic" },
             physical_sources: [
               {
                 schema_name: "falcon_db_24",
                 relation_name: "orders",
-                column_name: role === "FORMULA" ? "amount" : "order_id",
-                formatted_type: role === "FORMULA" ? "numeric" : "text",
+                column_name: numeric ? "amount" : "order_id",
+                formatted_type: numeric ? "numeric" : "text",
                 nullable: false,
               },
             ],
@@ -68,12 +93,12 @@ describe("Product Team Artifact", () => {
       expect(binding.columns).toEqual([
         expect.objectContaining({
           semantic_role: role,
-          semantic_object_id: role === "FORMULA" ? "formula.order-ratio" : "column.orders.order_id",
-          formula_hash: role === "FORMULA" ? hash("f") : null,
+          semantic_object_id: objectId,
+          formula_hash: numeric ? hash("f") : null,
           aggregate: null,
         }),
       ]);
-      if (role === "FORMULA") {
+      if (numeric) {
         expect(
           await verifyQueryEvidenceSemanticBinding(JSON.parse(JSON.stringify(binding))),
         ).toEqual(binding);
@@ -99,6 +124,39 @@ describe("Product Team Artifact", () => {
             }),
           ).rejects.toThrow();
         }
+      }
+      if (role === "REQUEST_DERIVED") {
+        const { binding_hash: _hash, ...material } = binding;
+        for (const change of [
+          { request_derivation: undefined },
+          { semantic_object_id: "request-scoped.other" },
+          { semantic_role: "FORMULA" },
+          {
+            request_derivation: {
+              ...requestDerivation,
+              interpretation: {
+                ...requestDerivation.interpretation,
+                publication_effect: "PUBLISHED",
+              },
+            },
+          },
+        ]) {
+          await expect(
+            buildQueryEvidenceSemanticBinding({
+              ...material,
+              columns: binding.columns.map((column) => ({ ...column, ...change })),
+            }),
+          ).rejects.toThrow();
+        }
+        await expect(
+          verifyQueryEvidenceSemanticBinding({
+            ...binding,
+            columns: binding.columns.map((column) => ({
+              ...column,
+              request_derivation: { ...requestDerivation, semantic_query_context_hash: hash("d") },
+            })),
+          }),
+        ).rejects.toThrow("QUERY_EVIDENCE_SEMANTIC_BINDING_HASH_MISMATCH");
       }
     },
   );

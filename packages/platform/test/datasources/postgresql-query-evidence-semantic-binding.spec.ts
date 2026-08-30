@@ -3,6 +3,7 @@ import {
   buildSemanticContextPackage,
   buildSemanticContextReceipt,
   buildSemanticInferenceReceipt,
+  buildSemanticQueryContext,
   buildSemanticRetrievalReceipt,
   canonicalizeJson,
   type SemanticContextCommitResult,
@@ -18,7 +19,9 @@ import {
   postgresqlQueryEvidenceSemanticBindingInternals,
   type QueryEvidenceSemanticCatalog,
   resolvePostgresqlPublishedFormulaBindings,
+  resolvePostgresqlRequestDerivedBindings,
 } from "../../src/datasources/adapters/postgresql-query-evidence-semantic-binding.js";
+import { periodComparisonFixture } from "../support/period-comparison-fixture.js";
 
 const id = (suffix: number) => `95000000-0000-4000-8000-${String(suffix).padStart(12, "0")}`;
 const hash = (character: string) => `sha256:${character.repeat(64)}` as const;
@@ -422,6 +425,216 @@ async function fixture(orderDateType: "date" | "text" = "date") {
     target_binding_hash: targetBindingHash,
   };
 }
+
+async function requestDerivationFixture() {
+  const base = await fixture("text");
+  const metric = base.semantic_catalog.executable.metrics[0];
+  if (!metric) throw new Error("missing metric fixture");
+  const domain = {
+    ...metric.time_domain,
+    min_time: "2023-05-01T00:00:00.000Z",
+    max_time: "2024-11-01T00:00:00.000Z",
+  };
+  const catalog = {
+    ...base.semantic_catalog,
+    executable: {
+      ...base.semantic_catalog.executable,
+      metrics: base.semantic_catalog.executable.metrics.map((metric) => ({
+        ...metric,
+        time_domain: domain,
+      })),
+    },
+  };
+  const pkg = base.semantic_context.package;
+  const sources = ["dimension.order_month", "metric.order_revenue"];
+  const context = await buildSemanticQueryContext({
+    schema_version: "semantic-query-context@1.0.0",
+    answer_scope: "DATA_RESULT_REQUIRED",
+    scope,
+    run_id: runId,
+    semantic_domain: pkg.semantic_domain,
+    semantic_release: pkg.semantic_release,
+    schema_snapshot: pkg.schema_snapshot,
+    datasource: datasourceRef,
+    semantic_context_ref: {
+      package_id: pkg.package_id,
+      package_hash: pkg.package_hash,
+      receipt_id: base.semantic_context.receipt.receipt_id,
+      receipt_hash: base.semantic_context.receipt.receipt_hash,
+      retrieval_receipt_hash: pkg.retrieval_receipt.receipt_hash,
+      inference_receipt_hash: pkg.inference_receipt.receipt_hash,
+    },
+    requested_object_ids: [...sources, domain.time_domain_id].sort(),
+    ...catalog.executable,
+    physical_bindings: [...catalog.executable.physical_bindings].sort((a, b) =>
+      a.logical_object_id < b.logical_object_id ? -1 : 1,
+    ),
+    relationships: [],
+    time_semantics: [domain],
+    quality_constraints: [],
+    unresolved_ambiguities: [],
+    request_scoped_interpretations: [
+      {
+        interpretation_id: "request-scoped.months",
+        requested_term: "最近12个完整月",
+        scope: "REQUEST_ONLY",
+        source_object_ids: sources,
+        operator: {
+          kind: "RECENT_COMPLETE_PERIODS",
+          metric_id: sources[1],
+          time_dimension_id: sources[0],
+          period_unit: "MONTH",
+          period_count: 12,
+          anchor: "PUBLISHED_COMPLETE_FRONTIER",
+        },
+        user_explanation: "发布边界前12个月",
+        publication_effect: "NONE",
+      },
+      {
+        interpretation_id: "request-scoped.yoy",
+        requested_term: "同比",
+        scope: "REQUEST_ONLY",
+        source_object_ids: sources,
+        operator: {
+          kind: "PERIOD_COMPARISON_RATE",
+          metric_id: sources[1],
+          time_dimension_id: sources[0],
+          comparison_offset: { unit: "YEAR", value: 1 },
+          formula: "(current_value - comparison_value) / NULLIF(comparison_value, 0)",
+        },
+        user_explanation: "同口径年度比较",
+        publication_effect: "NONE",
+      },
+    ],
+  });
+  return {
+    ...base,
+    candidate: periodComparisonFixture().candidate,
+    semantic_catalog: catalog,
+    semantic_query_context: context,
+    result: await queryResult(
+      [
+        { name: "month", type: "1114" },
+        { name: "current_value", type: "1700" },
+        { name: "comparison_value", type: "1700" },
+        { name: "growth", type: "1700" },
+      ],
+      [
+        {
+          month: "2023-11-01T00:00:00.000Z",
+          current_value: "100",
+          comparison_value: null,
+          growth: null,
+        },
+      ],
+    ),
+  };
+}
+
+describe("request-derived QueryEvidence authority", () => {
+  it("preserves exact context and request-only provenance, numeric type and NULL comparison", async () => {
+    const input = await requestDerivationFixture();
+    const binding = await buildPostgresqlQueryEvidenceSemanticBinding(input);
+    expect(binding.columns[3]).toMatchObject({
+      semantic_role: "REQUEST_DERIVED",
+      semantic_object_id: "request-scoped.yoy",
+      aggregate: null,
+      nullable: true,
+      request_derivation: {
+        semantic_query_context_hash: input.semantic_query_context.context_hash,
+        interpretation: { scope: "REQUEST_ONLY", publication_effect: "NONE" },
+      },
+    });
+    expect(binding.columns[3]?.formula_hash).toMatch(/^sha256:/u);
+    expect(binding.columns[2]?.nullable).toBe(true);
+    expect(binding.columns.slice(1, 3).map(({ semantic_role }) => semantic_role)).toEqual([
+      "METRIC",
+      "METRIC",
+    ]);
+  });
+  it("rejects relabeling the request rate as its source Metric before query I/O", async () => {
+    const input = await requestDerivationFixture();
+    input.candidate.result_columns = input.candidate.result_columns.map((column, index) =>
+      index === 3
+        ? {
+            ...column,
+            semantic_binding: { object_kind: "METRIC", object_id: "metric.order_revenue" },
+          }
+        : column,
+    );
+    await expect(resolvePostgresqlRequestDerivedBindings(input)).rejects.toThrow(
+      "QUERY_EVIDENCE_REQUEST_DERIVATION_BINDING_INVALID",
+    );
+  });
+  it.each([
+    "missing-context",
+    "context-hash",
+    "run",
+    "receipt",
+    "metric",
+    "binding",
+    "operator-id",
+    "sql",
+    "oid",
+  ])("rejects %s drift without producing a binding", async (variant) => {
+    const input = await requestDerivationFixture();
+    if (variant === "missing-context") {
+      const { semantic_query_context: _context, ...missing } = input;
+      await expect(buildPostgresqlQueryEvidenceSemanticBinding(missing)).rejects.toThrow(
+        "QUERY_EVIDENCE_REQUEST_DERIVATION_BINDING_INVALID",
+      );
+      return;
+    }
+    const { context_hash: _hash, ...draft } = input.semantic_query_context;
+    if (variant === "context-hash")
+      input.semantic_query_context = { ...input.semantic_query_context, context_hash: hash("f") };
+    if (variant === "run")
+      input.semantic_query_context = await buildSemanticQueryContext({ ...draft, run_id: id(90) });
+    if (variant === "receipt")
+      input.semantic_query_context = await buildSemanticQueryContext({
+        ...draft,
+        semantic_context_ref: { ...draft.semantic_context_ref, receipt_hash: hash("0") },
+      });
+    if (variant === "metric")
+      input.semantic_query_context = await buildSemanticQueryContext({
+        ...draft,
+        metrics: draft.metrics.map((metric) => ({ ...metric, aggregation: "avg" })),
+      });
+    if (variant === "binding")
+      input.semantic_query_context = await buildSemanticQueryContext({
+        ...draft,
+        physical_bindings: draft.physical_bindings.map((binding) => ({
+          ...binding,
+          valid_until: "2024-01-01",
+        })),
+      });
+    if (variant === "operator-id")
+      input.candidate.result_columns = input.candidate.result_columns.map((column, index) =>
+        index === 3
+          ? {
+              ...column,
+              semantic_binding: {
+                object_kind: "REQUEST_DERIVED",
+                object_id: "request-scoped.unaccepted",
+              },
+            }
+          : column,
+      );
+    if (variant === "sql")
+      input.candidate.sql = input.candidate.sql.replace("(c.v-p.v)", "(p.v-c.v)");
+    if (variant === "oid")
+      input.result = await queryResult(
+        [
+          { name: "month", type: "1114" },
+          { name: "current_value", type: "1700" },
+          { name: "comparison_value", type: "1700" },
+          { name: "growth", type: "25" },
+        ],
+        [],
+      );
+    await expect(buildPostgresqlQueryEvidenceSemanticBinding(input)).rejects.toThrow();
+  });
+});
 
 async function formulaFixture() {
   const snapshot = await physicalSnapshot("date", true);

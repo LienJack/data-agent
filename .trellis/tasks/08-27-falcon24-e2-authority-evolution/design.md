@@ -1526,3 +1526,20 @@ formal attempt `092a7136-6ec4-4888-a90e-b2129090cb2c` 前三题 PASS，L1-04 Run
 
 完成离线测试与 scoped commit 后，fresh build/scratch 重验最近订单、semantic-only、全量 ROAS；全通过才可使用
 E15 真实失败 turn receipt 正常激活 E16，并从 L1 重做15回合。E15 的三个 PASS 不可拼接。
+
+### 25.14 请求内同比输出契约
+
+`f76fc2da` 的 E16 scratch 三题全部业务/QA/Trace PASS，正常 live E16 后正式 L1 五题全部 PASS。
+L2-01 Run `54843d21-f9aa-82d5-bca6-7986cf66eb0b` FAILED/74 events，六候选在 compile 被
+`TEXT2SQL_SEMANTIC_RESULT_BINDING_OUT_OF_RANGE` 拒绝；只有 SemanticQueryContext，无 QueryEvidence。
+真实上下文只有收入 Metric/SUM Formula 与月 Dimension，但含本请求同比解释。历史 SQL 不在存储中，不能推断每个候选写法。
+
+补全 request-scoped operator → Candidate → PostgreSQL AST proof → QueryEvidence → Analysis input 的闭包：
+新增明确 `REQUEST_DERIVED` kind/role 与 exact interpretation/context hash，不新增 publisher、不冒充 Published Formula。
+按 `backend/text2sql-resolved-context.md` 的限定双 CTE 月度 SUM 子集验证来源、窗口、年度 LEFT JOIN、原始值、算式和零值；
+不能通过把结果改回 METRIC 绕过证明。Comparison raw value 的 NULL 保留，真实 OID gate 和 bounded repair 预算不变。
+其余请求算子/多表派生未在本变更宣称支持；不足时继续安全的离线修复，不能放宽验证器。
+
+只读原 SQC + 专用 NAS scratch 探针证明12个月/6个未覆盖同期 NULL、独立源汇总相等；这不是 formal acceptance。
+完成 scoped commit、clean build/full unit 后，fresh scratch 必须增加月度同比业务/QA/Trace canary，并复验最近订单、
+semantic-only、全量 ROAS。使用 E16 真失败 receipt 正常前向 E17，再从 L1 重做全部15回合，旧五个 PASS 不能复用。
