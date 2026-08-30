@@ -5,6 +5,7 @@ import {
   buildRootAgentSystemMessage,
   normalizeRootAgentProviderTurn,
   ROOT_AGENT_TOOL_ALLOWLIST,
+  rootAgentFinalAnswerOutputSchema,
   SUBAGENT_DELEGATION_TOOL_DESCRIPTOR,
 } from "../src/index.js";
 
@@ -39,6 +40,29 @@ async function catalog(profileIds: readonly string[]) {
 }
 
 describe("Root Agent Harness", () => {
+  it("allows a terminal answer to cite the accepted AnalysisReport", () => {
+    expect(
+      rootAgentFinalAnswerOutputSchema.safeParse({
+        kind: "FINAL_ANSWER",
+        sections: [
+          {
+            kind: "ARTIFACT_FACTS",
+            artifact_ref: {
+              artifact_id: id(6),
+              artifact_type: "AnalysisReport",
+              ...scope,
+              run_id: runId,
+              revision: 1,
+              content_hash: hash("b"),
+            },
+            fact_selectors: ["projection.sections", "projection.title"],
+          },
+        ],
+        public_summary: "基于已验收分析报告回答。",
+      }).success,
+    ).toBe(true);
+  });
+
   it("rejects the retired same-turn dependency arguments", async () => {
     const frozenCatalog = await buildSubagentCapabilityCatalogSnapshot({
       schema_version: "subagent-capability-catalog-snapshot@1.0.0",

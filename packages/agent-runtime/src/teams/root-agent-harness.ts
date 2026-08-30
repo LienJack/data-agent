@@ -5,6 +5,7 @@ import {
   deepFreeze,
   delegateToSubagentArgumentsSchema,
   type RootAgentDecisionCandidate,
+  rootAgentArtifactFactsSectionSchema,
   rootAgentGeneralTextSectionSchema,
   type SubagentCapabilityCatalogSnapshot,
   validateRootAgentDecisionAgainstCatalog,
@@ -16,7 +17,15 @@ export const ROOT_AGENT_RESPONSE_SCHEMA_VERSION = "root-agent-final-answer@1.0.0
 
 export const rootAgentFinalAnswerOutputSchema = z.strictObject({
   kind: z.literal("FINAL_ANSWER"),
-  sections: z.array(rootAgentGeneralTextSectionSchema).min(1).max(64),
+  sections: z
+    .array(
+      z.discriminatedUnion("kind", [
+        rootAgentGeneralTextSectionSchema,
+        rootAgentArtifactFactsSectionSchema,
+      ]),
+    )
+    .min(1)
+    .max(64),
   public_summary: z.string().trim().min(1).max(240),
 });
 
