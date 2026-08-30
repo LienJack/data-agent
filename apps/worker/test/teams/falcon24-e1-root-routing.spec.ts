@@ -96,6 +96,7 @@ function nativeCall(input: {
   readonly tool_call_id: string;
   readonly profile_id: (typeof profileIds)[number];
   readonly objective: string;
+  readonly output_usage: "FINAL_ANSWER_EVIDENCE" | "CONTINUATION_INPUT";
   readonly requested_artifact_types: readonly (
     | "AnalysisReport"
     | "QueryEvidence"
@@ -115,6 +116,7 @@ function nativeCall(input: {
     arguments: {
       profile_id: input.profile_id,
       objective: input.objective,
+      output_usage: input.output_usage,
       requested_artifact_types: [...input.requested_artifact_types].sort(),
       input_artifact_refs: input.input_artifact_refs ?? [],
       requested_budget: budget(toolCounts[input.profile_id]),
@@ -173,6 +175,7 @@ describe("Falcon24 E1 Root V3 routing boundary", () => {
         tool_call_id: "semantic-relationship",
         profile_id: "semantic-management-agent",
         objective: "从冻结 E1 Release 解释订单与客户的关系、Join 和血缘。",
+        output_usage: "FINAL_ANSWER_EVIDENCE",
         requested_artifact_types: ["SemanticQueryContext"],
       }),
     ]);
@@ -189,6 +192,7 @@ describe("Falcon24 E1 Root V3 routing boundary", () => {
         tool_call_id: "aggregate-query",
         profile_id: "governed-text2sql-agent",
         objective: "查询当前受治理数据库的订单总量。",
+        output_usage: "FINAL_ANSWER_EVIDENCE",
         requested_artifact_types: ["QueryEvidence"],
       }),
     ]);
@@ -216,6 +220,7 @@ describe("Falcon24 E1 Root V3 routing boundary", () => {
           tool_call_id: queryId,
           profile_id: "governed-text2sql-agent",
           objective: `为目标准备受治理数据：${objective}`,
+          output_usage: "CONTINUATION_INPUT",
           requested_artifact_types: ["QueryEvidence"],
         }),
       ]);
@@ -232,6 +237,7 @@ describe("Falcon24 E1 Root V3 routing boundary", () => {
           tool_call_id: `analysis-${index + 1}`,
           profile_id: "governed-analysis-agent",
           objective,
+          output_usage: "FINAL_ANSWER_EVIDENCE",
           requested_artifact_types: ["AnalysisReport"],
           input_artifact_refs: [evidenceRef],
         }),
@@ -253,6 +259,7 @@ describe("Falcon24 E1 Root V3 routing boundary", () => {
         tool_call_id: "report-query",
         profile_id: "governed-text2sql-agent",
         objective: "准备正式报告需要的已执行数据证据。",
+        output_usage: "CONTINUATION_INPUT",
         requested_artifact_types: ["QueryEvidence"],
       }),
     ]);
@@ -269,6 +276,7 @@ describe("Falcon24 E1 Root V3 routing boundary", () => {
         tool_call_id: "formal-report",
         profile_id: "report-writing-agent",
         objective: "从已验收证据撰写正式报告。",
+        output_usage: "FINAL_ANSWER_EVIDENCE",
         requested_artifact_types: ["AnalysisReport"],
         input_artifact_refs: [evidenceRef],
       }),
