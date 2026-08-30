@@ -110,7 +110,7 @@ describe("PostgreSQL model-authored Text2SQL policy", () => {
       sql: `
         select
           o.order_id as order_id,
-          o.created_at as ordered_at,
+          o.order_date as ordered_at,
           o.amount as order_amount
         from falcon_db_24.orders as o
         order by ordered_at desc
@@ -129,6 +129,48 @@ describe("PostgreSQL model-authored Text2SQL policy", () => {
         allowed_relations: allowed,
       }),
     ).resolves.toBeUndefined();
+  });
+
+  it("accepts a safe cast of a physical date column for recent-row ordering", async () => {
+    const compiled = await parameterizePostgresqlText2SqlCandidate({
+      sql: `
+        select
+          o.order_id as order_id,
+          o.created_at as ordered_at,
+          o.amount as order_amount
+        from falcon_db_24.orders as o
+        order by o.order_date::pg_catalog.timestamp desc
+        limit 10
+      `,
+      parameters: [],
+    });
+
+    expect(compiled.parameters).toEqual([10]);
+    await expect(
+      assertPostgresqlText2SqlCandidatePolicy({
+        sql: compiled.sql,
+        parameter_count: compiled.parameters.length,
+        parameters: compiled.parameters,
+        allowed_relations: allowed,
+      }),
+    ).resolves.toBeUndefined();
+  });
+
+  it("rejects ordering by a non-temporal cast even when its source is a column", async () => {
+    await expect(
+      assertPostgresqlText2SqlCandidatePolicy({
+        sql: `
+          select o.amount as order_amount
+          from falcon_db_24.orders as o
+          order by o.amount::pg_catalog.numeric desc
+        `,
+        parameter_count: 0,
+        allowed_relations: allowed,
+      }),
+    ).rejects.toMatchObject({
+      code: "TEXT2SQL_SQL_SHAPE_REJECTED",
+      diagnostic_code: "TEXT2SQL_SQL_ORDERING_SHAPE_REJECTED",
+    });
   });
 
   it("accepts multi-relation CTE joins without allowing unqualified physical relations", async () => {

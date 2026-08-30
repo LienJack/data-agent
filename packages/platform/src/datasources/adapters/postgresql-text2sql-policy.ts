@@ -87,6 +87,7 @@ const safeCastTypes = new Set([
   "timestamptz",
   "uuid",
 ]);
+const temporalSortCastTypes = new Set(["date", "timestamp", "timestamptz"]);
 const allowedAstNodes = new Set([
   "A_Const",
   "A_Expr",
@@ -192,6 +193,18 @@ function validLimitCount(
   if (!isRecord(reference) || !Number.isSafeInteger(reference.number)) return false;
   const parameter = parameters[(reference.number as number) - 1];
   return Number.isSafeInteger(parameter) && (parameter as number) > 0;
+}
+
+function validSortExpression(value: unknown): boolean {
+  const expression = wrappedNodeName(value);
+  if (expression === "ColumnRef") return true;
+  if (expression !== "TypeCast" || !isRecord(value)) return false;
+  const cast = value.TypeCast;
+  if (!isRecord(cast) || wrappedNodeName(cast.arg) !== "ColumnRef" || !isRecord(cast.typeName)) {
+    return false;
+  }
+  const typeName = normalizedPrimitiveName(cast.typeName.names);
+  return typeName !== null && temporalSortCastTypes.has(typeName) && cast.typeName.typemod === -1;
 }
 
 function literalValue(node: JsonRecord): QueryParameter {
@@ -579,7 +592,7 @@ export async function assertPostgresqlText2SqlCandidatePolicy(
           "TEXT2SQL_SQL_ORDERING_SHAPE_REJECTED",
         );
         if (
-          wrappedNodeName(node.node) !== "ColumnRef" ||
+          !validSortExpression(node.node) ||
           !["SORTBY_DEFAULT", "SORTBY_ASC", "SORTBY_DESC"].includes(String(node.sortby_dir)) ||
           !["SORTBY_NULLS_DEFAULT", "SORTBY_NULLS_FIRST", "SORTBY_NULLS_LAST"].includes(
             String(node.sortby_nulls),
