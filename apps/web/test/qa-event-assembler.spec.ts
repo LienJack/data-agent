@@ -12,6 +12,7 @@ import {
   groupTrajectoryEvents,
   isRunTerminal,
   mergePublicRunEvents,
+  publicAgentLabel,
   resumableRunFromReplay,
 } from "../src/lib/qa-event-assembler";
 import type { Message } from "../src/lib/qa-types";
@@ -118,6 +119,64 @@ function teamEvent(
 }
 
 describe("Q&A public event assembly", () => {
+  it("preserves Root, Analysis and unknown profile identities instead of calling them Report", () => {
+    expect(publicAgentLabel("data-agent-orchestrator")).toBe("Root");
+    expect(publicAgentLabel("governed-analysis-agent")).toBe("Analysis");
+    expect(publicAgentLabel("report-writing-agent")).toBe("Report");
+    expect(publicAgentLabel("future-agent")).toBe("future-agent");
+  });
+
+  it("closes an unfinished failed task truthfully when a later task completes the Run", () => {
+    const taskId = "22000000-0000-4000-8000-000000000001";
+    const events = [
+      teamEvent(1, "agent", {
+        profile_id: "semantic-management-agent",
+        task_id: taskId,
+        status: "RUNNING",
+        phase: "context.activated",
+        title: "Semantic",
+        summary: "执行中",
+        duration_ms: null,
+        error_code: null,
+      }),
+      teamEvent(2, "tool", {
+        profile_id: "semantic-management-agent",
+        task_id: taskId,
+        call_id: "semantic-1",
+        tool_name: "semantic.catalog.read",
+        title: "Semantic",
+        summary: "选择失败",
+        status: "FAILED",
+        input: null,
+        output: null,
+        duration_ms: 10,
+        error_code: "TEAM_SEMANTIC_SELECTION_OUTSIDE_FROZEN_CLOSURE",
+        artifact_refs: [],
+      }),
+      teamEvent(3, "terminal", {
+        status: "COMPLETED",
+        summary: "后续任务已完成",
+        error_code: null,
+      }),
+    ];
+    expect(assembleConversationActivity(events, runId)[0]).toMatchObject({
+      kind: "agent",
+      agent: { status: "FAILED", errorCode: "TEAM_SEMANTIC_SELECTION_OUTSIDE_FROZEN_CLOSURE" },
+    });
+    expect(
+      assembleConversationActivity(
+        events.filter((item) => item.type !== "tool"),
+        runId,
+      )[0],
+    ).toMatchObject({
+      kind: "agent",
+      agent: { status: "INTERRUPTED", errorCode: "AGENT_COMPLETION_NOT_OBSERVED" },
+    });
+    expect(assembleConversationActivity(events.slice(0, 1), runId)[0]).toMatchObject({
+      kind: "agent",
+      agent: { status: "RUNNING" },
+    });
+  });
   it("prefers a valid Last-Event-ID and safely falls back to the query cursor", () => {
     expect(selectSseCursor("12", "4")).toBe(12);
     expect(selectSseCursor("invalid", "4")).toBe(4);

@@ -20,35 +20,50 @@ function AgentDisclosure({ agent }: { agent: TeamAgentView }) {
   const panelId = useId();
   const selectInspector = useQAStore((state) => state.selectInspector);
   const openTrajectory = useQAStore((state) => state.openTrajectory);
-  const triggerId = `qa-subagent-${agent.runId}-${agent.taskId ?? agent.profileId}`;
-  const target: QaInspectorTarget | null = agent.taskId
-    ? {
-        kind: "subagent",
-        run_id: agent.runId,
-        profile_id: agent.profileId as Extract<
-          QaInspectorTarget,
-          { kind: "subagent" }
-        >["profile_id"],
-        task_id: agent.taskId,
-        anchor_sequence: agent.sequence,
-      }
-    : null;
+  const isRoot = agent.profileId === "data-agent-orchestrator";
+  const triggerId = `qa-${isRoot ? "root" : "subagent"}-${agent.runId}-${agent.taskId ?? agent.profileId}`;
+  const target: QaInspectorTarget | null =
+    agent.taskId && !isRoot
+      ? {
+          kind: "subagent",
+          run_id: agent.runId,
+          profile_id: agent.profileId as Extract<
+            QaInspectorTarget,
+            { kind: "subagent" }
+          >["profile_id"],
+          task_id: agent.taskId,
+          anchor_sequence: agent.sequence,
+        }
+      : null;
 
   return (
-    <div className="border-b border-[var(--color-border-default)] last:border-b-0">
+    <div
+      className="border-b border-[var(--color-border-default)] last:border-b-0"
+      data-testid="qa-agent-activity"
+      data-agent-profile={agent.profileId}
+      data-agent-task-id={agent.taskId}
+      data-agent-status={agent.status}
+      data-agent-role={isRoot ? "ROOT" : "SPECIALIST"}
+    >
       <div className="flex min-h-11 items-center gap-1.5 px-1.5 py-1.5">
-        {target ? (
+        {target || isRoot ? (
           <button
             id={triggerId}
             type="button"
-            onClick={() => selectInspector(target, triggerId)}
+            onClick={() => {
+              if (isRoot) openTrajectory({ runId: agent.runId, sequence: agent.sequence });
+              else if (target) selectInspector(target, triggerId);
+            }}
             className="flex min-w-0 shrink-0 items-center gap-2 rounded px-1 py-1 text-left hover:bg-[var(--color-bg-overlay)] active:translate-y-px focus-visible:ring-2 focus-visible:ring-[var(--color-accent)]"
           >
             <span className="flex size-6 items-center justify-center rounded bg-[color-mix(in_srgb,var(--color-accent)_10%,transparent)] text-[var(--color-accent)]">
               <Robot aria-hidden="true" size={14} />
             </span>
-            <span className="text-[11px] font-semibold text-[var(--color-text-primary)]">
-              {t("process.subagent")} · {agent.title}
+            <span
+              data-agent-label
+              className="text-[11px] font-semibold text-[var(--color-text-primary)]"
+            >
+              {t(isRoot ? "process.rootAgent" : "process.subagent")} · {agent.title}
             </span>
           </button>
         ) : (
@@ -59,7 +74,10 @@ function AgentDisclosure({ agent }: { agent: TeamAgentView }) {
             <span className="flex size-6 items-center justify-center rounded bg-[var(--color-bg-overlay)] text-[var(--color-text-muted)]">
               <Robot aria-hidden="true" size={14} />
             </span>
-            <span className="text-[11px] font-semibold text-[var(--color-text-muted)]">
+            <span
+              data-agent-label
+              className="text-[11px] font-semibold text-[var(--color-text-muted)]"
+            >
               {t("process.subagent")} · {agent.title}
             </span>
           </span>

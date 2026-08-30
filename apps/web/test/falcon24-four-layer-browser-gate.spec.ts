@@ -42,6 +42,13 @@ const runId = id(22);
 const previousRunId = id(23);
 const previousTraceHash = hash("7");
 const webBuild = { build_id: hash("a"), generation_id: hash("b") };
+const agentStates = [
+  "VALID",
+  "WRONG_LABEL",
+  "WRONG_ROLE_LABEL",
+  "STILL_RUNNING",
+  "MISSING_COMPLETION",
+] as const;
 
 async function fixture() {
   const turns = await buildFalcon24FourLayerManifestTurns();
@@ -305,7 +312,7 @@ describe("Falcon24 four-layer browser gate", () => {
     ).resolves.toMatchObject({ expected_run_absent: true });
   });
 
-  it("uses each turn rubric and proves the exact Run survives refresh without duplication", async () => {
+  it.each(agentStates)("checks %s agents and exact Run refresh", async (agentState) => {
     const { turn, business } = await fixture();
     execFileAsyncMock.mockImplementation(async (_file: string, args: readonly string[]) => {
       const script = decodedScript(args);
@@ -324,6 +331,30 @@ describe("Falcon24 four-layer browser gate", () => {
             table_visible: false,
             chart_rendered: false,
             loading_visible: false,
+            agent_activity: [
+              {
+                profile_id: "data-agent-orchestrator",
+                role: "ROOT",
+                label:
+                  agentState === "WRONG_LABEL"
+                    ? "子代理 · Report"
+                    : agentState === "WRONG_ROLE_LABEL"
+                      ? "子代理 · Root"
+                      : "主代理 · Root",
+                status: "COMPLETED",
+              },
+              {
+                profile_id: "semantic-management-agent",
+                role: "SPECIALIST",
+                label: "子代理 · Semantic",
+                status:
+                  agentState === "STILL_RUNNING"
+                    ? "RUNNING"
+                    : agentState === "MISSING_COMPLETION"
+                      ? "INTERRUPTED"
+                      : "COMPLETED",
+              },
+            ],
             horizontal_overflow: false,
             conversation_run_counts: [{ run_id: runId, count: 1 }],
             error_banners: [],
@@ -346,7 +377,7 @@ describe("Falcon24 four-layer browser gate", () => {
       viewport: { width: 1440, height: 900 },
       now: () => new Date(now),
     });
-    expect(pass.status).toBe("PASS");
+    expect(pass.status).toBe(agentState === "VALID" ? "PASS" : "FAIL");
     const chartRequired = {
       ...turn,
       rubric: { ...turn.rubric, chart_required: true },

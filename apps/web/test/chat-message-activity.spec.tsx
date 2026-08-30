@@ -4,6 +4,47 @@ import { describe, expect, it } from "vitest";
 import { ChatMessage } from "@/components/qa/chat-message";
 
 describe("ChatMessage activity ownership", () => {
+  it("renders Root as the main agent with inspectable identity rather than a Report subagent", () => {
+    const runId = "10000000-0000-4000-8000-000000000021";
+    const root = publicRunEventSchema.parse({
+      schema_version: "public-run-event@2.0.0",
+      event_id: "20000000-0000-4000-8000-000000000021",
+      run_id: runId,
+      sequence: 1,
+      occurred_at: "2026-08-21T00:00:00.000Z",
+      type: "agent",
+      payload: {
+        profile_id: "data-agent-orchestrator",
+        task_id: "30000000-0000-4000-8000-000000000021",
+        status: "COMPLETED",
+        phase: "root.delegation.completed",
+        title: "Root",
+        summary: "主 Agent 已完成委派",
+        duration_ms: 10,
+        error_code: null,
+      },
+    });
+    const html = renderToStaticMarkup(
+      <ChatMessage
+        message={{
+          id: "30000000-0000-4000-8000-000000000022",
+          conversationId: "30000000-0000-4000-8000-000000000023",
+          role: "agent",
+          runId,
+          content: "",
+          type: "text",
+          createdAt: "2026-08-21T00:00:01.000Z",
+        }}
+        events={[root]}
+      />,
+    );
+    expect(html).toContain("主代理");
+    expect(html).toContain("Root");
+    expect(html).not.toContain("子代理");
+    expect(html).not.toContain("Report");
+    expect(html).toContain('data-agent-role="ROOT"');
+    expect(html).toContain('data-agent-status="COMPLETED"');
+  });
   it("does not duplicate a Run activity stream on a user message carrying run_id", () => {
     const runId = "10000000-0000-4000-8000-000000000001";
     const answer = publicRunEventSchema.parse({

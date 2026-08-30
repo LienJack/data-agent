@@ -270,10 +270,13 @@ function agentIdentity(profileId: string, taskId: string | null): string {
   return `${profileId}:${taskId ?? "pending"}`;
 }
 
-export function publicAgentLabel(profileId: string): "Semantic" | "Text2SQL" | "Report" {
+export function publicAgentLabel(profileId: string): string {
+  if (profileId === "data-agent-orchestrator") return "Root";
   if (profileId === "semantic-management-agent") return "Semantic";
   if (profileId === "governed-text2sql-agent") return "Text2SQL";
-  return "Report";
+  if (profileId === "governed-analysis-agent") return "Analysis";
+  if (profileId === "report-writing-agent") return "Report";
+  return profileId;
 }
 
 function artifactIdentity(reference: ArtifactReference): string {
@@ -416,6 +419,22 @@ export function assembleTeamAgents(
       for (const child of children) {
         for (const reference of child.artifactRefs)
           refs.set(artifactIdentity(reference), reference);
+      }
+      if (
+        terminal?.payload.status === "COMPLETED" &&
+        (agent.status === "PENDING" || agent.status === "RUNNING")
+      ) {
+        const failedTool = children.findLast((child) => child.status === "FAILED");
+        return {
+          ...agent,
+          status: failedTool ? ("FAILED" as const) : ("INTERRUPTED" as const),
+          summary: failedTool
+            ? "此任务的 Tool 执行失败；Run 已由后续任务完成"
+            : "Run 已结束，但未观察到此任务的完成记录",
+          errorCode: failedTool?.errorCode ?? "AGENT_COMPLETION_NOT_OBSERVED",
+          children,
+          artifactRefs: [...refs.values()],
+        };
       }
       if (
         terminal &&

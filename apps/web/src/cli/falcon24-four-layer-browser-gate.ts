@@ -12,6 +12,8 @@ import {
 } from "@data-agent/contracts/evals";
 import type { ResolutionTrace, ResolutionTraceDetail } from "@data-agent/contracts/runs";
 import { z } from "zod";
+import { messagesByLocale } from "../i18n/messages";
+import { publicAgentLabel } from "../lib/qa-event-assembler";
 import {
   evaluateFalcon24Browser,
   executeFalcon24AgentBrowser,
@@ -56,6 +58,16 @@ const fourLayerQaObservationSchema = z.strictObject({
   table_visible: z.boolean(),
   chart_rendered: z.boolean(),
   loading_visible: z.boolean(),
+  agent_activity: z
+    .array(
+      z.strictObject({
+        profile_id: z.string().min(1).max(128),
+        role: z.enum(["ROOT", "SPECIALIST"]),
+        label: z.string().max(320),
+        status: z.string().min(1).max(32),
+      }),
+    )
+    .max(64),
   horizontal_overflow: z.boolean(),
   conversation_run_counts: z.array(runCountSchema),
   error_banners: z.array(z.string().max(2_000)).max(32),
@@ -271,7 +283,33 @@ async function observeQaPage(input: {
   const selector = exactRunSelector(input.run_id);
   return evaluateFalcon24Browser(
     input.session,
-    `(async () => { const runIds=${JSON.stringify(input.conversation_run_ids)}; const entry=document.querySelector(${JSON.stringify(selector)}); const run=document.getElementById(${JSON.stringify(`chat-run-${input.run_id}`)}); const response=await fetch('/api/ready',{cache:'no-store'}); const build=await response.json(); const visible=(element)=>Boolean(element&&element.getBoundingClientRect().width>0&&element.getBoundingClientRect().height>0); const answer=run?.querySelector('.agent-answer'); const table=run?.querySelector('[data-testid="chart-source-table"]'); const chart=run?.querySelector('[data-testid="governed-chart"]'); return {run_id:entry?.getAttribute('data-run-id')??null,terminal_status:entry?.getAttribute('data-terminal-status')??null,answer_visible:visible(answer)&&Boolean(answer?.textContent?.trim()),table_visible:visible(table),chart_rendered:visible(chart)&&chart?.getAttribute('data-chart-render-state')==='READY',loading_visible:Boolean(run?.querySelector('[aria-busy="true"],[data-streaming="true"]')),horizontal_overflow:document.documentElement.scrollWidth>document.documentElement.clientWidth,conversation_run_counts:runIds.map((run_id)=>({run_id,count:document.querySelectorAll('[data-testid="qa-result-trace-entry"][data-run-id="'+run_id+'"]').length})),error_banners:[...document.querySelectorAll('[role="alert"]')].map((element)=>element.textContent?.trim()||''),web_build:{build_id:build.build_id,generation_id:build.generation_id}}; })()`,
+    `(async () => {
+      const runIds=${JSON.stringify(input.conversation_run_ids)};
+      const entry=document.querySelector(${JSON.stringify(selector)});
+      const run=document.getElementById(${JSON.stringify(`chat-run-${input.run_id}`)});
+      const response=await fetch('/api/ready',{cache:'no-store'});
+      const build=await response.json();
+      const visible=(element)=>Boolean(element&&element.getBoundingClientRect().width>0&&element.getBoundingClientRect().height>0);
+      const answer=run?.querySelector('.agent-answer');
+      const table=run?.querySelector('[data-testid="chart-source-table"]');
+      const chart=run?.querySelector('[data-testid="governed-chart"]');
+      return {
+        run_id:entry?.getAttribute('data-run-id')??null,
+        terminal_status:entry?.getAttribute('data-terminal-status')??null,
+        answer_visible:visible(answer)&&Boolean(answer?.textContent?.trim()),
+        table_visible:visible(table),
+        chart_rendered:visible(chart)&&chart?.getAttribute('data-chart-render-state')==='READY',
+        loading_visible:Boolean(run?.querySelector('[aria-busy="true"],[data-streaming="true"]')),
+        agent_activity:[...(run?.querySelectorAll('[data-testid="qa-agent-activity"]')??[])].map(agent=>({
+          profile_id:agent.getAttribute('data-agent-profile'),role:agent.getAttribute('data-agent-role'),
+          status:agent.getAttribute('data-agent-status'),label:agent.querySelector('[data-agent-label]')?.textContent?.trim()??''
+        })),
+        horizontal_overflow:document.documentElement.scrollWidth>document.documentElement.clientWidth,
+        conversation_run_counts:runIds.map((run_id)=>({run_id,count:document.querySelectorAll('[data-testid="qa-result-trace-entry"][data-run-id="'+run_id+'"]').length})),
+        error_banners:[...document.querySelectorAll('[role="alert"]')].map((element)=>element.textContent?.trim()||''),
+        web_build:{build_id:build.build_id,generation_id:build.generation_id}
+      };
+    })()`,
     fourLayerQaObservationSchema,
   );
 }
@@ -291,6 +329,22 @@ function qaObservationPasses(input: {
     (!input.turn.rubric.table_required || observation.table_visible) &&
     (!input.turn.rubric.chart_required || observation.chart_rendered) &&
     !observation.loading_visible &&
+    observation.agent_activity.length > 0 &&
+    observation.agent_activity.every(
+      (agent) =>
+        ["COMPLETED", "FAILED", "SKIPPED"].includes(agent.status) &&
+        agent.role === (agent.profile_id === "data-agent-orchestrator" ? "ROOT" : "SPECIALIST") &&
+        Object.values(messagesByLocale).some(
+          (messages) =>
+            agent.label ===
+            `${messages[agent.role === "ROOT" ? "process.rootAgent" : "process.subagent"]} · ${publicAgentLabel(agent.profile_id)}`,
+        ),
+    ) &&
+    input.turn.expected_agents.required_profile_ids.every((profileId) =>
+      observation.agent_activity.some(
+        (agent) => agent.profile_id === profileId && agent.status === "COMPLETED",
+      ),
+    ) &&
     !observation.horizontal_overflow &&
     exactRunCounts(observation.conversation_run_counts, input.conversation_run_ids) &&
     observation.error_banners.length === 0 &&
