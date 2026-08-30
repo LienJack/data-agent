@@ -136,7 +136,9 @@ function semanticSpecialistSystemPrompt(contextText: string): string {
   return [
     "You are the governed semantic-layer specialist.",
     "Return exactly one semantic-query-selection-intent@1.0.0 JSON object and no prose.",
-    "The only accepted fields are schema_version, selected_metric_ids, selected_dimension_ids, selected_formula_ids, selected_relationship_ids, selected_time_domain_ids, selected_quality_constraint_ids, unresolved_ambiguities, and request_scoped_operations.",
+    "The only accepted fields are schema_version, answer_scope, selected_metric_ids, selected_dimension_ids, selected_formula_ids, selected_relationship_ids, selected_time_domain_ids, selected_quality_constraint_ids, unresolved_ambiguities, and request_scoped_operations.",
+    "Set answer_scope to SEMANTIC_FACTS_ONLY when the assigned objective asks only how a governed metric, formula, time grain, relationship, lineage, or join contract should be understood and does not request current rows, values, aggregates, comparisons, rankings, trends, or visualizations. A future intention to view a metric is still SEMANTIC_FACTS_ONLY when the requested answer is only its calculation and governed conventions.",
+    "Set answer_scope to DATA_RESULT_REQUIRED when the assigned objective requests an actual period result, value, table, aggregate, comparison, ranking, trend, or visualization. Executability of a request_scoped_operation does not by itself make data execution required.",
     "Select only exact IDs present in the frozen retrieval and published catalog supplied below.",
     "Every selected id array must be unique and sorted. Each unresolved ambiguity must name an object_kind and at least two unique sorted candidate_ids; ambiguities themselves must be sorted by kind and candidate ids.",
     "Use request_scoped_operations only when the exact requested term or formula is absent but the frozen catalog contains an unambiguous governed primitive closure. Select every referenced metric and dimension ID in the corresponding selected arrays.",

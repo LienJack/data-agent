@@ -29,6 +29,7 @@ describe("Production Team governed chart publication", () => {
   it("derives a friendly request-scoped YoY interpretation from governed primitives", async () => {
     const intent = semanticQuerySelectionIntentSchema.parse({
       schema_version: "semantic-query-selection-intent@1.0.0",
+      answer_scope: "DATA_RESULT_REQUIRED",
       selected_metric_ids: ["metric.order_revenue"],
       selected_dimension_ids: ["dimension.order_month"],
       selected_formula_ids: [],
@@ -77,6 +78,7 @@ describe("Production Team governed chart publication", () => {
     async (requestedTerm, numeratorAdjustment, expectedFormula) => {
       const intent = semanticQuerySelectionIntentSchema.parse({
         schema_version: "semantic-query-selection-intent@1.0.0",
+        answer_scope: "DATA_RESULT_REQUIRED",
         selected_metric_ids: ["metric.marketing_revenue", "metric.marketing_spend"],
         selected_dimension_ids: [],
         selected_formula_ids: [],
@@ -357,6 +359,7 @@ describe("Production Team governed chart publication", () => {
       value: {
         output_text: JSON.stringify({
           schema_version: "semantic-query-selection-intent@1.0.0",
+          answer_scope: "SEMANTIC_FACTS_ONLY",
           selected_metric_ids: ["metric.order_revenue"],
           selected_dimension_ids: ["dimension.order_month"],
           selected_formula_ids: [],
@@ -608,6 +611,7 @@ describe("Production Team governed chart publication", () => {
         kind: "SEMANTIC_CONTEXT",
         context: expect.objectContaining({
           schema_version: "semantic-query-context@1.0.0",
+          answer_scope: "SEMANTIC_FACTS_ONLY",
           run_id: lease.run_id,
           semantic_release: config.semantic_release,
           relationships: [

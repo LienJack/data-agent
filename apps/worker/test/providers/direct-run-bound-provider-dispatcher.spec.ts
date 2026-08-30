@@ -142,6 +142,9 @@ describe("direct run-bound provider retry policy", () => {
     );
 
     expect(prompt).toContain("request_scoped_operations");
+    expect(prompt).toContain("answer_scope");
+    expect(prompt).toContain("SEMANTIC_FACTS_ONLY");
+    expect(prompt).toContain("DATA_RESULT_REQUIRED");
     expect(prompt).toContain("PERIOD_COMPARISON_RATE");
     expect(prompt).toContain("SUBTRACT_DENOMINATOR for net ROI");
     expect(prompt).toContain("must not create, update, approve, or imply a Published formula");

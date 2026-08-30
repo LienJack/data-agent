@@ -6,8 +6,10 @@ import {
   type RootAgentDecisionCandidate,
   type RootToolObservation,
   type RootVerifierFeedback,
+  rootAgentDecisionCandidateSchema,
   rootAgentToolResultSchema,
   rootVerifierFeedbackSchema,
+  verifySemanticQueryContext,
 } from "@data-agent/contracts";
 import { z } from "zod";
 import {
@@ -60,6 +62,63 @@ export type RootAgentTurnState = Readonly<{
   tool_observations: readonly RootToolObservation[];
   verifier_feedback: RootVerifierFeedback | null;
 }>;
+
+async function terminalSemanticFactsDecision(input: {
+  readonly scope: Parameters<RunWorkflowExecutorPort["execute"]>[0]["lease"]["scope"];
+  readonly run_id: string;
+  readonly catalog_snapshot_hash: string;
+  readonly observations: readonly RootToolObservation[];
+}): Promise<RootAgentDecisionCandidate | null> {
+  const observation = [...input.observations]
+    .reverse()
+    .find(
+      (candidate) =>
+        candidate.status === "COMPLETED" &&
+        candidate.profile_id === "semantic-management-agent" &&
+        candidate.output_ref.artifact_type === "SemanticQueryContext" &&
+        candidate.safe_projection.projection_kind === "SEMANTIC_CONTEXT",
+    );
+  if (observation?.status !== "COMPLETED") return null;
+  const rawContext = observation.safe_projection.semantic_query_context;
+  if (rawContext === null) return null;
+  let context: Awaited<ReturnType<typeof verifySemanticQueryContext>>;
+  try {
+    context = await verifySemanticQueryContext(rawContext);
+  } catch {
+    return null;
+  }
+  if (context.answer_scope !== "SEMANTIC_FACTS_ONLY") return null;
+  if (context.unresolved_ambiguities.length > 0) return null;
+
+  const selectors = [
+    ...(context.dimensions.length > 0 ? ["projection.context.dimensions"] : []),
+    ...(context.formulas.length > 0 ? ["projection.context.formulas"] : []),
+    ...(context.metrics.length > 0 ? ["projection.context.metrics"] : []),
+    ...(context.quality_constraints.length > 0 ? ["projection.context.quality_constraints"] : []),
+    ...(context.relationships.length > 0 ? ["projection.context.relationships"] : []),
+    ...((context.request_scoped_interpretations?.length ?? 0) > 0
+      ? ["projection.context.request_scoped_interpretations"]
+      : []),
+    ...(context.time_semantics.length > 0 ? ["projection.context.time_semantics"] : []),
+  ].sort();
+  if (selectors.length === 0) return null;
+
+  return rootAgentDecisionCandidateSchema.parse({
+    schema_version: "root-agent-turn-candidate@1.0.0",
+    kind: "FINAL_ANSWER",
+    scope: input.scope,
+    run_id: input.run_id,
+    catalog_snapshot_hash: input.catalog_snapshot_hash,
+    sections: [
+      {
+        kind: "ARTIFACT_FACTS",
+        artifact_ref: observation.output_ref,
+        fact_selectors: selectors,
+      },
+    ],
+    public_summary: "已按当前发布语义权威解释所需指标、公式与口径。",
+  });
+}
 
 export function createRootAgentTurnExecutor(): RootAgentTurnPort {
   return Object.freeze({
@@ -132,6 +191,15 @@ export function createRootAgentTurnExecutor(): RootAgentTurnPort {
           "ROOT_AGENT_TURN_STATE_INVALID",
           "Root Agent turn state exceeds the frozen normal-turn budget.",
         );
+      }
+      const semanticFactsDecision = await terminalSemanticFactsDecision({
+        scope: input.lease.scope,
+        run_id: input.lease.run_id,
+        catalog_snapshot_hash: catalog.snapshot_hash,
+        observations: state.data.tool_observations,
+      });
+      if (semanticFactsDecision) {
+        return { ok: true, value: semanticFactsDecision };
       }
       const provider = input.context.getProviderDispatchCapability();
       if (!hasRunProviderDispatchCapability(provider)) {

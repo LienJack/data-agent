@@ -662,6 +662,7 @@ async function projectSemanticQueryContext(input: {
 
   return buildSemanticQueryContext({
     schema_version: "semantic-query-context@1.0.0",
+    answer_scope: input.intent.answer_scope,
     scope: input.factory.lease.scope,
     run_id: input.factory.lease.run_id,
     semantic_domain: packageDocument.semantic_domain,

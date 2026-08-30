@@ -180,14 +180,19 @@ function contextInput() {
 
 describe("SemanticQueryContext", () => {
   it("seals exact metric, formula, dimension, relationship, time, quality and binding closure", async () => {
-    const context = await buildSemanticQueryContext(contextInput());
+    const context = await buildSemanticQueryContext({
+      ...contextInput(),
+      answer_scope: "SEMANTIC_FACTS_ONLY",
+    });
     await expect(verifySemanticQueryContext(context)).resolves.toEqual(context);
+    expect(context.answer_scope).toBe("SEMANTIC_FACTS_ONLY");
     expect(context.context_hash).toMatch(/^sha256:[0-9a-f]{64}$/u);
   });
 
   it("seals request-scoped executable interpretations without publishing a global formula", async () => {
     const selection = semanticQuerySelectionIntentSchema.parse({
       schema_version: "semantic-query-selection-intent@1.0.0",
+      answer_scope: "SEMANTIC_FACTS_ONLY",
       selected_metric_ids: ["metric.order_revenue"],
       selected_dimension_ids: ["dimension.order_month"],
       selected_formula_ids: [],
@@ -259,6 +264,7 @@ describe("SemanticQueryContext", () => {
   it("binds a net ROI correction to governed aggregate inputs without reusing ROAS", () => {
     const selection = semanticQuerySelectionIntentSchema.parse({
       schema_version: "semantic-query-selection-intent@1.0.0",
+      answer_scope: "DATA_RESULT_REQUIRED",
       selected_metric_ids: ["metric.marketing_revenue", "metric.marketing_spend"],
       selected_dimension_ids: ["dimension.marketing_channel"],
       selected_formula_ids: [],
@@ -293,6 +299,7 @@ describe("SemanticQueryContext", () => {
     expect(() =>
       semanticQuerySelectionIntentSchema.parse({
         schema_version: "semantic-query-selection-intent@1.0.0",
+        answer_scope: "DATA_RESULT_REQUIRED",
         selected_metric_ids: ["metric.z", "metric.a"],
         selected_dimension_ids: [],
         selected_formula_ids: [],

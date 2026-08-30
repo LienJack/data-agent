@@ -26,6 +26,11 @@ const semanticQueryObjectKindSchema = z.enum([
   "TIME",
 ]);
 
+export const semanticQueryAnswerScopeSchema = z.enum([
+  "SEMANTIC_FACTS_ONLY",
+  "DATA_RESULT_REQUIRED",
+]);
+
 const positiveRevisionSchema = z.number().int().positive().safe();
 const semanticQueryReleaseReferenceSchema = versionedResourceReferenceSchema.extend({
   datasource_id: immutableIdSchema,
@@ -128,6 +133,7 @@ export const semanticQueryAmbiguitySchema = z.strictObject({
 const semanticQuerySelectionIntentDraftSchema = z
   .strictObject({
     schema_version: z.literal("semantic-query-selection-intent@1.0.0"),
+    answer_scope: semanticQueryAnswerScopeSchema,
     selected_metric_ids: canonicalIdsSchema(64),
     selected_dimension_ids: canonicalIdsSchema(64),
     selected_formula_ids: canonicalIdsSchema(64),
@@ -240,6 +246,7 @@ function canonicalObjectArray<T extends Record<string, unknown>>(
 const semanticQueryContextDraftSchema = z
   .strictObject({
     schema_version: z.literal("semantic-query-context@1.0.0"),
+    answer_scope: semanticQueryAnswerScopeSchema.default("DATA_RESULT_REQUIRED"),
     scope: appScopeSchema,
     run_id: immutableIdSchema,
     semantic_domain: z.string().regex(/^[A-Za-z_][A-Za-z0-9_]{0,63}$/),

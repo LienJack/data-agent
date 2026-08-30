@@ -1,6 +1,8 @@
 import {
   buildFalcon24RunExecutionPolicy,
+  buildSemanticQueryContext,
   buildSubagentCapabilityCatalogSnapshot,
+  canonicalizeJson,
   DEFAULT_RUN_EXECUTION_POLICY,
   type RunWorkLease,
 } from "@data-agent/contracts";
@@ -128,6 +130,96 @@ describe("Root Agent normal turn", () => {
         verifier_feedback: null,
       },
     });
+
+    const semanticContext = await buildSemanticQueryContext({
+      schema_version: "semantic-query-context@1.0.0",
+      answer_scope: "SEMANTIC_FACTS_ONLY",
+      scope,
+      run_id: runId,
+      semantic_domain: "commerce",
+      semantic_release: effectiveConfig.semantic_release,
+      schema_snapshot: effectiveConfig.schema_snapshot,
+      datasource: effectiveConfig.datasource,
+      semantic_context_ref: {
+        package_id: id(20),
+        package_hash: `sha256:${"a".repeat(64)}`,
+        receipt_id: id(21),
+        receipt_hash: `sha256:${"b".repeat(64)}`,
+        retrieval_receipt_hash: `sha256:${"c".repeat(64)}`,
+        inference_receipt_hash: `sha256:${"d".repeat(64)}`,
+      },
+      requested_object_ids: ["quality.orders_nonnegative"],
+      metrics: [],
+      dimensions: [],
+      formulas: [],
+      relationships: [],
+      physical_bindings: [],
+      time_semantics: [],
+      quality_constraints: [
+        {
+          constraint_id: "quality.orders_nonnegative",
+          expression: "orders.amount >= 0",
+          severity: "ERROR",
+          sensitivity: "INTERNAL",
+        },
+      ],
+      unresolved_ambiguities: [],
+    });
+    const semanticArtifactRef = {
+      artifact_id: id(22),
+      artifact_type: "SemanticQueryContext" as const,
+      ...scope,
+      run_id: runId,
+      revision: 1,
+      content_hash: `sha256:${"e".repeat(64)}`,
+    };
+    const terminalSemanticResult = await createRootAgentTurnExecutor().decide(
+      {
+        lease,
+        restored_snapshot: null,
+        context,
+        signal: new AbortController().signal,
+        deadline_at: lease.expires_at,
+      },
+      {
+        turn_index: 1,
+        tool_observations: [
+          {
+            schema_version: "root-tool-observation@1.0.0",
+            tool_call_id: "semantic-1",
+            profile_id: "semantic-management-agent",
+            status: "COMPLETED",
+            output_ref: semanticArtifactRef,
+            safe_projection: {
+              schema_version: "root-tool-safe-projection@1.0.0",
+              artifact_ref: semanticArtifactRef,
+              projection_kind: "SEMANTIC_CONTEXT",
+              title: "Verified semantic query context",
+              summary: "Semantic facts satisfy the request.",
+              column_keys: [],
+              total_rows: null,
+              source_artifact_refs: [],
+              semantic_query_context: JSON.parse(canonicalizeJson(semanticContext)),
+            },
+            error_code: null,
+          },
+        ],
+        verifier_feedback: null,
+      },
+    );
+    expect(terminalSemanticResult).toEqual({
+      ok: true,
+      value: expect.objectContaining({
+        kind: "FINAL_ANSWER",
+        sections: [
+          expect.objectContaining({
+            kind: "ARTIFACT_FACTS",
+            artifact_ref: semanticArtifactRef,
+          }),
+        ],
+      }),
+    });
+    expect(invoke).toHaveBeenCalledOnce();
 
     const duplicate = await createRootAgentTurnExecutor().decide(
       {
