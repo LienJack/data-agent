@@ -136,6 +136,10 @@ describe("direct run-bound provider retry policy", () => {
       "TEXT2SQL_SQL_ORDERING_SHAPE_REJECTED means order by a declared output alias or an exact column reference",
     );
     expect(prompt).toContain("LIMIT must use exactly one positional parameter");
+    expect(prompt).toContain("JSON number, never a quoted numeric string");
+    expect(prompt).toContain('"parameters":[7]');
+    expect(prompt).toContain('not "parameters":["7"]');
+    expect(prompt).toContain("An SQL integer cast does not repair a JSON string parameter");
     expect(prompt).toContain(
       "DATASOURCE_ADAPTER_SQL_REJECTED means replace invalid PostgreSQL syntax",
     );
