@@ -234,6 +234,150 @@ function acceptedInput(input: Awaited<ReturnType<typeof fixture>>): RootAccepted
 }
 
 describe("bounded Root tool loop", () => {
+  it.each([
+    { artifactType: "AnalysisReport", usage: "FINAL_ANSWER_EVIDENCE", verified: true },
+    { artifactType: "QueryEvidence", usage: "FINAL_ANSWER_EVIDENCE", verified: true },
+    { artifactType: "AnalysisReport", usage: "CONTINUATION_INPUT", verified: true },
+    { artifactType: "AnalysisReport", usage: "FINAL_ANSWER_EVIDENCE", verified: false },
+  ] as const)(
+    "settles the last tool output: $artifactType / $usage / $verified",
+    async (testCase) => {
+      const input = await fixture();
+      const template = toolDecision(input);
+      const templateCall = template.tool_calls[0];
+      const templateObservation = observation(input);
+      if (!templateCall || templateObservation.status !== "COMPLETED") throw new Error("fixture");
+      const decide = vi.fn();
+      const execute = vi.fn();
+      const outputs: RootToolObservation[] = [];
+      for (let index = 0; index < 4; index += 1) {
+        const last = index === 3;
+        const artifactType = last ? testCase.artifactType : "AnalysisReport";
+        const profile =
+          artifactType === "QueryEvidence" ? "governed-text2sql-agent" : "report-writing-agent";
+        const usage = last ? testCase.usage : "CONTINUATION_INPUT";
+        const reference = {
+          ...templateObservation.output_ref,
+          artifact_id: id(60 + index),
+          artifact_type: artifactType,
+        };
+        const previous = outputs.at(-1);
+        const sourceRefs = previous?.status === "COMPLETED" ? [previous.output_ref] : [];
+        const output: RootToolObservation = {
+          ...templateObservation,
+          tool_call_id: `serial-${index}`,
+          profile_id: profile,
+          output_usage: usage,
+          output_ref: reference,
+          safe_projection: {
+            ...templateObservation.safe_projection,
+            artifact_ref: reference,
+            projection_kind: artifactType === "QueryEvidence" ? "TABLE" : "REPORT",
+            column_keys: artifactType === "QueryEvidence" ? ["value"] : [],
+            total_rows: artifactType === "QueryEvidence" ? 1 : null,
+            source_artifact_refs: sourceRefs,
+          },
+        };
+        outputs.push(output);
+        decide.mockResolvedValueOnce({
+          ok: true,
+          value: {
+            ...template,
+            tool_calls: [
+              {
+                ...templateCall,
+                tool_call_id: output.tool_call_id,
+                profile_id: profile,
+                output_usage: usage,
+                requested_artifact_types: [artifactType],
+                input_artifact_refs: sourceRefs,
+              },
+            ],
+          },
+        });
+        execute.mockResolvedValueOnce({
+          status: "CONTINUE",
+          reason_code: "ROOT_TOOL_OBSERVATIONS_READY",
+          observations: [output],
+          verifier_feedback: null,
+        });
+      }
+      execute.mockResolvedValue(
+        testCase.verified
+          ? { status: "ACCEPTED", reason_code: "ROOT_ANSWER_VERIFIED" }
+          : {
+              status: "CONTINUE",
+              reason_code: "ROOT_ANSWER_EVIDENCE_REQUIRED",
+              observations: [],
+              verifier_feedback: {
+                schema_version: "root-verifier-feedback@1.0.0",
+                status: "REJECTED",
+                reason_code: "ROOT_ANSWER_ARTIFACT_NOT_ACCEPTED",
+              },
+            },
+      );
+      const runner = createDataAgentTeamRunner({
+        ...input.dependencies,
+        root: { decide },
+        root_runtime: { execute },
+      });
+      const execution = {
+        lease: input.lease,
+        restored_snapshot: null,
+        context: input.createContext(),
+        signal: new AbortController().signal,
+        deadline_at: input.lease.expires_at,
+      };
+      const passed = testCase.usage === "FINAL_ANSWER_EVIDENCE" && testCase.verified;
+      const expected = passed
+        ? { kind: "COMPLETED" }
+        : {
+            kind: "FAILED",
+            error_code:
+              testCase.usage === "CONTINUATION_INPUT"
+                ? "ROOT_AGENT_TURN_BUDGET_EXHAUSTED"
+                : "ROOT_ANSWER_ARTIFACT_NOT_ACCEPTED",
+          };
+      await expect(runner.execute(execution)).resolves.toEqual(expected);
+      expect(decide).toHaveBeenCalledTimes(4);
+      expect(execute).toHaveBeenCalledTimes(testCase.usage === "CONTINUATION_INPUT" ? 4 : 5);
+      expect(input.snapshots.at(-1)?.mastra_snapshot).toMatchObject({ terminal: true });
+      if (testCase.usage === "CONTINUATION_INPUT") return;
+      const pendingSettlement = input.snapshots[3];
+      if (!pendingSettlement) throw new Error("settlement checkpoint required");
+      expect(pendingSettlement?.mastra_snapshot).toMatchObject({
+        turn_index: 4,
+        terminal: false,
+        accepted_tool_observations: outputs,
+      });
+      expect(execute.mock.calls[4]?.[0]).toMatchObject({
+        decision: {
+          kind: "FINAL_ANSWER",
+          sections: [expect.objectContaining({ artifact_ref: outputs[3]?.output_ref })],
+        },
+      });
+      await expect(
+        runner.execute({
+          ...execution,
+          context: input.createContext(),
+          restored_snapshot: pendingSettlement,
+        }),
+      ).resolves.toEqual(expected);
+      expect(decide).toHaveBeenCalledTimes(4);
+      expect(execute).toHaveBeenCalledTimes(6);
+      const terminalSnapshot = input.snapshots.at(-1);
+      if (!terminalSnapshot) throw new Error("terminal checkpoint required");
+      await expect(
+        runner.execute({
+          ...execution,
+          context: input.createContext(),
+          restored_snapshot: terminalSnapshot,
+        }),
+      ).resolves.toEqual(expected);
+      expect(execute).toHaveBeenCalledTimes(6);
+    },
+  );
+
   it("returns accepted tool observations to the next Root turn", async () => {
     const input = await fixture();
     const decide = vi

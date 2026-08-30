@@ -34,6 +34,10 @@ Root turn 0..3 (AUTO)
 - Root uses the catalog's semantic `description/when_to_use/when_not_to_use/examples` and is the only component allowed to choose a Profile。
 - Root direct answers are limited to `GENERAL_TEXT` based on general knowledge or visible user messages. Workspace facts, semantic definitions/relationships, aggregates, rankings, trends, rows and charts require delegation or accepted Artifact evidence。
 - Root uses server-owned `toolChoice=AUTO` for at most four normal turns. Each turn decides only the current next action or final answer; there is no dedicated review stage or predeclared future call chain。
+- 最后一次正常模型决策可以委派产出最终证据。其已验收 `FINAL_ANSWER_EVIDENCE` 在四次决策预算之外仍须通过既有
+  Host answer verifier 进行纯确定性收敛；这不是第五次 Root/model/tool 决策，不增加任何模型或工具调用预算。
+  先保存 `turn_index=4, terminal=false` 的最终证据 checkpoint，再验收并保存终态。中断恢复只重复幂等答案验收，
+  不重跑委派/SQL/Sandbox；无可最终收敛证据仍为预算耗尽，verifier 拒绝仍为失败，不能借此把 continuation 变为终态。
 - Subagent terminal results return to Root as strict safe Tool Results. A later turn may pass an exact accepted output only through ordinary `input_artifact_refs`。
 - 已创建的 child task 在 Tool、Context、执行或验收失败时，必须先发出绑定其 exact Profile/Task 的 `agent_status=FAILED`，再向 Root 传播稳定错误码；仅发 Root 委派失败会使公开 Trace 与 Q&A 中的 child 永久停在 RUNNING。不得用后续新 task 的成功覆盖原 task 失败。
 - `output_usage` 同样约束 `AnalysisReport`：只有 `FINAL_ANSWER_EVIDENCE` 可触发 Host 自动完成及 Provider delegation 关闭；`CONTINUATION_INPUT` 必须保留下一次 Root 决策。不得仅凭 Artifact 类型提前结束，也不得由 Host 固定插入报告步骤；后续能力仍须满足冻结 Catalog 的输入契约与剩余预算。
@@ -160,6 +164,7 @@ The only model output contract is `text2sql-query-candidate@1.0.0`:
 ## 9. Required Tests
 
 - Root Harness: direct answer, native single delegation, cross-turn serial delegation, same-turn independent calls, safe Tool Result feedback, verifier feedback, mixed response rejection, four-turn exhaustion and durable replay；另覆盖同 task replay仍duplicate、跨 turn不同 child task的相同 Specialist stage不碰撞、repair index分域。
+- 四次串行委派后的 QueryEvidence/AnalysisReport 确定性收敛、continuation 仍耗尽、verifier 拒绝、最终证据 checkpoint 恢复及终态 replay；断言 Root 决策始终四次、恢复不重跑工具。
 - V2 Profile materialization/admission: exact revision/hash/tool/Skill closure; V1 and stale revision rejection。
 - Semantic: strict selection intent, exact release/projection/hash/resource binding, metric/formula/dependency, dimension/grain/parent, relationship/join/cardinality, time/restriction, ambiguity, semantic-only final and no SQL execution。
 - Text2SQL: strict candidate schema, literal parameterization, relation/function/AST rejection, exact binding, EXPLAIN/read-only transaction, SQLSTATE classes, bounded repair and result-shape closure。

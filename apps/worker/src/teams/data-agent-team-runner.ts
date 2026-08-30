@@ -26,7 +26,10 @@ import {
   type RunWorkflowExecutorPort,
   runExecutorResultSchema,
 } from "../runs/run-worker-runner.js";
-import type { RootAgentTurnPort } from "./root-agent-turn-executor.js";
+import {
+  buildTerminalRootEvidenceDecision,
+  type RootAgentTurnPort,
+} from "./root-agent-turn-executor.js";
 
 const reasonCodeSchema = z
   .string()
@@ -461,20 +464,75 @@ export function createDataAgentTeamRunner(
           if (!existing) nextObservations.push(observation);
         }
         const exhausted = turnIndex + 1 >= input.lease.execution_policy.max_root_turns;
+        const canSettleFinalEvidence =
+          exhausted &&
+          decision.value.kind === "TOOL_CALLS" &&
+          (await buildTerminalRootEvidenceDecision({
+            scope: input.lease.scope,
+            run_id: input.lease.run_id,
+            catalog_snapshot_hash: payload.data.catalog_snapshot.snapshot_hash,
+            observations: nextObservations,
+          })) !== null;
+        const budgetFailed = exhausted && !canSettleFinalEvidence;
         state = rootLoopStateSchema.parse({
           ...state,
           turn_index: turnIndex + 1,
           checkpoint_version: state.checkpoint_version + 1,
           accepted_tool_observations: nextObservations,
           verifier_feedback: runtime.data.verifier_feedback,
-          terminal: exhausted,
-          terminal_error_code: exhausted ? "ROOT_AGENT_TURN_BUDGET_EXHAUSTED" : null,
+          terminal: budgetFailed,
+          terminal_error_code: budgetFailed ? "ROOT_AGENT_TURN_BUDGET_EXHAUSTED" : null,
         });
         const checkpoint = await checkpointLoop(input, state);
         if (!checkpoint.ok) return failed(checkpoint.error.code);
-        if (exhausted) return failed("ROOT_AGENT_TURN_BUDGET_EXHAUSTED");
+        if (budgetFailed) return failed("ROOT_AGENT_TURN_BUDGET_EXHAUSTED");
       }
-      return failed("ROOT_AGENT_TURN_BUDGET_EXHAUSTED");
+      // Settle already accepted final evidence without a fifth Root/model/tool turn.
+      // The active checkpoint above also enters here after an interrupted settlement.
+      const terminalDecision = await buildTerminalRootEvidenceDecision({
+        scope: input.lease.scope,
+        run_id: input.lease.run_id,
+        catalog_snapshot_hash: payload.data.catalog_snapshot.snapshot_hash,
+        observations: state.accepted_tool_observations,
+      });
+      if (terminalDecision?.kind !== "FINAL_ANSWER") {
+        return failed("ROOT_AGENT_TURN_BUDGET_EXHAUSTED");
+      }
+      const settlement = rootRuntimeResultSchema.safeParse(
+        await dependencies.root_runtime.execute({
+          decision: terminalDecision,
+          turn_index: state.turn_index - 1,
+          accepted_artifact_refs: acceptedArtifactRefs(
+            state.accepted_input_artifacts,
+            state.accepted_tool_observations,
+          ),
+          execution: input,
+          profiles: frozenProfiles.value,
+          authority: runAuthority.value,
+        }),
+      );
+      const terminalError = !settlement.success
+        ? "ROOT_AGENT_RUNTIME_RESULT_INVALID"
+        : settlement.data.status === "ACCEPTED"
+          ? null
+          : settlement.data.status === "CONTINUE"
+            ? (settlement.data.verifier_feedback?.reason_code ?? settlement.data.reason_code)
+            : settlement.data.reason_code;
+      state = rootLoopStateSchema.parse({
+        ...state,
+        checkpoint_version: state.checkpoint_version + 1,
+        terminal: true,
+        terminal_error_code: terminalError,
+        verifier_feedback:
+          settlement.success && settlement.data.status === "CONTINUE"
+            ? settlement.data.verifier_feedback
+            : null,
+      });
+      const checkpoint = await checkpointLoop(input, state);
+      if (!checkpoint.ok) return failed(checkpoint.error.code);
+      return terminalError
+        ? failed(terminalError)
+        : runExecutorResultSchema.parse({ kind: "COMPLETED" });
     },
   });
 }

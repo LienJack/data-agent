@@ -216,6 +216,16 @@ export const rootAgentTurnExecutorInternals = Object.freeze({
   terminalQueryEvidenceDecision,
 });
 
+export async function buildTerminalRootEvidenceDecision(
+  input: Parameters<typeof terminalSemanticFactsDecision>[0],
+): Promise<RootAgentDecisionCandidate | null> {
+  return (
+    (await terminalSemanticFactsDecision(input)) ??
+    terminalQueryEvidenceDecision(input) ??
+    terminalAcceptedReportDecision(input)
+  );
+}
+
 export function createRootAgentTurnExecutor(): RootAgentTurnPort {
   return Object.freeze({
     async decide(
@@ -288,32 +298,14 @@ export function createRootAgentTurnExecutor(): RootAgentTurnPort {
           "Root Agent turn state exceeds the frozen normal-turn budget.",
         );
       }
-      const semanticFactsDecision = await terminalSemanticFactsDecision({
+      const terminalEvidenceDecision = await buildTerminalRootEvidenceDecision({
         scope: input.lease.scope,
         run_id: input.lease.run_id,
         catalog_snapshot_hash: catalog.snapshot_hash,
         observations: state.data.tool_observations,
       });
-      if (semanticFactsDecision) {
-        return { ok: true, value: semanticFactsDecision };
-      }
-      const queryEvidenceDecision = terminalQueryEvidenceDecision({
-        scope: input.lease.scope,
-        run_id: input.lease.run_id,
-        catalog_snapshot_hash: catalog.snapshot_hash,
-        observations: state.data.tool_observations,
-      });
-      if (queryEvidenceDecision) {
-        return { ok: true, value: queryEvidenceDecision };
-      }
-      const acceptedReportDecision = terminalAcceptedReportDecision({
-        scope: input.lease.scope,
-        run_id: input.lease.run_id,
-        catalog_snapshot_hash: catalog.snapshot_hash,
-        observations: state.data.tool_observations,
-      });
-      if (acceptedReportDecision) {
-        return { ok: true, value: acceptedReportDecision };
+      if (terminalEvidenceDecision) {
+        return { ok: true, value: terminalEvidenceDecision };
       }
       const provider = input.context.getProviderDispatchCapability();
       if (!hasRunProviderDispatchCapability(provider)) {

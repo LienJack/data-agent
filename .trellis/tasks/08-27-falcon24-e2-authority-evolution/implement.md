@@ -1471,6 +1471,10 @@ Diagnostic/Q1/C1任一正式首次失败必须写既有 authority支持的 immut
   capability 撤销/heads 前进外旧行无变化。审计 `e12-history-diff-1788116086100.json` 保留，克隆已停止，backup volume 未修改。
 - E12 的六题通过前缀仅为该失败 attempt 的历史证据，不能拼入下一构建。Web/Worker/OpenSandbox 与本轮 browser 已停止；
   任务保持 in_progress，production isolation 仍为 false/HOLD。下一步是修复验证、scoped commit、fresh scratch/epoch/attempt。
+- `cbf9a8bd` 修复 Semantic continuation 提前结束，34 项相关测试与 Worker typecheck 通过。
+  独立回归进一步证实第四次串行委派的 final evidence 被预算耗尽覆盖；已补无模型的确定性答案验收与 checkpoint 恢复，
+  `max_root_turns=4` 不变，verifier 拒绝与 continuation 耗尽仍失败。38 项相关测试与 typecheck 通过，详见
+  `research/root-final-evidence-settlement.md`。这两项修复尚未替代新的 scratch/正式业务证明。
 
 **F6 READY 轮次恢复边界（2026-08-30）**
 
