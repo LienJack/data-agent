@@ -1427,7 +1427,13 @@ Diagnostic/Q1/C1任一正式首次失败必须写既有 authority支持的 immut
   新恢复契约 5 tests 与既有 authority 契约 14 tests 全通过，Contracts typecheck 通过；数据库持久化首失败/权限验证仍待实现。
 - [x] Platform/Finalizer/CLI：从现有 four-layer port 读取并验证 predecessor，沿既有 activation RPC 传递 exact evidence。
   Platform 17 tests、Web recovery/finalization/preflight 40 tests 与两包 typecheck 通过；不代表尚未实施的数据库迁移或正式验收通过。
-- [ ] 10814：版本分派、真实失败闭包、同事务 certification promotion、scope/lock/replay/ACL/null 防护。
+- [x] 10814 实现：版本分派、真实失败闭包、同事务 certification promotion、scope/lock/replay/ACL/null 防护。
+  checksum `sha256:eb85edc9df631ab973357bfa242ed556e81aad63613503dd6cf9640823fdf520`；Platform migration/adapter 22 tests 与 typecheck 通过。
+  NAS 专用克隆 `data-agent-falcon24-f6-recovery-9fdd38f3`（55457，system identifier `7679875188972822568`）
+  完成安装回滚及安装后 346 张既有表 count/hash 守卫，原 scratch 同样未变；另有 103 项真实 E11 前驱拒绝边界通过。
+  新空库 `data-agent-falcon24-f6-prefix-9fdd38f3`（55458）跑通完整 migration prefix、runner 的必选历史/锁检查及
+  10814 selected assertions；未声称全部 post-prefix assertions 通过。live 写入和 provider 调用均为 0。
+  正向认证/激活、activation rollback/replay/concurrency 仍待下一验证步骤，不把安装或负例通过当成恢复验收。
 - [ ] 完整 fresh-prefix 与 populated rollback/replay/concurrency/history guard；通过后才允许 live migration。
 - [ ] 新 clean build 的 scratch canary；fresh live stage/epoch/attempt，正式 15 题重新从 L1 开始。
 

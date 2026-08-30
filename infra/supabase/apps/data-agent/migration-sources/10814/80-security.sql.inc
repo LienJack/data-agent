@@ -1,0 +1,19 @@
+alter table app_data_agent.falcon24_retained_recovery_activation_receipts owner to data_agent_u6_data_owner;
+alter function app_data_agent.reject_falcon24_retained_recovery_receipt_mutation() owner to data_agent_u6_data_owner;
+alter function app_data_agent.activate_falcon24_authority_pre_e12(jsonb) owner to data_agent_u6_rpc_owner;
+alter function app_data_agent.activate_falcon24_authority(jsonb) owner to data_agent_u6_rpc_owner;
+create policy falcon24_retained_recovery_receipt_read
+on app_data_agent.falcon24_retained_recovery_activation_receipts for select to data_agent_u6_rpc_owner
+using(platform.backend_context_matches(app_id,tenant_id,environment,false)
+  and principal_id=(select principal_id from platform.current_backend_authority(false)));
+create policy falcon24_retained_recovery_receipt_insert
+on app_data_agent.falcon24_retained_recovery_activation_receipts for insert to data_agent_u6_rpc_owner
+with check(platform.backend_context_matches(app_id,tenant_id,environment,true)
+  and principal_id=(select principal_id from platform.current_backend_authority(true)));
+revoke all on table app_data_agent.falcon24_retained_recovery_activation_receipts
+  from public,anon,authenticated,service_role,data_agent_backend,data_agent_job_authority;
+grant select,insert on table app_data_agent.falcon24_retained_recovery_activation_receipts to data_agent_u6_rpc_owner;
+revoke all on function app_data_agent.reject_falcon24_retained_recovery_receipt_mutation(),
+  app_data_agent.activate_falcon24_authority_pre_e12(jsonb),app_data_agent.activate_falcon24_authority(jsonb)
+  from public,anon,authenticated,service_role,data_agent_backend,data_agent_job_authority;
+grant execute on function app_data_agent.activate_falcon24_authority(jsonb) to data_agent_backend;

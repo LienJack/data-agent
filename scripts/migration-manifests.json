@@ -2941,6 +2941,15 @@
       "placeholder": "__AGENT_TEAM_TRACE_RUN_READ_MIGRATION_CHECKSUM__",
       "checksum_header": "agent_team_trace_run_read_migration_checksum",
       "postcondition": { "checksum_occurrences": 2 }
+    },
+    {
+      "id": "10814",
+      "migration_name": "20260725010814_app_data_agent_falcon24_four_layer_recovery.sql",
+      "source_directory": "infra/supabase/apps/data-agent/migration-sources/10814",
+      "segments": ["00-preflight.sql.inc", "10-activation-receipts.sql.inc", "20-activation-rpc.sql.inc", "80-security.sql.inc", "90-postconditions.sql.inc"],
+      "placeholder": "__FALCON24_FOUR_LAYER_RECOVERY_MIGRATION_CHECKSUM__",
+      "checksum_header": "falcon24_four_layer_recovery_migration_checksum",
+      "postcondition": { "checksum_occurrences": 2 }
     }
   ],
   "exceptions": [
