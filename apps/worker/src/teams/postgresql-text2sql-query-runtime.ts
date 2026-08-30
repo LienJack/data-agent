@@ -134,10 +134,18 @@ async function validateCandidate(
         binding.object_kind === "METRIC"
           ? !metricIds.has(binding.object_id)
           : !dimensionIds.has(binding.object_id),
-      ) ||
-      (candidate.time_window && !dimensionIds.has(candidate.time_window.dimension_id))
+      )
     ) {
-      throw new Text2SqlQueryRuntimeError("TEXT2SQL_SEMANTIC_BINDING_OUT_OF_RANGE");
+      throw new Text2SqlQueryRuntimeError(
+        "TEXT2SQL_SEMANTIC_BINDING_OUT_OF_RANGE",
+        "TEXT2SQL_SEMANTIC_RESULT_BINDING_OUT_OF_RANGE",
+      );
+    }
+    if (candidate.time_window && !dimensionIds.has(candidate.time_window.dimension_id)) {
+      throw new Text2SqlQueryRuntimeError(
+        "TEXT2SQL_SEMANTIC_BINDING_OUT_OF_RANGE",
+        "TEXT2SQL_SEMANTIC_TIME_BINDING_OUT_OF_RANGE",
+      );
     }
   }
   await assertPostgresqlText2SqlCandidatePolicy({
@@ -171,7 +179,10 @@ export interface PostgresqlText2SqlQueryRuntimeDependencies {
 class Text2SqlQueryRuntimeError extends Error {
   override readonly name = "Text2SqlQueryRuntimeError";
 
-  constructor(readonly code: string) {
+  constructor(
+    readonly code: string,
+    readonly diagnostic_code?: string,
+  ) {
     super(code);
   }
 }

@@ -618,7 +618,29 @@ describe("PostgreSQL Text2SQL query runtime", () => {
           ],
         },
       }),
-    ).rejects.toMatchObject({ code: "TEXT2SQL_SEMANTIC_BINDING_OUT_OF_RANGE" });
+    ).rejects.toMatchObject({
+      code: "TEXT2SQL_SEMANTIC_BINDING_OUT_OF_RANGE",
+      diagnostic_code: "TEXT2SQL_SEMANTIC_RESULT_BINDING_OUT_OF_RANGE",
+    });
+    await expect(
+      runtime.compileCandidate({
+        prepared,
+        candidate: {
+          ...narrowedCandidate,
+          sql: "select count(o.amount) as order_count from falcon_db_24.orders as o where o.created_at >= $1::pg_catalog.timestamp and o.created_at < $2::pg_catalog.timestamp",
+          parameters: ["2024-01-01", "2024-02-01"],
+          time_window: {
+            dimension_id: "dimension.unselected-time",
+            start_parameter: 1,
+            end_parameter: 2,
+            semantics: "HALF_OPEN",
+          },
+        },
+      }),
+    ).rejects.toMatchObject({
+      code: "TEXT2SQL_SEMANTIC_BINDING_OUT_OF_RANGE",
+      diagnostic_code: "TEXT2SQL_SEMANTIC_TIME_BINDING_OUT_OF_RANGE",
+    });
   });
 
   it.each(["exact", "missing-binding", "missing-physical-column"] as const)(

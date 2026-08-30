@@ -114,6 +114,11 @@ describe("direct run-bound provider retry policy", () => {
     expect(prompt).toContain("column_name::pg_catalog.timestamp");
     expect(prompt).toContain("Never write a type name as a prefix");
     expect(prompt).toContain("PHYSICAL_COLUMN");
+    expect(prompt).toContain("TEXT2SQL_SEMANTIC_RESULT_BINDING_OUT_OF_RANGE means a result column");
+    expect(prompt).toContain("TEXT2SQL_SEMANTIC_TIME_BINDING_OUT_OF_RANGE means time_window");
+    expect(prompt).toContain("never invent a metric id from a formula name");
+    expect(prompt).toContain("A time-domain id is not a dimension id");
+    expect(prompt).toContain("does not ask for a time filter on an otherwise unbounded total");
     expect(prompt).toContain("row-level identifiers, dates, or values");
     expect(prompt).toContain(
       "QUERY_EVIDENCE_SEMANTIC_OBJECT_NOT_SELECTED means replace invented or out-of-scope result bindings",

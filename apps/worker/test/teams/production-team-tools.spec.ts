@@ -200,6 +200,8 @@ describe("Production Team governed chart publication", () => {
     for (const code of [
       "TEXT2SQL_REQUEST_TIME_WINDOW_MISMATCH",
       "TEXT2SQL_SQL_TIME_COVERAGE_REQUIRED",
+      "TEXT2SQL_SEMANTIC_RESULT_BINDING_OUT_OF_RANGE",
+      "TEXT2SQL_SEMANTIC_TIME_BINDING_OUT_OF_RANGE",
       "TEXT2SQL_SQL_RELATION_SET_DUPLICATE",
       "TEXT2SQL_SQL_RELATION_SHAPE_REJECTED",
       "TEXT2SQL_SQL_RELATION_ALIAS_REQUIRED",
@@ -1307,9 +1309,12 @@ describe("Production Team governed chart publication", () => {
     (["accepted", "rejected"] as const).flatMap((repairOutcome) =>
       ["QUERY_EVIDENCE_RESULT_BINDING_MISMATCH", "QUERY_EVIDENCE_TIME_WINDOW_OUT_OF_RANGE"].flatMap(
         (executionCode) =>
-          ["TEXT2SQL_SQL_LIMIT_SHAPE_REJECTED", "TEXT2SQL_SQL_TIME_COVERAGE_REQUIRED"].map(
-            (policyCode) => ({ repairOutcome, executionCode, policyCode }),
-          ),
+          [
+            "TEXT2SQL_SQL_LIMIT_SHAPE_REJECTED",
+            "TEXT2SQL_SQL_TIME_COVERAGE_REQUIRED",
+            "TEXT2SQL_SEMANTIC_RESULT_BINDING_OUT_OF_RANGE",
+            "TEXT2SQL_SEMANTIC_TIME_BINDING_OUT_OF_RANGE",
+          ].map((policyCode) => ({ repairOutcome, executionCode, policyCode })),
       ),
     ),
   )(

@@ -122,6 +122,18 @@ const authority = createPostgresText2SqlSandboxAuthority({
 
 - Historical `RELATION_BINDING_REJECTED` remains readable. New diagnostics expose no SQL, identifiers, parameter values or raw provider
   payload. Candidate hashes alone cannot reconstruct rejected SQL; do not claim an exact historical SQL cause without preserved evidence.
+
+### Accepted-context binding diagnostics
+
+- Keep the runtime failure class `TEXT2SQL_SEMANTIC_BINDING_OUT_OF_RANGE`, but distinguish result membership with
+  `TEXT2SQL_SEMANTIC_RESULT_BINDING_OUT_OF_RANGE` from an unselected time dimension with
+  `TEXT2SQL_SEMANTIC_TIME_BINDING_OUT_OF_RANGE`. Carry only the allowlisted code through rejection events, bounded repair and Root feedback.
+- A selected Formula is not automatically a Metric; a time domain is not a Dimension. Do not invent identifiers or label a derived
+  formula result as a different base metric to satisfy the existing wire contract. Missing output-binding expressiveness needs an explicit
+  contract/acceptance fix, not a broader allowlist. A coverage domain alone does not request a time filter on an unbounded total.
+- Never drop a requested temporal restriction to repair membership. Required missing context returns to Root for a fresh governed
+  selection. Regressions must separately exercise bad output and bad time bindings before query I/O, preserve valid narrowed candidates,
+  and prove raw SQL, values and errors remain absent from public diagnostics.
 - Required regression: actual parameterization/deparse/policy round trip for a monthly self-join; rejection of missing CTE aliases,
   unqualified physical relations, out-of-scope schemas, ONLY, duplicate Host allowlists; stable Worker error propagation and targeted repair
   guidance. Existing forbidden SQL and schema bounds must remain rejected.

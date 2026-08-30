@@ -1476,7 +1476,16 @@ Diagnostic/Q1/C1任一正式首次失败必须写既有 authority支持的 immut
   `max_root_turns=4` 不变，verifier 拒绝与 continuation 耗尽仍失败。38 项相关测试与 typecheck 通过，详见
   `research/root-final-evidence-settlement.md`。这两项修复尚未替代新的 scratch/正式业务证明。
 
-**F6 READY 轮次恢复边界（2026-08-30）**
+**E13 非正式 ROAS canary 与绑定诊断（2026-08-31）**
+
+- `e88c1689` clean build/attestation 与 full unit gate 通过；新物理克隆 55464 正常认证/Finalizer 激活 scratch E13，
+  live 仍 E12。真实 Run `38ad317a-1c9d-86db-8f5b-3c21f6c0086b` 已从 Semantic 继续 Text2SQL，但在编译 membership 守卫失败。
+- 非正式业务 FAIL、QA/Trace 未执行，失败证据与截图已封存、昂贵服务/browser 停止；正式 E13 stage/attempt 未写入。
+- 精确区分 result/time binding 诊断，不改变拒绝条件、不输出候选内容，回归先 RED 后 GREEN。只读 catalog 又证实独立 ROAS
+  Formula 没有对应 Metric，现有输出合同无法诚实绑定；下一小任务须修复公式输出闭包，不能靠伪造 metric 或放宽 allowlist。
+  详见 `research/e13-semantic-binding-diagnostics.md`。任务保持 in_progress，不能将诊断通过当成 canary/正式 PASS。
+
+**F6 READY 轮次恢复边界（2026-08-30，历史）**
 
 - `e676a450-5768-48d9-a264-ab7890fe0323` 的旧构建在 L1 前三题自动门禁 PASS 后，人工页面复核发现 Root 标签及失败
   Specialist 活动未闭合；`6443b8a2`、`6d163113` 修复前后端，并加强真实 DOM gate。原收据保留为历史，不能拼入新构建 PASS。
