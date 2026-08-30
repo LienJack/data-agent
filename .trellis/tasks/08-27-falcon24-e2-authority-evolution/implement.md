@@ -1602,6 +1602,22 @@ Diagnostic/Q1/C1任一正式首次失败必须写既有 authority支持的 immut
 - 下一步：scoped commit → clean force build/full unit/attestation → fresh scratch 新增月度同比业务/QA/Trace，复验订单/semantic/ROAS
   → 使用 E16 真失败 receipt 正常激活 E17 → 新15回合从 L1。任务保持 ACTIVE，其他派生/多表形态未声明支持，production isolation=false/HOLD。
 
+**E17 scratch 同比失败：指令一致性与诊断修复（2026-08-31）**
+
+- `f9e64ac7` force build 8/8（0 cached）、single-concurrent full unit 15/15（6 cached），generation
+  `sha256:fbc4a12cd05c9baf4bd54e78b3afc0a5f26c92c3c9d2a63355495e1970b366c8`。
+  fresh NAS scratch `data-agent-falcon24-e17-f9e64ac7`、55471、专用 volume/cluster，物理备份校验及原始数据
+  9表/70列/121445行/1902NULL 证明一致。scratch certification/finalization 正常完成；live E16 未变。
+- 第一个同比 canary `7a3bb95a-daeb-4281-b93c-f087abcb5764`，Run `7144b8e6-c4e7-86bc-8d92-89b57a91a1f7`
+  FAILED/74 events。Semantic 成功，SQL 四次别名拒绝、两次派生表达式拒绝；三组候选修复前后 hash 分别相同。
+  只有 accepted SemanticQueryContext，没有 SQL/QueryEvidence。业务失败已留档，未执行 QA/Trace，其他三题未提交。
+  source 与 failure 保存在 `e17-yoy-canary-f9e64ac7`；owned Web/Worker/OpenSandbox/browser/vault 已关闭，scratch/audit 保留。
+- 修复已证实的 prompt 矛盾（禁止 CTE 预平移）及无细分诊断缺口；共用有限 registry，不放宽任何 SQL 条件、不暴露值。
+  新检查点错误与提示相反建议断言先 RED；正向/反例、并发隔离、原 repair/public-event 脱敏链均验证。
+  Platform focused 177/177、Worker focused 98/98、两包 typecheck、Biome/diff check 与 Trellis validate 通过（原两份大文件警告保留）。
+  详见 `research/e17-comparison-proof-diagnostics.md`。历史候选 SQL 未保存，不能冒称已找到其精确错误。
+- 下一步 clean scoped commit/build/full unit → 全新隔离 scratch 先同比后回归。live 仍 E16 FAILED，后继仍 E17；任务 ACTIVE。
+
 **F6 READY 轮次恢复边界（2026-08-30，历史）**
 
 > 以下为历史记录；当前 forward recovery 已到 E16 FAILED，下一 fresh epoch 为 E17，见上一节。

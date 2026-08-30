@@ -11,6 +11,7 @@ import {
   semanticQuerySelectionIntentSchema,
   verifyArtifactWorkspaceChartDocumentV2,
 } from "@data-agent/contracts";
+import { POSTGRESQL_PERIOD_COMPARISON_REPAIR_HINTS } from "@data-agent/platform/datasource-adapters";
 import { describe, expect, it, vi } from "vitest";
 import { createRunExecutionContext } from "../../src/runs/run-execution-context.js";
 import type { ProductProfileToolPort } from "../../src/teams/mastra-profile-composition.js";
@@ -220,6 +221,7 @@ describe("Production Team governed chart publication", () => {
 
   it("returns only allowlisted Text2SQL policy codes to the Root Tool Result", () => {
     for (const code of [
+      ...Object.keys(POSTGRESQL_PERIOD_COMPARISON_REPAIR_HINTS),
       "TEXT2SQL_REQUEST_TIME_WINDOW_MISMATCH",
       "TEXT2SQL_SQL_TIME_COVERAGE_REQUIRED",
       "TEXT2SQL_SQL_TIME_WINDOW_REQUIRED",
@@ -1346,6 +1348,8 @@ describe("Production Team governed chart publication", () => {
             "QUERY_EVIDENCE_FORMULA_BINDING_INVALID",
             "QUERY_EVIDENCE_REQUEST_DERIVATION_BINDING_INVALID",
             "TEXT2SQL_REQUEST_DERIVATION_EXPRESSION_MISMATCH",
+            "TEXT2SQL_COMPARISON_ALIGNMENT_REJECTED",
+            "TEXT2SQL_COMPARISON_CURRENT_PROJECTION_REJECTED",
           ].map((policyCode) => ({ repairOutcome, executionCode, policyCode })),
       ),
     ),

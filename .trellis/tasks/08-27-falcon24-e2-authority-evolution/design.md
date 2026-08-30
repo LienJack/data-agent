@@ -1543,3 +1543,16 @@ L2-01 Run `54843d21-f9aa-82d5-bca6-7986cf66eb0b` FAILED/74 events，六候选在
 只读原 SQC + 专用 NAS scratch 探针证明12个月/6个未覆盖同期 NULL、独立源汇总相等；这不是 formal acceptance。
 完成 scoped commit、clean build/full unit 后，fresh scratch 必须增加月度同比业务/QA/Trace canary，并复验最近订单、
 semantic-only、全量 ROAS。使用 E16 真失败 receipt 正常前向 E17，再从 L1 重做全部15回合，旧五个 PASS 不能复用。
+
+### 25.15 同比证明的指令一致性与无值诊断
+
+`f9e64ac7` fresh E17 scratch 首个同比 canary Run `7144b8e6-c4e7-86bc-8d92-89b57a91a1f7`
+FAILED/74 events：前四候选缺关系别名，后两候选未通过派生证明；三组 repair 前后 candidate hash 相同。
+未激活 live E17，其余三个 canary 未提交。历史 SQL 未落盘，不能将总错误码解释成具体 SQL 写法。
+
+代码核查确认提示词既要求只在 JOIN 平移，又残留允许 CTE 预平移的相反建议；删除后者，不扩大证明子集。
+证明器只增加有限检查点诊断，原拒绝条件/总错误消息/SQL 不变。固定 registry 同时约束证明类型、Worker 可公开码及
+Provider 修复说明；不包含 SQL、AST、标识符、参数、异常 cause，不新增数据权威或执行入口。
+每次证明保存独立 checkpoint；并发错误不能串线。原两候选预算不变，未知 diagnostic 不得透传。
+
+下一 fresh scratch 仍以 E16 FAILED 为 live 前驱，先同比再三条回归；全部业务/QA/Trace PASS 后才可正式 E17。

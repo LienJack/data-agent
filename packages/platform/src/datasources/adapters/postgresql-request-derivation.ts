@@ -1,6 +1,7 @@
 import type { Text2SqlQueryCandidate } from "@data-agent/contracts/agents";
 import { canonicalizeJson } from "@data-agent/contracts/common";
 import { parse } from "pgsql-parser";
+import type { POSTGRESQL_PERIOD_COMPARISON_REPAIR_HINTS } from "./postgresql-period-comparison-diagnostics.js";
 
 type Node = Record<string, unknown>;
 const failure = "TEXT2SQL_REQUEST_DERIVATION_EXPRESSION_MISMATCH";
@@ -119,6 +120,8 @@ export async function provePostgresqlPeriodComparison(input: {
   readonly current: { readonly start: string; readonly end: string };
   readonly comparison: { readonly start: string; readonly end: string };
 }): Promise<{ readonly current_output: string; readonly comparison_output: string }> {
+  let diagnostic: keyof typeof POSTGRESQL_PERIOD_COMPARISON_REPAIR_HINTS =
+    "TEXT2SQL_COMPARISON_QUERY_SHAPE_REJECTED";
   try {
     const ast = record(await parse(input.candidate.sql));
     const raw = record(list(ast.stmts, 1)[0]);
@@ -148,19 +151,26 @@ export async function provePostgresqlPeriodComparison(input: {
         left.alias !== right.alias,
     );
     const { source, candidate } = input;
+    diagnostic = "TEXT2SQL_COMPARISON_SOURCE_TYPE_REJECTED";
     // SUM of int2/int4 truncates division. Never label that as the governed rate.
     check(
       /^(?:numeric(?:\(\d+(?:,\s*-?\d+)?\))?|real|double precision|bigint)$/u.test(
         source.value_type,
       ),
     );
-    function scan(name: string, window: { readonly start: string; readonly end: string }) {
+    function scan(
+      name: string,
+      window: { readonly start: string; readonly end: string },
+      period: "CURRENT" | "PRIOR",
+    ) {
+      diagnostic = `TEXT2SQL_COMPARISON_${period}_SOURCE_REJECTED`;
       const query = ctes.get(name);
       check(query);
       only(query, ["targetList", "fromClause", "whereClause", "groupClause", "limitOption", "op"]);
       check(query.op === "SETOP_NONE" && query.limitOption === "LIMIT_OPTION_DEFAULT");
       const relation = range(list(query.fromClause, 1)[0]);
       check(relation.schema === source.schema_name && relation.name === source.relation_name);
+      diagnostic = `TEXT2SQL_COMPARISON_${period}_PROJECTION_REJECTED`;
       const outputs = targets(query);
       check(outputs.size === 2);
       let month: string | undefined, amount: string | undefined, bucket: unknown;
@@ -191,6 +201,7 @@ export async function provePostgresqlPeriodComparison(input: {
         }
       }
       check(month && amount && month !== amount);
+      diagnostic = `TEXT2SQL_COMPARISON_${period}_GROUP_REJECTED`;
       const grouped = list(query.groupClause, 1)[0];
       const groupAlias = record(grouped).ColumnRef;
       check(
@@ -198,6 +209,7 @@ export async function provePostgresqlPeriodComparison(input: {
           (groupAlias &&
             canonicalizeJson(strings(record(groupAlias).fields)) === canonicalizeJson([month])),
       );
+      diagnostic = `TEXT2SQL_COMPARISON_${period}_WINDOW_REJECTED`;
       const where = node(query.whereClause, "BoolExpr");
       only(where, ["boolop", "args"]);
       check(where.boolop === "AND_EXPR");
@@ -222,16 +234,19 @@ export async function provePostgresqlPeriodComparison(input: {
       }
       return { month, amount };
     }
-    const current = scan(left.name, input.current),
-      prior = scan(right.name, input.comparison);
+    const current = scan(left.name, input.current, "CURRENT"),
+      prior = scan(right.name, input.comparison, "PRIOR");
+    diagnostic = "TEXT2SQL_COMPARISON_ALIGNMENT_REJECTED";
     const alignment = binary(join.quals, "=");
     check(column(alignment.lexpr, left.alias, current.month));
     const shifted = binary(alignment.rexpr, "+");
     check(column(shifted.lexpr, right.alias, prior.month));
     check(record(shifted.rexpr).TypeCast);
     check(parameter(cast(shifted.rexpr, ["interval"]), candidate.parameters) === "1 year");
+    diagnostic = "TEXT2SQL_COMPARISON_OUTPUT_BINDING_REJECTED";
     const outputs = targets(select);
     check(outputs.size === 4 && candidate.result_columns.length === 4);
+    diagnostic = "TEXT2SQL_COMPARISON_RATE_REJECTED";
     const rate = binary(outputs.get(input.output_name), "/");
     const difference = binary(rate.lexpr, "-");
     check(
@@ -246,6 +261,7 @@ export async function provePostgresqlPeriodComparison(input: {
         ? parameter(zero, candidate.parameters) === 0
         : same(zero, { A_Const: { ival: {} } }),
     );
+    diagnostic = "TEXT2SQL_COMPARISON_OUTPUT_BINDING_REJECTED";
     let currentOutput: string | undefined,
       comparisonOutput: string | undefined,
       monthOutput: string | undefined;
@@ -281,6 +297,7 @@ export async function provePostgresqlPeriodComparison(input: {
       }
     }
     check(currentOutput && comparisonOutput && monthOutput);
+    diagnostic = "TEXT2SQL_COMPARISON_ORDERING_REJECTED";
     if (select.sortClause) {
       const sort = node(list(select.sortClause, 1)[0], "SortBy");
       only(sort, ["node", "sortby_dir", "sortby_nulls"]);
@@ -295,6 +312,6 @@ export async function provePostgresqlPeriodComparison(input: {
     }
     return { current_output: currentOutput, comparison_output: comparisonOutput };
   } catch {
-    throw new TypeError(failure);
+    throw Object.assign(new TypeError(failure), { diagnostic_code: diagnostic });
   }
 }

@@ -193,6 +193,10 @@ describe("direct run-bound provider retry policy", () => {
     expect(prompt).toContain("current_bucket = comparison_bucket + interval '1 year'");
     expect(prompt).toContain("Do not equate unshifted current-year and prior-year timestamps");
     expect(prompt).toContain("Apply the shift exactly once");
+    expect(prompt).not.toContain("or equivalently shift the comparison bucket");
+    expect(prompt).toContain("only in the LEFT JOIN");
+    expect(prompt).toContain("TEXT2SQL_COMPARISON_ALIGNMENT_REJECTED");
+    expect(prompt).toContain("TEXT2SQL_COMPARISON_CURRENT_GROUP_REJECTED");
     expect(prompt).toContain("Restrict the comparison source to published coverage");
     expect(prompt).toContain("TEXT2SQL_SQL_TIME_COVERAGE_REQUIRED");
     expect(prompt).toContain("Clip each source window to the intersection");

@@ -36,6 +36,12 @@ Candidate 使用 `object_kind=REQUEST_DERIVED`、exact `interpretation_id`，没
 缺 Context/错解释/错资源/重标 Metric → `QUERY_EVIDENCE_REQUEST_DERIVATION_BINDING_INVALID`；
 SQL 证明失败 → `TEXT2SQL_REQUEST_DERIVATION_EXPRESSION_MISMATCH`。错误只经原安全白名单进入 bounded repair，不输出 SQL/参数值。
 
+证明器另附固定枚举 `diagnostic_code`：QUERY_SHAPE、SOURCE_TYPE、CURRENT/PRIOR 的 SOURCE/PROJECTION/GROUP/WINDOW、
+ALIGNMENT、RATE、OUTPUT_BINDING、ORDERING，统一前缀 `TEXT2SQL_COMPARISON_` 与后缀 `_REJECTED`。
+`POSTGRESQL_PERIOD_COMPARISON_REPAIR_HINTS` 是证明类型、Worker 安全白名单和 Provider 修复说明的共同有限集合。
+只记录失败检查，不携带 AST、标识符、SQL、参数、异常 cause；每次证明独立保存 checkpoint，不使用全局可变状态。
+通用提示不能建议证明器不支持的“等价 SQL”，尤其禁止一处要求 JOIN 平移、另一处允许 CTE 预平移。
+
 ### 5. Good / Base / Bad
 
 Good：冻结解释 → exact SQL AST 证明 → 真实查询/OID → 同源 Evidence，未覆盖的同期为 NULL。
@@ -47,6 +53,7 @@ Bad：把增长率绑定为收入 Metric，或只新增 enum 而不验证算式/
 真实 parameterize/deparse round trip；错误聚合、源列、源表、CTE 分组、偏移、分母、补零、原始值、过滤、类型截断；
 Context hash/Run/receipt/Metric/binding/interpretation 漂移与重标绕过；LEFT JOIN NULL；Analysis materialization role/hash；
 compile 前零 target I/O、安全诊断、两次 bounded repair 不扩容。真实 scratch 必须另做业务/QA/Trace，不得拿离线测试替代。
+增加每个检查阶段的安全码、并发互不串线、未知码拒绝、修复上下文/公开事件传递、提示词无相反建议的断言。
 
 ### 7. Wrong / Correct
 

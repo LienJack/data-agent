@@ -20,6 +20,7 @@ import {
   semanticQuerySelectionIntentSchema,
 } from "@data-agent/contracts/artifacts";
 import { buildQueryEvidenceChartDocument } from "@data-agent/platform/artifacts";
+import { POSTGRESQL_PERIOD_COMPARISON_REPAIR_HINTS } from "@data-agent/platform/datasource-adapters";
 import { z } from "zod";
 import type { GovernedAgentAnalysisPort } from "../analysis/governed-agent-analysis-port.js";
 import { hasRunProviderDispatchCapability } from "../runs/run-execution-context.js";
@@ -207,6 +208,7 @@ function specialistProviderLogicalCallId(input: {
 }
 
 const ROOT_VISIBLE_TEXT2SQL_POLICY_CODES = new Set([
+  ...Object.keys(POSTGRESQL_PERIOD_COMPARISON_REPAIR_HINTS),
   "TEXT2SQL_REQUEST_TIME_WINDOW_MISMATCH",
   "TEXT2SQL_SQL_TIME_COVERAGE_REQUIRED",
   "TEXT2SQL_SQL_TIME_WINDOW_REQUIRED",
