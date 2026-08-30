@@ -2016,6 +2016,32 @@ describe("PostgreSQL Resolution Trace projector", () => {
     });
   });
 
+  it("accepts an AnalysisProgram semantic release identity without a run-local mirror", async () => {
+    const row = await eventRow();
+    const sql = await productTeamSqlArtifactRow();
+    const evidence = await productTeamQueryEvidenceRow(sql);
+    const analysis = await falcon24DerivedAuthorityRows(evidence);
+    const program = analysis.supportRows[0];
+    const brief = analysis.supportRows.find(
+      ({ artifact_type: artifactType }) => artifactType === "ResearchBrief",
+    );
+    if (!program || !brief) throw new Error("analysis context fixture missing");
+    const { capability, authorizer } = issueCapability();
+    const { pool } = scriptedPool((text) => {
+      if (text.includes("from runs as run")) return { rows: [authorityRow()], rowCount: 1 };
+      if (text.includes("from run_events")) return { rows: [row], rowCount: 1 };
+      if (text.includes("from artifacts")) return { rows: [program, brief], rowCount: 2 };
+      return undefined;
+    });
+
+    const result = await createPostgresResolutionTraceProjector({ pool, authorizer }).loadTrace(
+      capability,
+      { scope, run_id: ids.run },
+    );
+
+    expect(result).toMatchObject({ ok: true });
+  });
+
   it("fails closed when Analysis System receipt or canonical result bytes are tampered", async () => {
     const row = await eventRow();
     const sql = await productTeamSqlArtifactRow();

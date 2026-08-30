@@ -837,7 +837,14 @@ function referenceLocation(reference: ArtifactReference): string {
 function artifactInputReferences(
   document: VerifiedArtifact["document"],
 ): readonly ArtifactReference[] {
-  if ("envelope" in document) return document.envelope.input_refs;
+  if ("envelope" in document) {
+    if (document.payload.artifact_type === "AnalysisProgram") {
+      return document.envelope.input_refs.filter(
+        ({ artifact_type: artifactType }) => artifactType !== "SemanticRelease",
+      );
+    }
+    return document.envelope.input_refs;
+  }
   if ("source_refs" in document) {
     return Array.isArray(document.source_refs)
       ? document.source_refs
