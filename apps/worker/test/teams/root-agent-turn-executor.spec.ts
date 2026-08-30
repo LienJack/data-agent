@@ -41,6 +41,20 @@ describe("Root Agent normal turn", () => {
     ]);
   });
 
+  it("requires Root synthesis instead of exposing a formula-only AST as the answer", () => {
+    expect(
+      rootAgentTurnExecutorInternals.semanticFactSelectors({
+        dimensions: [],
+        formulas: [{}],
+        metrics: [],
+        quality_constraints: [],
+        relationships: [],
+        request_scoped_interpretations: [],
+        time_semantics: [],
+      } as never),
+    ).toEqual([]);
+  });
+
   it("invokes exactly one logical provider call per normal turn", async () => {
     const scope = { app_id: id(1), tenant_id: id(2), environment: "test" } as const;
     const runId = id(3);
