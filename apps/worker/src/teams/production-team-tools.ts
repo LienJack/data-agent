@@ -207,6 +207,7 @@ function specialistProviderLogicalCallId(input: {
 }
 
 const ROOT_VISIBLE_TEXT2SQL_POLICY_CODES = new Set([
+  "TEXT2SQL_REQUEST_TIME_WINDOW_MISMATCH",
   "TEXT2SQL_SEMANTIC_BINDING_OUT_OF_RANGE",
   "TEXT2SQL_SQL_DANGEROUS",
   "TEXT2SQL_SQL_SHAPE_REJECTED",
@@ -411,12 +412,18 @@ async function buildRequestScopedInterpretations(input: {
     operations.map(async (operation) => {
       const operator = operation.operator;
       const sourceObjectIds = (
-        operator.kind === "PERIOD_COMPARISON_RATE"
+        operator.kind !== "AGGREGATE_RATIO"
           ? [operator.metric_id, operator.time_dimension_id]
           : [operator.denominator_metric_id, operator.numerator_metric_id]
       ).sort(stringCompare);
       let userExplanation: string;
-      if (operator.kind === "PERIOD_COMPARISON_RATE") {
+      if (operator.kind === "RECENT_COMPLETE_PERIODS") {
+        const metricName = input.metric_names.get(operator.metric_id);
+        const dimensionName = input.dimension_names.get(operator.time_dimension_id);
+        if (!metricName || !dimensionName)
+          throw new ProductionTeamToolError("TEAM_REQUEST_SCOPED_INTERPRETATION_INVALID");
+        userExplanation = `${operation.requested_term}使用${metricName}的已发布完整月份上界，以${dimensionName}向前计算${operator.period_count}个完整日历月；服务端计算半开区间，不使用运行时日期、不缩短月份数量，也不发布全局定义。`;
+      } else if (operator.kind === "PERIOD_COMPARISON_RATE") {
         const metricName = input.metric_names.get(operator.metric_id);
         const dimensionName = input.dimension_names.get(operator.time_dimension_id);
         if (!metricName || !dimensionName) {

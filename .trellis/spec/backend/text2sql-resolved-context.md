@@ -151,3 +151,69 @@ const authority = createPostgresText2SqlSandboxAuthority({
 - Regression proof includes real read-only PostgreSQL EXPLAIN before/after parameterization, both INTERVAL-literal and explicit CAST
   syntax, different values, and same text in a non-interval context. A model repair cannot reliably fix a rewrite that reintroduces the
   same structural mismatch; inspect database error statements before adding more model retries.
+
+## Request-scoped relative period authority
+
+### 1. Scope / Trigger
+
+- `RECENT_COMPLETE_PERIODS` is a request-only semantic operator, not a Published term or a prearranged agent route. Semantic selects the
+  exact metric/month dimension and requested integer month count (1–120); Host resolves the half-open window from that metric's published
+  Gregorian month-aligned exclusive frontier. No wall clock, hard-coded Falcon dates or natural-language keyword dispatch is allowed.
+
+### 2. Signatures
+
+```ts
+resolveSemanticRequestTimeWindow({ metrics, dimensions, request_scoped_interpretations })
+// -> { dimension_id, start, end, semantics: "HALF_OPEN", timezone, period_unit: "MONTH", period_count } | null
+// operator: { kind: "RECENT_COMPLETE_PERIODS", metric_id, time_dimension_id,
+//             period_unit: "MONTH", period_count, anchor: "PUBLISHED_COMPLETE_FRONTIER" }
+```
+
+### 3. Contracts
+
+- Require matching metric time-column/dimension/table, a known timezone and a usable frontier. Preserve the published boundary encoding
+  and offset when subtracting calendar months. Missing/non-month-aligned frontier, ambiguous relative windows or insufficient coverage
+  fail closed; never silently shorten the duration or change Semantic Release.
+- Keep old context hashes readable: the new operator uses the existing optional request-scoped interpretations collection. New readers
+  accept historical payloads unchanged; new operator payloads require the matching frozen deployed build. Input operations are independent
+  declarations, so input order is not authoritative; duplicates remain rejected and Host sorts committed interpretations canonically.
+- Text2SQL receives `semantic_context.resolved_time_window`, also frozen into its prepared context. Missing/changed current-window
+  declarations or parameter values fail before datasource I/O with `TEXT2SQL_REQUEST_TIME_WINDOW_MISMATCH`, through the existing bounded
+  repair path. This supplements, not replaces, AST admission, exact SQL predicate binding and published coverage checks.
+
+### 4. Validation & Error Matrix
+
+| Condition | Result |
+| --- | --- |
+| No relative-period operator | `null`; historical request semantics unchanged |
+| Multiple relative windows | `SEMANTIC_REQUEST_TIME_WINDOW_AMBIGUOUS` |
+| Metric / table / time column / monthly dimension mismatch | `SEMANTIC_REQUEST_TIME_BINDING_INVALID` |
+| Missing, invalid or non-month-aligned Gregorian frontier | `SEMANTIC_REQUEST_TIME_FRONTIER_UNAVAILABLE` |
+| Invalid lower bound or requested start outside published coverage | `SEMANTIC_REQUEST_TIME_COVERAGE_UNAVAILABLE` |
+| Candidate omits or changes resolved dimension / start / end | `TEXT2SQL_REQUEST_TIME_WINDOW_MISMATCH`, zero query I/O |
+
+### 5. Good / Base / Bad Cases
+
+- Good: Semantic extracts count, Host computes dates, Text2SQL copies the current window and independently restricts comparison coverage.
+- Base: Old contexts without this optional operator retain their original payload and hash.
+- Bad: Model subtracts months again, silently returns eleven months, or repairs a rejected query by deleting `time_window`.
+- This proves compliance with the typed Semantic intent, not infallible interpretation of natural language or arbitrary SQL row semantics.
+  Business gates independently verify the requested count, actual buckets, current/prior amounts, missing-period treatment and growth.
+  Comparison periods outside published coverage remain unavailable; do not label partial physical rows as complete governed months.
+
+### 6. Tests Required
+
+- Contract: one/twelve months, leap year, preserved offsets, count bounds, missing frontier, insufficient coverage, duplicate and reversed
+  independent operations, exact time-column binding, historical context verification without inserted defaults.
+- Runtime: actual prepare/provider projection, omitted/wrong/shortened windows rejected before query I/O, exact window admitted, safe repair code.
+- Business: twelve actual current buckets with independently checked amounts and unavailable prior periods kept NULL; no cross-Run evidence.
+
+### 7. Wrong vs Correct
+
+```ts
+// Wrong: an in-range candidate alone does not prove the requested duration.
+// accept(candidate.end <= published.max_time)
+// Correct: compare the declaration against Host-resolved start/end/dimension before existing SQL validation.
+const requestedWindow = resolveSemanticRequestTimeWindow(verifiedSemanticContext);
+// validateCandidate({ ...prepared, requested_time_window: requestedWindow }, candidate)
+```

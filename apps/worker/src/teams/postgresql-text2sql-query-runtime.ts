@@ -4,6 +4,8 @@ import {
 } from "@data-agent/contracts/agents";
 import {
   type QueryEvidenceSemanticBinding,
+  type ResolvedSemanticRequestTimeWindow,
+  resolveSemanticRequestTimeWindow,
   type SemanticQueryContext,
   verifySemanticQueryContext,
 } from "@data-agent/contracts/artifacts";
@@ -54,6 +56,7 @@ export interface PreparedText2SqlContext {
   readonly target_capability_hash: string;
   readonly reader_role: string;
   readonly semantic_query_context_hash: string | null;
+  readonly requested_time_window?: ResolvedSemanticRequestTimeWindow | null;
   readonly semantic_query_context_binding?: {
     readonly metric_ids: readonly string[];
     readonly dimension_ids: readonly string[];
@@ -103,6 +106,22 @@ async function validateCandidate(
   prepared: PreparedText2SqlContext,
   candidate: Text2SqlQueryCandidate,
 ): Promise<void> {
+  const expectedWindow = prepared.requested_time_window;
+  if (expectedWindow) {
+    const declared = candidate.time_window;
+    const start = declared ? candidate.parameters[declared.start_parameter - 1] : null;
+    const end = declared ? candidate.parameters[declared.end_parameter - 1] : null;
+    if (
+      !declared ||
+      declared.dimension_id !== expectedWindow.dimension_id ||
+      typeof start !== "string" ||
+      typeof end !== "string" ||
+      Date.parse(start) !== Date.parse(expectedWindow.start) ||
+      Date.parse(end) !== Date.parse(expectedWindow.end)
+    ) {
+      throw new Text2SqlQueryRuntimeError("TEXT2SQL_REQUEST_TIME_WINDOW_MISMATCH");
+    }
+  }
   const contextBinding = prepared.semantic_query_context_binding;
   if (contextBinding) {
     const metricIds = new Set(contextBinding.metric_ids);
@@ -244,6 +263,7 @@ function semanticProjection(
       requested_object_ids: semanticQueryContext.requested_object_ids,
       unresolved_ambiguities: semanticQueryContext.unresolved_ambiguities,
       request_scoped_interpretations: semanticQueryContext.request_scoped_interpretations ?? [],
+      resolved_time_window: resolveSemanticRequestTimeWindow(semanticQueryContext),
       executable: {
         metrics: semanticQueryContext.metrics,
         dimensions: semanticQueryContext.dimensions,
@@ -892,6 +912,7 @@ export function createPostgresqlText2SqlQueryRuntime(
         semantic_query_context_hash: semanticQueryContext?.context_hash ?? null,
         ...(semanticQueryContext
           ? {
+              requested_time_window: resolveSemanticRequestTimeWindow(semanticQueryContext),
               semantic_query_context_binding: {
                 metric_ids: semanticQueryContext.metrics.map(({ metric_id: id }) => id),
                 dimension_ids: semanticQueryContext.dimensions.map(({ dimension_id: id }) => id),

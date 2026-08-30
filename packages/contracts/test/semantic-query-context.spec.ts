@@ -2,6 +2,7 @@ import { describe, expect, it } from "vitest";
 import {
   buildProductTeamArtifactDocument,
   buildSemanticQueryContext,
+  resolveSemanticRequestTimeWindow,
   semanticQuerySelectionIntentSchema,
   verifySemanticQueryContext,
 } from "../src/artifacts/index.js";
@@ -17,6 +18,15 @@ const timeDomain = {
   min_time: "2023-01-01T00:00:00Z",
   max_time: null,
 };
+
+const recentMonthsOperator = {
+  kind: "RECENT_COMPLETE_PERIODS",
+  metric_id: "metric.order_revenue",
+  time_dimension_id: "dimension.order_month",
+  period_unit: "MONTH",
+  period_count: 12,
+  anchor: "PUBLISHED_COMPLETE_FRONTIER",
+} as const;
 
 function contextInput() {
   return {
@@ -179,6 +189,166 @@ function contextInput() {
 }
 
 describe("SemanticQueryContext", () => {
+  it.each([
+    { count: 12, end: "2024-11-01T00:00:00.000Z", start: "2023-11-01T00:00:00.000Z" },
+    { count: 1, end: "2024-11-01T00:00:00.000Z", start: "2024-10-01T00:00:00.000Z" },
+    { count: 12, end: "2024-03-01T00:00:00+08:00", start: "2023-03-01T00:00:00+08:00" },
+  ])(
+    "resolves $count complete months from the published $end frontier",
+    async ({ count, end, start }) => {
+      const input = contextInput();
+      const domain = { ...timeDomain, min_time: "2020-01-01T00:00:00Z", max_time: end };
+      const context = await buildSemanticQueryContext({
+        ...input,
+        metrics: input.metrics.map((metric) => ({ ...metric, time_domain: domain })),
+        time_semantics: [domain],
+        request_scoped_interpretations: [
+          {
+            interpretation_id: "request-scoped.recent-months",
+            requested_term: "最近完整月份",
+            scope: "REQUEST_ONLY",
+            source_object_ids: ["dimension.order_month", "metric.order_revenue"],
+            operator: { ...recentMonthsOperator, period_count: count },
+            user_explanation: "按已发布边界计算完整月份。",
+            publication_effect: "NONE",
+          },
+        ],
+      });
+      expect(resolveSemanticRequestTimeWindow(context)).toMatchObject({
+        dimension_id: "dimension.order_month",
+        start,
+        end,
+        period_count: count,
+        semantics: "HALF_OPEN",
+        timezone: "Asia/Shanghai",
+      });
+      await expect(verifySemanticQueryContext(context)).resolves.toEqual(context);
+    },
+  );
+
+  it.each([0, -1, 1.5, 121])("rejects invalid complete-month count %s", (count) => {
+    expect(
+      semanticQuerySelectionIntentSchema.safeParse({
+        schema_version: "semantic-query-selection-intent@1.0.0",
+        answer_scope: "DATA_RESULT_REQUIRED",
+        selected_metric_ids: ["metric.order_revenue"],
+        selected_dimension_ids: ["dimension.order_month"],
+        selected_formula_ids: [],
+        selected_relationship_ids: [],
+        selected_time_domain_ids: [],
+        selected_quality_constraint_ids: [],
+        unresolved_ambiguities: [],
+        request_scoped_operations: [
+          {
+            requested_term: "最近完整月份",
+            operator: { ...recentMonthsOperator, period_count: count },
+          },
+        ],
+      }).success,
+    ).toBe(false);
+  });
+
+  it("keeps legacy contexts without relative-period intent unchanged", async () => {
+    const context = await buildSemanticQueryContext(contextInput());
+    expect(resolveSemanticRequestTimeWindow(context)).toBeNull();
+    expect(context).not.toHaveProperty("request_scoped_interpretations");
+  });
+
+  it("accepts independent request operations in either input order but rejects duplicates", () => {
+    const operations = [
+      {
+        requested_term: "A comparison",
+        operator: {
+          kind: "PERIOD_COMPARISON_RATE",
+          metric_id: "metric.order_revenue",
+          time_dimension_id: "dimension.order_month",
+          comparison_offset: { unit: "YEAR", value: 1 },
+          formula: "(current_value - comparison_value) / NULLIF(comparison_value, 0)",
+        },
+      },
+      { requested_term: "B period", operator: recentMonthsOperator },
+    ];
+    const input = {
+      schema_version: "semantic-query-selection-intent@1.0.0",
+      answer_scope: "DATA_RESULT_REQUIRED",
+      selected_metric_ids: ["metric.order_revenue"],
+      selected_dimension_ids: ["dimension.order_month"],
+      selected_formula_ids: [],
+      selected_relationship_ids: [],
+      selected_time_domain_ids: [],
+      selected_quality_constraint_ids: [],
+      unresolved_ambiguities: [],
+    };
+    expect(
+      semanticQuerySelectionIntentSchema.safeParse({
+        ...input,
+        request_scoped_operations: operations,
+      }).success,
+    ).toBe(true);
+    expect(
+      semanticQuerySelectionIntentSchema.safeParse({
+        ...input,
+        request_scoped_operations: [...operations].reverse(),
+      }).success,
+    ).toBe(true);
+    expect(
+      semanticQuerySelectionIntentSchema.safeParse({
+        ...input,
+        request_scoped_operations: [operations[0], operations[0]],
+      }).success,
+    ).toBe(false);
+  });
+
+  it.each([
+    { end: null, min: null, dimensionColumn: "orders.created_at", code: "FRONTIER_UNAVAILABLE" },
+    {
+      end: "2024-11-15T00:00:00Z",
+      min: null,
+      dimensionColumn: "orders.created_at",
+      code: "FRONTIER_UNAVAILABLE",
+    },
+    {
+      end: "2024-11-01T00:00:00Z",
+      min: "2024-01-01T00:00:00Z",
+      dimensionColumn: "orders.created_at",
+      code: "COVERAGE_UNAVAILABLE",
+    },
+    {
+      end: "2024-11-01T00:00:00Z",
+      min: null,
+      dimensionColumn: "orders.other_date",
+      code: "BINDING_INVALID",
+    },
+  ])(
+    "refuses an unresolvable governed recent window: $code",
+    async ({ end, min, dimensionColumn, code }) => {
+      const input = contextInput();
+      const domain = { ...timeDomain, min_time: min, max_time: end };
+      await expect(
+        buildSemanticQueryContext({
+          ...input,
+          metrics: input.metrics.map((metric) => ({ ...metric, time_domain: domain })),
+          dimensions: input.dimensions.map((dimension) => ({
+            ...dimension,
+            column_id: dimensionColumn,
+          })),
+          time_semantics: [domain],
+          request_scoped_interpretations: [
+            {
+              interpretation_id: "request-scoped.recent-months",
+              requested_term: "最近完整月份",
+              scope: "REQUEST_ONLY",
+              source_object_ids: ["dimension.order_month", "metric.order_revenue"],
+              operator: recentMonthsOperator,
+              user_explanation: "完整月份。",
+              publication_effect: "NONE",
+            },
+          ],
+        }),
+      ).rejects.toThrow(`SEMANTIC_REQUEST_TIME_${code}`);
+    },
+  );
+
   it("seals exact metric, formula, dimension, relationship, time, quality and binding closure", async () => {
     const context = await buildSemanticQueryContext({
       ...contextInput(),

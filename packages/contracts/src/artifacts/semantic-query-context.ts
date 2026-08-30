@@ -61,6 +61,14 @@ const canonicalIdsSchema = (max: number) =>
 
 export const semanticRequestScopedOperatorSchema = z.discriminatedUnion("kind", [
   z.strictObject({
+    kind: z.literal("RECENT_COMPLETE_PERIODS"),
+    metric_id: versionIdentifierSchema,
+    time_dimension_id: versionIdentifierSchema,
+    period_unit: z.literal("MONTH"),
+    period_count: z.number().int().min(1).max(120),
+    anchor: z.literal("PUBLISHED_COMPLETE_FRONTIER"),
+  }),
+  z.strictObject({
     kind: z.literal("PERIOD_COMPARISON_RATE"),
     metric_id: versionIdentifierSchema,
     time_dimension_id: versionIdentifierSchema,
@@ -85,7 +93,7 @@ const semanticRequestScopedOperationSchema = z.strictObject({
 function requestScopedOperatorObjectIds(
   operator: z.infer<typeof semanticRequestScopedOperatorSchema>,
 ): readonly string[] {
-  return operator.kind === "PERIOD_COMPARISON_RATE"
+  return operator.kind !== "AGGREGATE_RATIO"
     ? [operator.metric_id, operator.time_dimension_id].sort()
     : [operator.denominator_metric_id, operator.numerator_metric_id].sort();
 }
@@ -173,10 +181,11 @@ const semanticQuerySelectionIntentDraftSchema = z
       JSON.stringify(operation),
     );
     operationKeys.forEach((key, index) => {
-      if (index > 0 && key <= (operationKeys[index - 1] ?? "")) {
+      if (operationKeys.indexOf(key) !== index) {
         ctx.addIssue({
           code: "custom",
-          message: "Request-scoped operations must be unique and canonically sorted.",
+          message:
+            "Request-scoped operations must be unique; the Host canonicalizes interpretations.",
           path: ["request_scoped_operations", index],
         });
       }
@@ -184,11 +193,10 @@ const semanticQuerySelectionIntentDraftSchema = z
     (intent.request_scoped_operations ?? []).forEach((operation, index) => {
       const operator = operation.operator;
       const metricIds =
-        operator.kind === "PERIOD_COMPARISON_RATE"
+        operator.kind !== "AGGREGATE_RATIO"
           ? [operator.metric_id]
           : [operator.numerator_metric_id, operator.denominator_metric_id];
-      const dimensionIds =
-        operator.kind === "PERIOD_COMPARISON_RATE" ? [operator.time_dimension_id] : [];
+      const dimensionIds = operator.kind !== "AGGREGATE_RATIO" ? [operator.time_dimension_id] : [];
       if (
         metricIds.some((id) => !intent.selected_metric_ids.includes(id)) ||
         dimensionIds.some((id) => !intent.selected_dimension_ids.includes(id))
@@ -204,6 +212,81 @@ const semanticQuerySelectionIntentDraftSchema = z
 
 export const semanticQuerySelectionIntentSchema = semanticQuerySelectionIntentDraftSchema;
 export type SemanticQuerySelectionIntent = z.infer<typeof semanticQuerySelectionIntentSchema>;
+
+export interface ResolvedSemanticRequestTimeWindow {
+  readonly dimension_id: string;
+  readonly start: string;
+  readonly end: string;
+  readonly semantics: "HALF_OPEN";
+  readonly timezone: string;
+  readonly period_unit: "MONTH";
+  readonly period_count: number;
+}
+
+export function resolveSemanticRequestTimeWindow(input: {
+  readonly metrics: readonly z.infer<typeof semanticMetricSchema>[];
+  readonly dimensions: readonly z.infer<typeof semanticDimensionSchema>[];
+  readonly request_scoped_interpretations?:
+    | readonly {
+        readonly operator: z.infer<typeof semanticRequestScopedOperatorSchema>;
+      }[]
+    | undefined;
+}): ResolvedSemanticRequestTimeWindow | null {
+  const requests = (input.request_scoped_interpretations ?? [])
+    .map(({ operator }) => operator)
+    .filter((operator) => operator.kind === "RECENT_COMPLETE_PERIODS");
+  if (requests.length === 0) return null;
+  const request = requests[0];
+  if (!request || requests.length !== 1)
+    throw new TypeError("SEMANTIC_REQUEST_TIME_WINDOW_AMBIGUOUS");
+  const metric = input.metrics.find(({ metric_id }) => metric_id === request.metric_id);
+  const dimension = input.dimensions.find(
+    ({ dimension_id }) => dimension_id === request.time_dimension_id,
+  );
+  const domain = metric?.time_domain;
+  if (
+    !metric ||
+    !dimension ||
+    metric.table_id !== dimension.table_id ||
+    metric.time_column_id !== dimension.column_id ||
+    dimension.grain.granularity !== "month"
+  ) {
+    throw new TypeError("SEMANTIC_REQUEST_TIME_BINDING_INVALID");
+  }
+  const end = domain?.max_time;
+  // Preserve the published calendar-boundary encoding, including its explicit offset.
+  const boundary = end?.match(/^(\d{4})-(\d{2})-01(T00:00:00(?:\.000)?(?:Z|[+-]\d{2}:\d{2}))?$/u);
+  if (
+    domain?.calendar !== "gregorian" ||
+    !domain.timezone ||
+    !end ||
+    !boundary ||
+    !Number.isFinite(Date.parse(end))
+  ) {
+    throw new TypeError("SEMANTIC_REQUEST_TIME_FRONTIER_UNAVAILABLE");
+  }
+  const startDate = new Date(0);
+  startDate.setUTCFullYear(Number(boundary[1]), Number(boundary[2]) - 1 - request.period_count, 1);
+  const start = `${startDate.toISOString().slice(0, 10)}${boundary[3] ?? ""}`;
+  if (
+    !/^\d{4}-/u.test(start) ||
+    Date.parse(start) >= Date.parse(end) ||
+    (domain.min_time !== null &&
+      (!Number.isFinite(Date.parse(domain.min_time)) ||
+        Date.parse(start) < Date.parse(domain.min_time)))
+  ) {
+    throw new TypeError("SEMANTIC_REQUEST_TIME_COVERAGE_UNAVAILABLE");
+  }
+  return Object.freeze({
+    dimension_id: dimension.dimension_id,
+    start,
+    end,
+    semantics: "HALF_OPEN",
+    timezone: domain.timezone,
+    period_unit: "MONTH",
+    period_count: request.period_count,
+  });
+}
 
 export const semanticQueryQualityConstraintSchema = z.strictObject({
   constraint_id: versionIdentifierSchema,
@@ -398,6 +481,15 @@ const semanticQueryContextDraftSchema = z
         });
       }
     });
+    try {
+      resolveSemanticRequestTimeWindow(context);
+    } catch (error) {
+      ctx.addIssue({
+        code: "custom",
+        message: error instanceof Error ? error.message : "SEMANTIC_REQUEST_TIME_WINDOW_INVALID",
+        path: ["request_scoped_interpretations"],
+      });
+    }
   });
 
 export const semanticQueryContextSchema = semanticQueryContextDraftSchema.extend({

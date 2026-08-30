@@ -135,6 +135,7 @@ describe("direct run-bound provider retry policy", () => {
     expect(prompt).toContain("Before returning, scan the outer SELECT and every CTE SELECT");
     expect(prompt).toContain("Never compute current time with current_date");
     expect(prompt).toContain("frozen min_time and max_time");
+    expect(prompt).toContain("semantic_context.resolved_time_window");
     expect(prompt).toContain("max_time is the exclusive coverage frontier");
     expect(prompt).toContain("subtract N calendar months from that frontier");
     expect(prompt).toContain("QUERY_EVIDENCE_TIME_WINDOW_OUT_OF_RANGE means recompute");
@@ -188,6 +189,8 @@ describe("direct run-bound provider retry policy", () => {
     expect(prompt).toContain("SEMANTIC_FACTS_ONLY");
     expect(prompt).toContain("DATA_RESULT_REQUIRED");
     expect(prompt).toContain("PERIOD_COMPARISON_RATE");
+    expect(prompt).toContain("RECENT_COMPLETE_PERIODS");
+    expect(prompt).toContain("period_count");
     expect(prompt).toContain(
       "When the assigned objective requests a derived comparison term such as year-over-year growth",
     );

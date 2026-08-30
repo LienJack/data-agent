@@ -340,6 +340,65 @@ describe("PostgreSQL Text2SQL query runtime", () => {
     ).toBeNull();
   });
 
+  it.each(["exact", "eleven-months", "beyond-frontier", "omitted"] as const)(
+    "enforces the Host-resolved request window before query I/O: %s",
+    async (variant) => {
+      const connect = vi.fn();
+      const runtime = createPostgresqlText2SqlQueryRuntime({
+        pool: { connect } as never,
+        capability: {},
+        schema_snapshots: {} as never,
+        datasources: {} as never,
+        secrets: {} as never,
+      });
+      const requested = {
+        dimension_id: "dimension.order_month",
+        start: "2023-11-01T00:00:00.000Z",
+        end: "2024-11-01T00:00:00.000Z",
+        semantics: "HALF_OPEN" as const,
+        timezone: "Asia/Shanghai",
+        period_count: 12,
+        period_unit: "MONTH" as const,
+      };
+      const prepared = {
+        context_text: "{}",
+        datasource_id: id(30),
+        schema_snapshot_id: id(31),
+        schema_snapshot_hash: hash("d"),
+        allowed_relations: ["falcon_db_24.orders"],
+        target_capability_hash: hash("e"),
+        reader_role: "falcon_demo_reader",
+        semantic_query_context_hash: null,
+        requested_time_window: requested,
+      };
+      const query = {
+        ...candidate(
+          "select count(o.amount) as order_count from falcon_db_24.orders as o where o.created_at >= $1::timestamp and o.created_at < $2::timestamp",
+        ),
+        parameters: [
+          variant === "eleven-months" ? "2023-12-01" : "2023-11-01",
+          variant === "beyond-frontier" ? "2024-12-01" : "2024-11-01",
+        ],
+        time_window:
+          variant === "omitted"
+            ? null
+            : {
+                dimension_id: "dimension.order_month",
+                start_parameter: 1,
+                end_parameter: 2,
+                semantics: "HALF_OPEN" as const,
+              },
+      };
+      const result = runtime.compileCandidate({ prepared, candidate: query });
+      if (variant === "exact") await expect(result).resolves.toBeDefined();
+      else
+        await expect(result).rejects.toMatchObject({
+          code: "TEXT2SQL_REQUEST_TIME_WINDOW_MISMATCH",
+        });
+      expect(connect).not.toHaveBeenCalled();
+    },
+  );
+
   it("compiles model literals into parameters before committing a candidate", async () => {
     const runtime = createPostgresqlText2SqlQueryRuntime({
       pool: {} as never,
@@ -523,8 +582,22 @@ describe("PostgreSQL Text2SQL query runtime", () => {
       time_domain_id: "time.order-month",
       calendar: "gregorian" as const,
       timezone: "Asia/Shanghai",
-      min_time: null,
-      max_time: null,
+      min_time: "2023-01-01T00:00:00.000Z",
+      max_time: "2024-11-01T00:00:00.000Z",
+    };
+    const timeDimension = {
+      dimension_id: "dimension.customer-id",
+      name: "Selected calendar month",
+      aliases: ["calendar month"],
+      table_id: "orders",
+      column_id: "orders.created_at",
+      grain: { grain_id: "grain.month", granularity: "month" },
+      data_type: "timestamp",
+      sensitivity: "PUBLIC",
+      hierarchical: false,
+      parent_dimension_id: null,
+      tags: [],
+      analysis: { groupable: true, pivotable: false, causal_role: null },
     };
     const selectedMetric = {
       ...catalog.executable.metrics[0],
@@ -536,6 +609,7 @@ describe("PostgreSQL Text2SQL query runtime", () => {
       executable: {
         ...catalog.executable,
         metrics: [selectedMetric, ...catalog.executable.metrics.slice(1)],
+        dimensions: [timeDimension],
       },
       restrictions: {
         ...catalog.restrictions,
@@ -545,9 +619,28 @@ describe("PostgreSQL Text2SQL query runtime", () => {
     const { context_hash: _contextHash, ...draft } = semanticQueryContext;
     const contextWithTimeDependency = await buildSemanticQueryContext({
       ...draft,
-      requested_object_ids: ["metric.order-count", "time.order-month"],
+      requested_object_ids: ["dimension.customer-id", "metric.order-count", "time.order-month"],
       metrics: [selectedMetric],
+      dimensions: [timeDimension],
       time_semantics: [timeDomain],
+      request_scoped_interpretations: [
+        {
+          interpretation_id: "request-scoped.calendar",
+          requested_term: "最近12个完整月",
+          scope: "REQUEST_ONLY",
+          source_object_ids: ["dimension.customer-id", "metric.order-count"],
+          operator: {
+            kind: "RECENT_COMPLETE_PERIODS",
+            metric_id: "metric.order-count",
+            time_dimension_id: "dimension.customer-id",
+            period_count: 12,
+            period_unit: "MONTH",
+            anchor: "PUBLISHED_COMPLETE_FRONTIER",
+          },
+          user_explanation: "由发布边界计算完整月份。",
+          publication_effect: "NONE",
+        },
+      ],
     });
     const runtime = createPostgresqlText2SqlQueryRuntime({
       pool: { connect: vi.fn() } as never,
@@ -571,17 +664,25 @@ describe("PostgreSQL Text2SQL query runtime", () => {
       },
     });
 
-    await expect(
-      runtime.prepare({
-        effective_config: config as never,
-        semantic_context: semanticContext,
-        semantic_catalog: catalogWithTimeDependency as never,
-        semantic_query_context: contextWithTimeDependency,
-        max_context_bytes: 32_000,
-      }),
-    ).resolves.toMatchObject({
-      semantic_query_context_hash: contextWithTimeDependency.context_hash,
+    const prepared = await runtime.prepare({
+      effective_config: config as never,
+      semantic_context: semanticContext,
+      semantic_catalog: catalogWithTimeDependency as never,
+      semantic_query_context: contextWithTimeDependency,
+      max_context_bytes: 32_000,
     });
+    expect(prepared).toMatchObject({
+      semantic_query_context_hash: contextWithTimeDependency.context_hash,
+      requested_time_window: {
+        dimension_id: "dimension.customer-id",
+        start: "2023-11-01T00:00:00.000Z",
+        end: "2024-11-01T00:00:00.000Z",
+        period_count: 12,
+      },
+    });
+    expect(JSON.parse(prepared.context_text).semantic_context.resolved_time_window).toEqual(
+      prepared.requested_time_window,
+    );
   });
 
   it.each(["run", "release", "schema", "datasource", "out-of-range"] as const)(

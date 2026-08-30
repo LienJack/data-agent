@@ -26,6 +26,47 @@ const id = (suffix: number) => `93000000-0000-4000-8000-${String(suffix).padStar
 const hash = (character: string) => `sha256:${character.repeat(64)}`;
 
 describe("Production Team governed chart publication", () => {
+  it("preserves requested month count without publishing a calendar definition", async () => {
+    const intent = semanticQuerySelectionIntentSchema.parse({
+      schema_version: "semantic-query-selection-intent@1.0.0",
+      answer_scope: "DATA_RESULT_REQUIRED",
+      selected_metric_ids: ["metric.revenue"],
+      selected_dimension_ids: ["dimension.month"],
+      selected_formula_ids: [],
+      selected_relationship_ids: [],
+      selected_time_domain_ids: [],
+      selected_quality_constraint_ids: [],
+      unresolved_ambiguities: [],
+      request_scoped_operations: [
+        {
+          requested_term: "最近12个完整月",
+          operator: {
+            kind: "RECENT_COMPLETE_PERIODS",
+            metric_id: "metric.revenue",
+            time_dimension_id: "dimension.month",
+            period_unit: "MONTH",
+            period_count: 12,
+            anchor: "PUBLISHED_COMPLETE_FRONTIER",
+          },
+        },
+      ],
+    });
+    const result = await productionTeamToolsInternals.buildRequestScopedInterpretations({
+      run_id: id(1),
+      intent,
+      metric_names: new Map([["metric.revenue", "收入"]]),
+      dimension_names: new Map([["dimension.month", "月份"]]),
+    });
+    expect(result).toEqual([
+      expect.objectContaining({
+        operator: expect.objectContaining({ period_count: 12 }),
+        publication_effect: "NONE",
+        source_object_ids: ["dimension.month", "metric.revenue"],
+        user_explanation: expect.stringContaining("12个完整日历月"),
+      }),
+    ]);
+  });
+
   it("derives a friendly request-scoped YoY interpretation from governed primitives", async () => {
     const intent = semanticQuerySelectionIntentSchema.parse({
       schema_version: "semantic-query-selection-intent@1.0.0",
@@ -157,6 +198,7 @@ describe("Production Team governed chart publication", () => {
 
   it("returns only allowlisted Text2SQL policy codes to the Root Tool Result", () => {
     for (const code of [
+      "TEXT2SQL_REQUEST_TIME_WINDOW_MISMATCH",
       "TEXT2SQL_SQL_RELATION_SET_DUPLICATE",
       "TEXT2SQL_SQL_RELATION_SHAPE_REJECTED",
       "TEXT2SQL_SQL_RELATION_ALIAS_REQUIRED",
