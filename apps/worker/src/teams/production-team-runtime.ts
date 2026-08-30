@@ -205,9 +205,10 @@ async function createCapability(input: {
   readonly store: ProductionTeamRuntimeDependencies["store"];
   readonly capability: unknown;
   readonly issued_at: string;
+  readonly deadline_at: string;
 }) {
   const expiresAt = new Date(
-    Math.min(Date.parse(input.lease.expires_at), Date.parse(input.issued_at) + 10 * 60_000),
+    Math.min(Date.parse(input.deadline_at), Date.parse(input.issued_at) + 10 * 60_000),
   ).toISOString();
   const receipt = await buildTaskCapabilityReceipt({
     schema_version: "task-capability-receipt@2.0.0",
@@ -759,6 +760,7 @@ export function createProductionTeamRuntime(
           store: dependencies.store,
           capability: dependencies.capability,
           issued_at: timestamp,
+          deadline_at: input.deadline_at,
         });
         await emit(input.execution_context, {
           kind: "agent_status",
@@ -928,6 +930,7 @@ export function createProductionTeamRuntime(
             store: dependencies.store,
             capability: dependencies.capability,
             issued_at: timestamp,
+            deadline_at: input.deadline_at,
           });
           await commitAcceptedCompletion({
             task,

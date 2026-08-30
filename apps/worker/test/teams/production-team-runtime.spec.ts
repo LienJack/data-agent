@@ -534,6 +534,16 @@ describe("Production Team runtime", () => {
       calls.filter(({ operation }) => operation === "ATTACH_ACCEPTED_SIBLING_OUTPUT"),
     ).toHaveLength(0);
     expect(calls.filter(({ operation }) => operation === "COMMIT_ACCEPTANCE")).toHaveLength(2);
+    expect(
+      calls
+        .filter(({ operation }) => operation === "ISSUE_TASK_CAPABILITY")
+        .map(({ document }) => (document as { expires_at: string }).expires_at),
+    ).toEqual([
+      "2026-08-18T12:01:00.000Z",
+      "2026-08-18T12:01:00.000Z",
+      "2026-08-18T12:01:00.000Z",
+      "2026-08-18T12:01:00.000Z",
+    ]);
     expect(invoked).toEqual([
       "governed-text2sql-agent:semantic.release.read",
       "governed-text2sql-agent:sql.compiler.compile",
