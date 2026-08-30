@@ -5,6 +5,7 @@ import {
 } from "@data-agent/contracts";
 import { createPhysicalSchemaSnapshot } from "@data-agent/platform/catalog";
 import { describe, expect, it, vi } from "vitest";
+import type { FrozenSemanticReleaseCatalog } from "../../src/semantic/semantic-release-read-port.js";
 import {
   createPostgresqlText2SqlQueryRuntime,
   postgresqlText2SqlQueryRuntimeInternals,
@@ -1002,6 +1003,97 @@ describe("PostgreSQL Text2SQL query runtime", () => {
         max_bytes: 64_000,
       }),
     ).rejects.toBeDefined();
+    expect(connect).not.toHaveBeenCalled();
+  });
+
+  it("compiles recent rows with cross-table Metric time metadata but still rejects hidden filters before I/O", async () => {
+    const { config, semanticCatalog, semanticContext, snapshot } = await fixture(false, true);
+    const catalog: FrozenSemanticReleaseCatalog = semanticCatalog;
+    const metric = catalog.executable.metrics[0];
+    if (!metric) throw new Error("METRIC_FIXTURE_REQUIRED");
+    const connect = vi.fn();
+    const runtime = createPostgresqlText2SqlQueryRuntime({
+      pool: { connect } as never,
+      capability: {},
+      schema_snapshots: {} as never,
+      datasources: {} as never,
+      secrets: {} as never,
+    });
+    const prepared = {
+      context_text: "{}",
+      datasource_id: config.datasource.resource_id,
+      schema_snapshot_id: config.schema_snapshot.resource_id,
+      schema_snapshot_hash: config.schema_snapshot.resource_hash,
+      allowed_relations: ["falcon_db_24.orders"],
+      target_capability_hash: hash("c"),
+      reader_role: "falcon_demo_reader",
+      semantic_query_context_hash: null,
+      binding_authority: {
+        physical_snapshot: snapshot,
+        semantic_context: semanticContext,
+        semantic_catalog: {
+          ...catalog,
+          executable: {
+            ...catalog.executable,
+            metrics: [{ ...metric, table_id: "deliveries", time_column_id: "orders.created_at" }],
+            dimensions: [],
+            physical_bindings: [
+              {
+                logical_object_id: "column.orders.created_at",
+                logical_object_type: "column" as const,
+                datasource_id: config.datasource.resource_id,
+                schema_name: "falcon_db_24",
+                table_name: "orders",
+                column_name: "created_at",
+                binding_lifecycle: "active" as const,
+                valid_from: null,
+                valid_until: null,
+              },
+            ],
+          },
+        },
+        datasource_ref: config.datasource,
+      },
+    };
+    const query: Text2SqlQueryCandidate = {
+      ...candidate(
+        "select o.customer_id as customer_id from falcon_db_24.orders as o order by o.created_at::pg_catalog.date desc limit $1",
+      ),
+      parameters: [10],
+      result_columns: [
+        {
+          name: "customer_id",
+          semantic_type: "STRING",
+          label: "客户",
+          semantic_binding: {
+            object_kind: "PHYSICAL_COLUMN",
+            object_id: "column.orders.customer_id",
+          },
+        },
+      ],
+    };
+    const compiled = await runtime.compileCandidate({ prepared, candidate: query });
+    expect(compiled.parameters).toEqual([10]);
+    expect(compiled.time_window).toBeNull();
+    expect(connect).not.toHaveBeenCalled();
+    const restricted = {
+      ...query,
+      sql: "select o.customer_id as customer_id from falcon_db_24.orders as o where o.created_at >= $1",
+      parameters: ["2026-01-01"],
+    };
+    await expect(
+      runtime.compileCandidate({ prepared, candidate: restricted }),
+    ).rejects.toMatchObject({ diagnostic_code: "TEXT2SQL_SQL_TIME_WINDOW_REQUIRED" });
+    await expect(
+      runtime.execute({
+        effective_config: config as never,
+        prepared,
+        candidate: restricted,
+        timeout_ms: 5000,
+        max_rows: 100,
+        max_bytes: 64000,
+      }),
+    ).rejects.toMatchObject({ code: "DATASOURCE_ADAPTER_SQL_REJECTED" });
     expect(connect).not.toHaveBeenCalled();
   });
 

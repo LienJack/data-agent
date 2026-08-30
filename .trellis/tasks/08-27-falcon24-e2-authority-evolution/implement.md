@@ -1531,9 +1531,29 @@ Diagnostic/Q1/C1任一正式首次失败必须写既有 authority支持的 immut
 - 下一步：scoped commit → clean force build/attestation/full unit → fresh NAS scratch 同时验证 semantic-only 与 ROAS →
   使用 E13 首个失败 turn 的真实 receipt 正常激活 E14 → fresh 15 回合从 L1 开始。production isolation=false/HOLD，任务 ACTIVE。
 
+**E14 正式最近订单失败与跨表时间来源修复（2026-08-31）**
+
+- `74813f90` force build 9/9、full single-concurrent unit gate 15/15（12 cached）通过；fresh scratch 55467
+  semantic-only Run `f79aa924-0f0a-8e4d-96de-6aef050319f8` 与 ROAS Run `b617255b-03b5-8f3e-8669-5b5993b50a2b`
+  均 business/QA/Trace PASS。ROAS 内部发生四次候选拒绝后在既有有界恢复中成功；四渠道独立 source oracle 全量相等，不隐去失败活动。
+- 正常认证/Finalizer 激活 live E14 baseline `15fbecad-578f-5fa3-9a14-b1f6999ad004`；前置备份
+  `data-agent-falcon24-e13-pre-e14-74813f90-backup` 已校验且 never-started，347 表与 ledger 指纹保留。
+- formal attempt `b428c7ca-9168-4c77-8b1f-489db038a8ea` 的 L1-01/02/03 全部 PASS；L1-04 Run
+  `8b2b9e3e-e110-8735-a050-23b8d6549fee` FAILED/74 events，无 QueryEvidence/SqlArtifact。
+  first failure 为 `FALCON24_RUN_FAILED`，terminal turn receipt `sha256:d5fdde166e01dd5cf24625af293e8e6a33f2bbca11759ae119ab729a9cb3e052`；
+  QA/Trace=null，后续11题 PLANNED，无 Run/提交。昂贵服务和本轮浏览器/vault 已停止，旧 attempt 不重跑。
+- 实际冻结上下文只读探针稳定证明：配送 Metric 合法跨表引用订单日期，反向时间守卫却强制同表。
+  两个合成最近订单 SQL 在修复前均 binding invalid、修复后均 PASS；不是复原历史被拒 SQL，也没有模型/数据查询调用。
+- 修复复用既有 exact physical binding 解析，仅为跨表时间选择目标列；同表无需额外 Dimension 的限制识别保留。
+  Platform focused 119/119、Worker focused 79/79、Platform/Worker typecheck 通过；新 Platform 两个参数化用例先 RED 后 GREEN，
+  Worker 需重建 Platform dist 后验证。缺失/错 datasource/逻辑列/lifecycle/snapshot 均拒绝，隐藏时间过滤仍在 I/O 前拒绝。
+  详见 `research/cross-table-metric-time-source.md`。
+- 下一步：scoped commit → clean force build/attestation/full unit → fresh scratch 最近订单 + semantic-only + ROAS
+  → 正常 live E15 → 新 attempt 全15回合。旧 PASS 不拼接，production isolation=false/HOLD，任务保持 ACTIVE。
+
 **F6 READY 轮次恢复边界（2026-08-30，历史）**
 
-> 以下为历史记录；当前 forward recovery 已到 E13 FAILED，下一 fresh epoch 为 E14，见上一节。
+> 以下为历史记录；当前 forward recovery 已到 E14 FAILED，下一 fresh epoch 为 E15，见上一节。
 
 - `e676a450-5768-48d9-a264-ab7890fe0323` 的旧构建在 L1 前三题自动门禁 PASS 后，人工页面复核发现 Root 标签及失败
   Specialist 活动未闭合；`6443b8a2`、`6d163113` 修复前后端，并加强真实 DOM gate。原收据保留为历史，不能拼入新构建 PASS。

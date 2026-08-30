@@ -386,7 +386,9 @@ QueryEvidence acceptance 时，必须同时检查“声明与 SQL 相符”和�
 ### 3. Contracts
 
 - 时间来源包括 exact snapshot 的 date/timestamp/timestamptz 列、selected 时间 Dimension，以及 selected Metric 的
-  time_column_id。文本日期列从该 Metric 的 active physical dependency 绑定定位到 exact relation 后验证 snapshot；
+  time_column_id。同表文本日期从该 Metric 的 active physical dependency 绑定定位到 exact relation 后验证 snapshot；
+  显式跨表时间来源（如配送 Metric 引用订单日期）则按 qualified column identity 解析目标表，必须有同 datasource 的
+  active exact column binding 和匹配 snapshot。不得强制时间表等于 Metric.table_id，也不得把跨表引用改绑到本表。
   不要求另有时间 Dimension 才能拒绝遗漏，也不会因此授权一个未选 Dimension。显式时间 cast/date_part/date_trunc 同样追踪。
 - 无窗口时，WHERE/HAVING/JOIN ON、聚合 FILTER、CASE 条件引用上述时间来源即拒绝。CTE 输出逐级传递时间依赖，
   不因改 alias、转换为日期桶/布尔标志或把条件移动到外层就消失。各 SELECT 使用自己的 relation/CTE scope。
@@ -405,6 +407,8 @@ QueryEvidence acceptance 时，必须同时检查“声明与 SQL 相符”和�
 | 原请求明确有时间限制 | 不得删限制；取得缺失 governed Dimension/context 后重新编译 |
 | 原请求是无界总量，但候选自行加覆盖期筛选 | 同时移除未请求的 SQL 时间条件与声明；不得只删声明 |
 | 发布 coverage 域存在 | 只代表覆盖元数据，本身不授权给无界总量默认加时间筛选 |
+| selected Metric 合法引用跨表时间列 | exact column binding/snapshot 解析；普通日期排序不误拒，隐藏时间过滤仍拒绝 |
+| 跨表时间缺失/错 datasource/错逻辑列/非 active binding，或 snapshot 漂移 | physical binding invalid/stale，失败关闭，不猜测关系 |
 
 ### 5. Good / Base / Bad Cases
 
@@ -414,7 +418,7 @@ Bad：COMPILE 提示时间 Dimension 越界后只将 time_window 改成 null，�
 
 ### 6. Tests Required
 
-原始/文本时间列、无独立时间绑定、CTE 改名与多级时间桶/布尔派生、所有条件位置、schema/alias 隔离、无界 Formula、
+原始/文本时间列、同表无独立时间绑定、跨表 qualified/column-prefixed 时间引用及错绑定矩阵、CTE 改名与多级时间桶/布尔派生、所有条件位置、schema/alias 隔离、无界 Formula、
 日期展示/排序非误报、compile/execute 零 I/O、acceptance 重验、诊断白名单与 bounded repair。业务必须另用冻结 source oracle
 核对全部请求数据；Run SUCCEEDED 或 Formula 身份合法都不能替代业务 PASS。
 

@@ -1491,3 +1491,20 @@ E13 attempt `c31efada-c780-43dc-8151-e8167db5af9e`/Run `8ef759dc-cbd8-8132-8df3-
 
 离线证明不代替业务验证。新 clean build 必须在 fresh NAS scratch 同时验证 semantic-only 与真实 ROAS 请求，
 再以 E13 的真实失败 receipt 正常前向激活 E14；E14 fresh attempt 从 L1 重做 15 回合，不能复用 E13 通过项。
+
+### 25.12 跨表 Metric 时间来源不能被本表假设误拒
+
+`74813f90` 的 scratch semantic-only/ROAS 均通过业务、QA、Trace，正常 live E14 后正式前三题 PASS；
+L1-04 最近订单 Run `8b2b9e3e-e110-8735-a050-23b8d6549fee` FAILED，attempt
+`b428c7ca-9168-4c77-8b1f-489db038a8ea` 已封存，后续 11 题未提交。该事实不撤销 Root AUTO 修复。
+
+从该 Run 的真实冻结上下文读取的配送 Metric，其 table_id 为配送表而 time_column_id 为订单表日期。
+反向时间守卫错误地要求二者同表，在 SQL I/O 前拒绝合法最近订单候选。只读离线探针对两个合规合成 SQL 稳定复现；
+历史被拒 SQL 未持久化，不从 candidate hash 反推或声称知道其全文。
+
+保持同表 Metric dependency 定位；跨表则复用原 physicalSources，要求 exact qualified column binding、datasource、
+active lifecycle 和 snapshot。该来源仅用于识别未声明时间选择，不授权 Dimension/时间窗口，不改 SQL 或发布目录。
+compile、adapter admission 与 evidence acceptance 继续共用此守卫；缺失/错绑定失败关闭。
+
+新 clean build 后 fresh NAS scratch 必须证明最近10笔订单的真实 source oracle、QA 和 Trace；同时复验 semantic-only
+与全量 ROAS 以保护已有边界。全部通过后，使用 E14 首个失败 turn 的真实 receipt 正常前向激活 E15，fresh 15 回合从 L1 开始。

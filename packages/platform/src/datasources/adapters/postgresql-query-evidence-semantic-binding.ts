@@ -247,17 +247,21 @@ export async function assertPostgresqlQueryTemporalSelection(
   const catalog = input.semantic_catalog.executable;
   for (const metric of catalog.metrics) {
     if (!selected.has(metric.metric_id) || !metric.time_column_id) continue;
-    // The Metric's exact physical relation also identifies its text-backed time column.
-    // No independent time Dimension/binding is needed to forbid an undeclared restriction.
     const timeId = physicalColumnId(metric.table_id, metric.time_column_id);
-    const prefix = `column.${metric.table_id}.`;
-    if (!timeId.startsWith(prefix)) reject("QUERY_EVIDENCE_PHYSICAL_BINDING_INVALID");
-    const timeColumn = timeId.slice(prefix.length);
+    const qualifiedTimeColumn = timeId.slice("column.".length);
+    const separator = qualifiedTimeColumn.lastIndexOf(".");
+    const timeTable = qualifiedTimeColumn.slice(0, separator);
+    const timeColumn = qualifiedTimeColumn.slice(separator + 1);
+    if (separator <= 0 || !timeColumn) reject("QUERY_EVIDENCE_PHYSICAL_BINDING_INVALID");
+    const sameTable = timeTable === metric.table_id;
+    // A same-table Metric identifies text time via its own dependency binding, even
+    // without a time Dimension. Cross-table time must instead have its exact column
+    // binding; never rebase an explicit qualified time source onto the Metric table.
     const sources = physicalSources({
-      object_id: metric.metric_id,
-      object_kind: "METRIC",
-      table_id: metric.table_id,
-      column_ids: metric.dependency_column_ids,
+      object_id: sameTable ? metric.metric_id : timeId,
+      object_kind: sameTable ? "METRIC" : "PHYSICAL_COLUMN",
+      table_id: timeTable,
+      column_ids: sameTable ? metric.dependency_column_ids : [qualifiedTimeColumn],
       datasource_id: input.datasource_ref.resource_id,
       bindings: catalog.physical_bindings,
       snapshot,

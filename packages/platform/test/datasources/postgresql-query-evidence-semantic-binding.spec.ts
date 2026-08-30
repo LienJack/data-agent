@@ -529,6 +529,98 @@ async function formulaFixture() {
 }
 
 describe("PostgreSQL QueryEvidence semantic binding", () => {
+  it.each(["orders.order_date", "column.orders.order_date"])(
+    "resolves a selected cross-table Metric time source %s without rejecting ordinary row queries",
+    async (timeColumnId) => {
+      const input = await fixture("text");
+      const metric = input.semantic_catalog.executable.metrics[0];
+      if (!metric) throw new Error("METRIC_FIXTURE_REQUIRED");
+      const crossTable = {
+        ...input,
+        semantic_catalog: {
+          ...input.semantic_catalog,
+          executable: {
+            ...input.semantic_catalog.executable,
+            metrics: [{ ...metric, table_id: "deliveries", time_column_id: timeColumnId }],
+            dimensions: [],
+            physical_bindings: [
+              {
+                logical_object_id: "column.orders.order_date",
+                logical_object_type: "column" as const,
+                datasource_id: datasourceId,
+                schema_name: "public",
+                table_name: "orders",
+                column_name: "order_date",
+                binding_lifecycle: "active" as const,
+                valid_from: null,
+                valid_until: null,
+              },
+            ],
+          },
+        },
+      };
+      await expect(
+        assertPostgresqlQueryTemporalSelection({
+          ...crossTable,
+          candidate: {
+            ...input.candidate,
+            sql: "select o.order_id as order_id from public.orders as o order by o.order_date::pg_catalog.date desc limit $1",
+            parameters: [10],
+            time_window: null,
+          },
+        }),
+      ).resolves.toBeUndefined();
+      // No selected time Dimension, no SQL cast: the published cross-table source still
+      // identifies a hidden text-backed time filter. It does not grant a time window.
+      await expect(
+        assertPostgresqlQueryTemporalSelection({
+          ...crossTable,
+          candidate: {
+            ...input.candidate,
+            sql: "select o.order_id as order_id from public.orders as o where o.order_date >= $1",
+            parameters: ["2026-01-01"],
+            time_window: null,
+          },
+        }),
+      ).rejects.toMatchObject({ diagnostic_code: "TEXT2SQL_SQL_TIME_WINDOW_REQUIRED" });
+      const binding = crossTable.semantic_catalog.executable.physical_bindings[0];
+      if (!binding) throw new Error("BINDING_FIXTURE_REQUIRED");
+      for (const physicalBindings of [
+        [],
+        [{ ...binding, datasource_id: id(99) }],
+        [{ ...binding, logical_object_id: "column.deliveries.order_date" }],
+        [{ ...binding, binding_lifecycle: "deprecated" as const }],
+      ]) {
+        await expect(
+          assertPostgresqlQueryTemporalSelection({
+            ...crossTable,
+            candidate: { ...input.candidate, time_window: null },
+            semantic_catalog: {
+              ...crossTable.semantic_catalog,
+              executable: {
+                ...crossTable.semantic_catalog.executable,
+                physical_bindings: physicalBindings,
+              },
+            },
+          }),
+        ).rejects.toMatchObject({ code: "QUERY_EVIDENCE_PHYSICAL_BINDING_INVALID" });
+      }
+      await expect(
+        assertPostgresqlQueryTemporalSelection({
+          ...crossTable,
+          candidate: { ...input.candidate, time_window: null },
+          semantic_catalog: {
+            ...crossTable.semantic_catalog,
+            executable: {
+              ...crossTable.semantic_catalog.executable,
+              physical_bindings: [{ ...binding, schema_name: "other" }],
+            },
+          },
+        }),
+      ).rejects.toMatchObject({ code: "QUERY_EVIDENCE_PHYSICAL_BINDING_STALE" });
+    },
+  );
+
   it.each(["date", "text"] as const)(
     "rejects an undeclared temporal selection on a %s source",
     async (physicalType) => {
