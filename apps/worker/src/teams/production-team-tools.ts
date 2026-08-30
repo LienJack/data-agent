@@ -11,6 +11,7 @@ import {
   sha256ContentHash,
   type Text2SqlQueryCandidate,
   text2sqlQueryCandidateSchema,
+  text2sqlRepairContextSchema,
   verifyProductTeamArtifactDocument,
 } from "@data-agent/contracts";
 import {
@@ -931,20 +932,22 @@ export function createProductionTeamTools(
       const contextText =
         callIndex === 0
           ? state.prepared.context_text
-          : canonicalizeJson({
-              schema_version: "text2sql-repair-context@1.0.0",
-              frozen_query_context: JSON.parse(state.prepared.context_text) as z.infer<
-                ReturnType<typeof z.json>
-              >,
-              rejection: {
-                attempt: callIndex,
-                diagnostic_code: state.rejection_code ?? "TEXT2SQL_CANDIDATE_POLICY_REJECTED",
-                rejected_candidate: state.rejected_candidate,
-                ...(state.observed_result_types
-                  ? { observed_result_types: state.observed_result_types }
-                  : {}),
-              },
-            });
+          : canonicalizeJson(
+              text2sqlRepairContextSchema.parse({
+                schema_version: "text2sql-repair-context@1.0.0",
+                frozen_query_context: JSON.parse(state.prepared.context_text) as z.infer<
+                  ReturnType<typeof z.json>
+                >,
+                rejection: {
+                  attempt: callIndex,
+                  diagnostic_code: state.rejection_code ?? "TEXT2SQL_CANDIDATE_POLICY_REJECTED",
+                  rejected_candidate: state.rejected_candidate,
+                  ...(state.observed_result_types
+                    ? { observed_result_types: state.observed_result_types }
+                    : {}),
+                },
+              }),
+            );
       const parsed = text2sqlQueryCandidateSchema.safeParse(
         await specialistProviderJson({
           factory: factoryInput,

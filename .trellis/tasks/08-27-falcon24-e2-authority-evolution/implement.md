@@ -1618,6 +1618,28 @@ Diagnostic/Q1/C1任一正式首次失败必须写既有 authority支持的 immut
   详见 `research/e17-comparison-proof-diagnostics.md`。历史候选 SQL 未保存，不能冒称已找到其精确错误。
 - 下一步 clean scoped commit/build/full unit → 全新隔离 scratch 先同比后回归。live 仍 E16 FAILED，后继仍 E17；任务 ACTIVE。
 
+**E17 scratch 三题 PASS / ROAS FAILED：显式候选修复轮（2026-08-31）**
+
+- `a029cb71` force build 8/8、single-concurrent full unit 15/15，generation
+  `sha256:7a3034254e12481d4b9aa99a52f7b5bdf169e1ba3f3b3ae03e5c1d2013b7f9ce`。
+  fresh NAS `data-agent-falcon24-e17-a029cb71`、55472、专用 volume/cluster，pg_verifybackup 与9表/70列/121445行/1902NULL 相等。
+  scratch baseline `160fa0fb-8971-5011-a94c-8a76b9f747f3` 正常激活；live E16 未变。
+- 同比 Run `2298164d-c154-83b7-af05-c18afcef06fa` 业务/QA/Trace PASS（83 nodes/3 artifacts）：12个月、6个未覆盖同期 NULL，
+  exact source sums/rates 匹配；同 Run 五次拒绝后 bounded recovery 成功，不称零错误。
+- 订单 `f067fd13-b26c-8b72-ba71-14ac7c85fa9d` PASS（27 nodes/2 artifacts）；semantic
+  `fb009b96-6f54-8001-b5ff-b31d95e4d145` PASS（21 nodes/1 artifact）。QA 主视图已人工图像核对。
+  订单曾有未提交空 Conversation 的 datasource/model NULL，pre-submit guard 两次拦截且零 Run/marker；
+  等正常目录加载后新建正确绑定 Conversation 才唯一提交。旧空 Conversation 保留 F7 清理，不伪称业务重试。
+- ROAS `10649939-0cc3-8c64-8ed7-f0e38ccb30b8` FAILED/74 events，三次 alias、三次 Formula 拒绝，无 QueryEvidence。
+  `e17-roas-canary-a029cb71/failed-run-source.json` 与一次业务失败记录保留；QA/Trace 未执行。
+  所有本轮 owned Web/Worker/OpenSandbox/browser/vault 已关闭；scratch/历史/audit 保留。
+- 修复包改为 strict Host contract；Provider 将原冻结上下文保持 system，追加被拒 Candidate 与明确 Host 修复 user 消息。
+  强调已发布 ROAS CASE 的零值0不得改为 NULLIF 的 NULL；不增加预算、不改验证器、不重写 SQL。
+  Worker focused 100/100、Contracts 14/14 通过；真实 dispatcher/model-port capture 确认不同消息/hash、相同预算/工具和非法包零 dispatch。
+  详见 `research/e17-explicit-candidate-repair.md`。真实模型效果未验证，三个旧 PASS 不可复用。
+- 当前继续 ACTIVE：先完成本修复 scoped commit，再补齐 L4 AGGREGATE_RATIO/净 ROI 的 REQUEST_DERIVED 结果绑定已知缺口；
+  随后新 clean build/full unit/fresh physical scratch，全部 canary 闭合后才可正式 E17 从 L1 重做15回合。
+
 **F6 READY 轮次恢复边界（2026-08-30，历史）**
 
 > 以下为历史记录；当前 forward recovery 已到 E16 FAILED，下一 fresh epoch 为 E17，见上一节。

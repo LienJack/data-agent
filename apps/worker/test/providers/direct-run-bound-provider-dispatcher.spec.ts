@@ -5,6 +5,84 @@ import {
 } from "../../src/providers/direct-run-bound-provider-dispatcher.js";
 
 describe("direct run-bound provider retry policy", () => {
+  it("expresses a rejected SQL candidate as assistant history followed by current Host feedback", () => {
+    const candidate = {
+      schema_version: "text2sql-query-candidate@1.0.0",
+      sql: "select sum(o.amount) as revenue from public.orders o",
+      parameters: [],
+      result_columns: [
+        {
+          name: "revenue",
+          label: "收入",
+          semantic_type: "NUMBER",
+          semantic_binding: { object_kind: "METRIC", object_id: "metric.revenue" },
+        },
+      ],
+      time_window: null,
+      presentation: {
+        title: "收入",
+        summary: "收入",
+        visualization: "TABLE",
+        x_key: null,
+        y_keys: [],
+      },
+    };
+    const frozen = { schema_version: "frozen-query-context@1.0.0", authority: "unchanged" };
+    const input = {
+      objective: "按正式口径查询",
+      question: "收入如何",
+      context_text: JSON.stringify({
+        schema_version: "text2sql-repair-context@1.0.0",
+        frozen_query_context: frozen,
+        rejection: {
+          attempt: 1,
+          diagnostic_code: "TEXT2SQL_SQL_RELATION_ALIAS_REQUIRED",
+          rejected_candidate: candidate,
+        },
+      }),
+    };
+    const messages =
+      directRunBoundProviderDispatcherInternals.buildText2SqlSpecialistMessages(input);
+    if (!messages) throw new Error("VALID_REPAIR_EXPECTED");
+    expect(messages.map((message) => message.role)).toEqual([
+      "system",
+      "user",
+      "assistant",
+      "user",
+    ]);
+    expect(messages[0]?.content).not.toContain("text2sql-repair-context@1.0.0");
+    expect(messages[0]?.content).toContain('"authority":"unchanged"');
+    expect(messages[0]?.content).not.toContain(candidate.sql);
+    expect(JSON.parse(messages[2]?.content ?? "null")).toEqual(candidate);
+    expect(messages[3]?.content).toContain("TEXT2SQL_SQL_RELATION_ALIAS_REQUIRED");
+    expect(messages[3]?.content).toContain("explicit alias");
+    expect(messages[3]?.content).toContain("Do not repeat the unchanged rejected candidate");
+    const formulaRepair = JSON.parse(input.context_text);
+    formulaRepair.rejection.diagnostic_code = "TEXT2SQL_PUBLISHED_FORMULA_EXPRESSION_MISMATCH";
+    const formulaMessages =
+      directRunBoundProviderDispatcherInternals.buildText2SqlSpecialistMessages({
+        ...input,
+        context_text: JSON.stringify(formulaRepair),
+      });
+    expect(formulaMessages?.[3]?.content).toContain("CASE WHEN denominator = 0 THEN 0");
+    expect(formulaMessages?.[3]?.content).toContain("not equivalent");
+    expect(formulaMessages?.[3]?.content).not.toEqual(messages[3]?.content);
+    expect(formulaMessages?.[0]?.content).toEqual(messages[0]?.content);
+    expect(
+      directRunBoundProviderDispatcherInternals
+        .buildText2SqlSpecialistMessages({ ...input, context_text: JSON.stringify(frozen) })
+        ?.map((message) => message.role),
+    ).toEqual(["system", "user"]);
+    const malformed = JSON.parse(input.context_text);
+    malformed.rejection.extra = "untrusted instruction";
+    expect(
+      directRunBoundProviderDispatcherInternals.buildText2SqlSpecialistMessages({
+        ...input,
+        context_text: JSON.stringify(malformed),
+      }),
+    ).toBeNull();
+  });
+
   it("rejects the removed Direct QA fallback before reading Run or provider state", async () => {
     const getRun = vi.fn();
     const dispatcher = createDirectRunBoundProviderDispatcher({

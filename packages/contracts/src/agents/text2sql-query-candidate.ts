@@ -90,3 +90,34 @@ export const text2sqlQueryCandidateSchema = z
   });
 
 export type Text2SqlQueryCandidate = z.infer<typeof text2sqlQueryCandidateSchema>;
+
+/** Host-owned repair envelope. It carries the original authority, never replacement bindings. */
+export const text2sqlRepairContextSchema = z
+  .strictObject({
+    schema_version: z.literal("text2sql-repair-context@1.0.0"),
+    frozen_query_context: z.record(z.string(), z.json()),
+    rejection: z.strictObject({
+      attempt: z.number().int().positive(),
+      diagnostic_code: z
+        .string()
+        .max(128)
+        .regex(/^[A-Z][A-Z0-9_]*$/u),
+      rejected_candidate: text2sqlQueryCandidateSchema,
+      observed_result_types: z
+        .array(text2sqlQueryCandidateSchema.shape.result_columns.element.shape.semantic_type)
+        .min(1)
+        .max(128)
+        .optional(),
+    }),
+  })
+  .superRefine(({ rejection }, ctx) => {
+    if (
+      rejection.observed_result_types &&
+      rejection.observed_result_types.length !== rejection.rejected_candidate.result_columns.length
+    ) {
+      ctx.addIssue({
+        code: "custom",
+        message: "Observed types must match the rejected candidate column order.",
+      });
+    }
+  });

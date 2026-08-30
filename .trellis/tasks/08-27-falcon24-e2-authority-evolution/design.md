@@ -1556,3 +1556,19 @@ Provider 修复说明；不包含 SQL、AST、标识符、参数、异常 cause�
 每次证明保存独立 checkpoint；并发错误不能串线。原两候选预算不变，未知 diagnostic 不得透传。
 
 下一 fresh scratch 仍以 E16 FAILED 为 live 前驱，先同比再三条回归；全部业务/QA/Trace PASS 后才可正式 E17。
+
+### 25.16 明确的候选修复轮与 ROAS 原始语义
+
+`a029cb71` fresh scratch 同比、最近订单、semantic-only 均通过业务/QA/Trace；ROAS Run
+`10649939-0cc3-8c64-8ed7-f0e38ccb30b8` FAILED/74 events，仅 accepted SQC。六候选中三次关系别名拒绝、
+三次 Formula 表达式拒绝；两个 repair 对仍为相同 hash。失败已封存，未执行 ROAS QA/Trace，未激活 live E17。
+
+实际 SQC 的已发布 ROAS Formula 规定 denominator=0 时为0，不是 NULL；保留该 AST，不将 NULLIF 写法视为等价。
+历史候选 SQL 未保存，不能证明这些候选具体如何偏离。代码确认修复包被放进 system，而最新 user 文本仍是初次问题；
+改为原 system/user 不变、追加 rejected Candidate assistant 与 Host feedback user 的显式修复轮。
+生产者与消费者共用 strict schema，静态提示强调别名及原 Formula 零值规则；task hash/call id/预算/工具/校验不变。
+离线穿透真实 dispatcher 的 capture 测试必须覆盖完整消息与 fail-closed，不把 mock 结果记为 provider PASS。
+
+另发现 L4 净 ROI 的 AGGREGATE_RATIO 已存在请求解释，但结果绑定目前只接通 PERIOD_COMPARISON_RATE。
+正式激活前必须补齐该已知闭包缺口并单独验证/提交；不能借用 ROAS Formula 身份或新增另一套发布权威。
+两项修复后重新 clean build/fresh scratch；旧 scratch 的三个 PASS 不可拼入新构建。

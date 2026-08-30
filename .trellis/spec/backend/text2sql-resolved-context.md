@@ -60,6 +60,18 @@ compile 前零 target I/O、安全诊断、两次 bounded repair 不扩容。真
 Wrong：同比结果列声明 `{ object_kind: "METRIC", object_id: "metric.order_revenue" }`。
 Correct：结果列声明 `{ object_kind: "REQUEST_DERIVED", object_id: exactAcceptedInterpretationId }` 并通过同一验证器。
 
+## Bounded candidate repair messages
+
+- `text2sql-repair-context@1.0.0` 是 Host strict envelope：原 `frozen_query_context`、positive attempt、有限格式 diagnostic、
+  完整 rejected Candidate，以及可选的与结果列数量相等的逻辑类型数组。未知字段、原始错误/SQL metadata 不进入反馈。
+- Worker 生产与 Provider 消费复用 Contracts schema。初次请求为 system(冻结权威)+user(原问题)；修复请求保持前两条，
+  追加 assistant(被拒 Candidate)+user(Host 诊断与静态修复指导)。被拒 SQL 不嵌进权威 system；不增加候选次数或调用预算。
+- task hash 仍绑定完整修复 envelope，call id 仍独立；请求算子诊断沿固定 registry，其他提示不引入发布对象、SQL 模板或自动改写。
+- 已发布 Formula 的零值语义必须逐 AST 保留。`CASE WHEN denominator=0 THEN 0 ELSE numerator/denominator END`
+  不等价于 `numerator/NULLIF(denominator,0)`；错误提示不得要求为通过证明而改变原口径。
+- 测试须穿过真实 dispatcher 到离线 model-port capture，核对完整 message roles/content、原上下文、hash、预算、工具权限、
+  malformed fail-closed 与零 Root dispatch；只测字符串 helper 不足。该测试不冒充真实 provider 或业务验收。
+
 ## Scenario: 从 Resolved Context 编译并执行 PostgreSQL SQL
 
 ### 1. Scope / Trigger

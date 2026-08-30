@@ -25,6 +25,7 @@ import {
   rootVerifierFeedbackSchema,
   sha256ContentHash,
   text2sqlQueryCandidateSchema,
+  text2sqlRepairContextSchema,
 } from "@data-agent/contracts";
 import { semanticQuerySelectionIntentSchema } from "@data-agent/contracts/artifacts";
 import { POSTGRESQL_PERIOD_COMPARISON_REPAIR_HINTS } from "@data-agent/platform/datasource-adapters";
@@ -147,7 +148,7 @@ function text2SqlSpecialistSystemPrompt(contextText: string): string {
     ...Object.entries(POSTGRESQL_PERIOD_COMPARISON_REPAIR_HINTS).map(
       ([code, hint]) => `${code}: ${hint}`,
     ),
-    "When Frozen query context is a text2sql-repair-context, replace the rejected candidate. TEXT2SQL_SQL_DANGEROUS means replace every unlisted function or syntax with the permitted typed primitives above; TEXT2SQL_SQL_SELECT_SHAPE_REJECTED or TEXT2SQL_SQL_SELECT_KEYS_REJECTED means remove locks and every unsupported SELECT clause; TEXT2SQL_SQL_TARGET_LIST_REJECTED means return at least one explicit aliased output; TEXT2SQL_SQL_LIMIT_SHAPE_REJECTED means remove OFFSET, LIMIT ALL, FETCH, parentheses, and non-integer casts, then use only LIMIT $n or LIMIT $n::pg_catalog.int2|int4|int8 with the nth parameter set exactly once to the requested positive integer; TEXT2SQL_SQL_SET_OPERATION_REJECTED means remove UNION, INTERSECT, and EXCEPT; TEXT2SQL_SQL_FROM_SHAPE_REJECTED means use exactly one FROM item, nesting approved joins inside that item; TEXT2SQL_SQL_WITH_SHAPE_REJECTED means use only non-recursive CTEs; TEXT2SQL_SQL_DISTINCT_SHAPE_REJECTED means remove DISTINCT ON and use either plain SELECT or plain DISTINCT; TEXT2SQL_SQL_ORDERING_SHAPE_REJECTED means order by a declared output alias or an exact column reference, adding only one required safe postfix temporal cast when the frozen physical time column is text; TEXT2SQL_SQL_RELATION_BINDING_REJECTED means replace every physical relation with an exact schema-qualified relation listed in frozen_query_context, give every physical or CTE relation an explicit alias, and remove every unlisted or unqualified physical name; TEXT2SQL_SQL_PRIMITIVE_DENIED means remove every function, operator, cast, type, or SQL construct not explicitly permitted above, then rebuild using only the listed functions, operators, postfix casts, and parameterized literals; TEXT2SQL_SQL_PROJECTION_SHAPE_REJECTED means give every SELECT target an explicit unique ASCII alias, qualify every column reference with its declared relation alias, remove SELECT *, and make result_columns match those aliases exactly; TEXT2SQL_SQL_TARGET_ALIAS_REQUIRED means add AS ascii_alias to every SELECT item in the outer query and every CTE; TEXT2SQL_SQL_COLUMN_REFERENCE_REJECTED means replace stars or malformed references with an exact declared relation_alias.column_name reference; TEXT2SQL_SQL_FUNCTION_DENIED means remove the unlisted function and use only the permitted functions above; TEXT2SQL_SQL_OPERATOR_DENIED means replace the denied operator with one of =, <>, !=, >, >=, <, <=, +, -, *, or /; TEXT2SQL_SQL_CAST_DENIED means replace the denied cast with a PostgreSQL postfix cast to bool, boolean, date, float4, float8, int2, int4, int8, interval, numeric, text, timestamp, timestamptz, uuid, or remove it; TEXT2SQL_SQL_AST_NODE_DENIED means remove subqueries, set operations, windows, arrays, or every other undeclared SQL construct; DATASOURCE_ADAPTER_SQL_REJECTED means replace invalid PostgreSQL syntax and follow the exact postfix cast examples above; DATASOURCE_ADAPTER_SQL_GROUPING_ERROR means make every non-aggregate SELECT expression structurally identical to its GROUP BY expression and prefer ordering by the declared output alias; DATASOURCE_ADAPTER_SQL_TYPE_ERROR means follow the exact listed physical column types, adding the safe temporal casts described above for text-backed time columns or removing unsupported overloads; DATASOURCE_ADAPTER_SQL_COLUMN_NOT_FOUND means choose exact listed columns; QUERY_EVIDENCE_SEMANTIC_OBJECT_NOT_SELECTED means replace invented or out-of-scope result bindings with exact selected METRIC, DIMENSION, or PHYSICAL_COLUMN ids from frozen_query_context; QUERY_EVIDENCE_RESULT_BINDING_MISMATCH means make every SELECT output name and PostgreSQL result type agree with result_columns, especially declaring date_trunc as DATETIME unless the SELECT expression ends in ::pg_catalog.date; TEXT2SQL_RESULT_SHAPE_MISMATCH means make SELECT aliases and result_columns identical in order.",
+    "When the Host supplies rejection feedback after a candidate, replace that rejected candidate using the unchanged frozen context. TEXT2SQL_SQL_DANGEROUS means replace every unlisted function or syntax with the permitted typed primitives above; TEXT2SQL_SQL_SELECT_SHAPE_REJECTED or TEXT2SQL_SQL_SELECT_KEYS_REJECTED means remove locks and every unsupported SELECT clause; TEXT2SQL_SQL_TARGET_LIST_REJECTED means return at least one explicit aliased output; TEXT2SQL_SQL_LIMIT_SHAPE_REJECTED means remove OFFSET, LIMIT ALL, FETCH, parentheses, and non-integer casts, then use only LIMIT $n or LIMIT $n::pg_catalog.int2|int4|int8 with the nth parameter set exactly once to the requested positive integer; TEXT2SQL_SQL_SET_OPERATION_REJECTED means remove UNION, INTERSECT, and EXCEPT; TEXT2SQL_SQL_FROM_SHAPE_REJECTED means use exactly one FROM item, nesting approved joins inside that item; TEXT2SQL_SQL_WITH_SHAPE_REJECTED means use only non-recursive CTEs; TEXT2SQL_SQL_DISTINCT_SHAPE_REJECTED means remove DISTINCT ON and use either plain SELECT or plain DISTINCT; TEXT2SQL_SQL_ORDERING_SHAPE_REJECTED means order by a declared output alias or an exact column reference, adding only one required safe postfix temporal cast when the frozen physical time column is text; TEXT2SQL_SQL_RELATION_BINDING_REJECTED means replace every physical relation with an exact schema-qualified relation listed in frozen_query_context, give every physical or CTE relation an explicit alias, and remove every unlisted or unqualified physical name; TEXT2SQL_SQL_PRIMITIVE_DENIED means remove every function, operator, cast, type, or SQL construct not explicitly permitted above, then rebuild using only the listed functions, operators, postfix casts, and parameterized literals; TEXT2SQL_SQL_PROJECTION_SHAPE_REJECTED means give every SELECT target an explicit unique ASCII alias, qualify every column reference with its declared relation alias, remove SELECT *, and make result_columns match those aliases exactly; TEXT2SQL_SQL_TARGET_ALIAS_REQUIRED means add AS ascii_alias to every SELECT item in the outer query and every CTE; TEXT2SQL_SQL_COLUMN_REFERENCE_REJECTED means replace stars or malformed references with an exact declared relation_alias.column_name reference; TEXT2SQL_SQL_FUNCTION_DENIED means remove the unlisted function and use only the permitted functions above; TEXT2SQL_SQL_OPERATOR_DENIED means replace the denied operator with one of =, <>, !=, >, >=, <, <=, +, -, *, or /; TEXT2SQL_SQL_CAST_DENIED means replace the denied cast with a PostgreSQL postfix cast to bool, boolean, date, float4, float8, int2, int4, int8, interval, numeric, text, timestamp, timestamptz, uuid, or remove it; TEXT2SQL_SQL_AST_NODE_DENIED means remove subqueries, set operations, windows, arrays, or every other undeclared SQL construct; DATASOURCE_ADAPTER_SQL_REJECTED means replace invalid PostgreSQL syntax and follow the exact postfix cast examples above; DATASOURCE_ADAPTER_SQL_GROUPING_ERROR means make every non-aggregate SELECT expression structurally identical to its GROUP BY expression and prefer ordering by the declared output alias; DATASOURCE_ADAPTER_SQL_TYPE_ERROR means follow the exact listed physical column types, adding the safe temporal casts described above for text-backed time columns or removing unsupported overloads; DATASOURCE_ADAPTER_SQL_COLUMN_NOT_FOUND means choose exact listed columns; QUERY_EVIDENCE_SEMANTIC_OBJECT_NOT_SELECTED means replace invented or out-of-scope result bindings with exact selected METRIC, DIMENSION, or PHYSICAL_COLUMN ids from frozen_query_context; QUERY_EVIDENCE_RESULT_BINDING_MISMATCH means make every SELECT output name and PostgreSQL result type agree with result_columns, especially declaring date_trunc as DATETIME unless the SELECT expression ends in ::pg_catalog.date; TEXT2SQL_RESULT_SHAPE_MISMATCH means make SELECT aliases and result_columns identical in order.",
     "Before returning, scan the outer SELECT and every CTE SELECT: every SELECT item must contain AS unique_ascii_alias, including simple pass-through columns. Never compute current time with current_date, current_timestamp, now, or another runtime clock; derive explicit time-bound parameter values from the frozen min_time and max_time instead.",
     "When semantic_context.resolved_time_window is non-null, the Host has already calculated the exact requested current-period window. Copy its start and end into SQL parameters and bind time_window to those indices and dimension_id exactly. Do not perform calendar arithmetic again, shorten the duration, omit time_window, or bind it to the prior-year scan. TEXT2SQL_REQUEST_TIME_WINDOW_MISMATCH means replace the declared current window and matching SQL predicates with those exact Host-resolved bounds. Separate comparison-period predicates from the current output window; missing comparison data stays NULL and must not delete current-period rows.",
     "Treat the delegation objective as a description of intent, not temporal authority. If its dates conflict with the Host-resolved time windows, use the Host-resolved bounds unchanged. semantic_context.resolved_comparison_time_windows contains the exact one-year comparison source windows already clipped to published coverage: copy each start/end into that comparison source's direct WHERE parameters, not requested_start/requested_end. Do not subtract a year again or replace these bounds with dates suggested by Root. Keep time_window bound only to resolved_time_window for the current output. When a comparison window is empty, its equal start/end intentionally select no prior rows; preserve all current rows through LEFT JOIN and NULL comparison values. Source bounds do not replace the separate annual bucket alignment.",
@@ -158,6 +159,59 @@ function text2SqlSpecialistSystemPrompt(contextText: string): string {
     "Specific relation repair: TEXT2SQL_SQL_RELATION_ALIAS_REQUIRED means add an explicit alias to every physical and CTE FROM/JOIN reference; TEXT2SQL_SQL_RELATION_UNQUALIFIED means schema-qualify physical relations with their exact frozen schema, while leaving declared CTE names unqualified; TEXT2SQL_SQL_RELATION_NOT_ALLOWED means remove the out-of-scope relation, and if it is a declared CTE reference remove its schema qualifier instead; TEXT2SQL_SQL_RELATION_SHAPE_REJECTED means remove ONLY and unsupported relation syntax. TEXT2SQL_SQL_RELATION_SET_DUPLICATE is a Host allowlist defect, not permission to invent or broaden a relation. Never add a relation to the frozen allowlist.",
     `Frozen query context: ${contextText}`,
   ].join("\n");
+}
+
+function buildText2SqlSpecialistMessages(input: {
+  readonly context_text: string;
+  readonly objective: string;
+  readonly question: string;
+}): { role: "system" | "user" | "assistant"; content: string }[] | null {
+  let context: unknown;
+  try {
+    context = JSON.parse(input.context_text);
+  } catch {
+    return null;
+  }
+  if (!context || typeof context !== "object" || Array.isArray(context)) return null;
+  const isRepair =
+    "schema_version" in context && context.schema_version === "text2sql-repair-context@1.0.0";
+  const parsed = isRepair ? text2sqlRepairContextSchema.safeParse(context) : null;
+  if (parsed && !parsed.success) return null;
+  const repair = parsed?.success ? parsed.data : null;
+  const messages: { role: "system" | "user" | "assistant"; content: string }[] = [
+    {
+      role: "system",
+      content: text2SqlSpecialistSystemPrompt(
+        repair ? canonicalizeJson(repair.frozen_query_context) : input.context_text,
+      ),
+    },
+    {
+      role: "user",
+      content: `${input.objective}\n\nOriginal workspace question: ${input.question}`,
+    },
+  ];
+  if (!repair) return messages;
+  const { rejected_candidate, ...feedback } = repair.rejection;
+  const code = feedback.diagnostic_code;
+  const hint =
+    Object.entries(POSTGRESQL_PERIOD_COMPARISON_REPAIR_HINTS).find(([key]) => key === code)?.[1] ??
+    (code === "TEXT2SQL_SQL_RELATION_ALIAS_REQUIRED"
+      ? "Add an explicit alias to every physical and CTE FROM/JOIN reference and qualify columns with that alias. A WITH declaration does not alias a FROM reference."
+      : code === "TEXT2SQL_PUBLISHED_FORMULA_EXPRESSION_MISMATCH"
+        ? "Read the selected published formula.expression and reproduce its exact AST. CASE WHEN denominator = 0 THEN 0 ELSE numerator / denominator END is not equivalent to numerator / NULLIF(denominator,0). Keep the published zero/null result unchanged; do not relabel the output to evade proof."
+        : "Correct the rejected SQL expression or declaration using the frozen context and the matching Host policy above.");
+  messages.push(
+    { role: "assistant", content: canonicalizeJson(rejected_candidate) },
+    {
+      role: "user",
+      content: [
+        `The Host rejected your previous candidate: ${canonicalizeJson(feedback)}`,
+        hint,
+        "Return one complete corrected candidate JSON. Do not repeat the unchanged rejected candidate. This is the existing bounded repair attempt, not permission for another call or broader authority. Preserve the original frozen context, requested meaning and semantic bindings; never alter authority to pass validation.",
+      ].join("\n"),
+    },
+  );
+  return messages;
 }
 
 function semanticSpecialistSystemPrompt(contextText: string): string {
@@ -531,8 +585,19 @@ export function createDirectRunBoundProviderDispatcher(input: {
                     }
                   : { question: loaded.value.question },
       );
-      const messages =
-        rootTurn && rootLease && rootTaskDocument
+      const text2sqlMessages =
+        specialistTurn?.stage === "TEXT2SQL"
+          ? buildText2SqlSpecialistMessages({ ...specialistTurn, question: loaded.value.question })
+          : undefined;
+      if (text2sqlMessages === null) {
+        return failure(
+          "SPECIALIST_MODEL_REQUEST_INVALID",
+          "Text2SQL repair context 未满足严格输入契约。",
+        );
+      }
+      const messages = text2sqlMessages
+        ? text2sqlMessages
+        : rootTurn && rootLease && rootTaskDocument
           ? buildRootConversationMessages({
               system_message: await buildRootAgentSystemMessage(rootLease.catalog_snapshot),
               task: rootTaskDocument,
@@ -558,16 +623,14 @@ export function createDirectRunBoundProviderDispatcher(input: {
                     content:
                       specialistTurn.stage === "SEMANTIC"
                         ? semanticSpecialistSystemPrompt(specialistTurn.context_text)
-                        : specialistTurn.stage === "TEXT2SQL"
-                          ? text2SqlSpecialistSystemPrompt(specialistTurn.context_text)
-                          : specialistTurn.stage === "ANALYSIS_PROGRAM"
-                            ? analysisProgramSpecialistSystemPrompt(specialistTurn.context_text)
-                            : [
-                                "You are the governed report-writing specialist.",
-                                "Return exactly one JSON object with a non-empty answer field.",
-                                "Use only the accepted evidence supplied in the frozen context; do not invent facts.",
-                                `Frozen accepted evidence: ${specialistTurn.context_text}`,
-                              ].join("\n"),
+                        : specialistTurn.stage === "ANALYSIS_PROGRAM"
+                          ? analysisProgramSpecialistSystemPrompt(specialistTurn.context_text)
+                          : [
+                              "You are the governed report-writing specialist.",
+                              "Return exactly one JSON object with a non-empty answer field.",
+                              "Use only the accepted evidence supplied in the frozen context; do not invent facts.",
+                              `Frozen accepted evidence: ${specialistTurn.context_text}`,
+                            ].join("\n"),
                   },
                   {
                     role: "user" as const,
@@ -761,6 +824,7 @@ export const directRunBoundProviderDispatcherInternals = Object.freeze({
   projectToolCallCandidate,
   buildRootLoopMessages,
   text2SqlSpecialistSystemPrompt,
+  buildText2SqlSpecialistMessages,
   retryableReason,
   semanticSpecialistSystemPrompt,
   shouldRetryProviderCall,
