@@ -450,6 +450,13 @@ describe("Falcon24 four-layer browser gate", () => {
     expect(commands.filter((command) => command.includes("resolution-trace-node"))).toHaveLength(
       details.length * 2,
     );
+    const exactRunClicks = commands.filter(
+      (command) => command.includes("click") && command.includes("qa-result-trace-entry"),
+    );
+    const exactRunScrolls = commands.filter(
+      (command) => command.includes("scrollintoview") && command.includes("qa-result-trace-entry"),
+    );
+    expect(exactRunScrolls).toHaveLength(exactRunClicks.length);
   });
 
   it("fails closed when public Trace lacks a completed Tool node", async () => {

@@ -474,6 +474,7 @@ export async function observeFalcon24FourLayerTraceUi(input: {
   await executeFalcon24AgentBrowser(input.session, ["open", startUrl.toString()]);
   const resultSelector = exactRunSelector(input.business.run_id);
   await executeFalcon24AgentBrowser(input.session, ["wait", resultSelector]);
+  await executeFalcon24AgentBrowser(input.session, ["scrollintoview", resultSelector]);
   await executeFalcon24AgentBrowser(input.session, ["click", resultSelector]);
   const readySelector = exactTraceSelector(currentBinding);
   await executeFalcon24AgentBrowser(input.session, ["wait", readySelector]);
@@ -562,7 +563,9 @@ export async function observeFalcon24FourLayerTraceUi(input: {
   await executeFalcon24AgentBrowser(input.session, ["wait", resultSelector]);
   const switchedRuns: string[] = [];
   for (const binding of input.conversation_traces) {
-    await executeFalcon24AgentBrowser(input.session, ["click", exactRunSelector(binding.run_id)]);
+    const conversationRunSelector = exactRunSelector(binding.run_id);
+    await executeFalcon24AgentBrowser(input.session, ["scrollintoview", conversationRunSelector]);
+    await executeFalcon24AgentBrowser(input.session, ["click", conversationRunSelector]);
     await executeFalcon24AgentBrowser(input.session, ["wait", exactTraceSelector(binding)]);
     switchedRuns.push(binding.run_id);
     await executeFalcon24AgentBrowser(input.session, [
