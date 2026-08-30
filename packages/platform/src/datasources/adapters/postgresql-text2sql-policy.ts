@@ -29,6 +29,8 @@ export type PostgresqlText2SqlPolicyDiagnosticCode =
   | "TEXT2SQL_SQL_TARGET_ALIAS_REQUIRED"
   | "TEXT2SQL_SQL_COLUMN_REFERENCE_REJECTED"
   | "TEXT2SQL_SQL_PARAMETER_BINDING_REJECTED"
+  | "TEXT2SQL_SQL_TIME_COVERAGE_REQUIRED"
+  | "TEXT2SQL_SQL_TIME_COVERAGE_INVALID"
   | "TEXT2SQL_SQL_LITERAL_POLICY_REJECTED"
   | "TEXT2SQL_SQL_ORDERING_SHAPE_REJECTED"
   | "TEXT2SQL_SQL_EXPRESSION_SHAPE_REJECTED";
@@ -48,10 +50,19 @@ export interface PostgresqlText2SqlPolicyInput {
   readonly sql: string;
   readonly parameter_count: number;
   readonly parameters?: readonly QueryParameter[];
+  readonly published_time_coverage?: readonly PostgresqlText2SqlTimeCoverage[];
   readonly allowed_relations: readonly {
     readonly schema_name: string;
     readonly relation_name: string;
   }[];
+}
+
+export interface PostgresqlText2SqlTimeCoverage {
+  readonly schema_name: string;
+  readonly relation_name: string;
+  readonly column_name: string;
+  readonly min_time: string | null;
+  readonly max_time: string | null;
 }
 
 type JsonRecord = Record<string, unknown>;
@@ -250,6 +261,107 @@ function validSortExpression(value: unknown): boolean {
   }
   const typeName = normalizedPrimitiveName(cast.typeName.names);
   return typeName !== null && temporalSortCastTypes.has(typeName) && cast.typeName.typemod === -1;
+}
+
+function temporalOperand(value: unknown): unknown {
+  if (!isRecord(value) || !isRecord(value.TypeCast)) return value;
+  const cast = value.TypeCast;
+  if (
+    !isRecord(cast.typeName) ||
+    cast.typeName.typemod !== -1 ||
+    !temporalSortCastTypes.has(normalizedPrimitiveName(cast.typeName.names) ?? "")
+  )
+    return null;
+  return cast.arg;
+}
+
+function calendarBoundary(value: unknown): number | null {
+  // This proof admits explicit calendar-day boundaries, not implicit time zones or time arithmetic.
+  if (typeof value !== "string" || !/^\d{4}-\d{2}-\d{2}(?:T00:00:00(?:\.000)?Z)?$/u.test(value))
+    return null;
+  const time = Date.parse(value);
+  return Number.isFinite(time) && new Date(time).toISOString().slice(0, 10) === value.slice(0, 10)
+    ? time
+    : null;
+}
+
+function conjunctivePredicates(value: unknown): JsonRecord[] {
+  if (!isRecord(value)) return [];
+  if (
+    isRecord(value.BoolExpr) &&
+    value.BoolExpr.boolop === "AND_EXPR" &&
+    Array.isArray(value.BoolExpr.args)
+  ) {
+    return value.BoolExpr.args.flatMap(conjunctivePredicates);
+  }
+  return isRecord(value.A_Expr) && value.A_Expr.kind === "AEXPR_OP" ? [value.A_Expr] : [];
+}
+
+function assertSelectTimeCoverage(select: JsonRecord, input: PostgresqlText2SqlPolicyInput): void {
+  if (!input.published_time_coverage?.length) return;
+  const ranges: JsonRecord[] = [];
+  visit(select.fromClause, (name, range) => {
+    if (name === "RangeVar") ranges.push(range);
+  });
+  const predicates = conjunctivePredicates(select.whereClause);
+  for (const coverage of input.published_time_coverage) {
+    const minimum = coverage.min_time === null ? null : calendarBoundary(coverage.min_time);
+    const maximum = coverage.max_time === null ? null : calendarBoundary(coverage.max_time);
+    if (
+      (coverage.min_time !== null && minimum === null) ||
+      (coverage.max_time !== null && maximum === null) ||
+      (minimum !== null && maximum !== null && minimum >= maximum)
+    )
+      reject("TEXT2SQL_SQL_SHAPE_REJECTED", "TEXT2SQL_SQL_TIME_COVERAGE_INVALID");
+    for (const range of ranges) {
+      if (range.schemaname !== coverage.schema_name || range.relname !== coverage.relation_name)
+        continue;
+      const alias = isRecord(range.alias) ? range.alias.aliasname : null;
+      let lower = minimum === null;
+      let upper = maximum === null;
+      for (const predicate of predicates) {
+        const operator = stringVector(predicate.name)?.[0];
+        for (const reversed of [false, true]) {
+          const column = temporalOperand(reversed ? predicate.rexpr : predicate.lexpr);
+          const bound = temporalOperand(reversed ? predicate.lexpr : predicate.rexpr);
+          if (
+            !isRecord(column) ||
+            !isRecord(column.ColumnRef) ||
+            !isRecord(bound) ||
+            !isRecord(bound.ParamRef)
+          )
+            continue;
+          const fields = stringVector(column.ColumnRef.fields);
+          if (
+            !fields ||
+            fields.at(-1) !== coverage.column_name ||
+            !(
+              (fields.length === 2 && fields[0] === alias) ||
+              (fields.length === 1 && ranges.length === 1)
+            )
+          )
+            continue;
+          const index = bound.ParamRef.number;
+          if (typeof index !== "number" || !Number.isSafeInteger(index) || index < 1) continue;
+          const instant = calendarBoundary(input.parameters?.[index - 1]);
+          if (instant === null) continue;
+          const comparison = reversed
+            ? { ">=": "<=", ">": "<", "<=": ">=", "<": ">" }[operator ?? ""]
+            : operator;
+          if (minimum !== null && (comparison === ">=" || comparison === ">") && instant >= minimum)
+            lower = true;
+          if (
+            maximum !== null &&
+            ((comparison === "<" && instant <= maximum) ||
+              (comparison === "<=" && instant < maximum))
+          )
+            upper = true;
+        }
+      }
+      if (!lower || !upper)
+        reject("TEXT2SQL_SQL_SHAPE_REJECTED", "TEXT2SQL_SQL_TIME_COVERAGE_REQUIRED");
+    }
+  }
 }
 
 function collectPhysicalRangeAliases(
@@ -556,6 +668,7 @@ export async function assertPostgresqlText2SqlCandidatePolicy(
     }
     switch (nodeName) {
       case "SelectStmt": {
+        assertSelectTimeCoverage(node, input);
         assertOnlyKeys(
           node,
           [

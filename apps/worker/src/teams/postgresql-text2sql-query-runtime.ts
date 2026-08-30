@@ -26,6 +26,7 @@ import {
   createGovernedDatasourceAdapter,
   DatasourceAdapterPolicyError,
   type DatasourceAdapterTransport,
+  type PostgresqlText2SqlTimeCoverage,
   parameterizePostgresqlText2SqlCandidate,
 } from "@data-agent/platform/datasource-adapters";
 import type { PersistedSecretRef } from "@data-agent/platform/secrets";
@@ -57,6 +58,7 @@ export interface PreparedText2SqlContext {
   readonly reader_role: string;
   readonly semantic_query_context_hash: string | null;
   readonly requested_time_window?: ResolvedSemanticRequestTimeWindow | null;
+  readonly published_time_coverage?: readonly PostgresqlText2SqlTimeCoverage[];
   readonly semantic_query_context_binding?: {
     readonly metric_ids: readonly string[];
     readonly dimension_ids: readonly string[];
@@ -142,6 +144,9 @@ async function validateCandidate(
     parameter_count: candidate.parameters.length,
     parameters: candidate.parameters,
     allowed_relations: allowedRelationBindings(prepared),
+    ...(prepared.published_time_coverage
+      ? { published_time_coverage: prepared.published_time_coverage }
+      : {}),
   });
 }
 
@@ -196,6 +201,69 @@ function contextRelationIds(context: SemanticQueryContext): readonly string[] {
     throw new Text2SqlQueryRuntimeError("TEXT2SQL_SEMANTIC_CONTEXT_PHYSICAL_CLOSURE_EMPTY");
   }
   return result;
+}
+
+function publishedComparisonTimeCoverage(
+  context: SemanticQueryContext,
+  snapshot: PhysicalSchemaSnapshot,
+): readonly PostgresqlText2SqlTimeCoverage[] {
+  const result = new Map<string, PostgresqlText2SqlTimeCoverage>();
+  for (const { operator } of context.request_scoped_interpretations ?? []) {
+    if (operator.kind !== "PERIOD_COMPARISON_RATE") continue;
+    const metric = context.metrics.find(({ metric_id }) => metric_id === operator.metric_id);
+    const dimension = context.dimensions.find(
+      ({ dimension_id }) => dimension_id === operator.time_dimension_id,
+    );
+    const domain = context.time_semantics.find(
+      ({ time_domain_id }) => time_domain_id === metric?.time_domain?.time_domain_id,
+    );
+    if (
+      !metric ||
+      !dimension ||
+      !domain ||
+      !metric.time_column_id ||
+      metric.time_column_id !== dimension.column_id ||
+      metric.table_id !== dimension.table_id ||
+      canonicalizeJson(domain) !== canonicalizeJson(metric.time_domain)
+    )
+      throw new Text2SqlQueryRuntimeError("TEXT2SQL_SEMANTIC_TIME_COVERAGE_UNAVAILABLE");
+    const logicalIds = new Set([dimension.dimension_id, dimension.column_id]);
+    const bindings = context.physical_bindings.filter(
+      (binding) =>
+        logicalIds.has(binding.logical_object_id) &&
+        binding.binding_lifecycle === "active" &&
+        binding.datasource_id === context.datasource.resource_id &&
+        binding.column_name !== null,
+    );
+    const physical = new Map(
+      bindings.map((binding) => [
+        canonicalizeJson([binding.schema_name, binding.table_name, binding.column_name]),
+        binding,
+      ]),
+    );
+    const binding = physical.values().next().value;
+    if (
+      physical.size !== 1 ||
+      !binding?.column_name ||
+      !snapshot.content.relations.some(
+        (relation) =>
+          relation.identity.schema_name === binding.schema_name &&
+          relation.identity.relation_name === binding.table_name &&
+          relation.columns.some(({ column_name }) => column_name === binding.column_name),
+      )
+    )
+      throw new Text2SqlQueryRuntimeError("TEXT2SQL_SEMANTIC_TIME_COVERAGE_UNAVAILABLE");
+    const coverage = Object.freeze({
+      schema_name: binding.schema_name,
+      relation_name: binding.table_name,
+      column_name: binding.column_name,
+      min_time: domain.min_time,
+      max_time: domain.max_time,
+    });
+    // Distinct domains on one physical column all apply; never silently choose one metric's bounds.
+    result.set(canonicalizeJson(coverage), coverage);
+  }
+  return Object.freeze([...result.values()]);
 }
 
 function relations(
@@ -913,6 +981,10 @@ export function createPostgresqlText2SqlQueryRuntime(
         ...(semanticQueryContext
           ? {
               requested_time_window: resolveSemanticRequestTimeWindow(semanticQueryContext),
+              published_time_coverage: publishedComparisonTimeCoverage(
+                semanticQueryContext,
+                snapshot,
+              ),
               semantic_query_context_binding: {
                 metric_ids: semanticQueryContext.metrics.map(({ metric_id: id }) => id),
                 dimension_ids: semanticQueryContext.dimensions.map(({ dimension_id: id }) => id),

@@ -21,6 +21,142 @@ async function expectCode(sql: string, code: PostgresqlText2SqlPolicyError["code
 }
 
 describe("PostgreSQL model-authored Text2SQL policy", () => {
+  const coverage = [
+    {
+      schema_name: "falcon_db_24",
+      relation_name: "orders",
+      column_name: "created_at",
+      min_time: "2023-05-01T00:00:00.000Z",
+      max_time: "2024-11-01T00:00:00.000Z",
+    },
+  ] as const;
+
+  it.each([
+    [
+      "inclusive lower and exclusive upper",
+      "o.created_at::timestamp >= $1::timestamp and o.created_at::timestamp < $2::timestamp",
+      true,
+    ],
+    ["reversed operands", "$1::date <= o.created_at::date and $2::date > o.created_at::date", true],
+    ["exclusive lower", "o.created_at::date > $1::date and o.created_at::date < $2::date", true],
+    ["bare column in one range", "created_at >= $1 and created_at < $2", true],
+    ["OR bypass", "o.created_at >= $1 or o.created_at < $2", false],
+    ["NOT bypass", "not (o.created_at >= $1 and o.created_at < $2)", false],
+    ["wrong alias", "p.created_at >= $1 and p.created_at < $2", false],
+    ["wrong column", "o.customer_id >= $1 and o.customer_id < $2", false],
+    ["inclusive frontier", "o.created_at >= $1 and o.created_at <= $2", false],
+    ["missing upper", "o.created_at >= $1", false],
+  ] as const)("proves only conjunctive direct bounds: %s", async (_label, predicate, accepted) => {
+    const result = assertPostgresqlText2SqlCandidatePolicy({
+      sql: `select count(*) as count from falcon_db_24.orders as o where ${predicate}`,
+      parameters: ["2023-05-01", "2024-11-01"],
+      parameter_count: 2,
+      allowed_relations: allowed,
+      published_time_coverage: coverage,
+    });
+    if (accepted) await expect(result).resolves.toBeUndefined();
+    else
+      await expect(result).rejects.toMatchObject({
+        diagnostic_code: "TEXT2SQL_SQL_TIME_COVERAGE_REQUIRED",
+      });
+  });
+
+  it.each([
+    "select count(*) as count from falcon_db_24.orders as o join falcon_db_24.orders as p on o.customer_id = p.customer_id where o.created_at >= $1 and o.created_at < $2",
+    "select count(*) as count from falcon_db_24.orders as o join falcon_db_24.customers as c on o.created_at >= $1 and o.created_at < $2",
+    "with source as (select o.created_at as created_at from falcon_db_24.orders as o) select s.created_at as created_at from source as s where s.created_at >= $1 and s.created_at < $2",
+  ])("rejects scans not independently bounded in their own WHERE: %s", async (sql) => {
+    await expect(
+      assertPostgresqlText2SqlCandidatePolicy({
+        sql,
+        parameters: ["2023-05-01", "2024-11-01"],
+        parameter_count: 2,
+        allowed_relations: allowed,
+        published_time_coverage: coverage,
+      }),
+    ).rejects.toMatchObject({ diagnostic_code: "TEXT2SQL_SQL_TIME_COVERAGE_REQUIRED" });
+  });
+
+  it.each(["2024-02-30", "2023-05-01T00:00:00+08:00", "2023-05-01T12:00:00Z"])(
+    "does not infer coverage from unsupported calendar boundaries: %s",
+    async (bound) => {
+      await expect(
+        assertPostgresqlText2SqlCandidatePolicy({
+          sql: "select count(*) as count from falcon_db_24.orders as o where o.created_at >= $1 and o.created_at < $2",
+          parameters: [bound, "2024-11-01"],
+          parameter_count: 2,
+          allowed_relations: allowed,
+          published_time_coverage: coverage,
+        }),
+      ).rejects.toMatchObject({ diagnostic_code: "TEXT2SQL_SQL_TIME_COVERAGE_REQUIRED" });
+    },
+  );
+
+  it.each(["2024-02-30", "2023-05-01T00:00:00+08:00", "2025-05-01"])(
+    "fails closed on malformed or reversed published bounds: %s",
+    async (minimum) => {
+      await expect(
+        assertPostgresqlText2SqlCandidatePolicy({
+          sql: "select count(*) as count from falcon_db_24.orders as o",
+          parameter_count: 0,
+          allowed_relations: allowed,
+          published_time_coverage: [{ ...coverage[0], min_time: minimum }],
+        }),
+      ).rejects.toMatchObject({ diagnostic_code: "TEXT2SQL_SQL_TIME_COVERAGE_INVALID" });
+    },
+  );
+
+  it("preserves null published bounds without inventing coverage", async () => {
+    await expect(
+      assertPostgresqlText2SqlCandidatePolicy({
+        sql: "select count(*) as count from falcon_db_24.orders as o",
+        parameter_count: 0,
+        allowed_relations: allowed,
+        published_time_coverage: [{ ...coverage[0], min_time: null, max_time: null }],
+      }),
+    ).resolves.toBeUndefined();
+  });
+
+  it("admits an inclusive upper bound strictly before the published frontier", async () => {
+    await expect(
+      assertPostgresqlText2SqlCandidatePolicy({
+        sql: "select count(*) as count from falcon_db_24.orders as o where o.created_at >= $1 and o.created_at <= $2",
+        parameters: ["2023-05-01", "2024-10-01"],
+        parameter_count: 2,
+        allowed_relations: allowed,
+        published_time_coverage: coverage,
+      }),
+    ).resolves.toBeUndefined();
+  });
+
+  it("requires every comparison source scan to stay inside published time coverage", async () => {
+    const sql = `with current_period as (
+      select sum(o.amount) as revenue from falcon_db_24.orders as o
+      where o.created_at::timestamp >= $1::timestamp and o.created_at::timestamp < $2::timestamp
+    ), prior_period as (
+      select sum(p.amount) as revenue from falcon_db_24.orders as p
+      where p.created_at::timestamp >= $3::timestamp and p.created_at::timestamp < $4::timestamp
+    ) select c.revenue as current_revenue, p.revenue as prior_revenue
+      from current_period as c left join prior_period as p on c.revenue = p.revenue`;
+    await expect(
+      assertPostgresqlText2SqlCandidatePolicy({
+        sql,
+        parameters: ["2023-11-01", "2024-11-01", "2022-11-01", "2023-11-01"],
+        parameter_count: 4,
+        allowed_relations: allowed,
+        published_time_coverage: [
+          {
+            schema_name: "falcon_db_24",
+            relation_name: "orders",
+            column_name: "created_at",
+            min_time: "2023-05-01T00:00:00.000Z",
+            max_time: "2024-11-01T00:00:00.000Z",
+          },
+        ],
+      }),
+    ).rejects.toMatchObject({ diagnostic_code: "TEXT2SQL_SQL_TIME_COVERAGE_REQUIRED" });
+  });
+
   it("compiles non-zero literals into an explicit append-only parameter vector", async () => {
     const compiled = await parameterizePostgresqlText2SqlCandidate({
       sql: "select round(sum(o.amount) / nullif(count(*), 0), 2) as average_amount from falcon_db_24.orders as o where o.customer_id = 'customer-1'",

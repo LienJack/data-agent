@@ -178,6 +178,9 @@ describe("direct run-bound provider retry policy", () => {
     expect(prompt).toContain("Do not equate unshifted current-year and prior-year timestamps");
     expect(prompt).toContain("Apply the shift exactly once");
     expect(prompt).toContain("Restrict the comparison source to published coverage");
+    expect(prompt).toContain("TEXT2SQL_SQL_TIME_COVERAGE_REQUIRED");
+    expect(prompt).toContain("Clip each source window to the intersection");
+    expect(prompt).toContain("including each comparison CTE or self-join alias");
   });
 
   it("binds analysis-program parameters to the frozen method schema", () => {

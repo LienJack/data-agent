@@ -199,6 +199,7 @@ describe("Production Team governed chart publication", () => {
   it("returns only allowlisted Text2SQL policy codes to the Root Tool Result", () => {
     for (const code of [
       "TEXT2SQL_REQUEST_TIME_WINDOW_MISMATCH",
+      "TEXT2SQL_SQL_TIME_COVERAGE_REQUIRED",
       "TEXT2SQL_SQL_RELATION_SET_DUPLICATE",
       "TEXT2SQL_SQL_RELATION_SHAPE_REJECTED",
       "TEXT2SQL_SQL_RELATION_ALIAS_REQUIRED",
@@ -1304,13 +1305,16 @@ describe("Production Team governed chart publication", () => {
 
   it.each(
     (["accepted", "rejected"] as const).flatMap((repairOutcome) =>
-      ["QUERY_EVIDENCE_RESULT_BINDING_MISMATCH", "QUERY_EVIDENCE_TIME_WINDOW_OUT_OF_RANGE"].map(
-        (executionCode) => ({ repairOutcome, executionCode }),
+      ["QUERY_EVIDENCE_RESULT_BINDING_MISMATCH", "QUERY_EVIDENCE_TIME_WINDOW_OUT_OF_RANGE"].flatMap(
+        (executionCode) =>
+          ["TEXT2SQL_SQL_LIMIT_SHAPE_REJECTED", "TEXT2SQL_SQL_TIME_COVERAGE_REQUIRED"].map(
+            (policyCode) => ({ repairOutcome, executionCode, policyCode }),
+          ),
       ),
     ),
   )(
     "keeps accepted evidence and preserves diagnostics when a repair is %s",
-    async ({ repairOutcome, executionCode }) => {
+    async ({ repairOutcome, executionCode, policyCode }) => {
       const scope = { app_id: id(1), tenant_id: id(2), environment: "test" } as const;
       const lease = {
         scope,
@@ -1641,11 +1645,11 @@ describe("Production Team governed chart publication", () => {
         text2sqlCompile.mockRejectedValueOnce(
           Object.assign(new TypeError("private SQL and parameters must not be published"), {
             code: "TEXT2SQL_SQL_SHAPE_REJECTED",
-            diagnostic_code: "TEXT2SQL_SQL_LIMIT_SHAPE_REJECTED",
+            diagnostic_code: policyCode,
           }),
         );
         await expect(invocation("sql.sandbox.execute")).rejects.toMatchObject({
-          code: "TEXT2SQL_SQL_LIMIT_SHAPE_REJECTED",
+          code: policyCode,
         });
         const rejections = displayEvents
           .filter((event) => event.kind === "progress")
@@ -1661,7 +1665,7 @@ describe("Production Team governed chart publication", () => {
           expect.objectContaining({
             stage: "COMPILE",
             attempt: 2,
-            reason_code: "TEXT2SQL_SQL_LIMIT_SHAPE_REJECTED",
+            reason_code: policyCode,
           }),
         ]);
         expect(JSON.stringify(rejections)).not.toMatch(/private|select month|order_count/u);

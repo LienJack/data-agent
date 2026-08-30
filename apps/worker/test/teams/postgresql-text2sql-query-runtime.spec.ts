@@ -59,7 +59,11 @@ async function fixture() {
           identity: { schema_name: "falcon_db_24", relation_name: "orders" },
           relation_kind: "TABLE",
           comment: "Orders",
-          columns: [column("customer_id", 1), column("amount", 2, "integer")],
+          columns: [
+            column("customer_id", 1),
+            column("amount", 2, "integer"),
+            column("created_at", 3),
+          ],
           primary_key: null,
           foreign_keys: [],
           unique_constraints: [],
@@ -399,6 +403,54 @@ describe("PostgreSQL Text2SQL query runtime", () => {
     },
   );
 
+  it.each(["clipped", "outside-coverage"] as const)(
+    "checks published comparison source coverage before query I/O: %s",
+    async (variant) => {
+      const connect = vi.fn();
+      const runtime = createPostgresqlText2SqlQueryRuntime({
+        pool: { connect } as never,
+        capability: {},
+        schema_snapshots: {} as never,
+        datasources: {} as never,
+        secrets: {} as never,
+      });
+      const prepared = {
+        context_text: "{}",
+        datasource_id: id(30),
+        schema_snapshot_id: id(31),
+        schema_snapshot_hash: hash("d"),
+        allowed_relations: ["falcon_db_24.orders"],
+        target_capability_hash: hash("e"),
+        reader_role: "falcon_demo_reader",
+        semantic_query_context_hash: null,
+        published_time_coverage: [
+          {
+            schema_name: "falcon_db_24",
+            relation_name: "orders",
+            column_name: "created_at",
+            min_time: "2023-05-01T00:00:00.000Z",
+            max_time: "2024-11-01T00:00:00.000Z",
+          },
+        ],
+      };
+      const result = runtime.compileCandidate({
+        prepared,
+        candidate: {
+          ...candidate(
+            "select o.customer_id as customer_id, count(o.amount) as order_count from falcon_db_24.orders as o where o.created_at::timestamp >= $1::timestamp and o.created_at::timestamp < $2::timestamp group by o.customer_id",
+          ),
+          parameters: [variant === "clipped" ? "2023-05-01" : "2023-03-01", "2023-11-01"],
+        },
+      });
+      if (variant === "clipped") await expect(result).resolves.toBeDefined();
+      else
+        await expect(result).rejects.toMatchObject({
+          diagnostic_code: "TEXT2SQL_SQL_TIME_COVERAGE_REQUIRED",
+        });
+      expect(connect).not.toHaveBeenCalled();
+    },
+  );
+
   it("compiles model literals into parameters before committing a candidate", async () => {
     const runtime = createPostgresqlText2SqlQueryRuntime({
       pool: {} as never,
@@ -569,121 +621,176 @@ describe("PostgreSQL Text2SQL query runtime", () => {
     ).rejects.toMatchObject({ code: "TEXT2SQL_SEMANTIC_BINDING_OUT_OF_RANGE" });
   });
 
-  it("admits the exact published time dependency of a retrieved metric", async () => {
-    const { config, datasource, semanticCatalog, semanticContext, semanticQueryContext, snapshot } =
-      await fixture();
-    const catalog = semanticCatalog as unknown as {
-      readonly executable: {
-        readonly metrics: readonly Readonly<Record<string, unknown>>[];
+  it.each(["exact", "missing-binding", "missing-physical-column"] as const)(
+    "binds published time coverage to a retrieved metric: %s",
+    async (variant) => {
+      const {
+        config,
+        datasource,
+        semanticCatalog,
+        semanticContext,
+        semanticQueryContext,
+        snapshot,
+      } = await fixture();
+      const catalog = semanticCatalog as unknown as {
+        readonly executable: {
+          readonly metrics: readonly Readonly<Record<string, unknown>>[];
+          readonly physical_bindings: readonly Readonly<Record<string, unknown>>[];
+        };
+        readonly restrictions: Readonly<Record<string, unknown>>;
       };
-      readonly restrictions: Readonly<Record<string, unknown>>;
-    };
-    const timeDomain = {
-      time_domain_id: "time.order-month",
-      calendar: "gregorian" as const,
-      timezone: "Asia/Shanghai",
-      min_time: "2023-01-01T00:00:00.000Z",
-      max_time: "2024-11-01T00:00:00.000Z",
-    };
-    const timeDimension = {
-      dimension_id: "dimension.customer-id",
-      name: "Selected calendar month",
-      aliases: ["calendar month"],
-      table_id: "orders",
-      column_id: "orders.created_at",
-      grain: { grain_id: "grain.month", granularity: "month" },
-      data_type: "timestamp",
-      sensitivity: "PUBLIC",
-      hierarchical: false,
-      parent_dimension_id: null,
-      tags: [],
-      analysis: { groupable: true, pivotable: false, causal_role: null },
-    };
-    const selectedMetric = {
-      ...catalog.executable.metrics[0],
-      time_domain: timeDomain,
-      time_column_id: "orders.created_at",
-    };
-    const catalogWithTimeDependency = {
-      ...catalog,
-      executable: {
-        ...catalog.executable,
-        metrics: [selectedMetric, ...catalog.executable.metrics.slice(1)],
-        dimensions: [timeDimension],
-      },
-      restrictions: {
-        ...catalog.restrictions,
-        time_semantics: [timeDomain],
-      },
-    };
-    const { context_hash: _contextHash, ...draft } = semanticQueryContext;
-    const contextWithTimeDependency = await buildSemanticQueryContext({
-      ...draft,
-      requested_object_ids: ["dimension.customer-id", "metric.order-count", "time.order-month"],
-      metrics: [selectedMetric],
-      dimensions: [timeDimension],
-      time_semantics: [timeDomain],
-      request_scoped_interpretations: [
-        {
-          interpretation_id: "request-scoped.calendar",
-          requested_term: "最近12个完整月",
-          scope: "REQUEST_ONLY",
-          source_object_ids: ["dimension.customer-id", "metric.order-count"],
-          operator: {
-            kind: "RECENT_COMPLETE_PERIODS",
-            metric_id: "metric.order-count",
-            time_dimension_id: "dimension.customer-id",
-            period_count: 12,
-            period_unit: "MONTH",
-            anchor: "PUBLISHED_COMPLETE_FRONTIER",
-          },
-          user_explanation: "由发布边界计算完整月份。",
-          publication_effect: "NONE",
-        },
-      ],
-    });
-    const runtime = createPostgresqlText2SqlQueryRuntime({
-      pool: { connect: vi.fn() } as never,
-      capability: {},
-      schema_snapshots: {
-        getSnapshot: vi.fn(async () => ({ ok: true as const, value: snapshot })),
-      },
-      datasources: {
-        getDatasource: vi.fn(async () => ({ ok: true as const, value: datasource })),
-      },
-      secrets: {
-        get: vi.fn(async () => ({
-          ok: true as const,
-          value: {
-            ref: `secretref:${id(7)}` as const,
-            name: "falcon-reader",
-            version: 1,
-            status: "ACTIVE" as const,
-          },
-        })),
-      },
-    });
-
-    const prepared = await runtime.prepare({
-      effective_config: config as never,
-      semantic_context: semanticContext,
-      semantic_catalog: catalogWithTimeDependency as never,
-      semantic_query_context: contextWithTimeDependency,
-      max_context_bytes: 32_000,
-    });
-    expect(prepared).toMatchObject({
-      semantic_query_context_hash: contextWithTimeDependency.context_hash,
-      requested_time_window: {
+      const timeDomain = {
+        time_domain_id: "time.order-month",
+        calendar: "gregorian" as const,
+        timezone: "Asia/Shanghai",
+        min_time: "2023-01-01T00:00:00.000Z",
+        max_time: "2024-11-01T00:00:00.000Z",
+      };
+      const timeDimension = {
         dimension_id: "dimension.customer-id",
-        start: "2023-11-01T00:00:00.000Z",
-        end: "2024-11-01T00:00:00.000Z",
-        period_count: 12,
-      },
-    });
-    expect(JSON.parse(prepared.context_text).semantic_context.resolved_time_window).toEqual(
-      prepared.requested_time_window,
-    );
-  });
+        name: "Selected calendar month",
+        aliases: ["calendar month"],
+        table_id: "orders",
+        column_id: "orders.created_at",
+        grain: { grain_id: "grain.month", granularity: "month" },
+        data_type: "timestamp",
+        sensitivity: "PUBLIC",
+        hierarchical: false,
+        parent_dimension_id: null,
+        tags: [],
+        analysis: { groupable: true, pivotable: false, causal_role: null },
+      };
+      const selectedMetric = {
+        ...catalog.executable.metrics[0],
+        time_domain: timeDomain,
+        time_column_id: "orders.created_at",
+      };
+      const timeBinding = {
+        ...semanticQueryContext.physical_bindings[0],
+        logical_object_id: timeDimension.dimension_id,
+        logical_object_type: "dimension" as const,
+        column_name: variant === "missing-physical-column" ? "missing_date" : "created_at",
+      };
+      const catalogWithTimeDependency = {
+        ...catalog,
+        executable: {
+          ...catalog.executable,
+          metrics: [selectedMetric, ...catalog.executable.metrics.slice(1)],
+          dimensions: [timeDimension],
+          physical_bindings: [
+            ...catalog.executable.physical_bindings,
+            ...(variant === "missing-binding" ? [] : [timeBinding]),
+          ],
+        },
+        restrictions: {
+          ...catalog.restrictions,
+          time_semantics: [timeDomain],
+        },
+      };
+      const { context_hash: _contextHash, ...draft } = semanticQueryContext;
+      const contextWithTimeDependency = await buildSemanticQueryContext({
+        ...draft,
+        requested_object_ids: ["dimension.customer-id", "metric.order-count", "time.order-month"],
+        metrics: [selectedMetric],
+        dimensions: [timeDimension],
+        time_semantics: [timeDomain],
+        physical_bindings: [
+          ...(variant === "missing-binding" ? [] : [timeBinding]),
+          ...draft.physical_bindings,
+        ],
+        request_scoped_interpretations: [
+          {
+            interpretation_id: "request-scoped.calendar",
+            requested_term: "最近12个完整月",
+            scope: "REQUEST_ONLY",
+            source_object_ids: ["dimension.customer-id", "metric.order-count"],
+            operator: {
+              kind: "RECENT_COMPLETE_PERIODS",
+              metric_id: "metric.order-count",
+              time_dimension_id: "dimension.customer-id",
+              period_count: 12,
+              period_unit: "MONTH",
+              anchor: "PUBLISHED_COMPLETE_FRONTIER",
+            },
+            user_explanation: "由发布边界计算完整月份。",
+            publication_effect: "NONE",
+          },
+          {
+            interpretation_id: "request-scoped.yoy",
+            requested_term: "同比",
+            scope: "REQUEST_ONLY",
+            source_object_ids: ["dimension.customer-id", "metric.order-count"],
+            operator: {
+              kind: "PERIOD_COMPARISON_RATE",
+              metric_id: "metric.order-count",
+              time_dimension_id: "dimension.customer-id",
+              comparison_offset: { unit: "YEAR", value: 1 },
+              formula: "(current_value - comparison_value) / NULLIF(comparison_value, 0)",
+            },
+            user_explanation: "同一发布指标的年度比较。",
+            publication_effect: "NONE",
+          },
+        ],
+      });
+      const runtime = createPostgresqlText2SqlQueryRuntime({
+        pool: { connect: vi.fn() } as never,
+        capability: {},
+        schema_snapshots: {
+          getSnapshot: vi.fn(async () => ({ ok: true as const, value: snapshot })),
+        },
+        datasources: {
+          getDatasource: vi.fn(async () => ({ ok: true as const, value: datasource })),
+        },
+        secrets: {
+          get: vi.fn(async () => ({
+            ok: true as const,
+            value: {
+              ref: `secretref:${id(7)}` as const,
+              name: "falcon-reader",
+              version: 1,
+              status: "ACTIVE" as const,
+            },
+          })),
+        },
+      });
+
+      const preparation = runtime.prepare({
+        effective_config: config as never,
+        semantic_context: semanticContext,
+        semantic_catalog: catalogWithTimeDependency as never,
+        semantic_query_context: contextWithTimeDependency,
+        max_context_bytes: 32_000,
+      });
+      if (variant !== "exact") {
+        await expect(preparation).rejects.toMatchObject({
+          code: "TEXT2SQL_SEMANTIC_TIME_COVERAGE_UNAVAILABLE",
+        });
+        return;
+      }
+      const prepared = await preparation;
+      expect(prepared).toMatchObject({
+        semantic_query_context_hash: contextWithTimeDependency.context_hash,
+        published_time_coverage: [
+          {
+            schema_name: "falcon_db_24",
+            relation_name: "orders",
+            column_name: "created_at",
+            min_time: timeDomain.min_time,
+            max_time: timeDomain.max_time,
+          },
+        ],
+        requested_time_window: {
+          dimension_id: "dimension.customer-id",
+          start: "2023-11-01T00:00:00.000Z",
+          end: "2024-11-01T00:00:00.000Z",
+          period_count: 12,
+        },
+      });
+      expect(JSON.parse(prepared.context_text).semantic_context.resolved_time_window).toEqual(
+        prepared.requested_time_window,
+      );
+    },
+  );
 
   it.each(["run", "release", "schema", "datasource", "out-of-range"] as const)(
     "rejects %s SemanticQueryContext drift before schema/datasource or target I/O",

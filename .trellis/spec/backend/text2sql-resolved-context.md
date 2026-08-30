@@ -223,3 +223,63 @@ resolveSemanticRequestTimeWindow({ metrics, dimensions, request_scoped_interpret
 const requestedWindow = resolveSemanticRequestTimeWindow(verifiedSemanticContext);
 // validateCandidate({ ...prepared, requested_time_window: requestedWindow }, candidate)
 ```
+
+## Published comparison source coverage before query I/O
+
+### 1. Scope / Trigger
+
+- A verified `PERIOD_COMPARISON_RATE` context requires source coverage checks. Derive them from its exact published metric time domain,
+  selected time dimension, active same-datasource physical binding and frozen physical snapshot. No question keywords or Falcon dates.
+- This supplements the declared current-window check: declaring valid dates does not prove every prior-period CTE filters its own source.
+
+### 2. Signatures
+
+```ts
+// PreparedText2SqlContext -> PostgresqlText2SqlPolicyInput
+published_time_coverage?: readonly {
+  schema_name: string; relation_name: string; column_name: string;
+  min_time: string | null; max_time: string | null;
+}[];
+```
+
+### 3. Contracts
+
+- Reject missing/ambiguous physical time bindings, absent physical columns and mismatched metric/dimension/domain before compilation.
+  Multiple logical bindings to the same exact physical column deduplicate; distinct metric coverage constraints all remain applicable.
+- At both candidate compilation and execution, inspect each physical scan in every SELECT. Its own WHERE must prove both non-null bounds
+  with direct parameter comparisons joined by AND. Match the exact alias and time column; unqualified columns require a single range.
+- The deliberately restricted proof accepts calendar-day dates or midnight-Z encodings and one safe temporal cast. Invalid dates, offsets,
+  time-of-day boundaries and arbitrary arithmetic are not inferred. This is not a general timezone/SQL lineage theorem prover.
+- OR/NOT branches, outer CTE filters and JOIN ON predicates do not establish the required source bounds. Another self-join alias's filter
+  cannot prove coverage. An inclusive upper predicate is only safe strictly below the exclusive frontier.
+- No comparison operator means historical query behavior is unchanged. Null published bounds impose no bound and prove no data availability.
+
+### 4. Validation & Error Matrix
+
+| Condition | Result |
+| --- | --- |
+| Missing/ambiguous/mismatched semantic-to-physical coverage binding | `TEXT2SQL_SEMANTIC_TIME_COVERAGE_UNAVAILABLE` during prepare |
+| Missing, unsupported or out-of-range SQL source predicates | `TEXT2SQL_SQL_TIME_COVERAGE_REQUIRED` before query I/O |
+| Invalid, unsupported or reversed published bounds | `TEXT2SQL_SQL_TIME_COVERAGE_INVALID`; never execute |
+| Direct clipped bounds for every required physical scan | Continue existing SQL and evidence validation |
+
+### 5. Good / Base / Bad Cases
+
+- Good: clip the prior source range to published coverage, retain current rows with LEFT JOIN and apply annual alignment exactly once.
+- Base: unbounded ordinary row queries without a comparison interpretation retain their previous behavior.
+- Bad: treat older/partial physical records outside the publication's coverage as complete prior periods; use an outer filter to hide an
+  unbounded CTE. Never alter publication authority to make a rejected candidate pass.
+
+### 6. Tests Required
+
+- Direct/reversed bounds, exact frontier, narrower inclusive upper, wrong alias/column, OR/NOT, unfiltered self-join, outer-only filter,
+  JOIN-only filter, null bounds, invalid calendar dates and unsupported offsets. Existing no-coverage SQL tests must still pass.
+- Actual runtime prepare must derive coverage and reject missing binding/column. Compilation rejects overflow with zero query I/O.
+- Allowlist only safe diagnostics through the existing bounded repair; do not expose raw SQL, parameters or database errors to Root.
+- Read-only PostgreSQL proof and a fresh model canary independently verify all current buckets, covered prior amounts/rates and NULL gaps.
+
+### 7. Wrong vs Correct
+
+- Wrong: accept a valid `candidate.time_window` and assume every comparison source observes it.
+- Correct: freeze source constraints from verified authority, prove each scan before I/O, then independently judge the returned business
+  values. Passing this restricted SQL guard alone does not prove complete requested duration, year alignment or correct growth arithmetic.
