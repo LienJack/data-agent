@@ -218,6 +218,55 @@ describe("Agent Team trace", () => {
     expect(html).toContain("schema_valid=PASS");
     expect(html).toContain("ACCEPTED · 全部规则通过");
     expect(html).toContain("<details");
+    if (trace.schema_version !== "agent-team-public-trace@2.0.0")
+      throw new Error("fixture version mismatch");
+    const root = trace.tasks[0];
+    if (!root) throw new Error("root fixture missing");
+    const { trace_hash: _legacyHash, ...legacyDraft } = trace;
+    const currentTrace = await buildAgentTeamPublicTrace({
+      ...legacyDraft,
+      schema_version: "agent-team-public-trace@3.0.0",
+      tasks: [
+        {
+          ...root,
+          status: "COMPLETED",
+          status_source: {
+            kind: "RUN_EVENT",
+            event_id: id(50),
+            sequence: 5,
+            event_hash: hash("1"),
+            occurred_at: "2026-08-18T12:00:06.000Z",
+            status: "COMPLETED",
+          },
+        },
+        { ...trace.tasks[1], status_source: { kind: "TEAM_RECEIPT" } },
+        {
+          ...root,
+          task_id: id(25),
+          status: "FAILED",
+          status_source: {
+            kind: "RUN_EVENT",
+            event_id: id(51),
+            sequence: 6,
+            event_hash: hash("2"),
+            occurred_at: "2026-08-18T12:00:07.000Z",
+            status: "FAILED",
+          },
+        },
+      ],
+    });
+    const currentHtml = renderToStaticMarkup(
+      <WorkspaceI18nProvider initialLocale="en-US">
+        <AgentTeamTrace trace={currentTrace} profiles={[]} />
+      </WorkspaceI18nProvider>,
+    );
+    expect(currentHtml.match(/data-testid="agent-team-task"/g)).toHaveLength(3);
+    expect(currentHtml).toContain('data-status="COMPLETED"');
+    expect(currentHtml).toContain('data-status="FAILED"');
+    expect(currentHtml).toContain("状态来源：已提交公开事件 #5");
+    expect(currentHtml).toContain("状态来源：Team 完成／验收回执");
+    expect(currentHtml).toContain(id(50));
+    expect(currentHtml).toContain(currentTrace.trace_hash);
     expect(html).not.toMatch(/system prompt|private reasoning|raw context|credential/i);
   });
 });

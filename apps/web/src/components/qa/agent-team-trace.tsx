@@ -60,7 +60,11 @@ export function AgentTeamTrace({
         revision.revision_hash === task.profile_hash,
     );
   return (
-    <div>
+    <div
+      data-testid="agent-team-trace"
+      data-run-id={trace?.run_id}
+      data-trace-hash={trace?.trace_hash}
+    >
       {trace && (
         <div className="grid grid-cols-2 gap-px border-b border-[var(--color-border-default)] bg-[var(--color-border-default)] sm:grid-cols-4">
           {[
@@ -81,6 +85,10 @@ export function AgentTeamTrace({
           {trace.tasks.map((task) => (
             <li
               key={task.task_id}
+              data-testid="agent-team-task"
+              data-task-id={task.task_id}
+              data-profile-id={task.profile_id}
+              data-status={task.status}
               className="grid grid-cols-[minmax(0,1fr)_auto] gap-3 px-5 py-3 text-[11px]"
             >
               <div className="min-w-0">
@@ -132,6 +140,15 @@ export function AgentTeamTrace({
                     )}
                   </dl>
                 )}
+                {"status_source" in task && (
+                  <p className="mt-1 text-[10px] text-[var(--color-text-muted)]">
+                    {task.status_source.kind === "RUN_EVENT"
+                      ? `状态来源：已提交公开事件 #${task.status_source.sequence}`
+                      : task.status_source.kind === "TEAM_RECEIPT"
+                        ? "状态来源：Team 完成／验收回执"
+                        : "仅有任务记录，尚无执行状态事件"}
+                  </p>
+                )}
                 {!exactProfileFor(task) && task.profile_id !== "data-agent-orchestrator" && (
                   <p className="mt-1 text-[10px] text-amber-700">
                     历史 Profile 内容不可用；保留 exact r{task.profile_revision} 身份
@@ -149,6 +166,14 @@ export function AgentTeamTrace({
                     </dd>
                     <dt>Attempt</dt>
                     <dd className="break-all">{task.attempt_id}</dd>
+                    {"status_source" in task && task.status_source.kind === "RUN_EVENT" && (
+                      <>
+                        <dt>Status event</dt>
+                        <dd className="break-all">
+                          {task.status_source.event_id} · {task.status_source.event_hash}
+                        </dd>
+                      </>
+                    )}
                   </dl>
                 </details>
               </div>

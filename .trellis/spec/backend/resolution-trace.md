@@ -305,3 +305,50 @@ query_hash: null;
 Wrong: Trace -> default V1 list -> empty -> "not enabled"
 Correct: Trace -> explicit V2 list -> existing listDiscoverable -> exact revision/hash cards
 ```
+
+## Scenario: Current multi-round Team trace
+
+### 1. Scope / Trigger
+
+- 同一 Run 可以有多个真实 Root 委派任务；旧 V1/V2 单 Root DTO 不适合当前 Product Team。
+- Team RPC 使用专用 NOLOGIN/NOINHERIT owner；表 SELECT grant 不代表 FORCE RLS 下可读。
+
+### 2. Signatures
+
+- 当前 projector 返回 `agent-team-public-trace@3.0.0`，复用既有 `load_agent_team_public_projection_v2(uuid)`，不新增 publisher 或写表。
+- V1/V2 hash material、单 Root 要求和历史验证保持不变。
+
+### 3. Contracts
+
+- V3 至少一个 Root；保留全部真实 task_id、parent、Profile revision/hash、attempt/fence。每个 child 必须指向真实 depth-0 Root；任务及边仍 canonical、唯一、闭合。
+- 同一 `READ / REPEATABLE_READ` 事务读取已验 hash/关系列的 Team RPC 与 Run events。
+- `status_source=TEAM_RECEIPT` 必须有真实 completion/acceptance；否则由 exact Run/Scope/task/Profile/fence 的最后一个已提交 `run.agent_status` 导出，并公开 event ID/sequence/hash/time。
+- 无回执也无状态事件只能为 `PENDING / TASK_RECORD`。不能用 Run 总体 SUCCEEDED 推断任务完成，不能补造 Root completion。
+- 使用 event sequence 而非 Worker/数据库墙钟比较。真实 PENDING/RUNNING 事件可能比 task.created_at 早约百毫秒；不得据此丢弃已提交事件。
+- 10813 只向 `data_agent_u19_team_owner` 增加 exact-principal helper EXECUTE 与 `runs_team_trace_owner_select`；无 backend membership、BYPASSRLS、Run DML 权限。两个既有 RPC 内容不改，历史记录不回写。
+
+### 4. Validation & Error Matrix
+
+- RPC 文档/hash 漂移 → `AGENT_TEAM_TRACE_CORRUPT`；DTO/回执状态矛盾 → `AGENT_TEAM_TRACE_DATABASE_CONTRACT_INVALID`。
+- Event 文档/hash 漂移 → `RUN_EVENT_STORE_EVENT_CORRUPT`；Run/Scope/task Profile/fence/sequence 换绑 → `AGENT_TEAM_TRACE_EVENT_IDENTITY_MISMATCH`。
+- 跨 App/Tenant/environment/principal 不可读；PUBLIC/anon/authenticated 无 RPC EXECUTE。
+
+### 5. Good/Base/Bad Cases
+
+- Good：两个 Root 分别引用自己的公开完成事件，两个 Specialist 分别保留真实 ACCEPTED 回执。
+- Base：任务已建立但还没有状态事件时显示 PENDING，并说明证据不足。
+- Bad：合并多个 Root 为虚构单任务；放宽角色为 backend；拿当前配置覆盖历史 Profile。
+
+### 6. Tests Required
+
+- V3 多 Root/current Profile、V2 仍拒绝多 Root、hash/source/parent/ref/canonical 负例。
+- Platform RR、exact event 身份、hash、墙钟差、无权限不读 events；Web 展示每个任务和状态来源。
+- 隔离 NAS 库：前置 history hash 等同 source；迁移回滚、重放、历史不变；owner 正例、四类越权负例、真实 DML 拒绝。
+- 该隔离库旧 Run 读回仅为修复诊断；正式验收仍需新干净构建的全新单链路。
+
+### 7. Wrong vs Correct
+
+```text
+Wrong: table grant -> assume owner sees runs -> empty means no Team
+Correct: exact-principal RLS -> verified existing Team RPC + same-snapshot events -> V3 tasks
+```

@@ -2932,6 +2932,15 @@
       "placeholder": "__FALCON24_PARTIAL_READY_SUPERSESSION_MIGRATION_CHECKSUM__",
       "checksum_header": "falcon24_partial_ready_supersession_migration_checksum",
       "postcondition": { "checksum_occurrences": 2 }
+    },
+    {
+      "id": "10813",
+      "migration_name": "20260725010813_app_data_agent_agent_team_trace_run_read.sql",
+      "source_directory": "infra/supabase/apps/data-agent/migration-sources/10813",
+      "segments": ["00-preflight.sql.inc", "20-run-read.sql.inc", "90-postconditions.sql.inc"],
+      "placeholder": "__AGENT_TEAM_TRACE_RUN_READ_MIGRATION_CHECKSUM__",
+      "checksum_header": "agent_team_trace_run_read_migration_checksum",
+      "postcondition": { "checksum_occurrences": 2 }
     }
   ],
   "exceptions": [

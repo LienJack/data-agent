@@ -8,6 +8,8 @@ import {
   sha256ContentHash,
   timestampSchema,
 } from "../common/index.js";
+import { runAgentStatusSchema } from "../runs/runtime.js";
+import { agentProfileIdSchema } from "./subagent-discovery.js";
 
 const teamProfileIdSchema = z.enum([
   "data-agent-orchestrator",
@@ -96,6 +98,25 @@ export const agentTeamTraceTaskV2Schema = agentTeamTraceTaskSchema.extend({
     .nullable(),
 });
 
+export const agentTeamTraceStatusSourceSchema = z.discriminatedUnion("kind", [
+  z.strictObject({ kind: z.literal("TEAM_RECEIPT") }),
+  z.strictObject({ kind: z.literal("TASK_RECORD") }),
+  z.strictObject({
+    kind: z.literal("RUN_EVENT"),
+    event_id: immutableIdSchema,
+    sequence: z.number().int().positive().safe(),
+    event_hash: contentHashSchema,
+    occurred_at: timestampSchema,
+    status: runAgentStatusSchema,
+  }),
+]);
+
+export const agentTeamTraceTaskV3Schema = agentTeamTraceTaskV2Schema.extend({
+  profile_id: agentProfileIdSchema,
+  status: z.union([runAgentStatusSchema, z.enum(["ACCEPTED", "REJECTED"])]),
+  status_source: agentTeamTraceStatusSourceSchema,
+});
+
 export const agentTeamTraceHandoffV2Schema = agentTeamTraceHandoffSchema.extend({
   child_required_artifact_types: z.array(teamArtifactTypeSchema).min(1).max(8),
   child_bounds: agentTeamTraceBoundsSchema,
@@ -155,18 +176,27 @@ const agentTeamTraceDraftV2Schema = z.strictObject({
   verifier_decisions: z.array(agentTeamTraceVerifierV2Schema).max(1_000),
 });
 
+const agentTeamTraceDraftV3Schema = agentTeamTraceDraftV2Schema.extend({
+  schema_version: z.literal("agent-team-public-trace@3.0.0"),
+  tasks: z.array(agentTeamTraceTaskV3Schema).max(1_000),
+});
+
 function canonicalIds(values: readonly string[]): boolean {
   return values.every((value, index) => index === 0 || value > (values[index - 1] ?? ""));
 }
 
 function addIssues(
   trace: {
-    readonly tasks: readonly z.infer<typeof agentTeamTraceTaskSchema>[];
+    readonly tasks: readonly Pick<
+      z.infer<typeof agentTeamTraceTaskV3Schema>,
+      "task_id" | "parent_task_id" | "depth" | "profile_id"
+    >[];
     readonly handoffs: readonly z.infer<typeof agentTeamTraceHandoffSchema>[];
     readonly epochs: readonly z.infer<typeof agentTeamTraceEpochSchema>[];
     readonly verifier_decisions: readonly z.infer<typeof agentTeamTraceVerifierSchema>[];
   },
   ctx: z.RefinementCtx,
+  multipleRoots = false,
 ): void {
   const taskIds = trace.tasks.map(({ task_id }) => task_id);
   if (!canonicalIds(taskIds)) {
@@ -199,8 +229,25 @@ function addIssues(
       });
     }
   });
-  if (trace.tasks.filter(({ depth }) => depth === 0).length !== 1) {
-    ctx.addIssue({ code: "custom", message: "Team trace must contain exactly one root task." });
+  const rootCount = trace.tasks.filter(({ depth }) => depth === 0).length;
+  if (multipleRoots ? rootCount === 0 : rootCount !== 1) {
+    ctx.addIssue({
+      code: "custom",
+      message: multipleRoots
+        ? "Team trace must contain at least one root task."
+        : "Team trace must contain exactly one root task.",
+    });
+  }
+  if (multipleRoots) {
+    trace.tasks.forEach((task, index) => {
+      if (task.depth === 1 && taskById.get(task.parent_task_id ?? "")?.depth !== 0) {
+        ctx.addIssue({
+          code: "custom",
+          message: "Team child parent must be a root task.",
+          path: ["tasks", index],
+        });
+      }
+    });
   }
   for (const [field, identities] of [
     ["handoffs", trace.handoffs.map(({ handoff_id }) => handoff_id)],
@@ -250,8 +297,11 @@ function addIssues(
   });
 }
 
-function addV2Issues(trace: z.infer<typeof agentTeamTraceDraftV2Schema>, ctx: z.RefinementCtx) {
-  addIssues(trace, ctx);
+function addV2Issues(
+  trace: z.infer<typeof agentTeamTraceDraftV2Schema> | z.infer<typeof agentTeamTraceDraftV3Schema>,
+  ctx: z.RefinementCtx,
+) {
+  addIssues(trace, ctx, trace.schema_version === "agent-team-public-trace@3.0.0");
   trace.tasks.forEach((task, index) => {
     const refs = [...task.artifact_refs, ...(task.completion ? [task.completion.output_ref] : [])];
     refs.forEach((reference) => {
@@ -295,6 +345,37 @@ function addV2Issues(trace: z.infer<typeof agentTeamTraceDraftV2Schema>, ctx: z.
   });
 }
 
+function addV3Issues(trace: z.infer<typeof agentTeamTraceDraftV3Schema>, ctx: z.RefinementCtx) {
+  addV2Issues(trace, ctx);
+  const eventIds = new Set<string>();
+  const sequences = new Set<number>();
+  trace.tasks.forEach((task, index) => {
+    const source = task.status_source;
+    const receiptStatus = task.acceptance?.status ?? (task.completion ? "COMPLETED" : null);
+    if (
+      (source.kind === "TEAM_RECEIPT" &&
+        (receiptStatus === null || task.status !== receiptStatus)) ||
+      (source.kind !== "TEAM_RECEIPT" && receiptStatus !== null) ||
+      (source.kind === "TASK_RECORD" && task.status !== "PENDING") ||
+      (source.kind === "RUN_EVENT" &&
+        (task.status !== source.status ||
+          eventIds.has(source.event_id) ||
+          sequences.has(source.sequence))) ||
+      (task.acceptance !== null && task.completion === null)
+    ) {
+      ctx.addIssue({
+        code: "custom",
+        message: "Team task status source is inconsistent.",
+        path: ["tasks", index, "status_source"],
+      });
+    }
+    if (source.kind === "RUN_EVENT") {
+      eventIds.add(source.event_id);
+      sequences.add(source.sequence);
+    }
+  });
+}
+
 export const agentTeamPublicTraceSchema = agentTeamTraceDraftSchema
   .extend({ trace_hash: contentHashSchema })
   .superRefine(addIssues);
@@ -303,7 +384,12 @@ export const agentTeamPublicTraceV2Schema = agentTeamTraceDraftV2Schema
   .extend({ trace_hash: contentHashSchema })
   .superRefine(addV2Issues);
 
+export const agentTeamPublicTraceV3Schema = agentTeamTraceDraftV3Schema
+  .extend({ trace_hash: contentHashSchema })
+  .superRefine(addV3Issues);
+
 export const anyAgentTeamPublicTraceSchema = z.union([
+  agentTeamPublicTraceV3Schema,
   agentTeamPublicTraceV2Schema,
   agentTeamPublicTraceSchema,
 ]);
@@ -311,13 +397,17 @@ export const anyAgentTeamPublicTraceSchema = z.union([
 export async function buildAgentTeamPublicTrace(input: unknown) {
   const version = z.object({ schema_version: z.string() }).parse(input).schema_version;
   const draftSchema =
-    version === "agent-team-public-trace@2.0.0"
-      ? agentTeamTraceDraftV2Schema.superRefine(addV2Issues)
-      : agentTeamTraceDraftSchema.superRefine(addIssues);
+    version === "agent-team-public-trace@3.0.0"
+      ? agentTeamTraceDraftV3Schema.superRefine(addV3Issues)
+      : version === "agent-team-public-trace@2.0.0"
+        ? agentTeamTraceDraftV2Schema.superRefine(addV2Issues)
+        : agentTeamTraceDraftSchema.superRefine(addIssues);
   const outputSchema =
-    version === "agent-team-public-trace@2.0.0"
-      ? agentTeamPublicTraceV2Schema
-      : agentTeamPublicTraceSchema;
+    version === "agent-team-public-trace@3.0.0"
+      ? agentTeamPublicTraceV3Schema
+      : version === "agent-team-public-trace@2.0.0"
+        ? agentTeamPublicTraceV2Schema
+        : agentTeamPublicTraceSchema;
   const draft = draftSchema.parse(input);
   return deepFreeze(outputSchema.parse({ ...draft, trace_hash: await sha256ContentHash(draft) }));
 }
@@ -326,9 +416,11 @@ export async function verifyAgentTeamPublicTrace(input: unknown) {
   const trace = anyAgentTeamPublicTraceSchema.parse(input);
   const { trace_hash: actual, ...draft } = trace;
   const parsedDraft =
-    draft.schema_version === "agent-team-public-trace@2.0.0"
-      ? agentTeamTraceDraftV2Schema.parse(draft)
-      : agentTeamTraceDraftSchema.parse(draft);
+    draft.schema_version === "agent-team-public-trace@3.0.0"
+      ? agentTeamTraceDraftV3Schema.parse(draft)
+      : draft.schema_version === "agent-team-public-trace@2.0.0"
+        ? agentTeamTraceDraftV2Schema.parse(draft)
+        : agentTeamTraceDraftSchema.parse(draft);
   if ((await sha256ContentHash(parsedDraft)) !== actual) {
     throw new TypeError("AGENT_TEAM_PUBLIC_TRACE_HASH_MISMATCH");
   }
