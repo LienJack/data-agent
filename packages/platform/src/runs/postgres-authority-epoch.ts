@@ -1,4 +1,4 @@
-import { sha256ContentHash } from "@data-agent/contracts/common";
+import { canonicalizeJson, sha256ContentHash } from "@data-agent/contracts/common";
 import {
   falcon24AuthorityBaselineV2Schema,
   verifyFalcon24AuthorityBaselineDocument,
@@ -9,6 +9,7 @@ import {
   buildFalcon24ActivationRequestV5,
   buildFalcon24ActivationRequestV6,
   buildFalcon24ActivationRequestV7,
+  buildFalcon24ActivationRequestV8,
   falcon24ActivationAttemptDocumentSchema,
   falcon24ActivationAttemptRequestV2Schema,
   falcon24ActivationHoldRequestV2Schema,
@@ -24,6 +25,7 @@ import {
   falcon24RetainedActivationResultV5Schema,
   falcon24RetainedActivationResultV6Schema,
   falcon24RetainedActivationResultV7Schema,
+  falcon24RetainedActivationResultV8Schema,
   falcon24RetainedSemanticReleaseAuthorityProofSchema,
   falcon24RunAuthorityLookupSchema,
   falcon24StageBaselineRequestV2Schema,
@@ -33,6 +35,7 @@ import {
   falcon24TerminalDiagnosticFailureReceiptRefSchema,
   falcon24UiReceiptDocumentSchema,
   falcon24UiReceiptV2Schema,
+  verifyFalcon24FourLayerRecoveryEvidence,
   verifyFalcon24LlmExecutionAuthorityProof,
   verifyFalcon24RetainedSemanticReleaseAuthorityProof,
   verifyFalcon24StagingReceiptV2,
@@ -128,6 +131,14 @@ const STABLE_DATABASE_ERRORS = new Set([
   "FALCON24_FINALIZATION_FAILURE_RECOVERY_LLM_CATALOG_DRIFT",
   "FALCON24_FINALIZATION_FAILURE_RECOVERY_STAGE_PROMOTION_RACE",
   "FALCON24_FINALIZATION_FAILURE_RECOVERY_CERTIFICATION_PROMOTION_RACE",
+  "FALCON24_FOUR_LAYER_RECOVERY_ACTIVATION_INVALID",
+  "FALCON24_FOUR_LAYER_RECOVERY_SCOPE_FORBIDDEN",
+  "FALCON24_FOUR_LAYER_RECOVERY_PREDECESSOR_MISMATCH",
+  "FALCON24_FOUR_LAYER_RECOVERY_RECEIPT_MISMATCH",
+  "FALCON24_FOUR_LAYER_RECOVERY_LLM_STAGE_MISMATCH",
+  "FALCON24_FOUR_LAYER_RECOVERY_LLM_CATALOG_DRIFT",
+  "FALCON24_FOUR_LAYER_RECOVERY_STAGE_PROMOTION_RACE",
+  "FALCON24_FOUR_LAYER_RECOVERY_CERTIFICATION_PROMOTION_RACE",
   "FALCON24_RUN_AUTHORITY_LOAD_INVALID",
   "FALCON24_RUN_NOT_FOUND",
   "FALCON24_UI_RECEIPT_COMMAND_INVALID",
@@ -912,6 +923,79 @@ export function createPostgresFalcon24AuthorityEpoch(input: {
               llmProof.execution_profile_hash
           ) {
             throw new TypeError("FALCON24_TERMINAL_DIAGNOSTIC_RECOVERY_RESULT_INVALID");
+          }
+          return result;
+        },
+      });
+    },
+
+    async activateRetainedWithFourLayerFailureRecovery(capability: unknown, candidate: unknown) {
+      const envelope = z
+        .strictObject({
+          request: z.unknown(),
+          retained_semantic_proof: falcon24RetainedSemanticReleaseAuthorityProofSchema,
+          llm_execution_proof: falcon24LlmExecutionAuthorityProofSchema,
+          predecessor_manifest: z.unknown(),
+          predecessor_terminal_receipt: z.unknown(),
+        })
+        .parse(candidate);
+      const [semanticProof, llmProof, command] = await Promise.all([
+        verifyFalcon24RetainedSemanticReleaseAuthorityProof(envelope.retained_semantic_proof),
+        verifyFalcon24LlmExecutionAuthorityProof(envelope.llm_execution_proof),
+        buildFalcon24ActivationRequestV8(envelope.request),
+      ]);
+      const same = (left: unknown, right: unknown) =>
+        canonicalizeJson(left) === canonicalizeJson(right);
+      if (
+        command.retained_semantic_proof_hash !== semanticProof.proof_hash ||
+        command.authority_epoch !== semanticProof.authority_epoch ||
+        command.authority_epoch !== llmProof.target_authority_epoch ||
+        !same(command.scope, semanticProof.scope) ||
+        !same(command.scope, llmProof.scope) ||
+        !same(command.expected_semantic_release, semanticProof.semantic_release) ||
+        !same(command.expected_current_authority, semanticProof.expected_current_authority) ||
+        !same(command.expected_versions, semanticProof.expected_versions) ||
+        command.llm_execution_stage_ref.stage_id !== llmProof.stage_id ||
+        command.llm_execution_stage_ref.proof_hash !== llmProof.proof_hash ||
+        !same(semanticProof.worker_build, llmProof.worker_build)
+      ) {
+        throw new TypeError("FALCON24_FOUR_LAYER_RECOVERY_PROOF_MISMATCH");
+      }
+      await verifyFalcon24FourLayerRecoveryEvidence(
+        command,
+        envelope.predecessor_manifest,
+        envelope.predecessor_terminal_receipt,
+      );
+      return invoke({
+        capability,
+        access: "WRITE",
+        operation: "falcon24-authority.activate-retained-four-layer-failure-recovery",
+        correlation_id: command.attempt_id,
+        sql: "select app_data_agent.activate_falcon24_authority($1::jsonb) as value",
+        command,
+        semantic_domain: command.scope.semantic_domain,
+        parse: (raw) => {
+          const result = falcon24RetainedActivationResultV8Schema.parse(raw);
+          if (
+            result.activation_command_hash !== command.command_hash ||
+            result.authority.authority_epoch !== command.authority_epoch ||
+            result.authority.baseline_id !== command.baseline_id ||
+            result.authority.baseline_hash !== command.expected_baseline_hash ||
+            result.authority.activation_attempt_id !== command.attempt_id ||
+            !same(
+              result.predecessor_four_layer_failure_receipt,
+              command.predecessor_four_layer_failure_receipt,
+            ) ||
+            result.llm_execution_certification.stage_id !== llmProof.stage_id ||
+            result.llm_execution_certification.proof_hash !== llmProof.proof_hash ||
+            !same(
+              result.llm_execution_certification.certification_receipt_ref,
+              llmProof.certification_receipt_ref,
+            ) ||
+            result.llm_execution_certification.execution_profile_hash !==
+              llmProof.execution_profile_hash
+          ) {
+            throw new TypeError("FALCON24_FOUR_LAYER_RECOVERY_RESULT_INVALID");
           }
           return result;
         },
