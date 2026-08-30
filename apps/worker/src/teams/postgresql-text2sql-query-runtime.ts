@@ -121,6 +121,7 @@ async function validateCandidate(
   await assertPostgresqlText2SqlCandidatePolicy({
     sql: candidate.sql,
     parameter_count: candidate.parameters.length,
+    parameters: candidate.parameters,
     allowed_relations: allowedRelationBindings(prepared),
   });
 }

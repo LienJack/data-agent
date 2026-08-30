@@ -124,6 +124,8 @@ describe("direct run-bound provider retry policy", () => {
     expect(prompt).toContain("frozen min_time and max_time");
     expect(prompt).toContain("TEXT2SQL_SQL_OPERATOR_DENIED means replace the denied operator");
     expect(prompt).toContain("TEXT2SQL_SQL_CAST_DENIED means replace the denied cast");
+    expect(prompt).toContain("TEXT2SQL_SQL_SELECT_SHAPE_REJECTED means remove OFFSET");
+    expect(prompt).toContain("LIMIT must use exactly one positional parameter");
     expect(prompt).toContain(
       "DATASOURCE_ADAPTER_SQL_REJECTED means replace invalid PostgreSQL syntax",
     );

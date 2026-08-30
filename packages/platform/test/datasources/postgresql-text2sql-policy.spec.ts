@@ -35,10 +35,28 @@ describe("PostgreSQL model-authored Text2SQL policy", () => {
       assertPostgresqlText2SqlCandidatePolicy({
         sql: compiled.sql,
         parameter_count: compiled.parameters.length,
+        parameters: compiled.parameters,
         allowed_relations: allowed,
       }),
     ).resolves.toBeUndefined();
   });
+
+  it.each([0, -1, 1.5, "10"])(
+    "rejects a non-positive-integer exact result limit: %s",
+    async (limit) => {
+      await expect(
+        assertPostgresqlText2SqlCandidatePolicy({
+          sql: "select o.customer_id as customer_id from falcon_db_24.orders as o limit $1",
+          parameter_count: 1,
+          parameters: [limit],
+          allowed_relations: allowed,
+        }),
+      ).rejects.toMatchObject({
+        code: "TEXT2SQL_SQL_SHAPE_REJECTED",
+        diagnostic_code: "TEXT2SQL_SQL_SELECT_SHAPE_REJECTED",
+      });
+    },
+  );
 
   it("reuses a stable temporal unit parameter across matching select and group expressions", async () => {
     const compiled = await parameterizePostgresqlText2SqlCandidate({
@@ -62,6 +80,7 @@ describe("PostgreSQL model-authored Text2SQL policy", () => {
       assertPostgresqlText2SqlCandidatePolicy({
         sql: compiled.sql,
         parameter_count: compiled.parameters.length,
+        parameters: compiled.parameters,
         allowed_relations: allowed,
       }),
     ).resolves.toBeUndefined();
@@ -81,6 +100,32 @@ describe("PostgreSQL model-authored Text2SQL policy", () => {
           order by month
         `,
         parameter_count: 2,
+        allowed_relations: allowed,
+      }),
+    ).resolves.toBeUndefined();
+  });
+
+  it("parameterizes and accepts an exact result limit while keeping the candidate bounded", async () => {
+    const compiled = await parameterizePostgresqlText2SqlCandidate({
+      sql: `
+        select
+          o.order_id as order_id,
+          o.created_at as ordered_at,
+          o.amount as order_amount
+        from falcon_db_24.orders as o
+        order by ordered_at desc
+        limit 10
+      `,
+      parameters: [],
+    });
+
+    expect(compiled.parameters).toEqual([10]);
+    expect(compiled.sql).toMatch(/limit\s+\$1/iu);
+    await expect(
+      assertPostgresqlText2SqlCandidatePolicy({
+        sql: compiled.sql,
+        parameter_count: compiled.parameters.length,
+        parameters: compiled.parameters,
         allowed_relations: allowed,
       }),
     ).resolves.toBeUndefined();
@@ -120,6 +165,10 @@ describe("PostgreSQL model-authored Text2SQL policy", () => {
     ["select o.customer_id as customer_id from orders as o", "TEXT2SQL_SQL_SHAPE_REJECTED"],
     [
       "select o.customer_id as customer_id from falcon_db_24.orders as o limit 10",
+      "TEXT2SQL_SQL_SHAPE_REJECTED",
+    ],
+    [
+      "select o.customer_id as customer_id from falcon_db_24.orders as o limit $1 offset $2",
       "TEXT2SQL_SQL_SHAPE_REJECTED",
     ],
   ] as const)("rejects unsafe candidate: %s", async (sql, code) => {

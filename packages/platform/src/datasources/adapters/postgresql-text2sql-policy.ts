@@ -35,6 +35,7 @@ export class PostgresqlText2SqlPolicyError extends Error {
 export interface PostgresqlText2SqlPolicyInput {
   readonly sql: string;
   readonly parameter_count: number;
+  readonly parameters?: readonly QueryParameter[];
   readonly allowed_relations: readonly {
     readonly schema_name: string;
     readonly relation_name: string;
@@ -181,6 +182,18 @@ function normalizedPrimitiveName(value: unknown): string | null {
   return names.at(-1)?.toLowerCase() ?? null;
 }
 
+function validLimitCount(
+  value: unknown,
+  parameters: readonly QueryParameter[] | undefined,
+): boolean {
+  if (value === undefined) return true;
+  if (wrappedNodeName(value) !== "ParamRef" || !parameters) return false;
+  const reference = (value as JsonRecord).ParamRef;
+  if (!isRecord(reference) || !Number.isSafeInteger(reference.number)) return false;
+  const parameter = parameters[(reference.number as number) - 1];
+  return Number.isSafeInteger(parameter) && (parameter as number) > 0;
+}
+
 function literalValue(node: JsonRecord): QueryParameter {
   if (node.isnull === true) return null;
   if (isRecord(node.ival) && typeof node.ival.ival === "number") {
@@ -310,6 +323,8 @@ export async function assertPostgresqlText2SqlCandidatePolicy(
     input.sql.trim().length === 0 ||
     !Number.isSafeInteger(input.parameter_count) ||
     input.parameter_count < 0 ||
+    (input.parameters !== undefined &&
+      (!Array.isArray(input.parameters) || input.parameters.length !== input.parameter_count)) ||
     !Array.isArray(input.allowed_relations) ||
     input.allowed_relations.length === 0
   ) {
@@ -375,6 +390,7 @@ export async function assertPostgresqlText2SqlCandidatePolicy(
             "groupClause",
             "havingClause",
             "sortClause",
+            "limitCount",
             "limitOption",
             "withClause",
             "op",
@@ -385,8 +401,11 @@ export async function assertPostgresqlText2SqlCandidatePolicy(
           !Array.isArray(node.targetList) ||
           node.targetList.length === 0 ||
           node.targetList.some((target) => wrappedNodeName(target) !== "ResTarget") ||
-          node.limitOption !== "LIMIT_OPTION_DEFAULT" ||
+          (node.limitCount === undefined
+            ? node.limitOption !== "LIMIT_OPTION_DEFAULT"
+            : node.limitOption !== "LIMIT_OPTION_COUNT") ||
           node.op !== "SETOP_NONE" ||
+          !validLimitCount(node.limitCount, input.parameters) ||
           (node.fromClause !== undefined &&
             (!Array.isArray(node.fromClause) || node.fromClause.length !== 1)) ||
           (node.withClause !== undefined &&
