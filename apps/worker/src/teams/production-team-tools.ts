@@ -510,7 +510,12 @@ async function projectSemanticQueryContext(input: {
     relationshipById,
     new Set([...allowedObjectIds, ...allowedRelationshipIds]),
   );
-  assertSelected(input.intent.selected_time_domain_ids, timeDomainById, allowedObjectIds);
+  const allowedTimeDomainIds = new Set(allowedObjectIds);
+  for (const metricId of input.intent.selected_metric_ids) {
+    const timeDomainId = metricById.get(metricId)?.time_domain?.time_domain_id;
+    if (timeDomainId) allowedTimeDomainIds.add(timeDomainId);
+  }
+  assertSelected(input.intent.selected_time_domain_ids, timeDomainById, allowedTimeDomainIds);
   assertSelected(input.intent.selected_quality_constraint_ids, qualityById, allowedObjectIds);
   for (const ambiguity of input.intent.unresolved_ambiguities) {
     const available = {

@@ -557,11 +557,7 @@ describe("Production Team governed chart publication", () => {
           route_decision: { route: "GRAPH", state: "READY" },
           retrieval_receipt: {
             route_states: { LEXICON: "READY", SPARSE: "READY", VECTOR: "READY", GRAPH: "READY" },
-            selected_object_ids: [
-              "dimension.order_month",
-              "metric.order_revenue",
-              "time.order_month",
-            ],
+            selected_object_ids: ["dimension.order_month", "metric.order_revenue"],
             pruned_object_ids: [],
             hits: [],
             expansions: [],
