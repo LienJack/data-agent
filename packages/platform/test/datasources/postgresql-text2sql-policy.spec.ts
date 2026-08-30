@@ -131,6 +131,44 @@ describe("PostgreSQL model-authored Text2SQL policy", () => {
     ).resolves.toBeUndefined();
   });
 
+  it("accepts an explicitly typed exact result-limit parameter", async () => {
+    await expect(
+      assertPostgresqlText2SqlCandidatePolicy({
+        sql: `
+          select
+            o.order_id as order_id,
+            o.created_at as ordered_at,
+            o.amount as order_amount
+          from falcon_db_24.orders as o
+          order by ordered_at desc
+          limit $1::pg_catalog.int8
+        `,
+        parameter_count: 1,
+        parameters: [10],
+        allowed_relations: allowed,
+      }),
+    ).resolves.toBeUndefined();
+  });
+
+  it.each([
+    { parameter: 0, type: "int8" },
+    { parameter: -1, type: "int8" },
+    { parameter: 1.5, type: "int8" },
+    { parameter: 10, type: "numeric" },
+  ])("rejects an unsafe typed result limit: $parameter::$type", async ({ parameter, type }) => {
+    await expect(
+      assertPostgresqlText2SqlCandidatePolicy({
+        sql: `select o.order_id as order_id from falcon_db_24.orders as o limit $1::pg_catalog.${type}`,
+        parameter_count: 1,
+        parameters: [parameter],
+        allowed_relations: allowed,
+      }),
+    ).rejects.toMatchObject({
+      code: "TEXT2SQL_SQL_SHAPE_REJECTED",
+      diagnostic_code: "TEXT2SQL_SQL_SELECT_SHAPE_REJECTED",
+    });
+  });
+
   it("accepts a safe cast of a physical date column for recent-row ordering", async () => {
     const compiled = await parameterizePostgresqlText2SqlCandidate({
       sql: `

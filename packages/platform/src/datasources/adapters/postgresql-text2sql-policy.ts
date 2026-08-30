@@ -188,8 +188,22 @@ function validLimitCount(
   parameters: readonly QueryParameter[] | undefined,
 ): boolean {
   if (value === undefined) return true;
-  if (wrappedNodeName(value) !== "ParamRef" || !parameters) return false;
-  const reference = (value as JsonRecord).ParamRef;
+  if (!parameters || !isRecord(value)) return false;
+  const limitNode =
+    wrappedNodeName(value) === "ParamRef"
+      ? value
+      : wrappedNodeName(value) === "TypeCast" &&
+          isRecord(value.TypeCast) &&
+          wrappedNodeName(value.TypeCast.arg) === "ParamRef" &&
+          isRecord(value.TypeCast.typeName) &&
+          value.TypeCast.typeName.typemod === -1 &&
+          ["int2", "int4", "int8"].includes(
+            normalizedPrimitiveName(value.TypeCast.typeName.names) ?? "",
+          )
+        ? (value.TypeCast.arg as JsonRecord)
+        : null;
+  if (!limitNode) return false;
+  const reference = limitNode.ParamRef;
   if (!isRecord(reference) || !Number.isSafeInteger(reference.number)) return false;
   const parameter = parameters[(reference.number as number) - 1];
   return Number.isSafeInteger(parameter) && (parameter as number) > 0;
