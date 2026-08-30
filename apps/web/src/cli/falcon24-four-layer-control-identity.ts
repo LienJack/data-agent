@@ -1,6 +1,20 @@
 import { createHash } from "node:crypto";
 import type { Falcon24FourLayerManifestTurn } from "@data-agent/contracts/evals";
+import { z } from "zod";
 import { deriveRunCommandIdentities } from "@/lib/run-command-identity-core";
+
+const repositoryRunSchema = z.strictObject({
+  run_id: z.uuid(),
+  status: z.enum(["QUEUED", "RUNNING", "WAITING", "COMPLETED", "SUCCEEDED", "FAILED", "CANCELLED"]),
+});
+
+export function falcon24FourLayerProjectRepositoryRun(input: unknown) {
+  const run = repositoryRunSchema.parse(input);
+  return Object.freeze({
+    run_id: run.run_id,
+    status: run.status === "COMPLETED" ? ("SUCCEEDED" as const) : run.status,
+  });
+}
 
 export function stableFalcon24FourLayerUuid(material: string): string {
   const digits = createHash("sha256").update(material).digest("hex").slice(0, 32).split("");

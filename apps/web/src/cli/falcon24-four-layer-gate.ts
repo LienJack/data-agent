@@ -38,6 +38,7 @@ import { evaluateFalcon24FourLayerBusiness } from "./falcon24-four-layer-busines
 import {
   falcon24FourLayerBindingIdentity,
   falcon24FourLayerConversationMatchesDefaults,
+  falcon24FourLayerProjectRepositoryRun,
   falcon24FourLayerShouldLoadRubricEvidence,
 } from "./falcon24-four-layer-control-identity";
 import {
@@ -50,11 +51,8 @@ const scopeSchema = z.strictObject({
   workspaceId: z.uuid(),
   principalId: z.uuid(),
 });
-const runSchema = z.strictObject({
+const terminalRunSchema = z.strictObject({
   run_id: z.uuid(),
-  status: z.enum(["QUEUED", "RUNNING", "WAITING", "SUCCEEDED", "FAILED", "CANCELLED"]),
-});
-const terminalRunSchema = runSchema.extend({
   status: z.enum(["SUCCEEDED", "FAILED", "CANCELLED"]),
 });
 
@@ -398,7 +396,9 @@ async function main(): Promise<void> {
     authority,
     load_run: async (runId) => {
       const run = value(await runRepository.getRun(capability, { run_id: runId }));
-      return run ? runSchema.parse({ run_id: run.run_id, status: run.status }) : null;
+      return run
+        ? falcon24FourLayerProjectRepositoryRun({ run_id: run.run_id, status: run.status })
+        : null;
     },
     submit_turn: async ({ session, claim }) => {
       const turns = await allTurns();

@@ -6,6 +6,7 @@ import { describe, expect, it } from "vitest";
 import {
   falcon24FourLayerBindingIdentity,
   falcon24FourLayerConversationMatchesDefaults,
+  falcon24FourLayerProjectRepositoryRun,
   falcon24FourLayerShouldLoadRubricEvidence,
   stableFalcon24FourLayerUuid,
 } from "../src/cli/falcon24-four-layer-control-identity";
@@ -37,6 +38,15 @@ async function turns() {
 }
 
 describe("Falcon24 four-layer control identities", () => {
+  it("normalizes the repository COMPLETED terminal into the business-gate SUCCEEDED state", () => {
+    expect(
+      falcon24FourLayerProjectRepositoryRun({
+        run_id: id(30),
+        status: "COMPLETED",
+      }),
+    ).toEqual({ run_id: id(30), status: "SUCCEEDED" });
+  });
+
   it("loads rubric evidence only for successful terminal Runs", () => {
     expect(falcon24FourLayerShouldLoadRubricEvidence("SUCCEEDED", "/tmp/rubric.json")).toBe(true);
     expect(falcon24FourLayerShouldLoadRubricEvidence("FAILED", "/tmp/rubric.json")).toBe(false);
