@@ -186,3 +186,7 @@ Semantic → Text2SQL → Analysis，源表/12 行/图表/Context 引用核对�
 下一步按用户允许降低业务难度的最新授权，先做轻量查询—澄清—继续查询的同会话单链路；
 提交前冻结新问题与验收条件，失败停止该 slice 并修复，不能把不同 build 拼接成 PASS。
 C7、本任务与父任务当前仍未完成；生产隔离 HOLD 与旧 formal failure 不变。
+
+`ec289ef4` 新轻量 slice 在问答之前遇到认证 HOLD，未激活 scratch、未提交问题。
+已回收临时服务并保留失败；接续修复只传播白名单失败项，不改认证标准。
+见 [认证记录、验证与续跑边界](research/c7-ec289ef4-certification-hold.md)。

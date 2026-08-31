@@ -33,6 +33,10 @@ describe("system model certification boundary", () => {
     expect(source).toContain("createPostgresFalcon24ModelCertificationStageStore");
     expect(source).toContain("runCredentialedProviderCertification");
     expect(source).not.toContain("MOONSHOT_API_KEY");
+    expect(source).toContain("PROVIDER_CONFORMANCE_CHECKS.filter");
+    expect(source).toContain("certified?.failed_checks?.includes(check)");
+    expect(source).toContain("failed_checks: failedChecks");
+    expect(source).toContain('failedChecks.join(", ")');
   });
 
   it("authorizes production profiles through the dedicated current-profile resolver", async () => {

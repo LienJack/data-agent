@@ -1,5 +1,8 @@
 import { createHash } from "node:crypto";
-import type { ModelProviderExecutionBinding } from "@data-agent/agent-runtime";
+import {
+  type ModelProviderExecutionBinding,
+  PROVIDER_CONFORMANCE_CHECKS,
+} from "@data-agent/agent-runtime";
 import { canonicalizeJson } from "@data-agent/contracts/common";
 import {
   falcon24AuthorityEpochOrdinal,
@@ -323,6 +326,10 @@ async function main(): Promise<void> {
       ({ provider, model_id }) => provider === "deepseek" && model_id === "deepseek-v4-flash",
     );
     if (certified?.certification_status !== "AVAILABLE" || !certified.receipt_ref) {
+      // Expose only the fixed conformance vocabulary, never provider detail or credentials.
+      const failedChecks = PROVIDER_CONFORMANCE_CHECKS.filter((check) =>
+        certified?.failed_checks?.includes(check),
+      );
       projection = await appendEvent({
         events,
         lease,
@@ -338,7 +345,10 @@ async function main(): Promise<void> {
           payload: {
             call_id: callId,
             tool_name: TOOL_NAME,
-            summary: "DeepSeek credential certification failed closed.",
+            summary:
+              failedChecks.length > 0
+                ? `DeepSeek credential certification failed closed: ${failedChecks.join(", ")}.`
+                : "DeepSeek credential certification failed closed.",
             error_code: certified?.reason_code ?? "FALCON24_E7_LLM_CERTIFICATION_FAILED",
             output: null,
             duration_ms: Math.max(0, Date.now() - startedAt),
@@ -369,6 +379,7 @@ async function main(): Promise<void> {
       hold("FALCON24_E7_LLM_CERTIFICATION_FAILED", {
         run_id: identifiers.run_id,
         provider_reason_code: certified?.reason_code ?? null,
+        failed_checks: failedChecks,
       });
       return;
     }

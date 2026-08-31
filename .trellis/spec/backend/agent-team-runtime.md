@@ -166,6 +166,11 @@ The only model output contract is `text2sql-query-candidate@1.0.0`:
 
 ## 8. Failure and Recovery
 
+Falcon 专用、显式 opt-in 的 credential certification 失败必须保留稳定错误码及已观察到的
+conformance 失败项。公开项只取 `PROVIDER_CONFORMANCE_CHECKS` 的固定白名单，持久化到
+同 Run `run.tool_failed.summary` 并进入 CLI HOLD 报告；不得输出 raw provider error/response、
+凭据、任意字符串字段，也不得为获取诊断重放已终态认证。此规则不向普通问答新增认证门禁。
+
 | Condition | Stable result |
 | --- | --- |
 | non-V3 or non-Root lease | `ROOT_AGENT_LEASE_VERSION_UNSUPPORTED` |
