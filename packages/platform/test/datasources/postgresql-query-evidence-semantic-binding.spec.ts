@@ -20,6 +20,7 @@ import { createPhysicalSchemaSnapshot } from "../../src/catalog/physical-schema.
 import {
   assertPostgresqlQueryTemporalSelection,
   buildPostgresqlPeriodComparisonCandidate,
+  buildPostgresqlPublishedFormulaReferences,
   buildPostgresqlQueryEvidenceSemanticBinding,
   PostgresqlQueryEvidenceSemanticBindingError,
   postgresqlQueryEvidenceSemanticBindingInternals,
@@ -1974,6 +1975,130 @@ describe("request-only aggregate ratio binding", () => {
 });
 
 describe("PostgreSQL QueryEvidence semantic binding", () => {
+  async function formulaReferenceFixture() {
+    const input = await aggregateRatioBindingFixture();
+    const authority = await semanticContext(input.physical_snapshot, [
+      "dimension.channel",
+      "formula.roas",
+      "metric.order_spend",
+    ]);
+    const pkg = authority.package;
+    const { context_hash: _hash, ...draft } = input.semantic_query_context;
+    return {
+      ...input,
+      semantic_context: authority,
+      semantic_query_context: await buildSemanticQueryContext({
+        ...draft,
+        semantic_context_ref: {
+          package_id: pkg.package_id,
+          package_hash: pkg.package_hash,
+          receipt_id: authority.receipt.receipt_id,
+          receipt_hash: authority.receipt.receipt_hash,
+          retrieval_receipt_hash: pkg.retrieval_receipt.receipt_hash,
+          inference_receipt_hash: pkg.inference_receipt.receipt_hash,
+        },
+        requested_object_ids: [...draft.requested_object_ids, "formula.roas"].sort(),
+        formulas: input.semantic_catalog.executable.formulas.map((f) => formulaNodeSchema.parse(f)),
+        request_scoped_interpretations: [],
+      }),
+    };
+  }
+
+  it("compiles a data-free selected Formula reference through the unchanged expression proof", async () => {
+    const input = await formulaReferenceFixture();
+    const original = canonicalizeJson(input);
+    const references = await buildPostgresqlPublishedFormulaReferences(input);
+    expect(references).toEqual([
+      {
+        formula_id: "formula.roas",
+        schema_name: "public",
+        relation_name: "orders",
+        table_alias: "f",
+        expression_sql:
+          '(CASE WHEN (SUM(f."spend") = $1) THEN $2 ELSE (SUM(f."amount") / SUM(f."spend")) END)',
+        parameters: [0, 0],
+      },
+    ]);
+    expect(canonicalizeJson(input)).toBe(original);
+    const reference = references[0];
+    if (!reference) throw new Error("REFERENCE_REQUIRED");
+    const candidate = {
+      ...input.candidate,
+      sql: `SELECT ${reference.expression_sql} AS roas FROM public.orders AS f`,
+      parameters: reference.parameters,
+      result_columns: [
+        {
+          name: "roas",
+          label: "ROAS",
+          semantic_type: "NUMBER" as const,
+          semantic_binding: { object_kind: "FORMULA" as const, object_id: reference.formula_id },
+        },
+      ],
+    };
+    const { parameterizePostgresqlText2SqlCandidate } = await import(
+      "../../src/datasources/adapters/postgresql-text2sql-policy.js"
+    );
+    const parameterized = await parameterizePostgresqlText2SqlCandidate(candidate);
+    await expect(
+      resolvePostgresqlPublishedFormulaBindings({
+        ...input,
+        candidate: { ...candidate, ...parameterized, parameters: [...parameterized.parameters] },
+      }),
+    ).resolves.toHaveLength(1);
+    await expect(
+      resolvePostgresqlPublishedFormulaBindings({
+        ...input,
+        candidate: { ...candidate, parameters: [0, 1] },
+      }),
+    ).rejects.toMatchObject({ code: "TEXT2SQL_PUBLISHED_FORMULA_EXPRESSION_MISMATCH" });
+  });
+
+  it("does not invent a reference without a selected Formula or complete slot authority", async () => {
+    const input = await formulaReferenceFixture();
+    const { semantic_query_context: _context, ...withoutQueryContext } = input;
+    await expect(buildPostgresqlPublishedFormulaReferences(withoutQueryContext)).resolves.toEqual(
+      [],
+    );
+    await expect(
+      buildPostgresqlPublishedFormulaReferences({ ...input, formula_dependency_metric_ids: [] }),
+    ).resolves.toEqual([]);
+    const { context_hash: _hash, ...draft } = input.semantic_query_context;
+    await expect(
+      buildPostgresqlPublishedFormulaReferences({
+        ...input,
+        semantic_query_context: await buildSemanticQueryContext({
+          ...draft,
+          requested_object_ids: draft.requested_object_ids.filter((id) => id !== "formula.roas"),
+        }),
+      }),
+    ).resolves.toEqual([]);
+  });
+
+  it.each(["formula", "context-hash", "grain", "binding"])(
+    "rejects %s drift in a Formula reference",
+    async (change) => {
+      const input = await formulaReferenceFixture();
+      if (change === "context-hash")
+        input.semantic_query_context = { ...input.semantic_query_context, context_hash: hash("f") };
+      if (change === "formula")
+        input.semantic_catalog.executable.formulas = input.semantic_catalog.executable.formulas.map(
+          (f) => ({ ...f, expression: { kind: "LITERAL", value: 3 } }),
+        );
+      if (change === "grain")
+        input.semantic_catalog.executable.metrics = input.semantic_catalog.executable.metrics.map(
+          (m, i) =>
+            i ? { ...m, grain: { grain_id: "other", granularity: "atomic" as const } } : m,
+        );
+      if (change === "binding")
+        input.semantic_catalog.executable.physical_bindings =
+          input.semantic_catalog.executable.physical_bindings.map((b) => ({
+            ...b,
+            datasource_id: id(99),
+          }));
+      await expect(buildPostgresqlPublishedFormulaReferences(input)).rejects.toThrow();
+    },
+  );
+
   it.each(["orders.order_date", "column.orders.order_date"])(
     "resolves a selected cross-table Metric time source %s without rejecting ordinary row queries",
     async (timeColumnId) => {

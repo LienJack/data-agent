@@ -673,3 +673,33 @@ projection-only fake receipts do not establish authority. Build the Platform exp
 Good: current semantic operator compiles to an independently proved model input, then ordinary checks.
 Bad: choose a canned SQL by question keyword, fill missing measures, copy old answers or weaken proof
 when a candidate is rejected. Offline compiler PASS is not complex-question or formal-gate PASS.
+
+### Published Formula expression references
+
+Scope: an accepted SemanticQueryContext explicitly requests an independently published numeric Formula.
+`buildPostgresqlPublishedFormulaReferences(authority)` adds optional `published_formula_references` to the
+same frozen Text2SQL context and byte budget. No accepted query context or no requested Formula means no field.
+
+Each reference contains exact formula_id, one schema/relation/alias, expression_sql and ordered parameters,
+never data or a complete requested query. Render the selected published AST with quoted identifiers and
+parameterized literals; preserve CASE branches, aggregate/DISTINCT/FILTER, operand order and NULL/zero rules.
+Slots reuse the original selected-Metric physical dependency resolver, intersected with accepted query-context
+Metrics and any narrower dependency list. Ambiguous/missing/cross-relation slots and unsupported DATE_BUCKET/
+GROUP_COUNT omit a reference, not the original Formula requirement. Bound recursion and node count.
+
+Before supplying a reference, compare the Formula with the Published catalog and run the existing
+`resolvePostgresqlPublishedFormulaBindings` on a data-free single-expression statement. That statement is
+never executed or sent as an alternate full query. Source/grain/type/AST failures retain the original errors;
+no cast, zero-rule substitution, new object or permission is invented. Worker prepare still verifies the
+complete current context/receipt/release/snapshot/datasource before generating any reference.
+
+Text2SQL uses the reference only for that FORMULA output. It must retain requested Metric/Dimension outputs,
+grouping, governed time restrictions and visualization, combining parameter indices correctly. Every returned
+candidate follows original parameterization, compile/admission/AST/temporal/type/QueryEvidence/Oracle checks.
+No post-rejection rewrite, new provider call, authority write, published definition, or question-keyword route.
+
+Tests: actual formula syntax through original proof and parameterization; zero/NULL, DISTINCT/FILTER, quoted
+identifiers, ambiguous/missing/cross-source bindings, context/catalog/grain drift, deep/unsupported AST;
+Worker prepare field/byte-budget/zero target I/O and actual dispatcher initial/repair messages, unchanged budgets.
+Good: syntax assistance for the same published meaning. Bad: treating reference success as query permission or
+as business PASS, dropping user filters because the internal proof statement has no WHERE, or copying old results.

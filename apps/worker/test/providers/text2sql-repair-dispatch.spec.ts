@@ -58,7 +58,20 @@ describe("Text2SQL repair through the actual Worker dispatch boundary", () => {
           [getModelProviderBinding("deepseek").credential_env]: "offline-test-unused-credential",
         },
       });
-      const frozen = { schema_version: "frozen-query-context@1.0.0", authority: "fixed" };
+      const frozen = {
+        schema_version: "frozen-query-context@1.0.0",
+        authority: "fixed",
+        published_formula_references: [
+          {
+            formula_id: "formula.return",
+            schema_name: "public",
+            relation_name: "facts",
+            table_alias: "f",
+            expression_sql: 'SUM(f."amount")',
+            parameters: [],
+          },
+        ],
+      };
       const candidate = {
         schema_version: "text2sql-query-candidate@1.0.0",
         sql: "select 0 as result",
@@ -122,6 +135,13 @@ describe("Text2SQL repair through the actual Worker dispatch boundary", () => {
       const first = capture.mock.calls[0]?.[0] as ModelProviderRequest;
       const second = capture.mock.calls[1]?.[0] as ModelProviderRequest;
       expect(first.messages.map((m) => m.role)).toEqual(["system", "user"]);
+      expect(first.messages[0]?.content).toContain(canonicalizeJson(frozen));
+      expect(first.messages[0]?.content).toContain(
+        "These are expression references, not whole queries or query results",
+      );
+      expect(first.messages[0]?.content).toContain(
+        "retain all requested Metric/Dimension outputs, grouping, authorized time window and chart intent",
+      );
       expect(second.messages.map((m) => m.role)).toEqual(["system", "user", "assistant", "user"]);
       expect(second.messages[0]).toEqual(first.messages[0]);
       expect(second.messages[1]).toEqual(first.messages[1]);

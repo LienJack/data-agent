@@ -25,6 +25,7 @@ import {
   assertPostgresqlText2SqlCandidatePolicy,
   buildBuiltinDatasourceAdapterDescriptors,
   buildPostgresqlPeriodComparisonCandidate,
+  buildPostgresqlPublishedFormulaReferences,
   buildPostgresqlQueryEvidenceSemanticBinding,
   createGovernedDatasourceAdapter,
   DatasourceAdapterPolicyError,
@@ -473,6 +474,9 @@ function text2sqlContext(input: {
   readonly semantic_catalog: FrozenSemanticReleaseCatalog;
   readonly semantic_query_context?: SemanticQueryContext | null;
   readonly period_comparison_candidate?: Text2SqlQueryCandidate | null;
+  readonly published_formula_references?: Awaited<
+    ReturnType<typeof buildPostgresqlPublishedFormulaReferences>
+  >;
   readonly allowed_relations: readonly string[];
   readonly max_context_bytes: number;
 }): string {
@@ -491,6 +495,9 @@ function text2sqlContext(input: {
     ),
     ...(input.period_comparison_candidate
       ? { period_comparison_candidate: input.period_comparison_candidate }
+      : {}),
+    ...(input.published_formula_references?.length
+      ? { published_formula_references: input.published_formula_references }
       : {}),
   });
   if (new TextEncoder().encode(context).byteLength > input.max_context_bytes) {
@@ -1048,8 +1055,10 @@ export function createPostgresqlText2SqlQueryRuntime(
         ? publishedComparisonTimeCoverage(semanticQueryContext, snapshot)
         : [];
       const periodCandidate = await buildPostgresqlPeriodComparisonCandidate(bindingAuthority);
+      const formulaReferences = await buildPostgresqlPublishedFormulaReferences(bindingAuthority);
       return Object.freeze({
         context_text: text2sqlContext({
+          published_formula_references: formulaReferences,
           snapshot,
           semantic_context_package,
           semantic_catalog,

@@ -1901,6 +1901,9 @@ Diagnostic/Q1/C1任一正式首次失败必须写既有 authority支持的 immut
     现仅补充私有协议形态/计数，不保存原文、不重放、不放宽校验；Agent Runtime58+Worker15项及两包typecheck/前者build通过。
     见 [协议观测复盘](research/complex-e75cdbb9-protocol-observation.md)。源348表不变，本轮服务/浏览器关闭、scratch停机保留；
     NAS无残留Analysis sandbox，控制面留用。继续处理发布公式交接和新构建真实验证，不据JSON mode宣称问题已解决。
+  - 当前已请求的发布Formula增加原AST证明后的无数据表达式参考，复用相同Metric物理依赖与冻结上下文预算；
+    不提供整条替代查询、不修改口径/绑定/Oracle、不增加模型调用。Platform223+Worker55项及两包typecheck/Platform build通过。
+    见 [Formula参考复盘](research/complex-e75cdbb9-formula-reference.md)；真实新B1尚待验证，原e75失败不重放。
 
 **F6 READY 轮次恢复边界（2026-08-30，历史）**
 

@@ -883,6 +883,40 @@ describe("PostgreSQL Text2SQL query runtime", () => {
     ]);
     expect(projected.semantic_context.executable.dimensions).toEqual([]);
     expect(prepared.context_text).not.toContain("metric.hidden");
+    expect(projected).not.toHaveProperty("published_formula_references");
+    const { context_hash: _contextHash, ...contextDraft } = semanticQueryContext;
+    const requestedFormulaContext = await buildSemanticQueryContext({
+      ...contextDraft,
+      requested_object_ids: ["formula.order-count", "metric.order-count"],
+    });
+    const formulaPrepared = await runtime.prepare({
+      effective_config: config as never,
+      semantic_context: semanticContext,
+      semantic_catalog: semanticCatalog,
+      semantic_query_context: requestedFormulaContext,
+      max_context_bytes: 32_000,
+    });
+    const references = JSON.parse(formulaPrepared.context_text).published_formula_references;
+    expect(references).toEqual([
+      {
+        formula_id: "formula.order-count",
+        schema_name: "falcon_db_24",
+        relation_name: "orders",
+        table_alias: "f",
+        expression_sql: 'COUNT(f."amount")',
+        parameters: [],
+      },
+    ]);
+    await expect(
+      runtime.prepare({
+        effective_config: config as never,
+        semantic_context: semanticContext,
+        semantic_catalog: semanticCatalog,
+        semantic_query_context: requestedFormulaContext,
+        max_context_bytes: 1,
+      }),
+    ).rejects.toMatchObject({ code: "TEXT2SQL_CONTEXT_BUDGET_EXCEEDED" });
+    expect(connect).not.toHaveBeenCalled();
 
     const narrowedCandidate = {
       ...candidate("select count(o.amount) as order_count from falcon_db_24.orders as o"),

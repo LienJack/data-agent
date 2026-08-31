@@ -29,6 +29,10 @@ import {
   type GovernedDatasourceQueryResult,
   verifyGovernedDatasourceQueryResult,
 } from "@data-agent/contracts/datasources";
+import {
+  type PostgresqlFormulaReference,
+  renderPostgresqlFormulaReference,
+} from "./postgresql-formula-reference.js";
 import { renderPostgresqlPeriodComparisonCandidate } from "./postgresql-period-comparison-candidate.js";
 import {
   provePostgresqlAggregateRatio,
@@ -318,11 +322,9 @@ export async function assertPostgresqlQueryTemporalSelection(
   });
 }
 
-/** Shared by pre-I/O compilation and post-query evidence acceptance. Never constructs SQL. */
-export async function resolvePostgresqlPublishedFormulaBindings(
+function publishedFormulaDependencies(
   input: Pick<
     PostgresqlQueryEvidenceSemanticBindingInput,
-    | "candidate"
     | "physical_snapshot"
     | "semantic_context"
     | "semantic_catalog"
@@ -330,16 +332,12 @@ export async function resolvePostgresqlPublishedFormulaBindings(
     | "formula_dependency_metric_ids"
   >,
 ) {
-  const outputs = input.candidate.result_columns.filter(
-    ({ semantic_binding }) => semantic_binding.object_kind === "FORMULA",
-  );
-  if (outputs.length === 0) return [];
   const selected = selectedSemanticObjects(input.semantic_context);
   const acceptedMetrics = input.formula_dependency_metric_ids
     ? new Set(input.formula_dependency_metric_ids)
     : selected;
   const catalog = input.semantic_catalog;
-  const dependencies = catalog.executable.metrics
+  return catalog.executable.metrics
     .filter(({ metric_id }) => selected.has(metric_id) && acceptedMetrics.has(metric_id))
     .flatMap((metric) =>
       metric.dependency_column_ids.flatMap((columnId) => {
@@ -365,6 +363,97 @@ export async function resolvePostgresqlPublishedFormulaBindings(
         );
       }),
     );
+}
+
+/** Optional model input from an already accepted query context, not query authorization. */
+export async function buildPostgresqlPublishedFormulaReferences(
+  input: Omit<
+    PostgresqlQueryEvidenceSemanticBindingInput,
+    "candidate" | "result" | "target_binding_hash"
+  >,
+): Promise<readonly PostgresqlFormulaReference[]> {
+  if (!input.semantic_query_context) return [];
+  const context = await verifySemanticQueryContext(input.semantic_query_context);
+  const requested = new Set(context.requested_object_ids);
+  const formulas = context.formulas.filter(
+    (f) => requested.has(f.node_id) && ["numeric", "integer"].includes(f.return_type),
+  );
+  if (formulas.length === 0) return [];
+  const authority = {
+    ...input,
+    formula_dependency_metric_ids: context.metrics
+      .map(({ metric_id }) => metric_id)
+      .filter(
+        (id) =>
+          !input.formula_dependency_metric_ids || input.formula_dependency_metric_ids.includes(id),
+      ),
+  };
+  const dependencies = publishedFormulaDependencies(authority);
+  const references: PostgresqlFormulaReference[] = [];
+  for (const formula of formulas) {
+    const published = input.semantic_catalog.executable.formulas.filter(
+      (f) => f.node_id === formula.node_id,
+    );
+    if (
+      published.length !== 1 ||
+      canonicalizeJson(formulaNodeSchema.parse(published[0])) !== canonicalizeJson(formula)
+    )
+      reject("QUERY_EVIDENCE_FORMULA_BINDING_INVALID");
+    const reference = renderPostgresqlFormulaReference({
+      formula_id: formula.node_id,
+      expression: formula.expression,
+      slots: dependencies.map(({ slot_id, source }) => ({ slot_id, ...source })),
+    });
+    if (!reference) continue;
+    const quote = (value: string) => `"${value.replaceAll('"', '""')}"`;
+    const candidate = text2sqlQueryCandidateSchema.parse({
+      schema_version: "text2sql-query-candidate@1.0.0",
+      sql: `SELECT ${reference.expression_sql} AS formula_value FROM ${quote(reference.schema_name)}.${quote(reference.relation_name)} AS f`,
+      parameters: reference.parameters,
+      result_columns: [
+        {
+          name: "formula_value",
+          label: formula.name,
+          semantic_type: "NUMBER",
+          semantic_binding: { object_kind: "FORMULA", object_id: formula.node_id },
+        },
+      ],
+      time_window: null,
+      presentation: {
+        title: "Formula syntax reference",
+        summary: "Data-free expression only; not the requested query.",
+        visualization: "NONE",
+        x_key: null,
+        y_keys: [],
+      },
+    });
+    // The exact existing proof checks the AST, sources, fractional division and grain.
+    // This statement is never executed or offered as a replacement query.
+    await resolvePostgresqlPublishedFormulaBindings({ ...authority, candidate });
+    references.push(reference);
+  }
+  return references;
+}
+
+/** Shared by pre-I/O compilation and post-query evidence acceptance. Never constructs SQL. */
+export async function resolvePostgresqlPublishedFormulaBindings(
+  input: Pick<
+    PostgresqlQueryEvidenceSemanticBindingInput,
+    | "candidate"
+    | "physical_snapshot"
+    | "semantic_context"
+    | "semantic_catalog"
+    | "datasource_ref"
+    | "formula_dependency_metric_ids"
+  >,
+) {
+  const outputs = input.candidate.result_columns.filter(
+    ({ semantic_binding }) => semantic_binding.object_kind === "FORMULA",
+  );
+  if (outputs.length === 0) return [];
+  const selected = selectedSemanticObjects(input.semantic_context);
+  const catalog = input.semantic_catalog;
+  const dependencies = publishedFormulaDependencies(input);
   return Promise.all(
     outputs.map(async (output) => {
       const formulas = catalog.executable.formulas.filter(
