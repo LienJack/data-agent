@@ -10,6 +10,7 @@ import {
 } from "@data-agent/contracts";
 import {
   isFullyObservedEmptyResponse,
+  isFullyObservedInvalidJsonResponse,
   MastraExecutionError,
   normalizeMastraExecutionError,
 } from "./errors.js";
@@ -167,10 +168,15 @@ function failedEvent(
   error: unknown,
   dispatchMarked: boolean,
 ): ModelProviderEvent {
-  if (dispatchMarked && isFullyObservedEmptyResponse(error)) {
+  if (
+    dispatchMarked &&
+    (isFullyObservedEmptyResponse(error) || isFullyObservedInvalidJsonResponse(error))
+  ) {
     return nextSequenceEvent(request, clock, sequence, {
       event_type: "FAILED",
-      reason_code: "MODEL_RESPONSE_EMPTY",
+      reason_code: isFullyObservedEmptyResponse(error)
+        ? "MODEL_RESPONSE_EMPTY"
+        : "MODEL_RESPONSE_INVALID_JSON",
       retryable: false,
       delivery_certainty: "DISPATCHED_OUTCOME_KNOWN",
     });

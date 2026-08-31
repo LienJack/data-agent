@@ -23,7 +23,11 @@ import {
   type ServerOwnedToolRegistry,
   ToolRegistryError,
 } from "../tools/index.js";
-import { MastraExecutionError, markFullyObservedEmptyResponse } from "./errors.js";
+import {
+  MastraExecutionError,
+  markFullyObservedEmptyResponse,
+  markFullyObservedInvalidJsonResponse,
+} from "./errors.js";
 import type { ModelExecutionBridge, ModelExecutionChunk } from "./execution-bridge.js";
 import {
   EMPTY_SERVER_MODEL_RESPONSE_SCHEMA_REGISTRY,
@@ -581,6 +585,7 @@ class MastraExecutionBridge implements ModelExecutionBridge {
     let textDeltaChunks = 0;
     let nonWhitespaceTextObserved = false;
     let nonTextResponseActivity = false;
+    const autoResponseTextParts: string[] = [];
     const reader = output.fullStream.getReader();
     try {
       while (true) {
@@ -602,6 +607,9 @@ class MastraExecutionBridge implements ModelExecutionBridge {
               streamedTextBytes += new TextEncoder().encode(chunk.payload.text).byteLength;
               textDeltaChunks += 1;
               nonWhitespaceTextObserved ||= chunk.payload.text.trim().length > 0;
+              if (usesToolCalling && this.#serverToolChoicePolicy === "AUTO") {
+                autoResponseTextParts.push(chunk.payload.text);
+              }
               yield {
                 chunk_type: "TEXT_DELTA",
                 delta: chunk.payload.text,
@@ -718,21 +726,23 @@ class MastraExecutionBridge implements ModelExecutionBridge {
             output_tokens: usage.availability === "AVAILABLE" ? usage.output_tokens : null,
           },
         );
-        // A completed provider generation with no text or tool activity is a
-        // known rejected response, not evidence of an unknown network outcome.
-        // Keep every other protocol/transport failure on the original path.
+        // Fully observed text rejection is not an unknown network outcome.
+        // Do not repair it, accept it, replay it, or promote partial tool activity.
         if (
           !input.signal.aborted &&
           !nonTextResponseActivity &&
-          !nonWhitespaceTextObserved &&
           observedToolCalls === 0 &&
-          text.trim().length === 0 &&
           (usage.availability !== "AVAILABLE" ||
             (usage.input_tokens <= input.request.budget.max_input_tokens &&
               usage.output_tokens <= input.request.budget.max_output_tokens)) &&
           (fullOutput.finishReason === "stop" || fullOutput.finishReason === "length")
         ) {
-          throw markFullyObservedEmptyResponse(error);
+          if (!nonWhitespaceTextObserved && text.trim().length === 0) {
+            throw markFullyObservedEmptyResponse(error);
+          }
+          if (text.trim().length > 0 && text === autoResponseTextParts.join("")) {
+            throw markFullyObservedInvalidJsonResponse(error);
+          }
         }
         throw error;
       }

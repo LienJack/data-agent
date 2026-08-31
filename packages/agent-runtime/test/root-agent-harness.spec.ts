@@ -43,15 +43,53 @@ async function catalog(
 }
 
 describe("Root Agent Harness", () => {
+  it("rejects an empty native candidate even if the transport completed with prose", async () => {
+    await expect(
+      normalizeRootAgentProviderTurn({
+        scope,
+        run_id: runId,
+        catalog: await catalog(["semantic-management-agent"]),
+        output_text: "private-invalid-answer",
+        tool_calls: [
+          { tool_name: "delegate_to_subagent@2", tool_call_id: "incomplete-native", arguments: {} },
+        ],
+      }),
+    ).rejects.toMatchObject({ code: "ROOT_AGENT_TOOL_CALL_INVALID" });
+  });
+
   it("keeps known rejected responses inside a new normal Root decision with no forced route", async () => {
     const message = await buildRootAgentSystemMessage(await catalog(["semantic-management-agent"]));
     expect(message).toContain("PROVIDER_RESPONSE_REJECTED");
     expect(message).toContain(
-      "fully ended with only empty or whitespace text and no tool activity",
+      "fully ended without tool activity but returned empty, whitespace, or invalid JSON text",
     );
     expect(message).toContain("next normal turn");
     expect(message).toContain(
       "do not requery existing evidence, add facts, force a particular profile, or increase the turn budget",
+    );
+  });
+
+  it("provides a complete schema-valid JSON example without pretending it is current evidence", async () => {
+    const message = await buildRootAgentSystemMessage(await catalog(["semantic-management-agent"]));
+    const example = message
+      .split("\n")
+      .find((line) => line.startsWith("General-knowledge syntax example only:"));
+    expect(example).toBeDefined();
+    if (example === undefined) throw new Error("ROOT_SYNTAX_EXAMPLE_REQUIRED");
+    const value = rootAgentFinalAnswerOutputSchema.parse(
+      JSON.parse(example.slice(example.indexOf(":") + 1)),
+    );
+    expect(value.sections).toEqual([
+      {
+        kind: "GENERAL_TEXT",
+        text: "同比是与上年同期进行比较。",
+        basis: "GENERAL_KNOWLEDGE",
+        source_message_refs: [],
+      },
+    ]);
+    expect(message).not.toContain('"sections":[...]');
+    expect(message).toContain(
+      "Never copy this example as the current answer or substitute it for missing workspace evidence",
     );
   });
 
@@ -436,7 +474,9 @@ describe("Root Agent Harness", () => {
     expect(message).toContain("Do not expose internal index");
     expect(message).not.toContain("upstream_accepted_output");
     expect(message).not.toContain("producer_delegation_key");
-    expect(message).toContain('{"kind":"FINAL_ANSWER","sections"');
+    expect(message).toContain(
+      "A direct answer must be exactly one complete FINAL_ANSWER JSON object",
+    );
     expect(message).toContain('Never output a "final_answer" wrapper');
     expect(message).not.toMatch(/prompt_ref|prompt_hash|secret_ref/);
   });

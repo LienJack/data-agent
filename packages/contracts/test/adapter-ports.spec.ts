@@ -413,12 +413,16 @@ describe("版本化 Adapter Ports", () => {
     ["MODEL_RESPONSE_EMPTY", "DISPATCHED_OUTCOME_KNOWN", true, false],
     ["MODEL_RESPONSE_EMPTY", "DISPATCHED_OUTCOME_UNKNOWN", false, false],
     ["MODEL_RESPONSE_EMPTY", "NOT_DISPATCHED", false, false],
+    ["MODEL_RESPONSE_INVALID_JSON", "DISPATCHED_OUTCOME_KNOWN", false, true],
+    ["MODEL_RESPONSE_INVALID_JSON", "DISPATCHED_OUTCOME_KNOWN", true, false],
+    ["MODEL_RESPONSE_INVALID_JSON", "DISPATCHED_OUTCOME_UNKNOWN", false, false],
+    ["MODEL_RESPONSE_INVALID_JSON", "NOT_DISPATCHED", false, false],
     ["MODEL_STREAM_PROTOCOL_VIOLATION", "DISPATCHED_OUTCOME_KNOWN", false, false],
     ["MODEL_STREAM_PROTOCOL_VIOLATION", "DISPATCHED_OUTCOME_UNKNOWN", false, true],
     ["MODEL_PROVIDER_TIMEOUT", "DISPATCHED_OUTCOME_UNKNOWN", true, true],
     ["MODEL_PROVIDER_CREDENTIAL_UNAVAILABLE", "NOT_DISPATCHED", false, true],
   ])(
-    "validates failure certainty without making known empty responses retryable (%s, %s, %s)",
+    "validates failure certainty without making known rejected text retryable (%s, %s, %s)",
     (reason_code, delivery_certainty, retryable, valid) => {
       expect(
         modelProviderEventSchema.safeParse({

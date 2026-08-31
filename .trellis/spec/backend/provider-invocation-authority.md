@@ -135,16 +135,22 @@ return committed.protectedResponse;
 - AUTO 原 stream 已完整 drain、getFullOutput 成功、无 error/abort/工具活动，结束为 stop/length，
   最终及已观察文本都仅空白，且已报告 usage 不越过冻结预算时，可生成包内不可序列化的空响应标记。
   Adapter 仅在已 dispatch 且持有该标记时返回 `FAILED/MODEL_RESPONSE_EMPTY`、known、retryable=false。
-  日志 stage/计数、同形 Error、模型输出均不是该标记；缺失/未知 finish、断流、非空非法 JSON、工具错误和超预算仍原路径失败。
-- ModelProviderEvent 的 KNOWN FAILED 仅允许上述 reason 且不可重试。持久 transport 映射到现有
+  日志 stage/计数、同形 Error、模型输出均不是该标记。
+- 同一 AUTO JSON.parse 拒绝边界，在上述完整结束、无活动、预算约束下，非空原文本还必须与逐块观察文本完全相等，
+  才生成独立的包内不可序列化标记，返回 `FAILED/MODEL_RESPONSE_INVALID_JSON`、known、retryable=false。
+  这不是修复/接收 JSON：不提取 fence、不删除 prose、不重新格式化。缺失/未知 finish、断流、文本不一致、
+  native 工具活动/错误、超预算，以及合法 JSON 的 Schema 错误，仍走原失败路径；REQUIRED/零工具流程不变。
+- ModelProviderEvent 的 KNOWN FAILED 仅允许上述两个 reason 且不可重试。持久 transport 映射到现有
   `PROVIDER_PROTOCOL_VIOLATION` known FAILED；先 ResponseObserved、再原 terminal RPC，call_count=1、
   recovery_action=NONE、response_ref/hash=null，不产出成功响应或伪造已报告 token。无新 DB authority/RPC/migration。
 - 只有 terminal 持久化成功后的该 reason+certainty 组合产生 `PROVIDER_RESPONSE_REJECTED`。
   restart 从持久 outcome 读取相同结果，不重派原调用；commit 失败不向 Root 提供恢复反馈。
   Root 可先 checkpoint 再用不同 logical invocation 开始下一正常决策，消耗原四回合预算，不是 Provider retry。
 - 旧 OUTCOME_UNKNOWN 不重新分类、不用日志补收据、不重放；其他响应协议错误也不因此恢复。
-  必测真实 SDK 一次 fetch、空 stop/length、断流/未知 finish/超预算反例、复制诊断无效、终态重放零网络、
+  必测真实 SDK 一次 fetch、空/非 JSON stop/length、断流/未知 finish/超预算/native 活动反例、复制诊断无效、终态重放零网络、
   checkpoint 失败零后续调用和四回合耗尽。此分类适用于 AUTO；REQUIRED/无工具流程不变。
+  固定 SDK 可能把不完整 native 输入转成候选 `{}`；transport COMPLETED 不等于工具接收，Host 必须严格拒绝非法参数，
+  且不得将此原工具活动重新归类为纯文本拒绝。
 
 ### Contracts
 

@@ -57,7 +57,8 @@ export function normalizeAuditedProviderTerminalEvent(
     return {
       kind: "FAILED",
       reason_code:
-        event.reason_code === "MODEL_RESPONSE_EMPTY" &&
+        (event.reason_code === "MODEL_RESPONSE_EMPTY" ||
+          event.reason_code === "MODEL_RESPONSE_INVALID_JSON") &&
         event.delivery_certainty === "DISPATCHED_OUTCOME_KNOWN"
           ? "PROVIDER_PROTOCOL_VIOLATION"
           : event.reason_code === "MODEL_PROVIDER_CREDENTIAL_UNAVAILABLE"

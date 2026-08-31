@@ -890,12 +890,13 @@ export function createDirectRunBoundProviderDispatcher(input: {
               if (
                 rootTurn &&
                 event.event_type === "FAILED" &&
-                event.reason_code === "MODEL_RESPONSE_EMPTY" &&
+                (event.reason_code === "MODEL_RESPONSE_EMPTY" ||
+                  event.reason_code === "MODEL_RESPONSE_INVALID_JSON") &&
                 event.delivery_certainty === "DISPATCHED_OUTCOME_KNOWN"
               ) {
                 return failure(
                   "PROVIDER_RESPONSE_REJECTED",
-                  "Root 响应为空，未接受任何决策。",
+                  "Root 响应为空或不是完整 JSON，未接受任何决策。",
                   false,
                 );
               }

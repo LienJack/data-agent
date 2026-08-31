@@ -171,6 +171,15 @@ describe("Mastra execution bridge integration", () => {
     { name: "blank interrupted", tool: false, text: "  \n ", valid: false },
     { name: "truncated final", tool: false, text: '{"summary":"private', valid: false },
     { name: "plain final", tool: false, text: "private-invalid-answer", valid: false },
+    { name: "non-json unknown finish", tool: false, text: "private-invalid-answer", valid: false },
+    { name: "non-json over budget", tool: false, text: "private-invalid-answer", valid: false },
+    { name: "non-json interrupted", tool: false, text: "private-invalid-answer", valid: false },
+    {
+      name: "non-json partial native tool",
+      tool: false,
+      text: "private-invalid-answer",
+      valid: false,
+    },
     {
       name: "fenced final",
       tool: false,
@@ -186,16 +195,25 @@ describe("Mastra execution bridge integration", () => {
   ])(
     "constrains DeepSeek AUTO transport to JSON without forcing a tool ($name)",
     async ({ name, tool, text, valid }) => {
-      const interrupted = name === "blank interrupted";
+      const interrupted = name.endsWith("interrupted");
+      const overBudget = name.endsWith("over budget");
+      const unknownFinish = name.endsWith("unknown finish");
+      const partialNativeTool = name === "non-json partial native tool";
       const knownEmpty =
+        !tool && text.trim().length === 0 && !interrupted && !unknownFinish && !overBudget;
+      const knownInvalidJson =
+        !valid &&
         !tool &&
-        text.trim().length === 0 &&
+        text.trim().length > 0 &&
+        name !== "extra field" &&
+        !partialNativeTool &&
         !interrupted &&
-        !["blank unknown finish", "blank over budget"].includes(name);
+        !unknownFinish &&
+        !overBudget;
       const finish =
         name === "truncated final" || name === "blank length"
           ? "length"
-          : name === "blank unknown finish"
+          : unknownFinish
             ? "unknown"
             : "stop";
       const binding = getModelProviderBinding("deepseek");
@@ -247,7 +265,19 @@ describe("Mastra execution bridge integration", () => {
                         },
                       ],
                     }
-                  : { content: text };
+                  : partialNativeTool
+                    ? {
+                        content: text,
+                        tool_calls: [
+                          {
+                            index: 0,
+                            id: "incomplete-native",
+                            type: "function",
+                            function: { name: "semantic-query_v1", arguments: '{"metric":' },
+                          },
+                        ],
+                      }
+                    : { content: text };
                 if (interrupted)
                   return new Response(
                     new ReadableStream({
@@ -267,7 +297,7 @@ describe("Mastra execution bridge integration", () => {
                 return new Response(
                   [
                     `data: ${JSON.stringify({ ...common, choices: [{ index: 0, delta, finish_reason: null }] })}\n\n`,
-                    `data: ${JSON.stringify({ ...common, choices: [{ index: 0, delta: {}, finish_reason: tool ? "tool_calls" : finish }], usage: { prompt_tokens: 8, completion_tokens: name === "blank over budget" ? 101 : 5, total_tokens: name === "blank over budget" ? 109 : 13 } })}\n\n`,
+                    `data: ${JSON.stringify({ ...common, choices: [{ index: 0, delta: {}, finish_reason: tool ? "tool_calls" : finish }], usage: { prompt_tokens: 8, completion_tokens: overBudget ? 101 : 5, total_tokens: overBudget ? 109 : 13 } })}\n\n`,
                     "data: [DONE]\n\n",
                   ].join(""),
                   { headers: { "content-type": "text/event-stream" } },
@@ -306,26 +336,47 @@ describe("Mastra execution bridge integration", () => {
         );
         expect(JSON.stringify(request)).toBe(original);
         expect(events.at(-1)).toMatchObject(
-          valid
+          valid || partialNativeTool
             ? { event_type: "COMPLETED" }
             : {
                 event_type: "FAILED",
-                ...(interrupted
+                ...(interrupted || partialNativeTool
                   ? {}
                   : {
                       reason_code: knownEmpty
                         ? "MODEL_RESPONSE_EMPTY"
-                        : "MODEL_STREAM_PROTOCOL_VIOLATION",
+                        : knownInvalidJson
+                          ? "MODEL_RESPONSE_INVALID_JSON"
+                          : "MODEL_STREAM_PROTOCOL_VIOLATION",
                     }),
                 retryable: interrupted,
-                delivery_certainty: knownEmpty
-                  ? "DISPATCHED_OUTCOME_KNOWN"
-                  : "DISPATCHED_OUTCOME_UNKNOWN",
+                delivery_certainty:
+                  knownEmpty || knownInvalidJson
+                    ? "DISPATCHED_OUTCOME_KNOWN"
+                    : "DISPATCHED_OUTCOME_UNKNOWN",
               },
         );
         expect(events.filter((e) => e.event_type === "TOOL_CALL_CANDIDATE")).toHaveLength(
-          tool ? 1 : 0,
+          tool || partialNativeTool ? 1 : 0,
         );
+        if (partialNativeTool) {
+          // The pinned SDK normalizes this partial input into a candidate {}.
+          // A completed transport is not tool admission or known text rejection.
+          expect(events).toContainEqual(
+            expect.objectContaining({
+              event_type: "TOOL_CALL_CANDIDATE",
+              tool_call_id: "incomplete-native",
+              tool_name: "semantic-query@1",
+              arguments: {},
+            }),
+          );
+          expect(events.some((event) => event.event_type === "FAILED")).toBe(false);
+          const candidate = events.find((event) => event.event_type === "TOOL_CALL_CANDIDATE");
+          expect(
+            z.strictObject({ metric: z.string() }).safeParse(candidate?.arguments).success,
+          ).toBe(false);
+          expect(warning).not.toHaveBeenCalled();
+        }
         if (tool)
           expect(events).toContainEqual(
             expect.objectContaining({
@@ -339,8 +390,8 @@ describe("Mastra execution bridge integration", () => {
           expect(events.at(-1)).toMatchObject({
             output_text: '{"confidence":1,"summary":"facts"}',
           });
-        if (!valid && !interrupted) expect(warning).toHaveBeenCalledTimes(1);
-        if (!valid && !interrupted && name !== "extra field") {
+        if (!valid && !interrupted && !partialNativeTool) expect(warning).toHaveBeenCalledTimes(1);
+        if (!valid && !interrupted && !partialNativeTool && name !== "extra field") {
           expect(JSON.parse(String(warning.mock.calls[0]?.[0]))).toMatchObject({
             stage: "AUTO_RESPONSE_INVALID_JSON",
             response: {
@@ -351,7 +402,7 @@ describe("Mastra execution bridge integration", () => {
               streamed_text_utf8_bytes: Buffer.byteLength(text),
               text_delta_chunks: text.length === 0 ? 0 : 1,
               observed_tool_calls: 0,
-              output_tokens: name === "blank over budget" ? 101 : 5,
+              output_tokens: overBudget ? 101 : 5,
             },
           });
         }
@@ -1031,10 +1082,15 @@ describe("Mastra execution bridge integration", () => {
           : {
               event_type: "FAILED",
               reason_code:
-                name === "empty" ? "MODEL_RESPONSE_EMPTY" : "MODEL_STREAM_PROTOCOL_VIOLATION",
+                name === "empty"
+                  ? "MODEL_RESPONSE_EMPTY"
+                  : ["wrong schema", "extra field"].includes(name)
+                    ? "MODEL_STREAM_PROTOCOL_VIOLATION"
+                    : "MODEL_RESPONSE_INVALID_JSON",
               retryable: false,
-              delivery_certainty:
-                name === "empty" ? "DISPATCHED_OUTCOME_KNOWN" : "DISPATCHED_OUTCOME_UNKNOWN",
+              delivery_certainty: ["wrong schema", "extra field"].includes(name)
+                ? "DISPATCHED_OUTCOME_UNKNOWN"
+                : "DISPATCHED_OUTCOME_KNOWN",
             },
       );
     } finally {

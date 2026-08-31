@@ -1921,6 +1921,13 @@ Diagnostic/Q1/C1任一正式首次失败必须写既有 authority支持的 immut
     live348表不变，临时服务和浏览器关闭、55504转发取消、scratch卷保留；
     见 [历史显示边界复盘](research/complex-f6614a06-history-presentation.md)，formal15尚未开始。
 
+  - 60a3236d新scratch A1/A2/B1/B2业务及同Run UI通过（73/76/61/45 Trace节点）；A3完整NON_JSON仍UNKNOWN，
+    B3前三次Semantic Schema拒绝、第四次接受但无时间窗口且耗尽Root预算，无SQL/Analysis；两题FAILED、formal15未开始。
+    现仅补完整非JSON纯文本的确定拒绝与原checkpoint反馈，真实Schema校验语法示例，不修复模型原文或重放UNKNOWN。
+    live348表不变，本轮临时服务/浏览器关闭、55505取消、scratch停机保留。
+    下一独立工作项版本化B3比较期间与渠道先筛选口径；先完成离线backlog，再新构建验证，不拼接旧PASS。
+    见 [完整文本拒绝复盘](research/complex-60a3236d-complete-text-rejection.md)。
+
 **F6 READY 轮次恢复边界（2026-08-30，历史）**
 
 > 以下为历史记录；当前 forward recovery 已到 E16 FAILED，下一 fresh epoch 为 E17，见上一节。

@@ -42,7 +42,8 @@ Root turn 0..3 (AUTO)
   SDK 会前置固定 `Return JSON.`，原冻结消息/工具保持不变；原 token upper-bound 已保留完整 Response Schema 字节。
   JSON mode 不等于业务/Schema 正确：空文本、未知字段、Markdown、非法引用仍按原规则失败，不补写响应或重放调用。
 - Root system message 从实际 `rootAgentFinalAnswerOutputSchema` 派生完整 JSON Schema，不能只给 `sections:[...]` 占位形状。
-  Schema 进入原 message projection/hash/token preflight；不另设模型输出或答案权威。
+  同时给出经同一 Schema 校验的完整一般知识 JSON 示例，不允许夹带非法省略号示例；明确仅示范语法、不可复制为当前答案，
+  不提供工作区事实或替代缺失证据。Schema/示例进入原 message projection/hash/token preflight；不另设模型输出或答案权威。
 - 每个正常 Root turn 在冻结历史、当前接受证据与反馈之后追加 server-owned 协议提醒：native delegation 或严格
   `FINAL_ANSWER` JSON，不允许裸 prose/Markdown/文本伪工具调用。历史 assistant 不是本 Run 证据；没有接受输入或
   completed Tool Result 时必须明确当前无 Artifact，不能把上一轮表格/图表引用提升为当前事实。一般知识仍可严格 JSON 直答。
@@ -72,11 +73,12 @@ Root turn 0..3 (AUTO)
   可成为普通下一回合的结构化 verifier feedback。原失败调用不执行；Host 不删改参数、不代选 Profile、不扩大输入类型。
   只保存固定 reason_code，已验收输入/观察原样保留；先 checkpoint `turn_index+1`，持久化失败不调用下一回合。
   纠正消耗原四回合预算，耗尽保存终态及最后反馈；恢复从下一 index 继续，绝不重放已拒绝 Provider 调用。
-  另仅允许已提交的完整空响应拒绝 `PROVIDER_RESPONSE_REJECTED` 进入同一 checkpoint/四回合反馈路径；
+  另仅允许已提交的完整空/非 JSON 纯文本拒绝 `PROVIDER_RESPONSE_REJECTED` 进入同一 checkpoint/四回合反馈路径；
   它没有接受决策或执行委派，下一正常调用保持原证据、目录与预算，不能让 Host 强制选择 Profile。
   判定及持久化边界见 [Provider authority](./provider-invocation-authority.md#完整空响应的确定拒绝)。
   Catalog correlation、未知 Profile、权限/引用/hash、其他响应协议与 Provider outcome 错误不属于此白名单；
-  特别是旧 OUTCOME_UNKNOWN/RECONCILIATION_REQUIRED 和未经 authority 映射的 MODEL_RESPONSE_EMPTY 不得恢复。
+  特别是旧 OUTCOME_UNKNOWN/RECONCILIATION_REQUIRED、Schema 错误，以及未经 authority 映射的
+  MODEL_RESPONSE_EMPTY/MODEL_RESPONSE_INVALID_JSON 不得恢复。
   Root 依据冻结目录纠正 native call，不重新查询已有证据；最后回合产出最终证据仍只走既有确定性答案验收。
 - `ROOT_HARNESS@1` is the only Q&A executor. V1/V2/`LEGACY_FIXED@1` leases return `ROOT_AGENT_LEASE_VERSION_UNSUPPORTED` and never fall back。
 - Root v3 ProviderTask commit 必须消费 exact EffectiveConfig conversation receipt 与冻结的 `visible_message_refs`；历史 `START_L2_RESEARCH` lease 没有 refs 时只允许在 live Conversation version 仍等于 command version 的条件下保留无摘要 replay。两条分支共用同一个 RPC，不存在 legacy fallback writer 或第二套上下文权威。

@@ -76,6 +76,7 @@ export class MastraExecutionError extends Error {
 }
 
 const fullyObservedEmptyResponses = new WeakSet<MastraExecutionError>();
+const fullyObservedInvalidJsonResponses = new WeakSet<MastraExecutionError>();
 
 /** Package-private: called only after the original stream and terminal are fully read. */
 export function markFullyObservedEmptyResponse(error: MastraExecutionError): MastraExecutionError {
@@ -85,6 +86,18 @@ export function markFullyObservedEmptyResponse(error: MastraExecutionError): Mas
 
 export function isFullyObservedEmptyResponse(error: unknown): boolean {
   return error instanceof MastraExecutionError && fullyObservedEmptyResponses.has(error);
+}
+
+/** Package-private: original complete text only; never brands a diagnostic or repaired response. */
+export function markFullyObservedInvalidJsonResponse(
+  error: MastraExecutionError,
+): MastraExecutionError {
+  fullyObservedInvalidJsonResponses.add(error);
+  return error;
+}
+
+export function isFullyObservedInvalidJsonResponse(error: unknown): boolean {
+  return error instanceof MastraExecutionError && fullyObservedInvalidJsonResponses.has(error);
 }
 
 const AI_SDK_API_CALL_ERROR_MARKER = Symbol.for("vercel.ai.error.AI_APICallError");
