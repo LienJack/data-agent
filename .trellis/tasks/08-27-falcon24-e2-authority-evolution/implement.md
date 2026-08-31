@@ -1705,6 +1705,10 @@ Diagnostic/Q1/C1任一正式首次失败必须写既有 authority支持的 immut
     契约新增正例先因unknown source失败；schema通过后Worker正例仍因重复Metric失败，投影修复后通过。
     Contracts6文件41/41、Worker7文件71/71、两包typecheck/build与4文件Biome通过；原无source契约golden hash固定。
     不注册新方法、不创建模型Run或触碰live；§25.21与Python Sandbox code-spec随本小项scoped commit。
+  - [x] FORMULA/REQUEST_DERIVED直接结果角色保留：Host从原accepted QueryEvidence证明额外lineage，不授予Metric/Skill能力。
+    契约两正例及runtime四正/反例先RED；修复后Contracts43/43、Worker92/92、两包typecheck/build与6文件Biome通过。
+    13类来源漂移、未接受来源和Metric升级均执行前拒绝；两role真实Arrow保留NULL，staged chart parser保留role。
+    无模型调用、无新方法/新Run/live写入。V3图表NULL、具体方法/oracle、全量时间窗及跨Run闭包仍待后续小项。
 - [ ] 所需能力离线闭合后最终clean build/full unit/fresh scratch，再fresh E17正式15回合从L1。当前ACTIVE，live E16 FAILED。
 
 **F6 READY 轮次恢复边界（2026-08-30，历史）**

@@ -95,13 +95,22 @@ const lineageBindingSchema = z.strictObject({
   transformation: z.enum(["DIRECT", "AGGREGATION", "FORMULA", "STATISTICAL_OPERATOR"]),
 });
 
+export const analysisResultTableSemanticRoleSchema = z.enum([
+  "METRIC",
+  "DIMENSION",
+  "DERIVED",
+  "QUALITY",
+  "FORMULA",
+  "REQUEST_DERIVED",
+]);
+
 const tableColumnSchema = z.strictObject({
   key: fieldNameSchema,
   label_zh: z.string().trim().min(1).max(80),
   data_type: analysisResultValueTypeSchema.exclude(["JSON"]),
   nullable: z.boolean(),
   semantic_object_id: identifierSchema,
-  semantic_role: z.enum(["METRIC", "DIMENSION", "DERIVED", "QUALITY"]),
+  semantic_role: analysisResultTableSemanticRoleSchema,
 });
 
 const collectionPredicateSchema = z.strictObject({
@@ -338,6 +347,32 @@ export const analysisResultContractMaterialSchema = z
         ["tables", index, "columns"],
         "Table column keys must be unique.",
       );
+      for (const [columnIndex, column] of table.columns.entries()) {
+        if (!["FORMULA", "REQUEST_DERIVED"].includes(column.semantic_role)) continue;
+        const projection = table.projection;
+        const lineage =
+          projection.mode === "RESULT_COLLECTION"
+            ? contract.lineage.find(({ field }) => field === projection.collection_field)
+            : null;
+        if (
+          column.data_type !== "NUMBER" ||
+          projection.mode !== "RESULT_COLLECTION" ||
+          !projection.column_mappings.find(({ table_column }) => table_column === column.key)
+            ?.source ||
+          lineage?.transformation !== "DIRECT" ||
+          !lineage.source_semantic_object_ids.includes(column.semantic_object_id) ||
+          contract.metric_bindings.some(
+            ({ semantic_metric_id }) => semantic_metric_id === column.semantic_object_id,
+          )
+        ) {
+          context.addIssue({
+            code: "custom",
+            path: ["tables", index, "columns", columnIndex],
+            message:
+              "Formula and request-derived columns require direct source proof and cannot grant Metric authority.",
+          });
+        }
+      }
       if (table.projection.mode === "RESULT_COLLECTION") {
         const tableColumnKeys = table.columns.map(({ key }) => key);
         const mappedTableColumns = table.projection.column_mappings.map(

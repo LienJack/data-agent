@@ -163,6 +163,88 @@ function directCollectionMaterial() {
 }
 
 describe("AnalysisResultContract@2", () => {
+  it.each(["FORMULA", "REQUEST_DERIVED"] as const)(
+    "preserves %s only as an exact direct input column",
+    async (role) => {
+      const base = directCollectionMaterial();
+      const objectId = role === "FORMULA" ? "formula.roas" : "request-scoped.net_roi";
+      const table = required(base.tables[0]);
+      const column = required(table.columns[1]);
+      const input = {
+        ...base,
+        lineage: base.lineage.map((lineage) => ({
+          ...lineage,
+          source_semantic_object_ids: [...lineage.source_semantic_object_ids, objectId],
+          source_physical_fields: [...lineage.source_physical_fields, "query_evidence.ratio"],
+        })),
+        tables: [
+          {
+            ...table,
+            columns: [
+              ...table.columns,
+              { ...column, key: "ratio", semantic_object_id: objectId, semantic_role: role },
+            ],
+            projection: {
+              ...table.projection,
+              column_mappings: [
+                ...table.projection.column_mappings,
+                {
+                  result_field: "ratio",
+                  table_column: "ratio",
+                  source: { input_name: "query_evidence", output_name: "ratio" },
+                },
+              ],
+            },
+          },
+        ],
+      };
+      const contract = await buildAnalysisResultContract(input);
+      const inputTable = required(input.tables[0]);
+      expect(contract.tables[0]?.columns[2]?.semantic_role).toBe(role);
+      expect(contract.metric_bindings.map((binding) => binding.semantic_metric_id)).toEqual([
+        "metric.order_revenue",
+      ]);
+      await expect(
+        buildAnalysisResultContract({
+          ...input,
+          metric_bindings: [
+            ...input.metric_bindings,
+            { ...required(input.metric_bindings[0]), semantic_metric_id: objectId },
+          ],
+        }),
+      ).rejects.toThrow();
+      await expect(
+        buildAnalysisResultContract({
+          ...input,
+          tables: [
+            {
+              ...inputTable,
+              projection: {
+                ...inputTable.projection,
+                column_mappings: inputTable.projection.column_mappings.map(
+                  ({ source: _source, ...mapping }) => mapping,
+                ),
+              },
+            },
+          ],
+        }),
+      ).rejects.toThrow();
+      await expect(
+        buildAnalysisResultContract({
+          ...input,
+          tables: [
+            {
+              ...inputTable,
+              columns: inputTable.columns.map((c) =>
+                c.semantic_object_id === objectId ? { ...c, data_type: "STRING" } : c,
+              ),
+            },
+          ],
+        }),
+      ).rejects.toThrow();
+    },
+  );
+
   it("binds explicit source columns into a direct projection contract hash", async () => {
     const input = directCollectionMaterial();
     const contract = await buildAnalysisResultContract(input);

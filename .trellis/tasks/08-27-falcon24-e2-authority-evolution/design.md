@@ -1636,3 +1636,12 @@ Worker 投影同时匹配显式输入名/输出列名与原语义 role/object_id
 缺显式映射的旧契约仍只接受唯一来源；不得按第一个命中、current/prior 关键词、输出位置或值猜测消歧。
 跨输入拼表、重复同名输入、错语义角色/身份、遗漏lineage与错列均失败关闭。无新增字段的旧契约hash保持不变。
 本小项先覆盖本期/同期共用Metric与NULL同期的离线回归；尚不注册新Analysis方法，也不宣称REQUEST_DERIVED表契约闭包。
+
+### 25.22 Analysis 消费已接受比例列，但不升级方法权限
+
+ResultContract 表列保留 `FORMULA/REQUEST_DERIVED` 原角色，仅允许 NUMBER、DIRECT collection与精确source映射，
+不得出现在metric_bindings。Program Compiler增加Host-only accepted QueryEvidence输入，从原生产resolveCommitted结果传入；
+重验精确引用、Run/Scope、Context receipt、Release与Schema revision/hash，且新角色列逐一匹配source/role/id/type。
+仅这些已证明的直接投影对象ID可进入结果lineage；metric_refs、dimension_refs、Skill capabilities仍来自原Published AnalysisContext。
+REQUEST_DERIVED的解释依赖必须包含在当前节点原指标/维度选择内。缺证据、换角色/列、跨Context/Run或试图选其为Metric均拒绝。
+继续使用原Publisher和staged chart读路径；不引入方法fallback或新的语义发布对象。nullable V3图表与具体分析方法另行闭合。

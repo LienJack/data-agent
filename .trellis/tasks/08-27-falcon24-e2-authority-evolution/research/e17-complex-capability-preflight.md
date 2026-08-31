@@ -57,3 +57,14 @@ input/output而不删除role/ID证明。真实Arrow fixture证明12个月、本�
 
 本小项没有生产方法注册、候选预算或发布器变更。后续仍须解决FORMULA/REQUEST_DERIVED输出角色闭包、通用有界方法与独立oracle；
 全量Analysis的非空Brief时间窗约束和跨Run组合仍未完成。当前只读工程审计不能记为这些业务能力通过。
+
+## 第三个小项：比例列进入结果但不成为发布Metric
+
+原ResultContract表枚举和staged chart parser不接受FORMULA/REQUEST_DERIVED；Program Compiler只允许原指标/维度lineage。
+现在为这两类列强制NUMBER/DIRECT/source/lineage并禁止metric_bindings；Compiler从原resolveCommitted输入重验Run/Scope、Context、
+Release/Schema与列的exact identity，仅允许已经证明的结果lineage。Metric和方法能力集合不变，REQUEST_DERIVED依赖必须在节点原选择内。
+
+Contracts43/43、Worker92/92、两包typecheck/build通过；13类authority drift、未接受来源、Metric升级都失败关闭。
+真实Arrow fixture保留原角色与NULL；staged chart parser三role读取回归通过。没有模型Run、数据库写入或新方法注册。
+进一步审计确认 `ArtifactWorkspaceChartProjectionV3` 当前拒绝任何y=NULL，而同比有真实缺失同期值；须独立闭合V3空值图表，
+不改旧V2文档、不补零、不丢月份，也不能先把数据方法记作可正式执行。

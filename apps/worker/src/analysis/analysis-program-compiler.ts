@@ -14,6 +14,10 @@ import {
 } from "@data-agent/contracts/statistical-operators";
 import { z } from "zod";
 import { computeAnalysisProgramHash } from "./analysis-program-hash.js";
+import {
+  type AcceptedAnalysisQueryEvidence,
+  resolveAnalysisResultSourceObjects,
+} from "./analysis-result-source-authority.js";
 import { gateAnalysisProgram } from "./program-gate.js";
 
 const halfOpenTimeWindowSchema = z
@@ -149,6 +153,7 @@ export async function compileAnalysisProgramCandidate(input: {
   readonly result_contract?: AnalysisResultContract;
   readonly required_operator_obligations?: unknown;
   readonly method_registry?: readonly AnalysisMethodRegistryEntry[];
+  readonly query_evidence?: AcceptedAnalysisQueryEvidence;
 }): Promise<AnalysisProgramPayload> {
   const candidate = analysisProgramCandidateSchema.parse(input.candidate);
   const context = await verifyAnalysisContext(input.context);
@@ -246,6 +251,13 @@ export async function compileAnalysisProgramCandidate(input: {
         ...selectedDimensionIds,
         ...context.relationships.map(({ relationship_id: relationshipId }) => relationshipId),
       ]);
+      const sourceObjectIds = await resolveAnalysisResultSourceObjects({
+        result_contract: resultContract,
+        context,
+        run_id: input.brief.question_frame_ref.run_id,
+        selected_object_ids: selectedSemanticObjectIds,
+        ...(input.query_evidence ? { query_evidence: input.query_evidence } : {}),
+      });
       if (
         resultContract.semantic_context_hash !== context.semantic_context_binding.package_hash ||
         resultContract.metric_bindings.some(
@@ -260,7 +272,10 @@ export async function compileAnalysisProgramCandidate(input: {
         (resultContract.grain.time_dimension_id !== null &&
           !selectedDimensionIds.has(resultContract.grain.time_dimension_id)) ||
         resultContract.lineage.some(({ source_semantic_object_ids: objectIds }) =>
-          objectIds.some((objectId) => !selectedSemanticObjectIds.has(objectId)),
+          objectIds.some(
+            (objectId) =>
+              !selectedSemanticObjectIds.has(objectId) && !sourceObjectIds.has(objectId),
+          ),
         )
       ) {
         throw new TypeError("ANALYSIS_PROGRAM_RESULT_CONTRACT_AUTHORITY_MISMATCH");

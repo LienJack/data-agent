@@ -3,6 +3,7 @@ import {
   type ArtifactReference,
   type ArtifactWorkspaceChartDocumentV3,
   type ArtifactWorkspaceChartProjectionV3,
+  analysisResultTableSemanticRoleSchema,
   artifactReferenceIdentity,
   artifactWorkspaceChartProjectionV3Schema,
   buildArtifactWorkspaceChartDocumentV3,
@@ -448,6 +449,10 @@ export function createGovernedAnalysisRuntime(input: {
           brief_ref: briefRef,
           context,
           method_registry: methods,
+          query_evidence: {
+            reference: command.accepted_query_evidence_ref,
+            document: evidence.document,
+          },
         });
         stage = "EXECUTE";
         const execution = await input
@@ -553,7 +558,7 @@ const publishedChartSchema = z.strictObject({
           ]),
           nullable: z.boolean(),
           semantic_object_id: z.string().regex(/^[A-Za-z][A-Za-z0-9._:-]{0,255}$/u),
-          semantic_role: z.enum(["METRIC", "DIMENSION", "DERIVED", "QUALITY"]),
+          semantic_role: analysisResultTableSemanticRoleSchema,
         }),
       )
       .min(1)

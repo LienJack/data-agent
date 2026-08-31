@@ -9,11 +9,14 @@ import {
   type RunWorkLease,
 } from "@data-agent/contracts";
 import { describe, expect, it, vi } from "vitest";
+import { resolveAnalysisResultSourceObjects } from "../../src/analysis/analysis-result-source-authority.js";
 import type { AnalysisArtifactCommitPort } from "../../src/analysis/executor.js";
 import {
   createGovernedAnalysisRuntime,
   projectStagedAnalysisChart,
 } from "../../src/analysis/governed-analysis-runtime.js";
+import { buildGovernedResultProjections } from "../../src/analysis/governed-result-projection.js";
+import { productTeamGovernedQueryInternals } from "../../src/analysis/product-team-query-port.js";
 import type { RunProviderDispatchCapability } from "../../src/runs/run-execution-context.js";
 
 const id = (suffix: number) => `96800000-0000-4000-8000-${String(suffix).padStart(12, "0")}`;
@@ -293,8 +296,120 @@ async function fixture() {
   return { binding, context, evidence, resultContract };
 }
 
-async function harness(input?: { readonly omitOracle?: boolean }) {
-  const fixed = await fixture();
+async function withInputResultRole(
+  base: Awaited<ReturnType<typeof fixture>>,
+  role: "FORMULA" | "REQUEST_DERIVED",
+) {
+  const objectId = role === "FORMULA" ? "formula.return" : "request-scoped.return";
+  const metric = base.binding.columns[1];
+  if (
+    !metric ||
+    base.evidence.projection.kind !== "TABLE" ||
+    base.evidence.provenance?.kind !== "GOVERNED_QUERY_RESULT"
+  )
+    throw new Error("TEST_BINDING_REQUIRED");
+  const { binding_hash: _bindingHash, ...bindingMaterial } = base.binding;
+  const binding = await buildQueryEvidenceSemanticBinding({
+    ...bindingMaterial,
+    columns: [
+      ...bindingMaterial.columns,
+      {
+        ...metric,
+        output_name: "ratio",
+        semantic_role: role,
+        semantic_object_id: objectId,
+        aggregate: null,
+        ...(role === "REQUEST_DERIVED"
+          ? {
+              request_derivation: {
+                semantic_query_context_hash: hash("c"),
+                interpretation: {
+                  interpretation_id: objectId,
+                  requested_term: "同比",
+                  scope: "REQUEST_ONLY" as const,
+                  source_object_ids: ["dimension.month", "metric.revenue"],
+                  operator: {
+                    kind: "PERIOD_COMPARISON_RATE" as const,
+                    metric_id: "metric.revenue",
+                    time_dimension_id: "dimension.month",
+                    comparison_offset: { unit: "YEAR" as const, value: 1 as const },
+                    formula:
+                      "(current_value - comparison_value) / NULLIF(comparison_value, 0)" as const,
+                  },
+                  user_explanation: "请求内同比，不是发布指标。",
+                  publication_effect: "NONE" as const,
+                },
+              },
+            }
+          : {}),
+      },
+    ],
+  });
+  const evidence = await buildProductTeamArtifactDocument({
+    ...base.evidence,
+    provenance: { ...base.evidence.provenance, semantic_binding: binding },
+    projection: {
+      ...base.evidence.projection,
+      columns: [
+        ...base.evidence.projection.columns,
+        { key: "ratio", label: "比例", data_type: "NUMBER" },
+      ],
+      rows: base.evidence.projection.rows.map((row) => ({ ...row, ratio: 0.2 })),
+    },
+  });
+  const { contract_hash: _contractHash, ...contract } = base.resultContract;
+  const resultContract = await buildAnalysisResultContract({
+    ...contract,
+    result_fields: [
+      { field: "series", data_type: "JSON", nullable: false, semantic_role: "DERIVED" },
+    ],
+    metric_bindings: contract.metric_bindings.map((item) => ({ ...item, field: "series" })),
+    dimension_bindings: contract.dimension_bindings.map((item) => ({ ...item, field: "series" })),
+    lineage: [
+      {
+        field: "series",
+        source_semantic_object_ids: binding.columns.map((c) => c.semantic_object_id),
+        source_physical_fields: binding.columns.map((c) => `query_evidence.${c.output_name}`),
+        transformation: "DIRECT",
+      },
+    ],
+    tables: contract.tables.map((table) => ({
+      ...table,
+      columns: [
+        ...table.columns,
+        {
+          key: "ratio",
+          label_zh: "比例",
+          data_type: "NUMBER",
+          nullable: false,
+          semantic_role: role,
+          semantic_object_id: objectId,
+        },
+      ],
+      projection: {
+        mode: "RESULT_COLLECTION",
+        collection_field: "series",
+        column_mappings: binding.columns.map((c) => ({
+          result_field: c.output_name,
+          table_column: c.output_name,
+          source: { input_name: "query_evidence", output_name: c.output_name },
+        })),
+      },
+    })),
+    limits: { ...contract.limits, max_table_columns: 3 },
+  });
+  return { ...base, binding, evidence, resultContract };
+}
+
+async function harness(input?: {
+  readonly omitOracle?: boolean;
+  readonly inputRole?: "FORMULA" | "REQUEST_DERIVED";
+  readonly omitAcceptedRole?: boolean;
+  readonly promoteRole?: boolean;
+}) {
+  const base = await fixture();
+  const withRole = input?.inputRole ? await withInputResultRole(base, input.inputRole) : base;
+  const fixed = input?.omitAcceptedRole ? { ...withRole, evidence: base.evidence } : withRole;
   const briefRef = reference("ResearchBrief", 40);
   const programRef = reference("AnalysisProgram", 41);
   const evidenceRef = reference("DerivedAnalysisEvidence", 42);
@@ -417,7 +532,9 @@ async function harness(input?: { readonly omitOracle?: boolean }) {
                 {
                   node_id: "monthly-revenue",
                   method_registry_entry_ids: ["published-monthly-revenue@1"],
-                  metric_ids: ["metric.revenue"],
+                  metric_ids: input?.promoteRole
+                    ? [input.inputRole === "FORMULA" ? "formula.return" : "request-scoped.return"]
+                    : ["metric.revenue"],
                   dimension_ids: ["dimension.month"],
                   time_window: {
                     start: "2024-01-01T00:00:00.000+08:00",
@@ -451,68 +568,290 @@ async function harness(input?: { readonly omitOracle?: boolean }) {
 }
 
 describe("generic governed analysis runtime", () => {
-  it("projects the full semantic column contract emitted by Result Publisher", () => {
-    const content = new TextEncoder().encode(
-      JSON.stringify({
-        schema_version: "analysis-published-chart@1.0.0",
-        chart_id: "monthly-revenue-chart",
-        title_zh: "月度收入趋势",
-        intent: "TREND",
-        template_id: "line.multi-series@1",
-        bindings: {
-          x_field: "month",
-          y_fields: ["revenue"],
-          series_field: null,
-          lower_bound_field: null,
-          upper_bound_field: null,
+  it.each(["FORMULA", "REQUEST_DERIVED"] as const)(
+    "projects %s through verified Arrow without relabeling or filling NULL",
+    async (role) => {
+      const fixed = await withInputResultRole(await fixture(), role);
+      if (
+        fixed.evidence.projection.kind !== "TABLE" ||
+        fixed.evidence.provenance?.kind !== "GOVERNED_QUERY_RESULT"
+      )
+        throw new Error("TEST_EVIDENCE_REQUIRED");
+      const { binding_hash: _hash, ...binding } = fixed.binding;
+      const semanticBinding = await buildQueryEvidenceSemanticBinding({
+        ...binding,
+        columns: binding.columns.map((column) =>
+          column.output_name === "ratio" ? { ...column, nullable: true } : column,
+        ),
+      });
+      const document = await buildProductTeamArtifactDocument({
+        ...fixed.evidence,
+        provenance: { ...fixed.evidence.provenance, semantic_binding: semanticBinding },
+        projection: {
+          ...fixed.evidence.projection,
+          rows: [{ month: "2024-01-01", revenue: 42, ratio: null }],
         },
-        dataset: {
-          table_id: "monthly-revenue",
-          columns: [
-            {
-              key: "month",
-              label_zh: "月份",
-              data_type: "STRING",
-              nullable: false,
-              semantic_object_id: "dimension.month",
-              semantic_role: "DIMENSION",
-            },
-            {
-              key: "revenue",
-              label_zh: "收入",
-              data_type: "NUMBER",
-              nullable: false,
-              semantic_object_id: "metric.revenue",
-              semantic_role: "METRIC",
-            },
-          ],
-          rows: [{ month: "2024-01-01", revenue: 42 }],
-          total_rows: 1,
-        },
-      }),
-    );
+      });
+      if (
+        document.artifact_ref.artifact_type !== "QueryEvidence" ||
+        document.projection.kind !== "TABLE"
+      )
+        throw new Error("TEST_EVIDENCE_REQUIRED");
+      const { contract_hash: _contractHash, ...material } = fixed.resultContract;
+      const contract = await buildAnalysisResultContract({
+        ...material,
+        tables: material.tables.map((table) => ({
+          ...table,
+          columns: table.columns.map((column) =>
+            column.key === "ratio" ? { ...column, nullable: true } : column,
+          ),
+        })),
+      });
+      const projections = await buildGovernedResultProjections({
+        contract,
+        governed_inputs: [
+          {
+            name: "query_evidence",
+            format: "ARROW",
+            query_evidence_ref: document.artifact_ref,
+            query_evidence_document: document,
+            input_ref: reference("SensitiveExecutionArtifact", 80),
+            materialization_receipt_ref: reference("AnalysisInputMaterializationReceipt", 81),
+            materialization_receipt_document: {},
+            content: productTeamGovernedQueryInternals.materializeProductTeamArrow(
+              document.projection,
+              semanticBinding.columns,
+            ),
+          },
+        ],
+      });
+      expect(projections[0]?.table_rows).toEqual([
+        { month: "2024-01-01", revenue: 42, ratio: null },
+      ]);
+      expect(contract.tables[0]?.columns[2]?.semantic_role).toBe(role);
+    },
+  );
 
-    expect(
-      projectStagedAnalysisChart({
-        artifact_name: "chart:monthly-revenue-chart",
-        artifact_kind: "CHART",
-        media_type: "application/json",
-        content,
-        content_sha256: hash("f"),
-        bytes: content.byteLength,
-      }),
-    ).toMatchObject({
-      chart_id: "monthly-revenue-chart",
-      projection: {
-        table: {
-          columns: [
-            { key: "month", label: "月份", data_type: "STRING" },
-            { key: "revenue", label: "收入", data_type: "NUMBER" },
-          ],
-        },
+  it.each([
+    "missing-evidence",
+    "reference",
+    "run",
+    "scope",
+    "package",
+    "receipt",
+    "release",
+    "snapshot",
+    "context-hash",
+    "source-column",
+    "source-role",
+    "missing-dependency",
+    "promoted-id",
+  ])("rejects independent result source authority drift: %s", async (variant) => {
+    const fixed = await withInputResultRole(await fixture(), "REQUEST_DERIVED");
+    if (
+      fixed.evidence.artifact_ref.artifact_type !== "QueryEvidence" ||
+      fixed.evidence.provenance?.kind !== "GOVERNED_QUERY_RESULT"
+    )
+      throw new Error("TEST_EVIDENCE_REQUIRED");
+    const { binding_hash: _hash, ...binding } = fixed.binding;
+    const rebound = await buildQueryEvidenceSemanticBinding({
+      ...binding,
+      semantic_context_ref: {
+        ...binding.semantic_context_ref,
+        ...(variant === "package" ? { package_id: id(90) } : {}),
+        ...(variant === "receipt" ? { receipt_hash: hash("0") } : {}),
+      },
+      semantic_release_ref: {
+        ...binding.semantic_release_ref,
+        ...(variant === "release" ? { resource_revision: 2 } : {}),
+      },
+      schema_snapshot_ref: {
+        ...binding.schema_snapshot_ref,
+        ...(variant === "snapshot" ? { resource_hash: hash("0") } : {}),
       },
     });
+    const document = await buildProductTeamArtifactDocument({
+      ...fixed.evidence,
+      artifact_ref: {
+        ...fixed.evidence.artifact_ref,
+        ...(variant === "scope" ? { tenant_id: id(91) } : {}),
+      },
+      source_refs: fixed.evidence.source_refs.map((ref) => ({
+        ...ref,
+        ...(variant === "scope" ? { tenant_id: id(91) } : {}),
+      })),
+      provenance: { ...fixed.evidence.provenance, semantic_binding: rebound },
+    });
+    if (document.artifact_ref.artifact_type !== "QueryEvidence")
+      throw new Error("TEST_EVIDENCE_REQUIRED");
+    const { contract_hash: _contractHash, ...contract } = fixed.resultContract;
+    const resultContract = await buildAnalysisResultContract({
+      ...contract,
+      lineage: contract.lineage.map((lineage) => ({
+        ...lineage,
+        source_physical_fields: [...lineage.source_physical_fields, "query_evidence.missing"],
+      })),
+      tables: contract.tables.map((table) => ({
+        ...table,
+        columns: table.columns.map((column) =>
+          column.key === "ratio" && variant === "source-role"
+            ? { ...column, semantic_role: "FORMULA" as const }
+            : column,
+        ),
+        projection:
+          table.projection.mode === "RESULT_COLLECTION"
+            ? {
+                ...table.projection,
+                column_mappings: table.projection.column_mappings.map((mapping) =>
+                  mapping.table_column === "ratio" && variant === "source-column"
+                    ? {
+                        ...mapping,
+                        source: { input_name: "query_evidence", output_name: "missing" },
+                      }
+                    : mapping,
+                ),
+              }
+            : table.projection,
+      })),
+    });
+    await expect(
+      resolveAnalysisResultSourceObjects({
+        result_contract: resultContract,
+        context:
+          variant === "context-hash"
+            ? { ...fixed.context, context_hash: hash("0") }
+            : fixed.context,
+        run_id: variant === "run" ? id(92) : lease.run_id,
+        selected_object_ids: new Set([
+          "metric.revenue",
+          ...(variant === "missing-dependency" ? [] : ["dimension.month"]),
+          ...(variant === "promoted-id" ? ["request-scoped.return"] : []),
+        ]),
+        ...(variant === "missing-evidence"
+          ? {}
+          : {
+              query_evidence: {
+                reference: {
+                  ...document.artifact_ref,
+                  ...(variant === "reference" ? { artifact_id: id(93) } : {}),
+                },
+                document,
+              },
+            }),
+      }),
+    ).rejects.toThrow("ANALYSIS_PROGRAM_RESULT_SOURCE_AUTHORITY_INVALID");
   });
+
+  it.each(["FORMULA", "REQUEST_DERIVED"] as const)(
+    "consumes exact %s data without adding Metric authority",
+    async (role) => {
+      const test = await harness({ inputRole: role });
+      await test.runtime.analyze(test.command);
+      expect(test.execute).toHaveBeenCalledWith(
+        expect.objectContaining({
+          program: expect.objectContaining({
+            nodes: [
+              expect.objectContaining({
+                metric_refs: [expect.objectContaining({ node_id: "metric.revenue" })],
+                result_contract: expect.objectContaining({
+                  tables: [
+                    expect.objectContaining({
+                      columns: expect.arrayContaining([
+                        expect.objectContaining({ key: "ratio", semantic_role: role }),
+                      ]),
+                    }),
+                  ],
+                }),
+              }),
+            ],
+          }),
+        }),
+      );
+      expect(test.providerContext()).not.toContain("SENSITIVE_ROW_VALUE");
+    },
+  );
+
+  it.each(["FORMULA", "REQUEST_DERIVED"] as const)(
+    "rejects unbacked or Metric-promoted %s",
+    async (role) => {
+      const unbacked = await harness({ inputRole: role, omitAcceptedRole: true });
+      await expect(unbacked.runtime.analyze(unbacked.command)).rejects.toThrow(
+        "ANALYSIS_PROGRAM_RESULT_SOURCE_AUTHORITY_INVALID",
+      );
+      expect(unbacked.execute).not.toHaveBeenCalled();
+      const promoted = await harness({ inputRole: role, promoteRole: true });
+      await expect(promoted.runtime.analyze(promoted.command)).rejects.toThrow(
+        "ANALYSIS_PROGRAM_CANDIDATE_METRIC_NOT_PUBLISHED",
+      );
+      expect(promoted.execute).not.toHaveBeenCalled();
+    },
+  );
+
+  it.each(["METRIC", "FORMULA", "REQUEST_DERIVED"])(
+    "projects the full %s column contract emitted by Result Publisher",
+    (role) => {
+      const content = new TextEncoder().encode(
+        JSON.stringify({
+          schema_version: "analysis-published-chart@1.0.0",
+          chart_id: "monthly-revenue-chart",
+          title_zh: "月度收入趋势",
+          intent: "TREND",
+          template_id: "line.multi-series@1",
+          bindings: {
+            x_field: "month",
+            y_fields: ["revenue"],
+            series_field: null,
+            lower_bound_field: null,
+            upper_bound_field: null,
+          },
+          dataset: {
+            table_id: "monthly-revenue",
+            columns: [
+              {
+                key: "month",
+                label_zh: "月份",
+                data_type: "STRING",
+                nullable: false,
+                semantic_object_id: "dimension.month",
+                semantic_role: "DIMENSION",
+              },
+              {
+                key: "revenue",
+                label_zh: "收入",
+                data_type: "NUMBER",
+                nullable: false,
+                semantic_object_id: "metric.revenue",
+                semantic_role: role,
+              },
+            ],
+            rows: [{ month: "2024-01-01", revenue: 42 }],
+            total_rows: 1,
+          },
+        }),
+      );
+
+      expect(
+        projectStagedAnalysisChart({
+          artifact_name: "chart:monthly-revenue-chart",
+          artifact_kind: "CHART",
+          media_type: "application/json",
+          content,
+          content_sha256: hash("f"),
+          bytes: content.byteLength,
+        }),
+      ).toMatchObject({
+        chart_id: "monthly-revenue-chart",
+        projection: {
+          table: {
+            columns: [
+              { key: "month", label: "月份", data_type: "STRING" },
+              { key: "revenue", label: "收入", data_type: "NUMBER" },
+            ],
+          },
+        },
+      });
+    },
+  );
 
   it("plans from exact semantic authority without exposing rows or benchmark routing", async () => {
     const test = await harness();

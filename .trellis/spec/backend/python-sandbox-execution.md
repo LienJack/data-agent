@@ -233,3 +233,46 @@ Bad：取第一个同ID列，或仅因source列名存在就绕过role/ID校验�
 
 Wrong：`candidates.find(c => c.semantic_object_id === id)`。
 Correct：按显式source与语义role/ID共同筛选，要求exactly one，再走原类型/NULL/Arrow及同输入闭包。
+
+## Scenario: 比例结果列的数据权限与方法权限分离
+
+### 1. Scope / Trigger
+
+Analysis消费已接受QueryEvidence的FORMULA或REQUEST_DERIVED列时适用。它们不是发布Metric；不得由role转换授予统计方法权限。
+
+### 2. Signatures
+
+`AnalysisResultContract@2.tables[].columns[].semantic_role` 保留这两种role；共享 `analysisResultTableSemanticRoleSchema` 供staged chart读取。
+Host调用 `compileAnalysisProgramCandidate({... , query_evidence:{reference,document}})`，来源必须是原生产resolveCommitted的exact输入。
+候选JSON没有该字段，模型不能提交Context、receipt、输入文档或结果契约作为权限。
+
+### 3. Contracts
+
+- 两种role仅允许NUMBER、DIRECT RESULT_COLLECTION、显式source、语义/物理lineage；该ID不得出现在metric_bindings。
+- `resolveAnalysisResultSourceObjects` 重验contract/context/QueryEvidence，比较Run/Scope、Context四字段、Release和Schema的id/revision/hash。
+- 每个新role表列必须exact匹配`query_evidence.output_name`、原role/ID/NUMBER以及NULL约束；REQUEST_DERIVED的解释依赖必须是节点已选的原Metric/Dimension。
+- 只有经此证明的表列ID可进入结果lineage。指标选择、dimension权限、Skill capability与预算完全沿原Published AnalysisContext，不把新ID加入这些集合。
+- 后续直接投影仍验证真实Arrow/语义绑定/NULL；Publisher将原role写入TABLE/CHART载荷。图表公开展示是投影，不能反向产生方法授权。
+- 旧契约不增字段，不改历史hash。没有这两种role的旧程序保持原路径；有role而没有accepted输入必须拒绝，不存在兼容放行。
+
+### 4. Validation & Error Matrix
+
+新role缺DIRECT/source/lineage、非NUMBER或与metric_bindings同ID → ResultContract拒绝。
+缺输入、exact ref/Run/Scope/Context/Release/Schema漂移、错source/role/ID或缺解释依赖 → `ANALYSIS_PROGRAM_RESULT_SOURCE_AUTHORITY_INVALID`。
+候选把比例ID放进metric_ids → `ANALYSIS_PROGRAM_CANDIDATE_METRIC_NOT_PUBLISHED`；不能降级成数据消费。
+
+### 5. Good / Base / Bad Cases
+
+Good：原收入/投入Metric继续提供方法能力，净ROI列按REQUEST_DERIVED进入受治理结果与图表。
+Base：输入层与编译fixture通过不是新方法、独立oracle、模型Run或正式验收通过。
+Bad：把净ROI改成METRIC或把一个普通自洽JSON当成生产resolveCommitted证据。
+
+### 6. Tests Required
+
+两种role的契约/Program/data projection/chart parser正例、原Metric选择不变、真实Arrow保留NULL；缺输入、换ref/Run/Scope/package/receipt/
+Release revision/Schema hash、Context hash、source列/role、解释依赖与ID升级的拒绝矩阵。原单序列、Publisher和publication回归。
+
+### 7. Wrong vs Correct
+
+Wrong：`metric_ids.push(requestDerivedId)`。
+Correct：`metric_ids`仍选原发布指标，Host仅把exact来源证明得到的比例ID放入结果lineage允许集合。
