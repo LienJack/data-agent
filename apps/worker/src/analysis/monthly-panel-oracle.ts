@@ -25,7 +25,7 @@ import {
   monthlyPanelOpposedChangesSchema,
 } from "./monthly-panel-planning.js";
 
-const IMPLEMENTATION_ID = "monthly-group-panel-oracle@1.0.0";
+const IMPLEMENTATION_ID = "monthly-group-panel-oracle@2.0.0";
 const { fail, same, sameScopeRun, outputOf, readJson, implementationCodeDigest } =
   createAnalysisOracleOutputClosure("MONTHLY_PANEL_ORACLE", import.meta.url, [
     MONTHLY_COMPARISON_ORACLE_MODULE_URL,

@@ -19,13 +19,21 @@ export const panelReferenceVariants = [
   "negative-prior",
   "no-decline",
   "floating",
+  "two-months",
+  "two-months-datetime",
 ] as const;
 
 export async function panelReferenceCase(variant: (typeof panelReferenceVariants)[number]) {
-  const period = !["base", "two-categories", "datetime"].includes(variant);
+  const twoMonths = variant === "two-months" || variant === "two-months-datetime";
+  const period = !twoMonths && !["base", "two-categories", "datetime"].includes(variant);
   const source = period
     ? await monthlyPeriodPanelFixture()
-    : await monthlyPanelFixture(variant === "two-categories", true, variant === "datetime");
+    : await monthlyPanelFixture(
+        twoMonths || variant === "two-categories",
+        true,
+        variant === "datetime" || variant === "two-months-datetime",
+        twoMonths ? 2 : 12,
+      );
   const draft = structuredClone(source.document);
   if (draft.projection.kind !== "TABLE" || draft.provenance?.kind !== "GOVERNED_QUERY_RESULT")
     throw new Error("TEST_QUERY_REQUIRED");

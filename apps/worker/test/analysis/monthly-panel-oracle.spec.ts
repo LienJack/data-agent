@@ -473,7 +473,7 @@ describe("independent monthly panel oracle", () => {
       productionGovernedAnalysisRuntimeInternals
         .oracleForMethods(test.source.context, [method])
         .evaluate(test.input),
-    ).resolves.toMatchObject({ implementation_id: "monthly-group-panel-oracle@1.0.0" });
+    ).resolves.toMatchObject({ implementation_id: "monthly-group-panel-oracle@2.0.0" });
     await expect(
       productionGovernedAnalysisRuntimeInternals
         .oracleForMethods(test.source.context, [])

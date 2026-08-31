@@ -19,12 +19,12 @@ import {
 } from "./monthly-panel-period-comparison.js";
 import { MONTHLY_PANEL_PREPARATION_REFERENCE } from "./monthly-panel-preparation-reference.js";
 
-export const MONTHLY_PANEL_METHOD_ID = "published-monthly-group-panel@1";
+export const MONTHLY_PANEL_METHOD_ID = "published-monthly-group-panel@2";
 export const MONTHLY_PANEL_CONTRACT_ID = "monthly-group-panel.result";
 export const MONTHLY_PANEL_TABLE_ID = "monthly_panel";
 export const MONTHLY_PANEL_CHART_ID = "monthly_panel_line";
 const MAX_GROUPS = 32;
-const MONTHS = 12;
+const MAX_MONTHS = 12;
 const groupSchema = z.record(z.string(), z.string().min(1).max(256));
 const periodSchema = z.string().regex(/^\d{4}-\d{2}-01$/u);
 export const monthlyPanelMeasureSchema = z.strictObject({
@@ -95,8 +95,8 @@ export async function compileMonthlyPanelPlan(input: MonthlyPanelInput) {
     measures.length < 1 ||
     measures.length > 4 ||
     dimensions.length + measures.length !== binding.columns.length ||
-    rows.length < MONTHS ||
-    rows.length > MONTHS * MAX_GROUPS ||
+    rows.length < 2 ||
+    rows.length > MAX_MONTHS * MAX_GROUPS ||
     !window?.timezone ||
     window.dimension_id !== time.semantic_object_id ||
     binding.columns.some((column) => !/^[A-Za-z_][A-Za-z0-9_]{0,127}$/u.test(column.output_name)) ||
@@ -121,18 +121,23 @@ export async function compileMonthlyPanelPlan(input: MonthlyPanelInput) {
     start.toISOString().slice(0, 10) !== first
   )
     return fail("WINDOW");
-  const periods = Array.from({ length: MONTHS + 1 }, (_, index) =>
+  const lastExclusive = calendarDate(window.end, timezone);
+  const end = new Date(`${lastExclusive}T00:00:00.000Z`);
+  const months =
+    (end.getUTCFullYear() - start.getUTCFullYear()) * 12 + end.getUTCMonth() - start.getUTCMonth();
+  if (months !== 2 && months !== 12) return fail("WINDOW");
+  const periods = Array.from({ length: months + 1 }, (_, index) =>
     new Date(Date.UTC(start.getUTCFullYear(), start.getUTCMonth() + index, 1))
       .toISOString()
       .slice(0, 10),
   );
-  if (calendarDate(window.end, window.timezone) !== periods[MONTHS]) return fail("WINDOW");
+  if (lastExclusive !== periods[months]) return fail("WINDOW");
   const orderedRows = rows
     .map((row) => {
       const raw = row[time.output_name];
       if (typeof raw !== "string") return fail("VALUE");
       const month = time.logical_type === "DATE" ? raw : calendarDate(raw, timezone);
-      if (!periods.slice(0, MONTHS).includes(month)) return fail("WINDOW");
+      if (!periods.slice(0, months).includes(month)) return fail("WINDOW");
       for (const column of categories) {
         const value = row[column.output_name];
         if (typeof value !== "string" || !value.trim() || value.length > 256) return fail("VALUE");
@@ -164,7 +169,7 @@ export async function compileMonthlyPanelPlan(input: MonthlyPanelInput) {
     groups.length > MAX_GROUPS ||
     groups.some(
       (group) =>
-        group.rows.length !== MONTHS ||
+        group.rows.length !== months ||
         group.rows.some((row, index) => row[time.output_name] !== periods[index]),
     )
   )
@@ -230,6 +235,7 @@ export async function compileMonthlyPanelPlan(input: MonthlyPanelInput) {
     source_column: column.output_name,
   }));
   const comparison = resolvePanelPeriodComparison(binding);
+  if (comparison && months !== 12) return fail("WINDOW");
   if (comparison && metrics.some((metric) => metric.additivity !== "additive"))
     return fail("AUTHORITY");
   const contract = await buildDescriptiveResultContract({
@@ -251,7 +257,7 @@ export async function compileMonthlyPanelPlan(input: MonthlyPanelInput) {
     table: {
       id: MONTHLY_PANEL_TABLE_ID,
       title: "月度分群结果",
-      max_rows: MONTHS * MAX_GROUPS,
+      max_rows: months * MAX_GROUPS,
       max_columns: 7,
     },
     chart: {
@@ -286,6 +292,7 @@ export async function compileMonthlyPanelPlan(input: MonthlyPanelInput) {
     },
     execution_contract: Object.freeze({
       method_id: MONTHLY_PANEL_METHOD_ID,
+      month_count: months,
       claim_strength: "DESCRIPTIVE" as const,
       time_column: time.output_name,
       time_logical_type: time.logical_type,
@@ -310,10 +317,10 @@ export async function compileMonthlyPanelPlan(input: MonthlyPanelInput) {
         ...(facet ? { facet_field: facet.output_name } : {}),
       },
       rules: [
-        "Use preparation_reference as the data-free reference implementation of these descriptive rules. Copy its function into your actual python_cell. Call prepare_monthly_panel with the exact bound input DataFrame and a configuration dict copying only source_columns, time_column, time_logical_type, timezone, category_columns, measure_fields, and period_comparison when supplied. Do not copy schemas, rules or preparation_reference into that dict. Assign the returned dict to a named result symbol and construct the table from result['observations'] with exactly source_columns. Never add temporary columns such as month_str to the source or later look them up in observations; the approved time_column remains the calendar-date key throughout. The reference is not pre-executed output and does not replace Cell policy, Publisher or FULL Oracle checks.",
+        "Use preparation_reference as the data-free reference implementation of these descriptive rules. Copy its function into your actual python_cell. Call prepare_monthly_panel with the exact bound input DataFrame and a configuration dict copying only source_columns, time_column, time_logical_type, timezone, month_count, category_columns, measure_fields, and period_comparison when supplied. Do not copy schemas, rules or preparation_reference into that dict. Assign the returned dict to a named result symbol and construct the table from result['observations'] with exactly source_columns. Never add temporary columns such as month_str to the source or later look them up in observations; the approved time_column remains the calendar-date key throughout. The reference is not pre-executed output and does not replace Cell policy, Publisher or FULL Oracle checks.",
         ...(comparison ? PANEL_PERIOD_COMPARISON_RULES : []),
         "observations contains every source row and exactly its source columns/values/NULLs, stably sorted by calendar month. DATE retains its date; DATETIME becomes calendar date in the explicit timezone. Never merge tuples, invent composite columns, drop rows, fill NULL or average ratios.",
-        "Each measure field is an object with only groups, an array in group first-appearance order in observations. Each item has group (all category_columns and exact values), source_column and the supplied monthly measure fields. Compute each group and measure independently from its own twelve months. observed_count excludes NULL; missing_count counts NULL; minimum/maximum use observed values. lowest/highest contain up to three {period,value}, ordered by value ascending/descending then period ascending.",
+        "Each measure field is an object with only groups, an array in group first-appearance order in observations. Each item has group (all category_columns and exact values), source_column and the supplied monthly measure fields. Compute each group and measure independently from its exact month_count (2 or 12) complete calendar months. Two months support an endpoint comparison, not a persistent trend or trend-strength claim. observed_count excludes NULL; missing_count counts NULL; minimum/maximum use observed values. lowest/highest contain up to three {period,value}, ordered by value ascending/descending then period ascending.",
         "first_period/last_period and first_value/last_value use the original window endpoints, retaining NULL. absolute_change=last-first, NULL if either is missing; relative_change=absolute_change/first, NULL if missing or zero denominator. Never move endpoints. largest_drops contains up to three strictly negative adjacent-month changes, sorted by absolute_change then to_period. NULL breaks adjacency; relative_change is NULL for zero previous value.",
         "opposed_changes is an object with only pairs, an array listing all ordered source-measure pairs in each group whose endpoint absolute changes are respectively strictly positive and strictly negative. Order by group first-appearance, increasing source column order, then decreasing source column order. Copy both endpoint changes and relative changes, original first/last periods and the complete group. Missing endpoints yield no pair; do not infer causality, materiality or direction from relative-change signs with negative denominators.",
         "claim_strength must equal DESCRIPTIVE. No extra fields, free-form facts, statistical significance or causal claims. Use the existing publisher once with the exact chart_bindings and line.multi-series@1; all measures stay independent and the second category is an explicit facet.",

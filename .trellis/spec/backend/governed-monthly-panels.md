@@ -2,13 +2,14 @@
 
 ### 1. Scope / Trigger
 
-一个已接受 QueryEvidence 含一个 MONTH 时间维度、1–2 个原始分类、1–4 个数值结果，每组完整 12 月。
+一个已接受 QueryEvidence 含一个 MONTH 时间维度、1–2 个原始分类、1–4 个数值结果，每组完整 2 或 12 月。
 叶子、独立 Oracle 与唯一生产 composition 已接线；离线通过不等于真实 Sandbox/模型/浏览器或四层验收。
 
 ### 2. Signatures
 
 `compileMonthlyPanelPlan({context,query_evidence_ref,query_evidence_document})` 返回合同、shape 和 Host execution_contract。
-method=`published-monthly-group-panel@1`，contract=`monthly-group-panel.result`；原描述性合同编码和月度字段 schema 复用。
+method=`published-monthly-group-panel@2`，contract=`monthly-group-panel.result`；原描述性合同编码和月度字段 schema 复用。
+原@1只支持12月，历史不重写或回退；@2显式携带由已验收窗口决定的month_count，不接受模型指定窗口长度。
 `createMonthlyPanelOracle(context).evaluate(input)` 重验真实 Arrow 和全部 RESULT/TABLE/CHART；仅在唯一 production composition 按完整源形态注册。
 
 ### 3. Contracts
@@ -16,6 +17,8 @@ method=`published-monthly-group-panel@1`，contract=`monthly-group-panel.result`
 - 全部 source/ref/hash/Scope/Run/Context/Release/Schema、原 Metric 公式、CHART_DATASET/applicability 与 groupable 维度重新验证。
 - ≤32 个完整分类 tuple、≤384 行、≤16 个第二分类分面，不增加原 LINE 512 行或图表字节限制。实际空分类/时间拒绝，原 nullable 保留。
 - observations 稳定按月排序并保留全部原始分类、measure、NULL。每组每月恰一行，每组每 measure 至少有一个真实观测。
+- 仅2/12个完整连续月；1/3/11月、半月边界、缺月/重复月拒绝。2月合同最多64行，12月最多384行。
+  2月只支持原窗口端点差异，不能声称持续趋势或趋势强度；分类同比排名仍须完整12月。
 - 各 measure 字段为 `{groups:[...]}`，按组首次出现顺序存月度描述性结果；不合计/平均比例，不混组，不跨 NULL 比较，不移动原窗口端点。
 - `opposed_changes={pairs:[...]}` 只列同组原端点 absolute_change 一正一负的所有有序 measure 对；顺序为组、上升列、下降列的源顺序。
   原始相对变化/NULL 保留，不因负分母下相对变化符号推断升降，也不产生显著性或因果声明。
@@ -25,7 +28,7 @@ method=`published-monthly-group-panel@1`，contract=`monthly-group-panel.result`
   Agent仍返回实际python_cell source，经原AST策略和Sandbox执行、原Publisher/FULL Oracle后才接受；无源代码替换或修复预算放宽。
   显式`source_columns/time_logical_type`与既有时间、分类、measure映射决定准备步骤；time_column原键保存业务日历日期，
   不引入month_str等临时来源列。原DataFrame只读，派生副本转JSON-native NULL，保留完整源列、稳定月序和分类tuple。
-  配置仅复制上述字段和可选period_comparison，不回传大块schema/rules/reference；表从原observations完整投影。
+  配置仅复制上述字段、month_count和可选period_comparison，不回传大块schema/rules/reference；表从原observations完整投影。
   这证明参考辅助的固定方法执行，不宣称从零自由生成任意分析算法；原statistical_operator义务不受影响。
 - 分类同比仅接受本 Run QueryEvidence 中已封存的 `period_comparison` 列角色与 `BOTH_PERIOD_GROUPS`，且原 Metric 可加；
   列名不得替代角色证明，无元数据/仅本期分类范围拒绝，普通比例面板保持原合同。
@@ -73,3 +76,6 @@ Python参考必须另在真实Agent镜像执行并与独立Host Oracle逐字段�
 
 Wrong：用 `channel` 分组后忽略 `audience`，或用每组首个非空值替换原窗口起点。
 Correct：以完整原分类 tuple 分组，要求原窗口12月完整，缺失端点的变化保持 NULL。
+
+新增两月窗口必须覆盖DATE/DATETIME、缺月/重复月/半月/错误长度、无关键词生产注册，以及实际Python与独立Host结果精确相等。
+两月支持本身不实现“先渠道筛选再拆人群”；同tuple反向变化对不能冒充跨tuple的上层汇总或比例重算。

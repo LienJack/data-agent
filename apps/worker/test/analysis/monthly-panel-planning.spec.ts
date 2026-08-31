@@ -18,6 +18,55 @@ async function inputFor(two = true, derived = true, datetime = false) {
 }
 
 describe("source-bound monthly group panel plan", () => {
+  it.each([false, true])(
+    "accepts two exact complete calendar months: datetime=%s",
+    async (datetime) => {
+      const source = await monthlyPanelFixture(true, true, datetime, 2);
+      const original = structuredClone(source);
+      const plan = await compileMonthlyPanelPlan({
+        context: source.context,
+        query_evidence_ref: source.reference,
+        query_evidence_document: source.document,
+      });
+      expect(plan.execution_contract.method_id).toBe("published-monthly-group-panel@2");
+      expect(plan.execution_contract.month_count).toBe(2);
+      expect(plan.shape.groups.every(({ rows }) => rows.length === 2)).toBe(true);
+      expect(plan.shape.ordered_rows).toHaveLength(8);
+      expect(plan.result_contract.tables[0]?.max_rows).toBe(64);
+      expect(source).toEqual(original);
+    },
+  );
+
+  it.each(["gap", "duplicate", "one-month", "three-months", "partial-end"])(
+    "rejects an incomplete two-month panel: %s",
+    async (kind) => {
+      const source = await monthlyPanelFixture(true, true, false, 2);
+      const draft = structuredClone(source.document);
+      if (draft.projection.kind !== "TABLE" || draft.provenance?.kind !== "GOVERNED_QUERY_RESULT")
+        throw new Error("TEST_QUERY_REQUIRED");
+      const { binding_hash: _hash, ...binding } = draft.provenance.semantic_binding;
+      if (kind === "gap") draft.projection.rows.pop();
+      if (kind === "duplicate") draft.projection.rows[1] = { ...draft.projection.rows[0] };
+      if (binding.time_window) {
+        if (kind === "one-month") binding.time_window.end = "2024-02-01";
+        if (kind === "three-months") binding.time_window.end = "2024-04-01";
+        if (kind === "partial-end") binding.time_window.end = "2024-03-02";
+      }
+      draft.provenance.semantic_binding = await buildQueryEvidenceSemanticBinding(binding);
+      draft.provenance.row_count = draft.projection.total_rows = draft.projection.rows.length;
+      const document = await buildProductTeamArtifactDocument(draft);
+      if (document.artifact_ref.artifact_type !== "QueryEvidence")
+        throw new Error("TEST_QUERY_REQUIRED");
+      await expect(
+        compileMonthlyPanelPlan({
+          context: source.context,
+          query_evidence_ref: document.artifact_ref,
+          query_evidence_document: document,
+        }),
+      ).rejects.toThrow(/MONTHLY_PANEL_WINDOW_INVALID/);
+    },
+  );
+
   it("takes period roles from sealed proof metadata, not misleading output names", async () => {
     const source = await monthlyPeriodPanelFixture();
     const plan = await compileMonthlyPanelPlan({

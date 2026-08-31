@@ -6,7 +6,12 @@ import { buildAnalysisContext } from "@data-agent/contracts/context";
 import { categoryComparisonFixture } from "./category-comparison-fixture.js";
 import { monthlyComparisonFixture } from "./monthly-comparison-fixture.js";
 
-export async function monthlyPanelFixture(twoGroups = false, derived = true, datetime = false) {
+export async function monthlyPanelFixture(
+  twoGroups = false,
+  derived = true,
+  datetime = false,
+  months: 2 | 12 = 12,
+) {
   const category = await categoryComparisonFixture(twoGroups, derived);
   const monthly = await monthlyComparisonFixture();
   if (category.document.provenance?.kind !== "GOVERNED_QUERY_RESULT")
@@ -20,9 +25,12 @@ export async function monthlyPanelFixture(twoGroups = false, derived = true, dat
       { ...time, nullable: true, logical_type: datetime ? "DATETIME" : "DATE" },
       ...category.binding.columns,
     ],
-    time_window: monthly.binding.time_window,
+    time_window:
+      months === 2 && monthly.binding.time_window
+        ? { ...monthly.binding.time_window, end: "2024-03-01" }
+        : monthly.binding.time_window,
   });
-  const rows = Array.from({ length: 12 }, (_, index) =>
+  const rows = Array.from({ length: months }, (_, index) =>
     ["Email", "App"].flatMap((channel) =>
       (twoGroups ? ["新客", "老客"] : [null]).map((audience) => {
         const factor = audience === "老客" ? 2 : 1;

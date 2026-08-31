@@ -1928,6 +1928,13 @@ Diagnostic/Q1/C1任一正式首次失败必须写既有 authority支持的 immut
     下一独立工作项版本化B3比较期间与渠道先筛选口径；先完成离线backlog，再新构建验证，不拼接旧PASS。
     见 [完整文本拒绝复盘](research/complex-60a3236d-complete-text-rejection.md)。
 
+> 接续60a缺口的两月窗口支持：PRD §22.1 / design §28已明确新版B3，但旧V1题库与receipt不改。
+> monthly panel前向到method@2，由已验收窗口识别2/12月；2月端点比较不冒充持续趋势，12月同比规则不变。
+> DATE/DATETIME两项先RED，新增窗口/生产选择及旧面板、月度Oracle共179项通过，Worker typecheck/build通过。
+> NAS原Agent Python3.12及operator Cell policy实际验证14种参考输入，独立Host Oracle逐字段0差异、原DataFrame不变，
+> model_calls=0、authority_writes=0；审计`monthly-panel-two-month-reference-probe-959d130c.json`。
+> 渠道先筛选/再拆人群仍是下一独立工作项，未开始新的模型运行，不声称B3或formal15 PASS。
+
 **F6 READY 轮次恢复边界（2026-08-30，历史）**
 
 > 以下为历史记录；当前 forward recovery 已到 E16 FAILED，下一 fresh epoch 为 E17，见上一节。

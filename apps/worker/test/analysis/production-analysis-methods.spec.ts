@@ -59,6 +59,19 @@ async function registryInput(single = false) {
 }
 
 describe("production governed analysis method composition", () => {
+  it("registers two-month panels by source shape without a business-question switch", async () => {
+    const source = await monthlyPanelFixture(true, true, false, 2);
+    const methods = await productionGovernedAnalysisRuntimeInternals.methodRegistry().resolve({
+      ...(await registryInput()),
+      question: "no business keywords",
+      context: source.context,
+      query_evidence_ref: source.reference,
+      query_evidence_document: source.document,
+      query_evidence_binding: source.binding,
+    });
+    expect(methods.map(({ method_id }) => method_id)).toEqual(["published-monthly-group-panel@2"]);
+    expect(methods[0]?.execution_contract).toMatchObject({ month_count: 2 });
+  });
   it.each([
     [false, false],
     [false, true],

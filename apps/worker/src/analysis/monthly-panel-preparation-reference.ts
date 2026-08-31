@@ -35,7 +35,7 @@ def prepare_monthly_panel(input_frame, contract):
         observed = [point for point in points if point['value'] is not None]
         lowest = sorted(observed, key=lambda point: (point['value'], point['period']))
         highest = sorted(observed, key=lambda point: (-point['value'], point['period']))
-        assert len(points) == 12 and len(observed) > 0, 'MONTHLY_POINTS_INVALID'
+        assert contract['month_count'] in (2, 12) and len(points) == contract['month_count'] and len(observed) > 0, 'MONTHLY_POINTS_INVALID'
         first, last = points[0], points[-1]
         change = None if first['value'] is None or last['value'] is None else last['value'] - first['value']
         drops = []
