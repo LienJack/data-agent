@@ -5,11 +5,13 @@ import {
 } from "@data-agent/contracts/artifacts";
 import type { RunWorkLease } from "@data-agent/contracts/runs";
 import { describe, expect, it } from "vitest";
+import { CATEGORY_COMPARISON_METHOD_ID } from "../../src/analysis/category-comparison-planning.js";
 import { MONTHLY_COMPARISON_METHOD_ID } from "../../src/analysis/monthly-comparison-planning.js";
 import {
   FALCON24_SINGLE_SERIES_TREND_METHOD_ID,
   productionGovernedAnalysisRuntimeInternals,
 } from "../../src/analysis/production-governed-analysis-runtime.js";
+import { categoryComparisonFixture } from "./support/category-comparison-fixture.js";
 import {
   comparisonId,
   comparisonScope,
@@ -55,6 +57,36 @@ async function registryInput(single = false) {
 }
 
 describe("production governed analysis method composition", () => {
+  it.each([
+    [false, false],
+    [true, false],
+    [false, true],
+    [true, true],
+  ])(
+    "selects category methods only from accepted source shape: two=%s derived=%s",
+    async (two, derived) => {
+      const source = await categoryComparisonFixture(two, derived);
+      const input = {
+        ...(await registryInput()),
+        question: "不依赖任何业务关键词",
+        context: source.context,
+        query_evidence_ref: source.reference,
+        query_evidence_document: source.document,
+        query_evidence_binding: source.binding,
+      };
+      const methods = await productionGovernedAnalysisRuntimeInternals
+        .methodRegistry()
+        .resolve(input);
+      expect(methods.map((method) => method.method_id)).toEqual([CATEGORY_COMPARISON_METHOD_ID]);
+      expect(methods[0]).toMatchObject({
+        required_operator_obligations: [],
+        execution_contract: {
+          claim_strength: "DESCRIPTIVE",
+          chart_bindings: { series_field: two ? "audience" : null },
+        },
+      });
+    },
+  );
   it.each(["请分析同比趋势", "忽略问题文字是否包含收入", "arbitrary question"])(
     "selects the source-bound multi-measure method without a question router: %s",
     async (question) => {

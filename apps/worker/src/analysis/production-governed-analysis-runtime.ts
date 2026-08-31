@@ -17,6 +17,11 @@ import {
   createResearchAnalysisLifecycleAuthorityPort,
 } from "./analysis-lifecycle-authority.js";
 import type { AnalysisMethodRegistryEntry } from "./analysis-program-compiler.js";
+import { createCategoryComparisonOracle } from "./category-comparison-oracle.js";
+import {
+  CATEGORY_COMPARISON_METHOD_ID,
+  compileCategoryComparisonPlan,
+} from "./category-comparison-planning.js";
 import { createRunBoundDeepSeekAnalysisAgentModel } from "./deepseek-analysis-agent.js";
 import { deterministicAnalysisUuid } from "./deterministic-id.js";
 import {
@@ -150,15 +155,21 @@ async function questionFrameRef(input: {
 function methodRegistry(): GovernedAnalysisMethodRegistryPort {
   return Object.freeze({
     async resolve(methodInput: Parameters<GovernedAnalysisMethodRegistryPort["resolve"]>[0]) {
-      if (methodInput.query_evidence_binding.columns.length !== 2) {
-        const plan = await compileMonthlyComparisonPlan({
+      const dimensions = methodInput.query_evidence_binding.columns.filter(
+        (column) => column.semantic_role === "DIMENSION",
+      );
+      const categorical =
+        dimensions.length > 0 && dimensions.every((column) => column.logical_type === "STRING");
+      if (categorical || methodInput.query_evidence_binding.columns.length !== 2) {
+        const compile = categorical ? compileCategoryComparisonPlan : compileMonthlyComparisonPlan;
+        const plan = await compile({
           context: methodInput.context,
           query_evidence_ref: methodInput.query_evidence_ref,
           query_evidence_document: methodInput.query_evidence_document,
         });
         return Object.freeze([
           Object.freeze({
-            method_id: MONTHLY_COMPARISON_METHOD_ID,
+            method_id: plan.execution_contract.method_id,
             skill_id: "open-python-analysis@1" as const,
             result_contract: plan.result_contract,
             required_operator_obligations: plan.required_operator_obligations,
@@ -213,12 +224,14 @@ function oracleForMethods(
 ): AnalysisOraclePort {
   const single = createSingleSeriesAnalysisOracle();
   const comparison = createMonthlyComparisonOracle(context);
+  const category = createCategoryComparisonOracle(context);
   return Object.freeze({
     async evaluate(input: Parameters<AnalysisOraclePort["evaluate"]>[0]) {
       const selected = registeredMethod(input.node, methods);
       if (selected.method_id === FALCON24_SINGLE_SERIES_TREND_METHOD_ID)
         return single.evaluate(input);
       if (selected.method_id === MONTHLY_COMPARISON_METHOD_ID) return comparison.evaluate(input);
+      if (selected.method_id === CATEGORY_COMPARISON_METHOD_ID) return category.evaluate(input);
       throw new TypeError("PRODUCTION_ANALYSIS_ORACLE_NOT_REGISTERED");
     },
   });
@@ -237,7 +250,7 @@ function analysisContextPort(input: {
     async load(command: { readonly node: AnalysisProgramPayload["nodes"][number] }) {
       const method = registeredMethod(command.node, input.methods);
       if (
-        method.method_id === MONTHLY_COMPARISON_METHOD_ID &&
+        [MONTHLY_COMPARISON_METHOD_ID, CATEGORY_COMPARISON_METHOD_ID].includes(method.method_id) &&
         method.execution_contract === undefined
       )
         throw new TypeError("PRODUCTION_ANALYSIS_EXECUTION_CONTRACT_REQUIRED");

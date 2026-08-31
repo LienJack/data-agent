@@ -5,96 +5,59 @@ import {
 import { sha256ContentHash } from "@data-agent/contracts/common";
 import type { AnalysisContext } from "@data-agent/contracts/context";
 import { STATISTICAL_OPERATOR_REGISTRY_DIGEST } from "@data-agent/contracts/statistical-operators";
-import { resolveAnalysisEvidenceTimeWindow } from "./analysis-evidence-time-window.js";
 import { createAnalysisOracleOutputClosure } from "./analysis-oracle-output-closure.js";
+import {
+  CATEGORY_COMPARISON_METHOD_ID,
+  type CategoryComparisonPlan,
+  categoryComparisonMeasureSchema,
+  compileCategoryComparisonPlan,
+} from "./category-comparison-planning.js";
 import type { AnalysisOraclePort } from "./executor.js";
 import { verifyProductTeamQueryEvidenceInput } from "./governed-analysis-input.js";
-import {
-  compileMonthlyComparisonPlan,
-  MONTHLY_COMPARISON_METHOD_ID,
-  type MonthlyComparisonPlan,
-  monthlyComparisonMeasureSchema,
-} from "./monthly-comparison-planning.js";
 
-const IMPLEMENTATION_ID = "monthly-multi-measure-comparison-oracle@1.0.0";
+const IMPLEMENTATION_ID = "category-multi-measure-comparison-oracle@1.0.0";
 const { fail, same, sameScopeRun, outputOf, readJson, implementationCodeDigest } =
-  createAnalysisOracleOutputClosure("MONTHLY_COMPARISON_ORACLE", import.meta.url);
+  createAnalysisOracleOutputClosure("CATEGORY_COMPARISON_ORACLE", import.meta.url);
 
-/** Independent Host arithmetic; no model output, result table, or chart is an input to this computation. */
-function expectedMeasure(plan: MonthlyComparisonPlan, column: string) {
-  const points = plan.shape.ordered_rows.map((row) => ({
-    period: String(row[plan.shape.time_column]),
-    value: typeof row[column] === "number" ? row[column] : null,
-  }));
-  const observed = points.filter(
-    (point): point is { period: string; value: number } => point.value !== null,
-  );
+/** Independent descriptive arithmetic on source rows, never on the model's result/table/chart. */
+function expectedMeasure(plan: CategoryComparisonPlan, column: string) {
+  const observed = plan.shape.rows.flatMap((row, index) => {
+    const value = row[column];
+    if (value === null) return [];
+    if (typeof value !== "number" || !Number.isFinite(value)) return fail("INPUT_INVALID");
+    return [
+      {
+        source_row_index: index,
+        value,
+        group: Object.fromEntries(plan.shape.dimension_columns.map((name) => [name, row[name]])),
+      },
+    ];
+  });
   const lowest = [...observed].sort(
-    (left, right) => left.value - right.value || left.period.localeCompare(right.period),
+    (a, b) => a.value - b.value || a.source_row_index - b.source_row_index,
   );
   const highest = [...observed].sort(
-    (left, right) => right.value - left.value || left.period.localeCompare(right.period),
+    (a, b) => b.value - a.value || a.source_row_index - b.source_row_index,
   );
-  const first = points[0];
-  const last = points.at(-1);
-  if (!first || !last || observed.length === 0) return fail("INPUT_INVALID");
-  const absoluteChange =
-    first.value === null || last.value === null ? null : last.value - first.value;
-  const changes = points
-    .flatMap((point, index) => {
-      const previous = points[index - 1];
-      if (
-        !previous ||
-        previous.value === null ||
-        point.value === null ||
-        point.value >= previous.value
-      )
-        return [];
-      const change = point.value - previous.value;
-      return [
-        {
-          from_period: previous.period,
-          to_period: point.period,
-          absolute_change: change,
-          relative_change: previous.value === 0 ? null : change / previous.value,
-        },
-      ];
-    })
-    .sort(
-      (left, right) =>
-        left.absolute_change - right.absolute_change ||
-        left.to_period.localeCompare(right.to_period),
-    );
-  const parsed = monthlyComparisonMeasureSchema.safeParse({
+  return categoryComparisonMeasureSchema.parse({
     source_column: column,
     observed_count: observed.length,
-    missing_count: points.length - observed.length,
+    missing_count: plan.shape.rows.length - observed.length,
     minimum: lowest[0]?.value,
     maximum: highest[0]?.value,
     lowest: lowest.slice(0, 3),
     highest: highest.slice(0, 3),
-    first_period: first.period,
-    last_period: last.period,
-    first_value: first.value,
-    last_value: last.value,
-    absolute_change: absoluteChange,
-    relative_change:
-      absoluteChange === null || first.value === null || first.value === 0
-        ? null
-        : absoluteChange / first.value,
-    largest_drops: changes.slice(0, 3),
   });
-  return parsed.success ? parsed.data : fail("NUMERIC_RANGE_INVALID");
 }
 
-export function createMonthlyComparisonOracle(context: AnalysisContext): AnalysisOraclePort {
+export function createCategoryComparisonOracle(context: AnalysisContext): AnalysisOraclePort {
   return Object.freeze({
     async evaluate(input: Parameters<AnalysisOraclePort["evaluate"]>[0]) {
       if (
         input.governed_inputs.length !== 1 ||
         input.sandbox_outputs.length !== 3 ||
         input.node.skill_id !== "open-python-analysis@1" ||
-        !same(input.node.method_registry_entry_ids, [MONTHLY_COMPARISON_METHOD_ID]) ||
+        !same(input.node.method_registry_entry_ids, [CATEGORY_COMPARISON_METHOD_ID]) ||
         input.node.execution_mode !== "MODEL_GENERATED" ||
         input.node.generated_source_policy !== "OPEN_ANALYSIS" ||
         input.node.comparison_window !== null ||
@@ -108,7 +71,7 @@ export function createMonthlyComparisonOracle(context: AnalysisContext): Analysi
       if (governed?.name !== "query_evidence" || governed.format !== "ARROW")
         return fail("INPUT_INVALID");
       const document = await verifyProductTeamArtifactDocument(governed.query_evidence_document);
-      const plan = await compileMonthlyComparisonPlan({
+      const plan = await compileCategoryComparisonPlan({
         context,
         query_evidence_ref: governed.query_evidence_ref,
         query_evidence_document: document,
@@ -117,23 +80,20 @@ export function createMonthlyComparisonOracle(context: AnalysisContext): Analysi
         query_evidence_ref: governed.query_evidence_ref,
         query_evidence_document: document,
         arrow_content: governed.content,
-        expected_row_count: 12,
+        expected_row_count: plan.shape.rows.length,
         expected_ordered_columns: plan.shape.binding.columns.map((column) => column.output_name),
       });
       const contract = plan.result_contract;
       if (
         !same(input.node.result_contract, contract) ||
         input.sandbox_receipt.result_contract_hash !== contract.contract_hash ||
-        !same(
-          input.node.time_window,
-          resolveAnalysisEvidenceTimeWindow(plan.shape.binding, context),
-        ) ||
-        !same(input.node.dimension_refs, [plan.shape.time_dimension_id]) ||
+        !same(input.node.time_window, plan.shape.time_window) ||
+        !same(input.node.dimension_refs, plan.shape.dimension_ids) ||
         !same(
           [...input.node.metric_refs].sort((a, b) => a.node_id.localeCompare(b.node_id)),
-          [...context.metrics.map((metric) => metric.metric_ref)].sort((a, b) =>
-            a.node_id.localeCompare(b.node_id),
-          ),
+          context.metrics
+            .map((metric) => metric.metric_ref)
+            .sort((a, b) => a.node_id.localeCompare(b.node_id)),
         )
       )
         return fail("CONTRACT_CLOSURE_INVALID");
@@ -145,8 +105,8 @@ export function createMonthlyComparisonOracle(context: AnalysisContext): Analysi
       ]) {
         if (!sameScopeRun(reference, governed.query_evidence_ref)) return fail("INPUT_INVALID");
       }
-      const tableContract = contract.tables[0];
-      const chartContract = contract.charts[0];
+      const tableContract = contract.tables[0],
+        chartContract = contract.charts[0];
       if (!tableContract || !chartContract) return fail("CONTRACT_CLOSURE_INVALID");
       const result = outputOf(
         input.sandbox_outputs,
@@ -169,8 +129,9 @@ export function createMonthlyComparisonOracle(context: AnalysisContext): Analysi
       const measures = plan.execution_contract.measure_fields.map(
         ({ field, source_column }) => [field, expectedMeasure(plan, source_column)] as const,
       );
+      const rows = plan.shape.rows;
       const data = {
-        observations: plan.shape.ordered_rows,
+        observations: rows,
         ...Object.fromEntries(measures),
         claim_strength: "DESCRIPTIVE",
       };
@@ -194,8 +155,8 @@ export function createMonthlyComparisonOracle(context: AnalysisContext): Analysi
           table_id: tableContract.table_id,
           title_zh: tableContract.title_zh,
           columns: tableContract.columns,
-          rows: plan.shape.ordered_rows,
-          total_rows: 12,
+          rows,
+          total_rows: rows.length,
         })
       )
         return fail("TABLE_MISMATCH");
@@ -204,42 +165,30 @@ export function createMonthlyComparisonOracle(context: AnalysisContext): Analysi
           schema_version: "analysis-published-chart@1.0.0",
           chart_id: chartContract.chart_id,
           title_zh: chartContract.title_zh,
-          intent: "TREND",
-          template_id: "line.multi-series@1",
-          bindings: {
-            x_field: plan.shape.time_column,
-            y_fields: plan.shape.measures.map((column) => column.output_name),
-            series_field: null,
-            lower_bound_field: null,
-            upper_bound_field: null,
-          },
+          intent: "COMPARISON",
+          template_id: "bar.grouped@1",
+          bindings: plan.execution_contract.chart_bindings,
           dataset: {
             table_id: tableContract.table_id,
             columns: tableContract.columns,
-            rows: plan.shape.ordered_rows,
-            total_rows: 12,
+            rows,
+            total_rows: rows.length,
           },
         })
       )
         return fail("CHART_MISMATCH");
-      const undefinedChange = measures.some(
-        ([, measure]) =>
-          measure.relative_change === null ||
-          measure.missing_count > 0 ||
-          measure.largest_drops.some((drop) => drop.relative_change === null),
-      );
       return {
         result: {
           result_kind: "GENERATED_ANALYSIS" as const,
-          declared_method: MONTHLY_COMPARISON_METHOD_ID,
+          declared_method: CATEGORY_COMPARISON_METHOD_ID,
           structured_output_refs: [result.reference, table.reference, chart.reference],
           oracle_scope: "FULL" as const,
         },
-        sample_size: 12,
+        sample_size: rows.length,
         coverage_ratio:
           measures.reduce((total, [, measure]) => total + measure.observed_count, 0) /
-          (12 * measures.length),
-        limitation_codes: undefinedChange ? ["RELATIVE_DELTA_UNDEFINED" as const] : [],
+          (rows.length * measures.length),
+        limitation_codes: [],
         material_change: false,
         implementation_id: IMPLEMENTATION_ID,
         implementation_hash: await sha256ContentHash({
@@ -263,5 +212,3 @@ export function createMonthlyComparisonOracle(context: AnalysisContext): Analysi
     },
   });
 }
-
-export const monthlyComparisonOracleInternals = Object.freeze({ expectedMeasure });

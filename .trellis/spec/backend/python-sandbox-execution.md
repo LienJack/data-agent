@@ -396,13 +396,15 @@ Correct：`requested_time_window = resolveAnalysisEvidenceTimeWindow(binding, co
 ### 1. Scope / Trigger
 
 已接受QueryEvidence有1–2个STRING/atomic分类维度和1–4个NUMBER结果列，1–200行；全量或已接受的显式窗口均可。
-这里只定义方法叶子；生产启用须完成独立oracle和唯一composition接线。
+独立oracle与唯一production composition按此输入形态启用；不是月份×分类或混单位/粒度方法。
 
 ### 2. Signatures
 
 `compileCategoryComparisonPlan({context,query_evidence_ref,query_evidence_document})`返回`result_contract/shape/execution_contract`及空算子义务。
 method=`published-category-multi-measure-comparison@1`，contract=`category-multi-measure-comparison.result`。
 `categoryComparisonMeasureSchema`规定原列、观测/缺失数、极值和最低/最高各最多3个`{source_row_index,group,value}`。
+`createCategoryComparisonOracle(context): AnalysisOraclePort`重编原来源合同并独立验算；公共`createAnalysisOracleOutputClosure`
+只复用字节/ref/JSON检查，implementation digest同时绑定叶子与公共模块内容，不共享业务期望算法。
 
 ### 3. Contracts
 
@@ -413,12 +415,19 @@ method=`published-category-multi-measure-comparison@1`，contract=`category-mult
 - chart为`bar.grouped@1`，x取第一个来源分类，第二个分类原字段作series；每个measure仍独立。不可省掉第二分类或编造组合列。
 - execution_contract只含字段与计算规则，不含行/预计算答案。排名同值按原始零基行号；group须包含原行的所有分类。
   `claim_strength=DESCRIPTIVE`，无统计、因果、跨期增长或自由文本事实；继续原publisher和预算。
+- Oracle重验原QueryEvidence与真实Arrow、Scope/Run/Context/Release/Schema、method/contract/窗口/Metric/维度以及空算子义务，
+  从原始行独立重算每项计数/极值/排名；RESULT/TABLE/CHART完整精确相等，重新封hash不豁免内容检查。
+  FULL仅覆盖固定描述性合同，`material_change=false`；coverage按全部measure真实观测数计算，缺失数显式保留。
+- production先按全部分类维度形态选择叶子，仍运行完整编译器；不按问题文字、不吞错误fallback、不删除列。
+  exact method/skill/contract及Host执行规则必须匹配；原single-series统计义务和月度方法保持不变。
 
 ### 4. Validation & Error Matrix
 
 来源/发布Metric/capability/维度/单位/粒度/空值政策漂移 → `CATEGORY_COMPARISON_AUTHORITY_INVALID`；
 超200行、空输入、时间维度、未知role或重复tuple → `CATEGORY_COMPARISON_SHAPE_INVALID`；
 实际NULL/空分类、非法数值或整列无观测 → `CATEGORY_COMPARISON_VALUE_INVALID`；派生来源仍走原authority拒绝码。
+oracle合同/输入/字节闭包漂移 → `CATEGORY_COMPARISON_ORACLE_*_INVALID`或原Arrow拒绝码；受验内容不等 →
+`CATEGORY_COMPARISON_ORACLE_{RESULT|TABLE|CHART}_MISMATCH`；缺生产执行规则与method绑定继续原production拒绝码。
 
 ### 5. Good / Base / Bad Cases
 
@@ -429,7 +438,9 @@ Bad：把每个渠道的人群行合并成一点，或将4个ROI求平均后称�
 ### 6. Tests Required
 
 1/2维×两比例role、NULL元数据/实际NULL、原始行序及含分隔符的tuple；精确有窗/全量；原授权漂移、混单位/粒度/空值政策、
-空输入、超行数、重复tuple、全空measure、时间维度/未知role。独立oracle后续必须覆盖全部结果字段、排名/表/图与Arrow篡改。
+空输入、超行数、重复tuple、全空measure、时间维度/未知role。oracle用手写已知值正例，覆盖全部结果字段、同值排名/缺失group/
+补零/额外事实/因果、完整表图绑定与重新封hash、类型正确但篡改值的Arrow。真实投影保留两个分类与NULL，叙述保留受验值。
+生产选择更换问题文字仍不变；匹配规则及oracle通过，缺规则/错绑定拒绝。stub Sandbox receipt仅是unit边界fixture，不是执行回执。
 
 ### 7. Wrong vs Correct
 

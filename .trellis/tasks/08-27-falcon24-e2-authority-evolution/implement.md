@@ -1737,6 +1737,11 @@ Diagnostic/Q1/C1任一正式首次失败必须写既有 authority支持的 immut
   - [x] 分类方法叶子契约：1–2分类/1–4结果/≤200行，完整tuple/原列/NULL/行序与原Metric能力不变；描述性排名与原表图。
     新22项及原编译/发布等5文件75/75、Worker typecheck/build、3文件Biome通过。测试最初因方法模块缺失失败，
     ratio fixture补齐原SUM_BEFORE_RATIO/NULL声明；没有放宽原来源schema。独立oracle与production接线接续，未调用模型或写库。
+  - [x] 分类独立oracle及唯一production接线：原QueryEvidence/真实Arrow重验、源行独立计算，完整RESULT/TABLE/CHART与字节/ref/hash匹配；
+    任意重封hash的值/排序/group/表图/补零/额外事实/因果漂移拒绝。exact method/skill/contract/Host规则闭合，原统计/月度方法不变。
+    初始oracle模块缺失RED；分类30项（含生产selector）与原路径10文件共185/185，Worker typecheck/build通过；
+    真实Arrow到表图、两级分类与NULL、叙述数值保留。公共helper仅复用字节/ref/JSON检查且进入实现摘要，没有复用业务算法。
+    这是离线组件验证，stub receipt不是真实Sandbox证据；0模型/0数据库写入，月份×分类、混单位/多输入和跨Run闭包继续处理。
 - [ ] 所需能力离线闭合后最终clean build/full unit/fresh scratch，再fresh E17正式15回合从L1。当前ACTIVE，live E16 FAILED。
 
 **F6 READY 轮次恢复边界（2026-08-30，历史）**

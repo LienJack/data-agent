@@ -1696,3 +1696,9 @@ nullable元数据与实际空值区分；观察表保留原顺序/角色/NULL/�
 不虚构复合源列。各measure给出计数/极值/最低最高3组，rank以原行号消除同值歧义；不合计或平均比率、不宣称增长或因果。
 Host规则不含预计算值；现阶段只增加方法叶子和22个测试，连同现有编译/发布等75项通过，Worker typecheck/build通过。
 独立oracle/生产注册随后闭合；混单位/粒度、多输入、月×渠道变化与跨Run报告仍待后续处理，不以此方法兜底任意问题。
+
+独立oracle及唯一production接线现已闭合：原QueryEvidence/真实Arrow重验后从源行独立计算，与完整RESULT/TABLE/CHART精确比对；
+重封hash后的错误数值/排序/分组/NULL/额外事实仍拒绝。FULL仅为固定描述性合同，material_change=false，不推导因果或统计能力。
+production按原分类形态运行完整编译器，exact method/skill/contract与Host执行规则匹配；不改Root/预算/原publisher。
+月度与分类只抽取公共字节/ref/JSON闭包，两个oracle各自计算业务期望；实现摘要绑定叶子和公共模块。10文件185/185及Worker typecheck/build通过，
+包括真实Arrow投影、两级分类/NULL、叙述与旧方法回归。这是离线组件证明，没有真实Sandbox/模型Run或数据库写入；继续剩余复杂形态。

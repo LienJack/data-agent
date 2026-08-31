@@ -132,3 +132,14 @@ ROAS/净ROI仍为4渠道、2个原currency Metric及一个FORMULA/REQUEST_DERIVE
 完整tuple不合并，原始行序及NULL保留，第二分类直接作series；描述性极值/计数/各3个排名以原行号打破同值，禁止比率均值/自由事实。
 新22项加原编译/发布共75/75、Worker typecheck/build及3文件Biome通过。初始模块缺失RED；fixture须完整声明原ratio聚合与零分母规则，
 未修改原来源schema。没有生产注册、oracle、模型Run或数据库写入；继续独立oracle和生产接线。
+
+## 分类独立oracle与唯一生产接线
+
+原来源/真实Arrow重验后从源行独立计算所有计数/极值/排名，完整比对RESULT/TABLE/CHART、scope/run和bytes/ref/hash。测试正例用手写已知值，
+反例重封hash仍不能通过；额外自由事实、因果、补零、漏第二分类/换序/错绑定均拒绝。FULL只覆盖固定描述性合同，material_change=false。
+仅抽出月度/分类公共字节与引用闭包，不共享业务期望；实现摘要绑定各oracle叶子及公共helper。production按输入形态完整编译，问题文本不参与，
+exact method/skill/contract与Host规则必须匹配；原single-series统计与月度路径不变。
+
+初始RED是新oracle模块不存在；实现后先154/154，再加入生产接线回归共10文件185/185、Worker typecheck/build通过。
+分类30项含真实Arrow投影、1/2分类×FORMULA/REQUEST_DERIVED、NULL/叙述保留及生产selector；fixture的stub Sandbox receipt只用于unit边界，
+不是服务/执行/数据库回执。无模型Run、无权威写入；当前尚不能据此启动正式E17，剩余月份×分类、混单位/多输入和跨Run报告继续闭合。
