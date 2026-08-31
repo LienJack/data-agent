@@ -1,5 +1,6 @@
 import {
   buildSemanticQueryContext,
+  type SemanticContextCommitResult,
   type Text2SqlQueryCandidate,
   type WorkspaceDatasource,
 } from "@data-agent/contracts";
@@ -329,6 +330,104 @@ const candidate = (sql: string): Text2SqlQueryCandidate => ({
 });
 
 describe("PostgreSQL Text2SQL query runtime", () => {
+  it("projects the exact accepted aggregate-ratio identity into provider and compiler allowlists", async () => {
+    const base = await fixture(true);
+    const original = base.semanticContext as SemanticContextCommitResult;
+    const originalCatalog = base.semanticCatalog as FrozenSemanticReleaseCatalog;
+    const metric = base.semanticQueryContext.metrics[0];
+    if (!metric) throw new Error("METRIC_FIXTURE_REQUIRED");
+    // Projection-only fixture. Actual SUM/grain/source equivalence is proven by the shared Platform boundary.
+    const numerator = { ...metric, aggregation: "sum" as const, formula: null };
+    const denominator = { ...numerator, metric_id: "metric.order-spend" };
+    const metrics = [numerator, denominator];
+    const bindings = metrics.map((entry) => ({
+      ...base.semanticQueryContext.physical_bindings[0],
+      logical_object_id: entry.metric_id,
+    }));
+    const ids = metrics.map((entry) => entry.metric_id);
+    const contextCommit = {
+      ...original,
+      package: {
+        ...original.package,
+        retrieval_receipt: { ...original.package.retrieval_receipt, selected_object_ids: ids },
+        inference_receipt: { ...original.package.inference_receipt, mandatory_object_ids: ids },
+      },
+    };
+    const catalog = {
+      ...originalCatalog,
+      executable: {
+        ...originalCatalog.executable,
+        metrics,
+        formulas: [],
+        physical_bindings: bindings,
+      },
+    } as FrozenSemanticReleaseCatalog;
+    const { context_hash: _hash, ...draft } = base.semanticQueryContext;
+    const context = await buildSemanticQueryContext({
+      ...draft,
+      metrics,
+      formulas: [],
+      physical_bindings: bindings,
+      requested_object_ids: ids,
+      request_scoped_interpretations: [
+        {
+          interpretation_id: "request-scoped.net-roi",
+          requested_term: "净ROI",
+          scope: "REQUEST_ONLY",
+          source_object_ids: ids,
+          operator: {
+            kind: "AGGREGATE_RATIO",
+            numerator_metric_id: numerator.metric_id,
+            denominator_metric_id: denominator.metric_id,
+            numerator_adjustment: "SUBTRACT_DENOMINATOR",
+            aggregation: "SUM_BEFORE_RATIO",
+            zero_denominator: "NULL",
+          },
+          user_explanation: "按本请求先聚合后计算净回报。",
+          publication_effect: "NONE",
+        },
+      ],
+    });
+    const connect = vi.fn();
+    const runtime = createPostgresqlText2SqlQueryRuntime({
+      pool: { connect } as never,
+      capability: {},
+      schema_snapshots: {
+        getSnapshot: vi.fn(async () => ({ ok: true as const, value: base.snapshot })),
+      },
+      datasources: {
+        getDatasource: vi.fn(async () => ({ ok: true as const, value: base.datasource })),
+      },
+      secrets: {
+        get: vi.fn(async () => ({
+          ok: true as const,
+          value: {
+            ref: `secretref:${id(7)}` as const,
+            name: "offline-reader",
+            version: 1,
+            status: "ACTIVE" as const,
+          },
+        })),
+      },
+    });
+    const prepared = await runtime.prepare({
+      effective_config: base.config as never,
+      semantic_context: contextCommit,
+      semantic_catalog: catalog,
+      semantic_query_context: context,
+      max_context_bytes: 32_000,
+    });
+    expect(JSON.parse(prepared.context_text).semantic_context.request_derived_bindings).toEqual([
+      { object_kind: "REQUEST_DERIVED", object_id: "request-scoped.net-roi" },
+    ]);
+    expect(prepared.semantic_query_context_binding?.request_derivation_ids).toEqual([
+      "request-scoped.net-roi",
+    ]);
+    expect(prepared.semantic_query_context_binding?.formula_ids).toEqual([]);
+    expect(prepared.binding_authority?.semantic_query_context).toEqual(context);
+    expect(connect).not.toHaveBeenCalled();
+  });
+
   it.each(["missing-selection", "selected-without-authority"])(
     "rejects request derivation %s before target I/O",
     async (variant) => {

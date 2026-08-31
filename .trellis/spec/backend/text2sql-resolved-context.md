@@ -26,7 +26,7 @@ Candidate 使用 `object_kind=REQUEST_DERIVED`、exact `interpretation_id`，没
   下上界、单 LEFT JOIN `current.month = comparison.month + $year::interval`，参数值 `1 year`，只投影当前月、两个原始值及
   `(current-comparison)/NULLIF(comparison,0)`。检查真实源码列、GROUP BY、类型提升、零值、年度对齐与返回值身份。
 - 禁止 DISTINCT/FILTER/AVG、额外过滤/联表/CTE、预先平移、外层条件/聚合/LIMIT、百分比倍乘、补零与错分母。
-  不支持的形态失败关闭，不自动重写 SQL、扩大重试或创建新 Formula。AGGREGATE_RATIO 等其他请求算子尚未获得此执行证明。
+  不支持的形态失败关闭，不自动重写 SQL、扩大重试或创建新 Formula。AGGREGATE_RATIO 使用下节独立的同源聚合证明子集。
 - PostgreSQL OID/type gate 不变；经证明的 LEFT JOIN 同期列即使源列 NOT NULL 也必须 nullable=true，缺失同期值不得补零。
 - 原始值、图表、报告、Trace 沿既有 QueryEvidence 引用链；Analysis Arrow receipt 保留 REQUEST_DERIVED 与 source_binding_hash，
   不把派生列升级为可授权分析方法的 Published Metric。旧 payload 未携带新字段时 hash 材料不变。
@@ -59,6 +59,27 @@ compile 前零 target I/O、安全诊断、两次 bounded repair 不扩容。真
 
 Wrong：同比结果列声明 `{ object_kind: "METRIC", object_id: "metric.order_revenue" }`。
 Correct：结果列声明 `{ object_kind: "REQUEST_DERIVED", object_id: exactAcceptedInterpretationId }` 并通过同一验证器。
+
+## Request-scoped aggregate ratio result binding
+
+- `AGGREGATE_RATIO` 继续使用原 REQUEST_ONLY/NONE interpretation 与 `REQUEST_DERIVED`，Provider projection 和 compiler
+  allowlist 均包含其 exact id；RECENT_COMPLETE_PERIODS 不是数值结果身份。原 Candidate/QueryEvidence schema 无新增 publisher。
+- `resolvePostgresqlRequestDerivedBindings` 在 compile/admission/acceptance 共用，调用 `provePostgresqlAggregateRatio`。
+  与月度同比共享 exact Context/receipt/catalog/snapshot/binding、原 SUM Metric 来源证明和派生 hash builder。
+  两个源 Metric 必须已选、内容与发布值相等、同表同 grain、单列 SUM、null_policy=exclude/preserve；附带 Formula 只允许精确 SUM SLOT。
+- 初期支持单个直接 aliased physical SELECT 的全量总计或分类维度分组。每个分组 Dimension 必须已选、groupable、属于两指标
+  allowed_dimension_ids、同物理表，且直接投影与 GROUP BY 一一相等（可用输出 alias），无隐藏分组。时间维度/窗口另需证明，不在本子集。
+- 净 ROI 严格为 `(SUM(numerator)-SUM(denominator))/NULLIF(SUM(denominator),0)`；NONE 为不相减的比例。
+  可使用 CASE 分母0 THEN NULL ELSE 原比例；不接受已发布 ROAS 的零值0、逐行比例平均、错分母、比例再减1或百分比倍乘。
+  原始值输出可选，但必须证明 exact SUM 与原 Metric 身份；禁止借用 METRIC/FORMULA 标签逃逸 REQUEST_DERIVED 校验。
+- 禁止 CTE/join/WHERE/HAVING/DISTINCT/FILTER/window/cast/LIMIT。Context 有 RECENT_COMPLETE_PERIODS 时拒绝无窗口退化，
+  不删除用户要求来满足此子集。两个 SUM 输入仅接受确定数值类型，至少一方产生非整数截断除法。
+- 派生列始终 nullable，raw SUM 即使物理列 NOT NULL 也 nullable（空集合）。hash 绑定完整解释/Context/Candidate/物理源/分组证明；
+  物理来源同时包含两个指标和实际分组列。Analysis 不因该角色获得新的发布 Metric 方法权限。
+- 固定 `TEXT2SQL_RATIO_{QUERY_SHAPE,SOURCE,PROJECTION,RATE,GROUP,ORDERING}_REJECTED` 经
+  `POSTGRESQL_REQUEST_DERIVATION_REPAIR_HINTS` 联合有限集合公开；无 SQL、值、AST、cause，原 bounded repair 次数不变。
+- 必测：真实 compiler round trip、NULLIF/CASE NULL、NONE 与净 ROI 区分、源/分母/聚合/分组/过滤漂移、类型提升与整数截断、
+  exact authority/hash/OID、原对象重标绕过、空集 NULL、不丢时间请求、Worker 双 allowlist 与安全诊断；只读真实数据探针不是 formal PASS。
 
 ## Bounded candidate repair messages
 

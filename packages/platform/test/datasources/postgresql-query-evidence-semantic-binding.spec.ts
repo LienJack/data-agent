@@ -6,7 +6,9 @@ import {
   buildSemanticQueryContext,
   buildSemanticRetrievalReceipt,
   canonicalizeJson,
+  formulaNodeSchema,
   type SemanticContextCommitResult,
+  type SemanticDimension,
   type SemanticFormulaExpression,
   type Text2SqlQueryCandidate,
 } from "@data-agent/contracts";
@@ -63,7 +65,11 @@ function column(
   };
 }
 
-async function physicalSnapshot(orderDateType: "date" | "text" = "date", includeSpend = false) {
+async function physicalSnapshot(
+  orderDateType: "date" | "text" = "date",
+  includeSpend = false,
+  measuresNullable = true,
+) {
   return createPhysicalSchemaSnapshot({
     schema_version: "physical-schema-snapshot-draft@1.0.0",
     snapshot_id: snapshotId,
@@ -85,8 +91,8 @@ async function physicalSnapshot(orderDateType: "date" | "text" = "date", include
           columns: [
             column("order_id", 1, "text", "text", false),
             column("order_date", 2, orderDateType, orderDateType, false),
-            column("amount", 3, "numeric", "numeric", true),
-            ...(includeSpend ? [column("spend", 4, "numeric", "numeric", true)] : []),
+            column("amount", 3, "numeric", "numeric", measuresNullable),
+            ...(includeSpend ? [column("spend", 4, "numeric", "numeric", measuresNullable)] : []),
           ],
           primary_key: null,
           foreign_keys: [],
@@ -636,8 +642,8 @@ describe("request-derived QueryEvidence authority", () => {
   });
 });
 
-async function formulaFixture() {
-  const snapshot = await physicalSnapshot("date", true);
+async function formulaFixture(measuresNullable = true) {
+  const snapshot = await physicalSnapshot("date", true, measuresNullable);
   const catalog = semanticCatalog();
   const metric = catalog.executable.metrics[0];
   if (!metric) throw new Error("missing metric fixture");
@@ -740,6 +746,376 @@ async function formulaFixture() {
     target_binding_hash: targetBindingHash,
   };
 }
+
+async function aggregateRatioBindingFixture(measuresNullable = true) {
+  const base = await formulaFixture(measuresNullable);
+  const channel: SemanticDimension = {
+    dimension_id: "dimension.channel",
+    name: "渠道",
+    aliases: ["channel"],
+    table_id: "orders",
+    column_id: "order_id",
+    grain: { grain_id: "channel", granularity: "atomic" as const },
+    data_type: "text" as const,
+    sensitivity: "PUBLIC" as const,
+    hierarchical: false,
+    parent_dimension_id: null,
+    tags: [],
+    analysis: { groupable: true, pivotable: true, causal_role: null },
+  };
+  const catalog = {
+    ...base.semantic_catalog,
+    executable: {
+      ...base.semantic_catalog.executable,
+      metrics: base.semantic_catalog.executable.metrics.map((metric) => ({
+        ...metric,
+        analysis: { ...metric.analysis, allowed_dimension_ids: [channel.dimension_id] },
+      })),
+      dimensions: [channel],
+      physical_bindings: [
+        ...base.semantic_catalog.executable.physical_bindings,
+        {
+          logical_object_id: channel.dimension_id,
+          logical_object_type: "dimension" as const,
+          datasource_id: datasourceId,
+          schema_name: "public",
+          table_name: "orders",
+          column_name: "order_id",
+          binding_lifecycle: "active" as const,
+          valid_from: null,
+          valid_until: null,
+        },
+      ],
+    },
+  };
+  const semantic_context = await semanticContext(base.physical_snapshot, [
+    "dimension.channel",
+    "metric.order_spend",
+  ]);
+  const pkg = semantic_context.package;
+  const context = await buildSemanticQueryContext({
+    schema_version: "semantic-query-context@1.0.0",
+    answer_scope: "DATA_RESULT_REQUIRED",
+    scope,
+    run_id: runId,
+    semantic_domain: pkg.semantic_domain,
+    semantic_release: pkg.semantic_release,
+    schema_snapshot: pkg.schema_snapshot,
+    datasource: datasourceRef,
+    semantic_context_ref: {
+      package_id: pkg.package_id,
+      package_hash: pkg.package_hash,
+      receipt_id: semantic_context.receipt.receipt_id,
+      receipt_hash: semantic_context.receipt.receipt_hash,
+      retrieval_receipt_hash: pkg.retrieval_receipt.receipt_hash,
+      inference_receipt_hash: pkg.inference_receipt.receipt_hash,
+    },
+    requested_object_ids: [
+      "dimension.channel",
+      "metric.order_revenue",
+      "metric.order_spend",
+      "order-time",
+    ],
+    metrics: catalog.executable.metrics,
+    dimensions: [channel],
+    formulas: [],
+    relationships: [],
+    physical_bindings: [...catalog.executable.physical_bindings].sort((a, b) =>
+      a.logical_object_id < b.logical_object_id ? -1 : 1,
+    ),
+    time_semantics: catalog.executable.metrics.slice(0, 1).map((metric) => metric.time_domain),
+    quality_constraints: [],
+    unresolved_ambiguities: [],
+    request_scoped_interpretations: [
+      {
+        interpretation_id: "request-scoped.net-roi",
+        requested_term: "净ROI",
+        scope: "REQUEST_ONLY",
+        source_object_ids: ["metric.order_revenue", "metric.order_spend"],
+        operator: {
+          kind: "AGGREGATE_RATIO",
+          numerator_metric_id: "metric.order_revenue",
+          denominator_metric_id: "metric.order_spend",
+          numerator_adjustment: "SUBTRACT_DENOMINATOR",
+          aggregation: "SUM_BEFORE_RATIO",
+          zero_denominator: "NULL",
+        },
+        user_explanation: "先汇总收入和投入再计算净回报，投入为零保留空值。",
+        publication_effect: "NONE",
+      },
+    ],
+  });
+  const candidate: Text2SqlQueryCandidate = {
+    ...base.candidate,
+    sql: "SELECT o.order_id AS channel, SUM(o.amount) AS revenue, SUM(o.spend) AS spend, (SUM(o.amount)-SUM(o.spend))/NULLIF(SUM(o.spend),0) AS net_roi FROM public.orders AS o GROUP BY o.order_id ORDER BY net_roi DESC",
+    parameters: [],
+    result_columns: [
+      {
+        name: "channel",
+        label: "渠道",
+        semantic_type: "STRING",
+        semantic_binding: { object_kind: "DIMENSION", object_id: "dimension.channel" },
+      },
+      {
+        name: "revenue",
+        label: "收入",
+        semantic_type: "NUMBER",
+        semantic_binding: { object_kind: "METRIC", object_id: "metric.order_revenue" },
+      },
+      {
+        name: "spend",
+        label: "投入",
+        semantic_type: "NUMBER",
+        semantic_binding: { object_kind: "METRIC", object_id: "metric.order_spend" },
+      },
+      {
+        name: "net_roi",
+        label: "净ROI",
+        semantic_type: "NUMBER",
+        semantic_binding: { object_kind: "REQUEST_DERIVED", object_id: "request-scoped.net-roi" },
+      },
+    ],
+  };
+  return {
+    ...base,
+    candidate,
+    semantic_context,
+    semantic_catalog: catalog,
+    semantic_query_context: context,
+    result: await queryResult(
+      [
+        { name: "channel", type: "25" },
+        { name: "revenue", type: "1700" },
+        { name: "spend", type: "1700" },
+        { name: "net_roi", type: "1700" },
+      ],
+      [{ channel: "test", revenue: "0", spend: "0", net_roi: null }],
+    ),
+  };
+}
+
+describe("request-only aggregate ratio binding", () => {
+  it("does not drop an accepted time restriction to use the bounded full-total ratio proof", async () => {
+    const input = await aggregateRatioBindingFixture();
+    const month = semanticCatalog().executable.dimensions[0];
+    if (!month) throw new Error("DIMENSION_FIXTURE_REQUIRED");
+    const domain = {
+      time_domain_id: "order-time",
+      calendar: "gregorian" as const,
+      timezone: "Asia/Shanghai",
+      min_time: "2023-01-01T00:00:00.000Z",
+      max_time: "2024-11-01T00:00:00.000Z",
+    };
+    const { context_hash: _hash, ...draft } = input.semantic_query_context;
+    const metrics = draft.metrics.map((metric) => ({ ...metric, time_domain: domain }));
+    input.semantic_catalog = {
+      ...input.semantic_catalog,
+      executable: {
+        ...input.semantic_catalog.executable,
+        metrics,
+        dimensions: [...input.semantic_catalog.executable.dimensions, month],
+      },
+    };
+    input.semantic_query_context = await buildSemanticQueryContext({
+      ...draft,
+      metrics,
+      time_semantics: [domain],
+      dimensions: [...draft.dimensions, month],
+      requested_object_ids: [...draft.requested_object_ids, month.dimension_id].sort(),
+      request_scoped_interpretations: [
+        {
+          interpretation_id: "request-scoped.calendar",
+          requested_term: "最近12个月",
+          scope: "REQUEST_ONLY",
+          source_object_ids: [month.dimension_id, "metric.order_revenue"],
+          operator: {
+            kind: "RECENT_COMPLETE_PERIODS",
+            metric_id: "metric.order_revenue",
+            time_dimension_id: month.dimension_id,
+            period_count: 12,
+            period_unit: "MONTH",
+            anchor: "PUBLISHED_COMPLETE_FRONTIER",
+          },
+          user_explanation: "发布边界前12个完整月。",
+          publication_effect: "NONE",
+        },
+        ...(draft.request_scoped_interpretations ?? []),
+      ],
+    });
+    await expect(resolvePostgresqlRequestDerivedBindings(input)).rejects.toThrow(
+      "QUERY_EVIDENCE_REQUEST_DERIVATION_BINDING_INVALID",
+    );
+  });
+
+  it("keeps empty SUM results nullable even when the physical inputs are NOT NULL", async () => {
+    const input = await aggregateRatioBindingFixture(false);
+    input.candidate = {
+      ...input.candidate,
+      sql: input.candidate.sql
+        .replace("o.order_id AS channel, ", "")
+        .replace(" GROUP BY o.order_id", ""),
+      result_columns: input.candidate.result_columns.slice(1),
+    };
+    input.result = await queryResult(
+      [
+        { name: "revenue", type: "1700" },
+        { name: "spend", type: "1700" },
+        { name: "net_roi", type: "1700" },
+      ],
+      [{ revenue: null, spend: null, net_roi: null }],
+    );
+    const binding = await buildPostgresqlQueryEvidenceSemanticBinding(input);
+    expect(binding.columns.map(({ nullable }) => nullable)).toEqual([true, true, true]);
+    expect(
+      binding.columns
+        .flatMap(({ physical_sources }) => physical_sources)
+        .every(({ nullable }) => !nullable),
+    ).toBe(true);
+  });
+
+  it("binds exact accepted net ROI, NULL policy, physical group and two raw published metrics", async () => {
+    const input = await aggregateRatioBindingFixture();
+    const proof = await resolvePostgresqlRequestDerivedBindings(input);
+    expect(proof).toHaveLength(1);
+    expect(proof[0]?.dependency_metrics.map((metric) => metric.metric_id)).toEqual([
+      "metric.order_revenue",
+      "metric.order_spend",
+    ]);
+    const binding = await buildPostgresqlQueryEvidenceSemanticBinding(input);
+    expect(binding.columns[3]).toMatchObject({
+      semantic_role: "REQUEST_DERIVED",
+      semantic_object_id: "request-scoped.net-roi",
+      nullable: true,
+      aggregate: null,
+      request_derivation: {
+        semantic_query_context_hash: input.semantic_query_context.context_hash,
+        interpretation: {
+          operator: {
+            kind: "AGGREGATE_RATIO",
+            numerator_adjustment: "SUBTRACT_DENOMINATOR",
+            zero_denominator: "NULL",
+          },
+        },
+      },
+    });
+    expect(binding.columns[3]?.physical_sources.map((source) => source.column_name)).toEqual([
+      "amount",
+      "order_id",
+      "spend",
+    ]);
+    expect(binding.columns.slice(1, 3).map((column) => column.semantic_role)).toEqual([
+      "METRIC",
+      "METRIC",
+    ]);
+    expect(binding.columns[3]?.formula_hash).toMatch(/^sha256:/);
+  });
+
+  it.each(["METRIC", "FORMULA"] as const)(
+    "rejects relabeling as %s before target I/O",
+    async (kind) => {
+      const input = await aggregateRatioBindingFixture();
+      input.candidate.result_columns = input.candidate.result_columns.map((column, index) =>
+        index === 3
+          ? {
+              ...column,
+              semantic_binding: {
+                object_kind: kind,
+                object_id: kind === "METRIC" ? "metric.order_revenue" : "formula.roas",
+              },
+            }
+          : column,
+      );
+      await expect(resolvePostgresqlRequestDerivedBindings(input)).rejects.toThrow(
+        "QUERY_EVIDENCE_REQUEST_DERIVATION_BINDING_INVALID",
+      );
+    },
+  );
+
+  it.each([
+    "sum",
+    "null-policy",
+    "grain",
+    "dependencies",
+    "groupable",
+    "allowed-dimension",
+    "binding",
+    "run",
+    "receipt",
+    "context-hash",
+    "snapshot",
+    "formula",
+    "sql",
+  ])("rejects %s drift", async (variant) => {
+    const input = await aggregateRatioBindingFixture();
+    const { context_hash: _hash, ...draft } = input.semantic_query_context;
+    if (
+      ["sum", "null-policy", "grain", "dependencies", "allowed-dimension", "formula"].includes(
+        variant,
+      )
+    ) {
+      draft.metrics = draft.metrics.map((metric, index) =>
+        index === 0
+          ? {
+              ...metric,
+              ...(variant === "sum" ? { aggregation: "avg" as const } : {}),
+              ...(variant === "null-policy" ? { null_policy: "coalesce-zero" as const } : {}),
+              ...(variant === "grain"
+                ? { grain: { grain_id: "different", granularity: "day" as const } }
+                : {}),
+              ...(variant === "dependencies" ? { dependency_column_ids: ["amount", "spend"] } : {}),
+              ...(variant === "allowed-dimension"
+                ? { analysis: { ...metric.analysis, allowed_dimension_ids: [] } }
+                : {}),
+              ...(variant === "formula"
+                ? {
+                    formula: {
+                      formula_id: "formula.roas",
+                      expression: "ratio",
+                      dialect: "text2sql" as const,
+                      description: "wrong formula",
+                    },
+                  }
+                : {}),
+            }
+          : metric,
+      );
+      // Keep the declared catalog aligned to exercise actual semantic checks, not only content equality.
+      input.semantic_catalog.executable.metrics = draft.metrics;
+    }
+    if (variant === "groupable") {
+      draft.dimensions = draft.dimensions.map((dimension) => ({
+        ...dimension,
+        analysis: { ...dimension.analysis, groupable: false },
+      }));
+      input.semantic_catalog.executable.dimensions =
+        input.semantic_catalog.executable.dimensions.map((dimension) => ({
+          ...dimension,
+          analysis: { ...dimension.analysis, groupable: false },
+        }));
+    }
+    if (variant === "binding")
+      draft.physical_bindings = draft.physical_bindings.map((binding) => ({
+        ...binding,
+        valid_until: "2024-01-01",
+      }));
+    if (variant === "run") draft.run_id = id(90);
+    if (variant === "receipt")
+      draft.semantic_context_ref = { ...draft.semantic_context_ref, receipt_hash: hash("0") };
+    if (variant === "formula")
+      draft.formulas = [formulaNodeSchema.parse(input.semantic_catalog.executable.formulas[0])];
+    input.semantic_query_context = await buildSemanticQueryContext(draft);
+    if (variant === "context-hash")
+      input.semantic_query_context = { ...input.semantic_query_context, context_hash: hash("f") };
+    if (variant === "snapshot")
+      input.physical_snapshot = { ...input.physical_snapshot, snapshot_content_hash: hash("0") };
+    if (variant === "sql")
+      input.candidate.sql = input.candidate.sql.replace(
+        "(SUM(o.amount)-SUM(o.spend))",
+        "SUM(o.amount)",
+      );
+    await expect(resolvePostgresqlRequestDerivedBindings(input)).rejects.toThrow();
+  });
+});
 
 describe("PostgreSQL QueryEvidence semantic binding", () => {
   it.each(["orders.order_date", "column.orders.order_date"])(

@@ -68,6 +68,14 @@ describe("direct run-bound provider retry policy", () => {
     expect(formulaMessages?.[3]?.content).toContain("not equivalent");
     expect(formulaMessages?.[3]?.content).not.toEqual(messages[3]?.content);
     expect(formulaMessages?.[0]?.content).toEqual(messages[0]?.content);
+    formulaRepair.rejection.diagnostic_code = "TEXT2SQL_RATIO_RATE_REJECTED";
+    const ratioMessages = directRunBoundProviderDispatcherInternals.buildText2SqlSpecialistMessages(
+      { ...input, context_text: JSON.stringify(formulaRepair) },
+    );
+    expect(ratioMessages?.[3]?.content).toContain("SUBTRACT_DENOMINATOR");
+    expect(ratioMessages?.[3]?.content).toContain("request-only NULL rule");
+    expect(ratioMessages?.[0]?.content).toEqual(messages[0]?.content);
+    expect(ratioMessages?.[0]?.content).toContain("For AGGREGATE_RATIO, use REQUEST_DERIVED");
     expect(
       directRunBoundProviderDispatcherInternals
         .buildText2SqlSpecialistMessages({ ...input, context_text: JSON.stringify(frozen) })

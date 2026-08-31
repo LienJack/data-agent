@@ -28,7 +28,10 @@ import {
   type GovernedDatasourceQueryResult,
   verifyGovernedDatasourceQueryResult,
 } from "@data-agent/contracts/datasources";
-import { provePostgresqlPeriodComparison } from "./postgresql-request-derivation.js";
+import {
+  provePostgresqlAggregateRatio,
+  provePostgresqlPeriodComparison,
+} from "./postgresql-request-derivation.js";
 import {
   assertPostgresqlTemporalSelectionDeclared,
   type PostgresqlTemporalColumn,
@@ -446,6 +449,118 @@ export async function resolvePostgresqlPublishedFormulaBindings(
   );
 }
 
+function requestSumMetric(input: {
+  readonly metric_id: string;
+  readonly context: SemanticQueryContext;
+  readonly selected: ReadonlySet<string>;
+  readonly authority: Omit<
+    PostgresqlQueryEvidenceSemanticBindingInput,
+    "result" | "target_binding_hash"
+  >;
+}) {
+  const { authority, context } = input;
+  const metrics = context.metrics.filter(({ metric_id }) => metric_id === input.metric_id);
+  const published = authority.semantic_catalog.executable.metrics.filter(
+    ({ metric_id }) => metric_id === input.metric_id,
+  );
+  const metric = metrics[0];
+  if (
+    metrics.length !== 1 ||
+    published.length !== 1 ||
+    !metric ||
+    !input.selected.has(metric.metric_id) ||
+    !context.requested_object_ids.includes(metric.metric_id) ||
+    canonicalizeJson(metric) !== canonicalizeJson(published[0]) ||
+    metric.aggregation !== "sum" ||
+    !["exclude", "preserve"].includes(metric.null_policy) ||
+    metric.dependency_column_ids.length !== 1 ||
+    physicalColumnId(metric.table_id, metric.column_id) !==
+      physicalColumnId(metric.table_id, metric.dependency_column_ids[0] ?? "")
+  )
+    reject("QUERY_EVIDENCE_REQUEST_DERIVATION_BINDING_INVALID");
+  const sources = physicalSources({
+    object_id: metric.metric_id,
+    object_kind: "METRIC",
+    table_id: metric.table_id,
+    column_ids: metric.dependency_column_ids,
+    datasource_id: authority.datasource_ref.resource_id,
+    bindings: context.physical_bindings,
+    snapshot: authority.physical_snapshot,
+  });
+  const source = sources[0];
+  if (sources.length !== 1 || !source || source.logical_type !== "NUMBER")
+    reject("QUERY_EVIDENCE_REQUEST_DERIVATION_BINDING_INVALID");
+  if (metric.formula) {
+    const formulas = authority.semantic_catalog.executable.formulas.filter(
+      ({ node_id }) => node_id === metric.formula?.formula_id,
+    );
+    const parsed = formulaNodeSchema.safeParse(formulas[0]);
+    if (
+      formulas.length !== 1 ||
+      !parsed.success ||
+      parsed.data.lifecycle !== "ACTIVE" ||
+      parsed.data.expression.kind !== "AGGREGATE" ||
+      parsed.data.expression.function !== "SUM" ||
+      parsed.data.expression.distinct ||
+      parsed.data.expression.filter !== null ||
+      parsed.data.expression.input?.kind !== "SLOT" ||
+      ![
+        source.column_name,
+        metric.column_id,
+        ...metric.dependency_column_ids,
+        physicalColumnId(metric.table_id, metric.column_id),
+      ].includes(parsed.data.expression.input.slot_id)
+    )
+      reject("QUERY_EVIDENCE_REQUEST_DERIVATION_BINDING_INVALID");
+  }
+  return { metric, source };
+}
+
+async function requestDerivedColumn(input: {
+  readonly output_name: string;
+  readonly context: SemanticQueryContext;
+  readonly interpretation: NonNullable<
+    SemanticQueryContext["request_scoped_interpretations"]
+  >[number];
+  readonly candidate: Text2SqlQueryCandidate;
+  readonly sources: ReturnType<typeof physicalSources>;
+  readonly grain: SemanticMetric["grain"];
+  readonly proof: unknown;
+}) {
+  const physical = [
+    ...new Map(
+      input.sources.map(({ logical_type: _logicalType, ...entry }) => [
+        canonicalizeJson([entry.schema_name, entry.relation_name, entry.column_name]),
+        entry,
+      ]),
+    ).entries(),
+  ]
+    .sort(([a], [b]) => (a < b ? -1 : a > b ? 1 : 0))
+    .map(([, entry]) => entry);
+  return {
+    output_name: input.output_name,
+    logical_type: "NUMBER" as const,
+    nullable: true,
+    semantic_role: "REQUEST_DERIVED" as const,
+    semantic_object_id: input.interpretation.interpretation_id,
+    formula_hash: await sha256ContentHash({
+      hash_domain: "request-scoped-query-derivation@1.0.0",
+      semantic_query_context_hash: input.context.context_hash,
+      interpretation: input.interpretation,
+      candidate: input.candidate,
+      physical_sources: physical,
+      proof: input.proof,
+    }),
+    aggregate: null,
+    grain: { grain_id: input.grain.grain_id, granularity: input.grain.granularity },
+    physical_sources: physical,
+    request_derivation: {
+      semantic_query_context_hash: input.context.context_hash,
+      interpretation: input.interpretation,
+    },
+  };
+}
+
 export async function resolvePostgresqlRequestDerivedBindings(
   input: Omit<PostgresqlQueryEvidenceSemanticBindingInput, "result" | "target_binding_hash">,
 ) {
@@ -455,7 +570,7 @@ export async function resolvePostgresqlRequestDerivedBindings(
   if (
     outputs.length === 0 &&
     !input.semantic_query_context?.request_scoped_interpretations?.some(
-      ({ operator }) => operator.kind === "PERIOD_COMPARISON_RATE",
+      ({ operator }) => operator.kind !== "RECENT_COMPLETE_PERIODS",
     )
   )
     return [];
@@ -463,7 +578,7 @@ export async function resolvePostgresqlRequestDerivedBindings(
   const context = await verifySemanticQueryContext(input.semantic_query_context);
   const requests =
     context.request_scoped_interpretations?.filter(
-      ({ operator }) => operator.kind === "PERIOD_COMPARISON_RATE",
+      ({ operator }) => operator.kind !== "RECENT_COMPLETE_PERIODS",
     ) ?? [];
   if (
     requests.length !== 1 ||
@@ -498,7 +613,20 @@ export async function resolvePostgresqlRequestDerivedBindings(
     context.semantic_context_ref.receipt_hash !== authority.receipt.receipt_hash ||
     context.semantic_context_ref.retrieval_receipt_hash !== pkg.retrieval_receipt.receipt_hash ||
     context.semantic_context_ref.inference_receipt_hash !== pkg.inference_receipt.receipt_hash ||
-    context.requested_object_ids.some((id) => !allowedRequestedIds.has(id))
+    context.requested_object_ids.some((id) => !allowedRequestedIds.has(id)) ||
+    context.semantic_domain !== pkg.semantic_domain ||
+    input.physical_snapshot.snapshot_id !== pkg.schema_snapshot.resource_id ||
+    input.physical_snapshot.snapshot_content_hash !== pkg.schema_snapshot.resource_hash ||
+    input.physical_snapshot.content.datasource_id !== input.datasource_ref.resource_id ||
+    input.semantic_catalog.release_identity.semantic_domain !== pkg.semantic_domain ||
+    input.semantic_catalog.release_identity.release_id !== pkg.semantic_release.resource_id ||
+    input.semantic_catalog.release_identity.release_digest !== pkg.semantic_release.resource_hash ||
+    context.physical_bindings.some(
+      (binding) =>
+        !input.semantic_catalog.executable.physical_bindings.some(
+          (published) => canonicalizeJson(binding) === canonicalizeJson(published),
+        ),
+    )
   )
     reject("QUERY_EVIDENCE_REQUEST_DERIVATION_BINDING_INVALID");
   const current = resolveSemanticRequestTimeWindow(context);
@@ -508,6 +636,109 @@ export async function resolvePostgresqlRequestDerivedBindings(
       const interpretation = context.request_scoped_interpretations?.find(
         ({ interpretation_id }) => interpretation_id === output.semantic_binding.object_id,
       );
+      if (interpretation?.operator.kind === "AGGREGATE_RATIO") {
+        if (output.semantic_type !== "NUMBER" || current !== null)
+          reject("QUERY_EVIDENCE_REQUEST_DERIVATION_BINDING_INVALID");
+        const operator = interpretation.operator;
+        const numerator = requestSumMetric({
+          metric_id: operator.numerator_metric_id,
+          context,
+          selected,
+          authority: input,
+        });
+        const denominator = requestSumMetric({
+          metric_id: operator.denominator_metric_id,
+          context,
+          selected,
+          authority: input,
+        });
+        if (
+          numerator.metric.table_id !== denominator.metric.table_id ||
+          canonicalizeJson(numerator.metric.grain) !== canonicalizeJson(denominator.metric.grain) ||
+          numerator.source.schema_name !== denominator.source.schema_name ||
+          numerator.source.relation_name !== denominator.source.relation_name
+        )
+          reject("QUERY_EVIDENCE_REQUEST_DERIVATION_BINDING_INVALID");
+        const dimensionIds = new Set(
+          input.candidate.result_columns
+            .filter(({ semantic_binding }) => semantic_binding.object_kind === "DIMENSION")
+            .map(({ semantic_binding }) => semantic_binding.object_id),
+        );
+        const dimensions = [...dimensionIds].map((id) => {
+          const dimension = context.dimensions.find(({ dimension_id }) => dimension_id === id);
+          const published = input.semantic_catalog.executable.dimensions.filter(
+            ({ dimension_id }) => dimension_id === id,
+          );
+          if (
+            !dimension ||
+            published.length !== 1 ||
+            !selected.has(id) ||
+            !context.requested_object_ids.includes(id) ||
+            canonicalizeJson(dimension) !== canonicalizeJson(published[0]) ||
+            dimension.table_id !== numerator.metric.table_id ||
+            !dimension.analysis.groupable ||
+            ["date", "timestamp", "timestamptz"].includes(dimension.data_type) ||
+            !numerator.metric.analysis.allowed_dimension_ids.includes(id) ||
+            !denominator.metric.analysis.allowed_dimension_ids.includes(id)
+          )
+            reject("QUERY_EVIDENCE_REQUEST_DERIVATION_BINDING_INVALID");
+          const sources = physicalSources({
+            object_id: id,
+            object_kind: "DIMENSION",
+            table_id: dimension.table_id,
+            column_ids: [dimension.column_id],
+            datasource_id: input.datasource_ref.resource_id,
+            bindings: context.physical_bindings,
+            snapshot: input.physical_snapshot,
+          });
+          const source = sources[0];
+          if (
+            sources.length !== 1 ||
+            !source ||
+            source.schema_name !== numerator.source.schema_name ||
+            source.relation_name !== numerator.source.relation_name
+          )
+            reject("QUERY_EVIDENCE_REQUEST_DERIVATION_BINDING_INVALID");
+          return { dimension, source };
+        });
+        const proof = await provePostgresqlAggregateRatio({
+          candidate: input.candidate,
+          output_name: output.name,
+          interpretation_id: interpretation.interpretation_id,
+          numerator_metric_id: numerator.metric.metric_id,
+          denominator_metric_id: denominator.metric.metric_id,
+          numerator_adjustment: operator.numerator_adjustment,
+          source: {
+            schema_name: numerator.source.schema_name,
+            relation_name: numerator.source.relation_name,
+            numerator_column: numerator.source.column_name,
+            numerator_type: numerator.source.formatted_type,
+            denominator_column: denominator.source.column_name,
+            denominator_type: denominator.source.formatted_type,
+          },
+          dimensions: dimensions.map(({ dimension, source }) => ({
+            object_id: dimension.dimension_id,
+            column_name: source.column_name,
+          })),
+        });
+        return {
+          nullable_metric_outputs: [...proof.numerator_outputs, ...proof.denominator_outputs],
+          dependency_metrics: [numerator.metric, denominator.metric],
+          column: await requestDerivedColumn({
+            output_name: output.name,
+            context,
+            interpretation,
+            candidate: input.candidate,
+            sources: [
+              numerator.source,
+              denominator.source,
+              ...dimensions.map(({ source }) => source),
+            ],
+            grain: numerator.metric.grain,
+            proof,
+          }),
+        };
+      }
       if (
         interpretation?.operator.kind !== "PERIOD_COMPARISON_RATE" ||
         !current ||
@@ -515,7 +746,12 @@ export async function resolvePostgresqlRequestDerivedBindings(
       )
         reject("QUERY_EVIDENCE_REQUEST_DERIVATION_BINDING_INVALID");
       const operator = interpretation.operator;
-      const metric = context.metrics.find(({ metric_id }) => metric_id === operator.metric_id);
+      const { metric, source } = requestSumMetric({
+        metric_id: operator.metric_id,
+        context,
+        selected,
+        authority: input,
+      });
       const dimension = context.dimensions.find(
         ({ dimension_id }) => dimension_id === operator.time_dimension_id,
       );
@@ -523,41 +759,22 @@ export async function resolvePostgresqlRequestDerivedBindings(
         ({ metric_id, dimension_id }) =>
           metric_id === operator.metric_id && dimension_id === operator.time_dimension_id,
       );
-      const publishedMetric = input.semantic_catalog.executable.metrics.find(
-        ({ metric_id }) => metric_id === operator.metric_id,
-      );
       const publishedDimension = input.semantic_catalog.executable.dimensions.find(
         ({ dimension_id }) => dimension_id === operator.time_dimension_id,
       );
       if (
-        !metric ||
         !dimension ||
         !comparison ||
-        !publishedMetric ||
         !publishedDimension ||
-        metric.aggregation !== "sum" ||
-        !["exclude", "preserve"].includes(metric.null_policy) ||
         dimension.grain.granularity !== "month" ||
         metric.table_id !== dimension.table_id ||
-        metric.dependency_column_ids.length !== 1 ||
-        physicalColumnId(metric.table_id, metric.column_id) !==
-          physicalColumnId(metric.table_id, metric.dependency_column_ids[0] ?? "") ||
         physicalColumnId(metric.table_id, metric.time_column_id ?? "") !==
           physicalColumnId(dimension.table_id, dimension.column_id) ||
-        canonicalizeJson(metric) !== canonicalizeJson(publishedMetric) ||
         canonicalizeJson(dimension) !== canonicalizeJson(publishedDimension) ||
         interpretation.source_object_ids.some((id) => !selected.has(id))
       )
         reject("QUERY_EVIDENCE_REQUEST_DERIVATION_BINDING_INVALID");
-      const sources = physicalSources({
-        object_id: metric.metric_id,
-        object_kind: "METRIC",
-        table_id: metric.table_id,
-        column_ids: metric.dependency_column_ids,
-        datasource_id: input.datasource_ref.resource_id,
-        bindings: context.physical_bindings,
-        snapshot: input.physical_snapshot,
-      });
+      const sources = [source];
       const times = physicalSources({
         object_id: dimension.dimension_id,
         object_kind: "DIMENSION",
@@ -567,46 +784,14 @@ export async function resolvePostgresqlRequestDerivedBindings(
         bindings: context.physical_bindings,
         snapshot: input.physical_snapshot,
       });
-      const source = sources[0],
-        time = times[0];
+      const time = times[0];
       if (
-        sources.length !== 1 ||
         times.length !== 1 ||
-        !source ||
         !time ||
-        source.logical_type !== "NUMBER" ||
         source.schema_name !== time.schema_name ||
-        source.relation_name !== time.relation_name ||
-        context.physical_bindings.some(
-          (binding) =>
-            !input.semantic_catalog.executable.physical_bindings.some(
-              (published) => canonicalizeJson(binding) === canonicalizeJson(published),
-            ),
-        )
+        source.relation_name !== time.relation_name
       )
         reject("QUERY_EVIDENCE_REQUEST_DERIVATION_BINDING_INVALID");
-      if (metric.formula) {
-        const formula = input.semantic_catalog.executable.formulas.find(
-          ({ node_id }) => node_id === metric.formula?.formula_id,
-        );
-        const parsed = formulaNodeSchema.safeParse(formula);
-        if (
-          !parsed.success ||
-          parsed.data.lifecycle !== "ACTIVE" ||
-          parsed.data.expression.kind !== "AGGREGATE" ||
-          parsed.data.expression.function !== "SUM" ||
-          parsed.data.expression.distinct ||
-          parsed.data.expression.filter !== null ||
-          parsed.data.expression.input?.kind !== "SLOT" ||
-          ![
-            source.column_name,
-            metric.column_id,
-            ...metric.dependency_column_ids,
-            physicalColumnId(metric.table_id, metric.column_id),
-          ].includes(parsed.data.expression.input.slot_id)
-        )
-          reject("QUERY_EVIDENCE_REQUEST_DERIVATION_BINDING_INVALID");
-      }
       const proof = await provePostgresqlPeriodComparison({
         candidate: input.candidate,
         output_name: output.name,
@@ -623,38 +808,18 @@ export async function resolvePostgresqlRequestDerivedBindings(
         current,
         comparison,
       });
-      const physical = [
-        ...new Map(
-          [...sources, ...times].map(({ logical_type: _logicalType, ...entry }) => [
-            canonicalizeJson([entry.schema_name, entry.relation_name, entry.column_name]),
-            entry,
-          ]),
-        ).entries(),
-      ]
-        .sort(([a], [b]) => (a < b ? -1 : a > b ? 1 : 0))
-        .map(([, entry]) => entry);
       return {
-        comparison_output: proof.comparison_output,
-        dependency_metric: metric,
-        column: {
+        nullable_metric_outputs: [proof.comparison_output],
+        dependency_metrics: [metric],
+        column: await requestDerivedColumn({
           output_name: output.name,
-          logical_type: "NUMBER" as const,
-          nullable: true,
-          semantic_role: "REQUEST_DERIVED" as const,
-          semantic_object_id: interpretation.interpretation_id,
-          formula_hash: await sha256ContentHash({
-            hash_domain: "request-scoped-query-derivation@1.0.0",
-            semantic_query_context_hash: context.context_hash,
-            interpretation,
-            candidate: input.candidate,
-            physical_sources: physical,
-            proof,
-          }),
-          aggregate: null,
-          grain: { grain_id: dimension.grain.grain_id, granularity: dimension.grain.granularity },
-          physical_sources: physical,
-          request_derivation: { semantic_query_context_hash: context.context_hash, interpretation },
-        },
+          context,
+          interpretation,
+          candidate: input.candidate,
+          sources: [...sources, ...times],
+          grain: dimension.grain,
+          proof,
+        }),
       };
     }),
   );
@@ -950,8 +1115,8 @@ export async function buildPostgresqlQueryEvidenceSemanticBinding(
         return {
           output_name: column.name,
           logical_type: column.semantic_type,
-          nullable: requestBindings.some(
-            ({ comparison_output }) => comparison_output === column.name,
+          nullable: requestBindings.some(({ nullable_metric_outputs }) =>
+            nullable_metric_outputs.includes(column.name),
           )
             ? true
             : metric.aggregation === "count" || metric.aggregation === "count_distinct"
@@ -1075,7 +1240,7 @@ export async function buildPostgresqlQueryEvidenceSemanticBinding(
     time_window: timeWindow({
       candidate,
       metrics: [
-        ...requestBindings.map(({ dependency_metric }) => dependency_metric),
+        ...requestBindings.flatMap(({ dependency_metrics }) => dependency_metrics),
         ...formulaBindings.flatMap(({ dependency_metrics }) => dependency_metrics),
         ...columns
           .filter(({ semantic_role: role }) => role === "METRIC")

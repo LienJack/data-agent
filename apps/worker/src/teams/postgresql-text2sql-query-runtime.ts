@@ -378,7 +378,7 @@ function semanticProjection(
       unresolved_ambiguities: semanticQueryContext.unresolved_ambiguities,
       request_scoped_interpretations: semanticQueryContext.request_scoped_interpretations ?? [],
       request_derived_bindings: (semanticQueryContext.request_scoped_interpretations ?? [])
-        .filter(({ operator }) => operator.kind === "PERIOD_COMPARISON_RATE")
+        .filter(({ operator }) => operator.kind !== "RECENT_COMPLETE_PERIODS")
         .map(({ interpretation_id }) => ({
           object_kind: "REQUEST_DERIVED",
           object_id: interpretation_id,
@@ -1043,7 +1043,7 @@ export function createPostgresqlText2SqlQueryRuntime(
                 dimension_ids: semanticQueryContext.dimensions.map(({ dimension_id: id }) => id),
                 formula_ids: semanticQueryContext.formulas.map(({ node_id: id }) => id),
                 request_derivation_ids: (semanticQueryContext.request_scoped_interpretations ?? [])
-                  .filter(({ operator }) => operator.kind === "PERIOD_COMPARISON_RATE")
+                  .filter(({ operator }) => operator.kind !== "RECENT_COMPLETE_PERIODS")
                   .map(({ interpretation_id }) => interpretation_id),
               },
             }

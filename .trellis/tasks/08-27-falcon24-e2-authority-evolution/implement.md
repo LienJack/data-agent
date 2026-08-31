@@ -1640,6 +1640,22 @@ Diagnostic/Q1/C1任一正式首次失败必须写既有 authority支持的 immut
 - 当前继续 ACTIVE：先完成本修复 scoped commit，再补齐 L4 AGGREGATE_RATIO/净 ROI 的 REQUEST_DERIVED 结果绑定已知缺口；
   随后新 clean build/full unit/fresh physical scratch，全部 canary 闭合后才可正式 E17 从 L1 重做15回合。
 
+**E17 预检：净 ROI 请求结果证明（2026-08-31）**
+
+- 显式修复轮已提交 `525a77d3`。接续实现 L4 已知 AGGREGATE_RATIO 缺口：双 allowlist 纳入 exact interpretation，
+  共享 Context/源 SUM/hash 验证，单表直接分组净 ROI 与 raw Metric 投影逐一证明；未发布新 Formula。
+- 正向绑定与 METRIC/FORMULA 重标反例先 RED（旧实现分别拒绝合法请求、错误返回空 bindings），新实现 GREEN。
+  Platform focused 225/225；Worker focused 101/101；真实 compiler parameterization、NULLIF/CASE NULL、分组/来源/类型/
+  时间请求不得丢失、空集 SUM nullable 与旧月度同比/Published Formula 回归均覆盖。额外 Contracts 12/12、Analysis 消费25/25
+  通过；Platform/Worker typecheck、Biome/diff、Trellis validate 通过（原两份大文件警告保留）。详见 `research/e17-net-roi-result-binding.md`。
+- `e17-roas-canary-a029cb71/net-roi-readonly-probe.json`：专用 NAS scratch 55472/cluster exact/read_only=on，
+  现有冻结发布内容+仅内存请求解释，经真实 Worker compile/shared proof/真实 PG query，4渠道与独立源 SUM/rate oracle 一致。
+  OID 25/701/701/701，角色 DIMENSION/METRIC/METRIC/REQUEST_DERIVED；provider_calls/authority_writes/artifact_commits=0，
+  interpretation_accepted_as_artifact=false。不重建历史失败 SQL、不把探针记为业务 PASS。
+- 当前仍 ACTIVE、live E16 FAILED/E17 未激活。本项 scoped commit 后新 clean build/full unit/attestation，fresh physical scratch
+  从同比及三题回归重做，并新增净 ROI 真实 canary；业务通过后才执行各自 QA/Trace。旧三个 PASS 不复用。
+  带窗/跨表 ratio 等更广形态仍不宣称支持；正式前继续核查所需能力，不能靠删要求、改 oracle 或增加预算通过。
+
 **F6 READY 轮次恢复边界（2026-08-30，历史）**
 
 > 以下为历史记录；当前 forward recovery 已到 E16 FAILED，下一 fresh epoch 为 E17，见上一节。

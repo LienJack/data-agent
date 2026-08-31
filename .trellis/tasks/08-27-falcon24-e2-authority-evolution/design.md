@@ -1572,3 +1572,18 @@ Provider 修复说明；不包含 SQL、AST、标识符、参数、异常 cause�
 另发现 L4 净 ROI 的 AGGREGATE_RATIO 已存在请求解释，但结果绑定目前只接通 PERIOD_COMPARISON_RATE。
 正式激活前必须补齐该已知闭包缺口并单独验证/提交；不能借用 ROAS Formula 身份或新增另一套发布权威。
 两项修复后重新 clean build/fresh scratch；旧 scratch 的三个 PASS 不可拼入新构建。
+
+### 25.17 L4 净 ROI 请求结果闭包
+
+代码审计确认 AGGREGATE_RATIO 已能形成请求解释，但 Provider projection、compiler allowlist 和 evidence resolver
+仍只接通 PERIOD_COMPARISON_RATE。净 ROI 不能以收入 Metric 或已发布 ROAS Formula 身份执行。
+补齐同一 REQUEST_DERIVED 路径：exact Context/来源校验、限定同表 SUM-before-ratio AST proof、QueryEvidence 与 Analysis 角色传递。
+身份/schema/hash domain/发布权威保持现有合同；两个派生子集共享原始 SUM 来源证明与 hash builder。
+
+全量渠道净 ROI 支持直接分类维度分组、两个原始 SUM 与一个派生结果；输入同粒度、分组具备既有权限，所有投影及分组逐一验证。
+CASE NULL 和 NULLIF 的零值语义相同，不能借用已发布 ROAS 的0。空集 raw SUM 同样 nullable。细分错误复用原无值反馈路径。
+初期不声明时间窗口/跨表 ratio 证明；当前请求已含窗口时必须失败关闭，禁止删窗口或假称已支持 L4 全部形态。
+
+离线测试加只读 NAS 真实源探针证明工程路径；探针解释只在内存构造，未 accepted 为 Artifact、未发新 Run、无模型调用或权威写入。
+最新 clean build 后 fresh scratch 重新验证同比/订单/semantic/ROAS，并增加净 ROI 的真实问题、业务 oracle 和随后 QA/Trace。
+正式15回合仍须同一 fresh attempt 全通过；已知缺口与真实失败继续按 ACTIVE controller 离线修复，不拼接旧 PASS。

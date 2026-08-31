@@ -9,6 +9,7 @@ export * from "./mysql-transport.js";
 export * from "./postgresql.js";
 export * from "./postgresql-period-comparison-diagnostics.js";
 export * from "./postgresql-query-evidence-semantic-binding.js";
+export * from "./postgresql-request-derivation-diagnostics.js";
 export * from "./postgresql-text2sql-policy.js";
 export * from "./postgresql-transport.js";
 export * from "./sqlite.js";
