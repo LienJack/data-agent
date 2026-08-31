@@ -1825,6 +1825,11 @@ Diagnostic/Q1/C1任一正式首次失败必须写既有 authority支持的 immut
     不使用组均值/环比/旧Run答案；缺失、零/负基数及不足3月显式保留。结果对象进入原Publisher及FULL Oracle，摘要优先保留。
     手算与真实Arrow/生产Oracle接线、重封hash的错误总体/排名/贡献等拒绝，8文件204项与Worker typecheck通过。
     仅离线证明，尚未新模型业务验收；见 [同比事实闭合](research/complete-period-analysis-proof.md)。
+  - [x] b7f2c2be新scratch A1 FAILED/74events，只有Semantic产物，未进入SQL执行/Analysis；3次Text2SQL任务各2候选均比较形态拒绝，
+    最终Root预算耗尽。原候选只有hash，direct Specialist响应未持久化，不能据此断言具体SQL错误。
+    原通用形态诊断拆为SELECT/CTE/期间JOIN检查点，6个新RED反例转PASS；Platform207、Worker101及Platform typecheck通过。
+    live348表不变，Web/Worker/OpenSandbox/browser/auth和55490转发清理，scratch停机保留；临时capability删除。
+    见 [形态断点与防复发](research/complex-b7f2c2be-structural-checkpoints.md)。下一步先补可证明的比较SQL骨架，非再次只为观察而跑模型。
   再继续上述 F5 / F7；不另跑 child 历史六问，也不复用 core4 PASS。
 
 **F6 READY 轮次恢复边界（2026-08-30，历史）**

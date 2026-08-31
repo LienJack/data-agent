@@ -2,6 +2,12 @@
 export const POSTGRESQL_PERIOD_COMPARISON_REPAIR_HINTS = Object.freeze({
   TEXT2SQL_COMPARISON_QUERY_SHAPE_REJECTED:
     "Use exactly two non-recursive aggregation CTEs and one outer period join: LEFT for ungrouped comparison; FULL with the proved merged month/category identities for a complete grouped comparison. No extra SELECT clauses.",
+  TEXT2SQL_COMPARISON_SELECT_SHAPE_REJECTED:
+    "The outer SELECT may contain only its result projections, one FROM period join, the two-CTE WITH clause and optional ORDER BY. Remove outer WHERE, GROUP BY, HAVING, DISTINCT, LIMIT/OFFSET, locking and set operations; preserve the exact bounds inside both source CTEs.",
+  TEXT2SQL_COMPARISON_CTE_SHAPE_REJECTED:
+    "Use exactly two uniquely named non-recursive aggregation CTEs. Do not use MATERIALIZED, NOT MATERIALIZED, CTE column-name lists or an extra CTE. Each CTE contains its own exact governed aggregate and source bounds.",
+  TEXT2SQL_COMPARISON_PERIOD_JOIN_REJECTED:
+    "The outer FROM must join the two distinct unqualified CTE names, each with a distinct explicit alias. Use LEFT JOIN for an ungrouped comparison, or FULL JOIN with merged identities for a complete grouped comparison. No INNER/RIGHT/CROSS/NATURAL/USING join or extra FROM item. A WITH declaration does not alias a FROM reference.",
   TEXT2SQL_COMPARISON_SOURCE_TYPE_REJECTED:
     "The published SUM source must support non-truncating division; do not change frozen types.",
   TEXT2SQL_COMPARISON_CURRENT_SOURCE_REJECTED:

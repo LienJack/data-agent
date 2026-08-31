@@ -633,3 +633,16 @@ text/date/timestamp/timestamptz、unsupported OID、alias drift、枚举/长度/
 
 Wrong：收到类型错误后只重发错误码，让模型重复相同候选，或放宽 DATE/STRING 判断。
 Correct：严格拒绝并在既有有界修复上下文中提供已验证的无值类型反馈，下一候选重新验证。
+
+### Comparison structural checkpoints
+
+Period proof retains `TEXT2SQL_COMPARISON_QUERY_SHAPE_REJECTED` for parsing/root-statement failure.
+Outer SELECT clauses, two-CTE declarations, and the outer period join have distinct fixed codes:
+`TEXT2SQL_COMPARISON_{SELECT_SHAPE|CTE_SHAPE|PERIOD_JOIN}_REJECTED`.
+The existing shared repair allowlist transports the code and matching guidance only; no SQL, parameter values,
+parser messages or extra retries. Splitting diagnostics does not expand accepted SQL shapes.
+Direct Specialist responses are not durably retained by the current lightweight dispatcher. A candidate hash
+and generic rejection alone cannot identify its SQL defect, and durable Root responses are not Specialist SQL.
+Use the actual event kind/code to report progress; event count does not prove that Analysis started.
+Regression: forbidden outer WHERE/LIMIT, recursive/materialized CTEs, wrong join and missing CTE alias must
+reach distinct checkpoints after parsing; errors retain only `diagnostic_code`, with all source values absent.

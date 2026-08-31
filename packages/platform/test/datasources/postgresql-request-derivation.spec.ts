@@ -7,6 +7,21 @@ import {
 import { periodComparisonFixture as fixture } from "../support/period-comparison-fixture.js";
 
 describe("request-scoped period comparison SQL proof", () => {
+  it.each([
+    ["SELECT_SHAPE", "ORDER BY month", "ORDER BY month LIMIT 12"],
+    ["SELECT_SHAPE", "ORDER BY month", "WHERE c.v > 0 ORDER BY month"],
+    ["CTE_SHAPE", "WITH current_months", "WITH RECURSIVE current_months"],
+    ["CTE_SHAPE", "current_months AS (", "current_months AS MATERIALIZED ("],
+    ["PERIOD_JOIN", "LEFT JOIN", "INNER JOIN"],
+    ["PERIOD_JOIN", "current_months AS c LEFT", "current_months LEFT"],
+  ])("identifies structural %s failure without raw SQL", async (stage, from, to) => {
+    const input = fixture();
+    input.candidate.sql = input.candidate.sql.replace(from, to);
+    const error = await provePostgresqlPeriodComparison(input).catch((e) => e);
+    expect(error).toMatchObject({ diagnostic_code: `TEXT2SQL_COMPARISON_${stage}_REJECTED` });
+    expect(Object.keys(error)).toEqual(["diagnostic_code"]);
+    expect(JSON.stringify(error)).not.toMatch(/orders|current_months|2024|amount|LIMIT/);
+  });
   it.each(
     (["CURRENT", "PRIOR"] as const).flatMap((period) =>
       (
@@ -40,7 +55,7 @@ describe("request-scoped period comparison SQL proof", () => {
   );
 
   it.each([
-    ["QUERY_SHAPE", "LEFT JOIN", "INNER JOIN"],
+    ["PERIOD_JOIN", "LEFT JOIN", "INNER JOIN"],
     ["CURRENT_SOURCE", "public.orders", "public.private_relation"],
     ["PRIOR_SOURCE", "public.orders", "public.private_relation"],
     ["CURRENT_SUM_INPUT", "sum(o.amount)", "avg(o.amount)"],

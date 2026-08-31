@@ -377,8 +377,10 @@ export async function provePostgresqlPeriodComparison(input: {
     const ast = record(await parse(input.candidate.sql));
     const raw = record(list(ast.stmts, 1)[0]);
     const select = node(raw.stmt, "SelectStmt");
+    diagnostic = "TEXT2SQL_COMPARISON_SELECT_SHAPE_REJECTED";
     only(select, ["targetList", "fromClause", "sortClause", "withClause", "limitOption", "op"]);
     check(select.op === "SETOP_NONE" && select.limitOption === "LIMIT_OPTION_DEFAULT");
+    diagnostic = "TEXT2SQL_COMPARISON_CTE_SHAPE_REJECTED";
     const withClause = record(select.withClause);
     only(withClause, ["ctes"]);
     const ctes = new Map(
@@ -390,6 +392,7 @@ export async function provePostgresqlPeriodComparison(input: {
       }),
     );
     check(ctes.size === 2);
+    diagnostic = "TEXT2SQL_COMPARISON_PERIOD_JOIN_REJECTED";
     const join = node(list(select.fromClause, 1)[0], "JoinExpr");
     only(join, ["jointype", "larg", "rarg", "quals"]);
     const completeGroups = join.jointype === "JOIN_FULL";
