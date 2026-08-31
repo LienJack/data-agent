@@ -1,6 +1,9 @@
 import { describe, expect, it } from "vitest";
 import { buildAnalysisNarrativeProjection } from "../../src/analysis/executor.js";
-import { evaluatePanelPeriodComparison } from "../../src/analysis/monthly-panel-period-comparison.js";
+import {
+  evaluatePanelPeriodComparison,
+  projectPanelPeriodComparisonCharts,
+} from "../../src/analysis/monthly-panel-period-comparison.js";
 
 const columns = {
   time_output: "month",
@@ -101,6 +104,30 @@ describe("complete panel year-over-year arithmetic", () => {
         .every((m) => m.comparison_value === null && m.yoy_rate === null && !m.ranking_eligible),
     ).toBe(true);
     expect(result.largest_declines[0]?.yoy_rate).not.toBe((-0.5 - 2 / 3) / 2);
+  });
+  it("projects the verified overall trend and complete worst-month groups for two governed charts", () => {
+    const comparison = evaluatePanelPeriodComparison(columns, rows());
+    const charts = projectPanelPeriodComparisonCharts(columns, comparison);
+    expect(charts.overall_trend_rows).toHaveLength(12);
+    expect(charts.overall_trend_rows[7]).toEqual({
+      period: "2024-08-01",
+      current_value: 150,
+      comparison_value: 400,
+      yoy_rate: -0.625,
+    });
+    expect(charts.largest_decline_group_rows).toHaveLength(6);
+    expect(charts.largest_decline_group_rows[0]).toEqual({
+      period: "2024-08-01",
+      group_value: "A",
+      current_value: 50,
+      comparison_value: 100,
+      yoy_rate: -0.5,
+      contribution_to_total_growth: -0.125,
+    });
+    expect(charts.largest_decline_group_rows.at(-1)).toMatchObject({
+      period: "2024-10-01",
+      group_value: "B",
+    });
   });
   it("does not treat a missing group value as zero or rank a partial total", () => {
     const input: Array<Record<string, unknown>> = rows();

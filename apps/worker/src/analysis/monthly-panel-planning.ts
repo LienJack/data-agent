@@ -1,5 +1,6 @@
 import {
   type ArtifactReference,
+  buildAnalysisResultContract,
   type ProductTeamArtifactDocument,
   verifyProductTeamArtifactDocument,
 } from "@data-agent/contracts/artifacts";
@@ -28,6 +29,10 @@ export const MONTHLY_PANEL_METHOD_ID = "published-monthly-group-panel@2";
 export const MONTHLY_PANEL_CONTRACT_ID = "monthly-group-panel.result";
 export const MONTHLY_PANEL_TABLE_ID = "monthly_panel";
 export const MONTHLY_PANEL_CHART_ID = "monthly_panel_line";
+export const MONTHLY_PANEL_OVERALL_TABLE_ID = "monthly_overall_trend";
+export const MONTHLY_PANEL_DECLINE_TABLE_ID = "monthly_decline_groups";
+export const MONTHLY_PANEL_OVERALL_CHART_ID = "monthly_overall_yoy_trend";
+export const MONTHLY_PANEL_DECLINE_CHART_ID = "monthly_decline_group_comparison";
 const MAX_GROUPS = 32;
 const MAX_MONTHS = 12;
 const groupSchema = z.record(z.string(), z.string().min(1).max(256));
@@ -244,7 +249,7 @@ export async function compileMonthlyPanelPlan(input: MonthlyPanelInput) {
   if (comparison && metrics.some((metric) => metric.additivity !== "additive"))
     return fail("AUTHORITY");
   const ratioRollup = resolvePanelRatioRollup(binding, context, months);
-  const contract = await buildDescriptiveResultContract({
+  let contract = await buildDescriptiveResultContract({
     context,
     binding,
     metrics,
@@ -275,6 +280,169 @@ export async function compileMonthlyPanelPlan(input: MonthlyPanelInput) {
     },
     invalid_shape: () => fail("SHAPE"),
   });
+  const comparisonChartBindings = comparison
+    ? [
+        {
+          chart_id: MONTHLY_PANEL_OVERALL_CHART_ID,
+          x_field: "period",
+          y_fields: ["current_value", "comparison_value", "yoy_rate"],
+          series_field: null,
+          lower_bound_field: null,
+          upper_bound_field: null,
+        },
+        {
+          chart_id: MONTHLY_PANEL_DECLINE_CHART_ID,
+          x_field: "group_value",
+          y_fields: ["current_value", "comparison_value"],
+          series_field: "period",
+          lower_bound_field: null,
+          upper_bound_field: null,
+        },
+      ]
+    : null;
+  if (comparison && comparisonChartBindings) {
+    const { contract_hash: _contractHash, ...material } = contract;
+    const semanticIds = [...new Set(binding.columns.map((column) => column.semantic_object_id))];
+    const physicalFields = binding.columns.map((column) => `query_evidence.${column.output_name}`);
+    const byOutput = (output: string) =>
+      binding.columns.find((column) => column.output_name === output) ?? fail("AUTHORITY");
+    const current = byOutput(comparison.current_output);
+    const prior = byOutput(comparison.comparison_output);
+    const rate = byOutput(comparison.rate_output);
+    const category = byOutput(comparison.category_output);
+    const derivedNumber = (
+      key: string,
+      label_zh: string,
+      semantic_object_id: string,
+      nullable: boolean,
+    ) => ({
+      key,
+      label_zh,
+      data_type: "NUMBER" as const,
+      nullable,
+      semantic_object_id,
+      semantic_role: "DERIVED" as const,
+    });
+    const projection = (collection_field: string, keys: readonly string[]) => ({
+      mode: "RESULT_COLLECTION" as const,
+      collection_field,
+      column_mappings: keys.map((key) => ({ result_field: key, table_column: key })),
+    });
+    contract = await buildAnalysisResultContract({
+      ...material,
+      result_fields: [
+        ...material.result_fields,
+        {
+          field: "overall_trend_rows",
+          data_type: "JSON",
+          nullable: false,
+          semantic_role: "DERIVED",
+        },
+        {
+          field: "largest_decline_group_rows",
+          data_type: "JSON",
+          nullable: false,
+          semantic_role: "DERIVED",
+        },
+      ],
+      lineage: [
+        ...material.lineage,
+        ...["overall_trend_rows", "largest_decline_group_rows"].map((field) => ({
+          field,
+          source_semantic_object_ids: semanticIds,
+          source_physical_fields: physicalFields,
+          transformation: "AGGREGATION" as const,
+        })),
+      ],
+      tables: [
+        material.tables[0] ?? fail("SHAPE"),
+        {
+          table_id: MONTHLY_PANEL_OVERALL_TABLE_ID,
+          title_zh: "整体月度同比趋势",
+          required: true,
+          columns: [
+            {
+              key: "period",
+              label_zh: "月份",
+              data_type: "DATE",
+              nullable: false,
+              semantic_object_id: time.semantic_object_id,
+              semantic_role: "DIMENSION",
+            },
+            derivedNumber("current_value", "本期值", current.semantic_object_id, true),
+            derivedNumber("comparison_value", "同期值", prior.semantic_object_id, true),
+            derivedNumber("yoy_rate", "同比", rate.semantic_object_id, true),
+          ],
+          projection: projection("overall_trend_rows", [
+            "period",
+            "current_value",
+            "comparison_value",
+            "yoy_rate",
+          ]),
+          max_rows: 12,
+        },
+        {
+          table_id: MONTHLY_PANEL_DECLINE_TABLE_ID,
+          title_zh: "下降月份客户类型对比",
+          required: true,
+          columns: [
+            {
+              key: "period",
+              label_zh: "月份",
+              data_type: "DATE",
+              nullable: false,
+              semantic_object_id: time.semantic_object_id,
+              semantic_role: "DIMENSION",
+            },
+            {
+              key: "group_value",
+              label_zh: "客户类型",
+              data_type: "STRING",
+              nullable: false,
+              semantic_object_id: category.semantic_object_id,
+              semantic_role: "DIMENSION",
+            },
+            derivedNumber("current_value", "本期值", current.semantic_object_id, false),
+            derivedNumber("comparison_value", "同期值", prior.semantic_object_id, false),
+            derivedNumber("yoy_rate", "分组同比", rate.semantic_object_id, true),
+            derivedNumber(
+              "contribution_to_total_growth",
+              "整体同比贡献",
+              rate.semantic_object_id,
+              false,
+            ),
+          ],
+          projection: projection("largest_decline_group_rows", [
+            "period",
+            "group_value",
+            "current_value",
+            "comparison_value",
+            "yoy_rate",
+            "contribution_to_total_growth",
+          ]),
+          max_rows: MAX_GROUPS * 3,
+        },
+      ],
+      charts: [
+        {
+          chart_id: MONTHLY_PANEL_OVERALL_CHART_ID,
+          title_zh: "整体月度同比趋势",
+          required: true,
+          intent: "TREND",
+          table_id: MONTHLY_PANEL_OVERALL_TABLE_ID,
+          allowed_template_ids: ["line.multi-series@1"],
+        },
+        {
+          chart_id: MONTHLY_PANEL_DECLINE_CHART_ID,
+          title_zh: "下降月份客户类型对比",
+          required: true,
+          intent: "COMPARISON",
+          table_id: MONTHLY_PANEL_DECLINE_TABLE_ID,
+          allowed_template_ids: ["bar.grouped@1"],
+        },
+      ],
+    });
+  }
   await resolveAnalysisResultSourceObjects({
     result_contract: contract,
     context,
@@ -321,7 +489,7 @@ export async function compileMonthlyPanelPlan(input: MonthlyPanelInput) {
             period_comparison_schema: z.toJSONSchema(panelPeriodComparisonSchema),
           }
         : {}),
-      chart_bindings: {
+      chart_bindings: comparisonChartBindings ?? {
         x_field: time.output_name,
         y_fields: measures.map((column) => column.output_name),
         series_field: categories[0]?.output_name ?? fail("SHAPE"),
@@ -332,6 +500,11 @@ export async function compileMonthlyPanelPlan(input: MonthlyPanelInput) {
       rules: [
         "Use preparation_reference as the data-free reference implementation of these descriptive rules. Copy its function into your actual python_cell. Call prepare_monthly_panel with the exact bound input DataFrame and a configuration dict copying only source_columns, time_column, time_logical_type, timezone, month_count, category_columns, measure_fields, and period_comparison when supplied. Do not copy schemas, rules or preparation_reference into that dict. Assign the returned dict to a named result symbol and construct the table from result['observations'] with exactly source_columns. Never add temporary columns such as month_str to the source or later look them up in observations; the approved time_column remains the calendar-date key throughout. The reference is not pre-executed output and does not replace Cell policy, Publisher or FULL Oracle checks.",
         ...(comparison ? PANEL_PERIOD_COMPARISON_RULES : []),
+        ...(comparison
+          ? [
+              "For the two governed chart collections, build one exact-column table symbol from result['overall_trend_rows'] and one from result['largest_decline_group_rows']. Bind all three required tables and both required charts in one publish_analysis_result call. Copy the supplied chart_bindings array exactly; do not chart the raw monthly_panel table, merge the two chart datasets, omit a chart, or add a third chart.",
+            ]
+          : []),
         ...(ratioRollup
           ? [
               "Also copy the supplied ratio_rollup_mapping into the preparation configuration. The reference computes data.ratio_rollup from original observations; do not copy or precompute an answer into the configuration.",
@@ -342,7 +515,9 @@ export async function compileMonthlyPanelPlan(input: MonthlyPanelInput) {
         "Each measure field is an object with only groups, an array in group first-appearance order in observations. Each item has group (all category_columns and exact values), source_column and the supplied monthly measure fields. Compute each group and measure independently from its exact month_count (2 or 12) complete calendar months. Two months support an endpoint comparison, not a persistent trend or trend-strength claim. observed_count excludes NULL; missing_count counts NULL; minimum/maximum use observed values. lowest/highest contain up to three {period,value}, ordered by value ascending/descending then period ascending.",
         "first_period/last_period and first_value/last_value use the original window endpoints, retaining NULL. absolute_change=last-first, NULL if either is missing; relative_change=absolute_change/first, NULL if missing or zero denominator. Never move endpoints. largest_drops contains up to three strictly negative adjacent-month changes, sorted by absolute_change then to_period. NULL breaks adjacency; relative_change is NULL for zero previous value.",
         "opposed_changes is an object with only pairs, an array listing all ordered source-measure pairs in each group whose endpoint absolute changes are respectively strictly positive and strictly negative. Order by group first-appearance, increasing source column order, then decreasing source column order. Copy both endpoint changes and relative changes, original first/last periods and the complete group. Missing endpoints yield no pair; do not infer causality, materiality or direction from relative-change signs with negative denominators.",
-        "claim_strength must equal DESCRIPTIVE. No extra fields, free-form facts, statistical significance or causal claims. Use the existing publisher once with the exact chart_bindings and line.multi-series@1; all measures stay independent and the second category is an explicit facet.",
+        comparison
+          ? "claim_strength must equal DESCRIPTIVE. No extra fields, free-form facts, statistical significance or causal claims. The overall line and decline-group comparison bar are the only charts and remain independently bound to their exact governed collections."
+          : "claim_strength must equal DESCRIPTIVE. No extra fields, free-form facts, statistical significance or causal claims. Use the existing publisher once with the exact chart_bindings and line.multi-series@1; all measures stay independent and the second category is an explicit facet.",
       ],
       preparation_reference: MONTHLY_PANEL_PREPARATION_REFERENCE,
     }),

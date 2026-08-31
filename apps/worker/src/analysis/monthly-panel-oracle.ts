@@ -16,10 +16,13 @@ import {
 import {
   evaluatePanelPeriodComparison,
   PANEL_PERIOD_COMPARISON_MODULE_URL,
+  projectPanelPeriodComparisonCharts,
 } from "./monthly-panel-period-comparison.js";
 import {
   compileMonthlyPanelPlan,
+  MONTHLY_PANEL_DECLINE_TABLE_ID,
   MONTHLY_PANEL_METHOD_ID,
+  MONTHLY_PANEL_OVERALL_TABLE_ID,
   type MonthlyPanelPlan,
   monthlyPanelMeasureSchema,
   monthlyPanelOpposedChangesSchema,
@@ -74,6 +77,16 @@ function expectedPanelData(plan: MonthlyPanelPlan) {
       });
     }),
   );
+  const comparison = plan.execution_contract.period_comparison
+    ? evaluatePanelPeriodComparison(
+        plan.execution_contract.period_comparison,
+        plan.shape.ordered_rows,
+      )
+    : null;
+  const comparisonCharts =
+    comparison && plan.execution_contract.period_comparison
+      ? projectPanelPeriodComparisonCharts(plan.execution_contract.period_comparison, comparison)
+      : null;
   return {
     data: {
       observations: plan.shape.ordered_rows,
@@ -87,12 +100,10 @@ function expectedPanelData(plan: MonthlyPanelPlan) {
             ),
           }
         : {}),
-      ...(plan.execution_contract.period_comparison
+      ...(comparison
         ? {
-            period_comparison: evaluatePanelPeriodComparison(
-              plan.execution_contract.period_comparison,
-              plan.shape.ordered_rows,
-            ),
+            period_comparison: comparison,
+            ...comparisonCharts,
           }
         : {}),
       claim_strength: "DESCRIPTIVE",
@@ -106,7 +117,6 @@ export function createMonthlyPanelOracle(context: AnalysisContext): AnalysisOrac
     async evaluate(input: Parameters<AnalysisOraclePort["evaluate"]>[0]) {
       if (
         input.governed_inputs.length !== 1 ||
-        input.sandbox_outputs.length !== 3 ||
         input.node.skill_id !== "open-python-analysis@1" ||
         !same(input.node.method_registry_entry_ids, [MONTHLY_PANEL_METHOD_ID]) ||
         input.node.execution_mode !== "MODEL_GENERATED" ||
@@ -135,7 +145,9 @@ export function createMonthlyPanelOracle(context: AnalysisContext): AnalysisOrac
         expected_ordered_columns: plan.shape.binding.columns.map((column) => column.output_name),
       });
       const contract = plan.result_contract;
+      const expectedOutputCount = plan.execution_contract.period_comparison ? 6 : 3;
       if (
+        input.sandbox_outputs.length !== expectedOutputCount ||
         !same(input.node.result_contract, contract) ||
         input.sandbox_receipt.result_contract_hash !== contract.contract_hash ||
         !same(
@@ -160,24 +172,11 @@ export function createMonthlyPanelOracle(context: AnalysisContext): AnalysisOrac
         if (!sameScopeRun(reference, governed.query_evidence_ref)) return fail("INPUT_INVALID");
       }
       const tableContract = contract.tables[0];
-      const chartContract = contract.charts[0];
-      if (!tableContract || !chartContract) return fail("CONTRACT_CLOSURE_INVALID");
+      if (!tableContract || contract.charts.length < 1) return fail("CONTRACT_CLOSURE_INVALID");
       const result = outputOf(
         input.sandbox_outputs,
         "result",
         "RESULT",
-        governed.query_evidence_ref,
-      );
-      const table = outputOf(
-        input.sandbox_outputs,
-        `table:${tableContract.table_id}`,
-        "TABLE",
-        governed.query_evidence_ref,
-      );
-      const chart = outputOf(
-        input.sandbox_outputs,
-        `chart:${chartContract.chart_id}`,
-        "CHART",
         governed.query_evidence_ref,
       );
       const expected = expectedPanelData(plan);
@@ -195,35 +194,82 @@ export function createMonthlyPanelOracle(context: AnalysisContext): AnalysisOrac
         })
       )
         return fail("RESULT_MISMATCH");
-      const dataset = {
-        table_id: tableContract.table_id,
-        columns: tableContract.columns,
-        rows: plan.shape.ordered_rows,
-        total_rows: plan.shape.ordered_rows.length,
-      };
-      if (
-        !same(readJson(table), {
-          schema_version: "analysis-published-table@1.0.0",
-          ...dataset,
-          title_zh: tableContract.title_zh,
-        })
-      )
-        return fail("TABLE_MISMATCH");
-      if (
-        !same(readJson(chart), {
-          schema_version:
-            plan.execution_contract.chart_bindings.facet_field === undefined
-              ? "analysis-published-chart@1.0.0"
-              : "analysis-published-chart@1.1.0",
-          chart_id: chartContract.chart_id,
-          title_zh: chartContract.title_zh,
-          intent: "TREND",
-          template_id: "line.multi-series@1",
-          bindings: plan.execution_contract.chart_bindings,
-          dataset,
-        })
-      )
-        return fail("CHART_MISMATCH");
+      const rowsByTableId = new Map<string, readonly Readonly<Record<string, unknown>>[]>([
+        [tableContract.table_id, plan.shape.ordered_rows],
+      ]);
+      if (plan.execution_contract.period_comparison) {
+        const overall = expected.data.overall_trend_rows;
+        const declines = expected.data.largest_decline_group_rows;
+        if (!overall || !declines) return fail("CONTRACT_CLOSURE_INVALID");
+        rowsByTableId.set(MONTHLY_PANEL_OVERALL_TABLE_ID, overall);
+        rowsByTableId.set(MONTHLY_PANEL_DECLINE_TABLE_ID, declines);
+      }
+      const tables = contract.tables.map((declared) => {
+        const rows = rowsByTableId.get(declared.table_id);
+        if (!rows) return fail("CONTRACT_CLOSURE_INVALID");
+        const table = outputOf(
+          input.sandbox_outputs,
+          `table:${declared.table_id}`,
+          "TABLE",
+          governed.query_evidence_ref,
+        );
+        if (
+          !same(readJson(table), {
+            schema_version: "analysis-published-table@1.0.0",
+            table_id: declared.table_id,
+            title_zh: declared.title_zh,
+            columns: declared.columns,
+            rows,
+            total_rows: rows.length,
+          })
+        )
+          return fail("TABLE_MISMATCH");
+        return { output: table, contract: declared, rows };
+      });
+      const declaredBindings = Array.isArray(plan.execution_contract.chart_bindings)
+        ? plan.execution_contract.chart_bindings
+        : [
+            {
+              chart_id: contract.charts[0]?.chart_id ?? fail("CONTRACT_CLOSURE_INVALID"),
+              ...plan.execution_contract.chart_bindings,
+            },
+          ];
+      const charts = contract.charts.map((declared) => {
+        const table = tables.find((candidate) => candidate.contract.table_id === declared.table_id);
+        const rawBinding = declaredBindings.find(
+          (candidate) => candidate.chart_id === declared.chart_id,
+        );
+        const template = declared.allowed_template_ids[0];
+        if (!table || !rawBinding || !template) return fail("CONTRACT_CLOSURE_INVALID");
+        const { chart_id: _chartId, ...bindings } = rawBinding;
+        const chart = outputOf(
+          input.sandbox_outputs,
+          `chart:${declared.chart_id}`,
+          "CHART",
+          governed.query_evidence_ref,
+        );
+        if (
+          !same(readJson(chart), {
+            schema_version:
+              !("facet_field" in bindings) || bindings.facet_field === undefined
+                ? "analysis-published-chart@1.0.0"
+                : "analysis-published-chart@1.1.0",
+            chart_id: declared.chart_id,
+            title_zh: declared.title_zh,
+            intent: declared.intent,
+            template_id: template,
+            bindings,
+            dataset: {
+              table_id: table.contract.table_id,
+              columns: table.contract.columns,
+              rows: table.rows,
+              total_rows: table.rows.length,
+            },
+          })
+        )
+          return fail("CHART_MISMATCH");
+        return chart;
+      });
       const undefinedChange = expected.measures.some(
         (measure) =>
           measure.missing_count > 0 ||
@@ -234,7 +280,11 @@ export function createMonthlyPanelOracle(context: AnalysisContext): AnalysisOrac
         result: {
           result_kind: "GENERATED_ANALYSIS" as const,
           declared_method: MONTHLY_PANEL_METHOD_ID,
-          structured_output_refs: [result.reference, table.reference, chart.reference],
+          structured_output_refs: [
+            result.reference,
+            ...tables.map(({ output: table }) => table.reference),
+            ...charts.map((chart) => chart.reference),
+          ],
           oracle_scope: "FULL" as const,
         },
         sample_size: plan.shape.ordered_rows.length,
@@ -256,8 +306,8 @@ export function createMonthlyPanelOracle(context: AnalysisContext): AnalysisOrac
           source_binding_hash: plan.shape.binding.binding_hash,
           contract_hash: contract.contract_hash,
           result_hash: result.content_sha256,
-          table_hash: table.content_sha256,
-          chart_hash: chart.content_sha256,
+          table_hashes: tables.map(({ output: table }) => table.content_sha256),
+          chart_hashes: charts.map((chart) => chart.content_sha256),
           claim_strength: "DESCRIPTIVE",
           no_inferential_or_causal_claim: true,
         },

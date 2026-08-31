@@ -1789,3 +1789,22 @@ Python参考显式接收month_count，独立Host Oracle复用原月度算术；�
 两分类轴均保留全部父组，只为入选父组展开所有子组，不以列顺序认定渠道；2月净比例角色来自sealed operator的唯一可加Metric列。
 保留原结果表/图，不裁掉未入选组；缺失/零/非正分母不强判有效下降。原窗口、来源、字节/回合预算不扩。
 当前仅离线与原Python镜像证明，非B3业务PASS；真实Root→Semantic→Text2SQL→Analysis协作仍待新构建验证。
+
+## 29. L4-A3 确定性双图发布合同（前向修复）
+
+`72ae42df` 的 A3 已证明当前 Run 的 Semantic、Text2SQL、Analysis、48行 QueryEvidence 与分类同比算术正确，
+但原 `monthly-group-panel.result` 只授权一张原始分组面板图，无法合法同时交付 §20.2 要求的整体趋势图和客户类型对比图。
+失败 Run 与业务复核保持不可变；修复只作用于后续 clean build。
+
+仅当 planner 从已验证 AnalysisContext/QueryEvidence 得到封存的 `PERIOD_COMPARISON_RATE`、
+`BOTH_PERIOD_GROUPS` 与完整12月分类面板时，Host 从独立 `period_comparison` 确定性投影两个结果集合：
+`overall_trend_rows` 固定12行本期/同期/同比，`largest_decline_group_rows` 按已排名下降月和源分组顺序保留完整分组、
+组同比与整体增速贡献。选择不读取题目、题号、列名或历史回答；两月 `ratio_rollup` 与无同比映射输入保持原单图合同。
+
+同一 ResultContract 保留原 `monthly_panel` 全量表，并新增两个 `RESULT_COLLECTION` 表；图合同恰好为整体同比折线和
+下降月份分组对比柱图。模型在一个原 `publish_analysis_result` 调用中绑定3表2图，不能画原始面板混合图、选行、补算、
+漏图或增加第三张图。Python preparation reference 仍是无数据算法参考，不替代真实 Cell、Publisher 或 Oracle。
+
+FULL Oracle 从当前 Run 原 Arrow 重新计算 `period_comparison` 及两个集合，逐项比较 RESULT、3张表、2张图、绑定、顺序和 hash；
+任何篡改按既有 `RESULT/TABLE/CHART_MISMATCH` 或 closure 错误失败关闭。修复不新增模型调用、Cell/Publisher repair、timeout、
+权限、数据库状态或发布权威。组件验证后必须新 clean build、fresh 专用 scratch，从 A1 开始重跑 A/B 六题；旧 A1/A2 不拼接。

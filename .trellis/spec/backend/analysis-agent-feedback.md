@@ -44,6 +44,11 @@
   按原业务日历展示本期/同期/同比及首尾（不声称连续趋势）；分组按已受验整体同比和百分点贡献展示至多3个最差月、每月至多3个负向贡献类，明确完整组见表。
   缺失/零基数、限制标识和原单位保留，禁止推断币种/因果；格式化仅用于展示，不修改原数值/表/图。
   文本最多6000字符/18000 UTF-8字节；超限失败关闭，不截断或回退自由解释。
+- 含封存`PERIOD_COMPARISON_RATE/BOTH_PERIOD_GROUPS`的12月分群面板，其发布布局也采用受验确定性合同，不把模型自由绘图当作能力门槛。
+  原完整`observations`表必须保留；Host仅从FULL Oracle已重算的`period_comparison`投影12行整体同比趋势和最多3个整体下降月的全部分组，
+  分别成为独立顶层collection、exact-column表与图。一次Publisher必须绑定3表2图：整体同比折线、下降月份分组对比柱图；不得把原48行
+  分组面板冒充整体趋势、只发一张混合图、删减分组、重新排名或增加第三张图。Oracle逐项重算result并验证每张表/图及哈希。
+  两月ratio rollup没有该同比映射，继续使用原单图合同；选择只依据封存角色/源形状，不按题目文字、列名或测试编号。
 - Executor把上述文本作为服务端`final_summary_constraint`交给原一次FINAL调用：当前请求Zod将原`summary_zh`收窄为精确literal，
   该约束进入dispatch task hash，不修改共享registry或外部请求Schema版本。模型响应必须逐字匹配；不得后台替换不符的响应。
   新响应在recordExplanation前检查；恢复时原explanation hash通过后仍重验约束，不调用模型改写历史。
@@ -81,6 +86,8 @@ Bad：修复Cell成功后继续开放Python，允许重复转换、重算或用t
   生产Oracle成功后进入同一FINAL投影；保留原stage hash的离线输入复现不是原自然语言答案修复或新业务PASS。
 - 精确文本的接收/拒绝、原不受限协议兼容、非法TOOL约束零调用、per-request registry互不污染、约束改变task hash；
   多月正负/空值/0、别名与时区不改角色、单位不推断、分组排名和百分点贡献、源/contract/Run/数据篡改拒绝。
+- 分群同比双图：12行整体趋势、最差月完整分组投影的别名/顺序/NULL；合同固定3表2图；漏图、额外图、错误数据symbol、行筛选、
+  图表数据重算、同比排名/贡献篡改和表图哈希不一致均拒绝。无比较映射及两月ratio面板保持原单图回归。
 
 ## 7. Wrong vs Correct
 

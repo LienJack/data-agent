@@ -113,5 +113,14 @@ def prepare_monthly_panel(input_frame, contract):
             declines.append({**month, 'groups': groups})
         result['period_comparison'] = {'comparison_kind': 'YEAR_OVER_YEAR', 'group_coverage': 'BOTH_PERIOD_GROUPS',
                                        'ranking_basis': 'TOTAL_YOY_RATE', 'months': months, 'largest_declines': declines}
+        result['overall_trend_rows'] = [{'period': month['period'], 'current_value': month['current_value'],
+                                         'comparison_value': month['comparison_value'], 'yoy_rate': month['yoy_rate']} for month in months]
+        result['largest_decline_group_rows'] = []
+        for month in declines:
+            for group in month['groups']:
+                result['largest_decline_group_rows'].append({'period': month['period'],
+                    'group_value': group['group'][mapping['category_output']],
+                    'current_value': group['current_value'], 'comparison_value': group['comparison_value'],
+                    'yoy_rate': group['yoy_rate'], 'contribution_to_total_growth': group['contribution_to_total_growth']})
     return result
 `;

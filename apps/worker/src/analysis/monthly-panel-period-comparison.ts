@@ -37,6 +37,22 @@ export const panelPeriodComparisonSchema = z.strictObject({
     .max(3),
 });
 
+export const panelPeriodComparisonOverallChartRowSchema = z.strictObject({
+  period: z.string().regex(/^\d{4}-\d{2}-01$/u),
+  current_value: finite.nullable(),
+  comparison_value: finite.nullable(),
+  yoy_rate: finite.nullable(),
+});
+
+export const panelPeriodComparisonGroupChartRowSchema = z.strictObject({
+  period: z.string().regex(/^\d{4}-\d{2}-01$/u),
+  group_value: z.string().min(1).max(256),
+  current_value: finite,
+  comparison_value: finite,
+  yoy_rate: finite.nullable(),
+  contribution_to_total_growth: finite,
+});
+
 function fail(kind: "AUTHORITY" | "VALUE" | "NUMERIC_RANGE"): never {
   throw new TypeError(`MONTHLY_PANEL_COMPARISON_${kind}_INVALID`);
 }
@@ -136,9 +152,47 @@ export function evaluatePanelPeriodComparison(
   return result.success ? result.data : fail("NUMERIC_RANGE");
 }
 
+/** Deterministic chart collections projected only from the independently verified comparison. */
+export function projectPanelPeriodComparisonCharts(
+  columns: ComparisonColumns,
+  comparison: z.infer<typeof panelPeriodComparisonSchema>,
+) {
+  const overallTrendRows = z
+    .array(panelPeriodComparisonOverallChartRowSchema)
+    .length(12)
+    .parse(
+      comparison.months.map(({ period, current_value, comparison_value, yoy_rate }) => ({
+        period,
+        current_value,
+        comparison_value,
+        yoy_rate,
+      })),
+    );
+  const largestDeclineGroupRows = z
+    .array(panelPeriodComparisonGroupChartRowSchema)
+    .max(96)
+    .parse(
+      comparison.largest_declines.flatMap((month) =>
+        month.groups.map((group) => ({
+          period: month.period,
+          group_value: group.group[columns.category_output] ?? fail("VALUE"),
+          current_value: group.current_value,
+          comparison_value: group.comparison_value,
+          yoy_rate: group.yoy_rate,
+          contribution_to_total_growth: group.contribution_to_total_growth,
+        })),
+      ),
+    );
+  return Object.freeze({
+    overall_trend_rows: Object.freeze(overallTrendRows),
+    largest_decline_group_rows: Object.freeze(largestDeclineGroupRows),
+  });
+}
+
 export const PANEL_PERIOD_COMPARISON_RULES = Object.freeze([
   "When period_comparison is supplied, publish one additional data.period_comparison matching its schema. Copy comparison_kind=YEAR_OVER_YEAR, group_coverage=BOTH_PERIOD_GROUPS and ranking_basis=TOTAL_YOY_RATE exactly. Column roles come only from that sealed mapping, never names, labels, another Run, group averages or adjacent-month changes.",
   "months contains the twelve calendar periods ascending. For each period, sum raw current and comparison values independently across every category in source row order with an explicit loop initialized to 0.0 and repeated total += float(value); do not use sum(), pandas/numpy aggregates, rounding or reordering. If any contributing value is NULL, that side's total is NULL, not a partial sum or zero. absolute_change=current_value-comparison_value; yoy_rate=absolute_change/comparison_value, NULL when a side is missing or comparison_value=0. ranking_eligible is true only when both totals are observed and comparison_value>0; a negative base is not a standard decline-ranking denominator.",
   "largest_declines contains at most three ranking_eligible months whose total yoy_rate is strictly negative, ordered by total yoy_rate ascending then period ascending. It is NOT ranked by absolute amounts, individual category rates, their average, or largest_drops. Copy each month's complete total fields. For each selected month retain every category in source row order in groups; group contains the category output key and exact value. Copy raw current_value, comparison_value and the already proven group yoy_rate from rate_output. absolute_change is raw current minus prior; contribution_to_total_growth is that group difference divided by the overall comparison_value, not by the group's prior or the total decline. Contributions are growth-rate fractions (display as percentage points), not percentages of the total loss. Never infer causation.",
   "A missing comparison or non-positive total comparison denominator excludes the month from decline ranking. Do not manufacture three eligible declines when fewer exist. Generic measure largest_drops still describes adjacent-month changes within that source series only; it is not the year-over-year decomposition. Preserve all raw observations/table/chart rows, including missing values.",
+  "Also publish data.overall_trend_rows and data.largest_decline_group_rows exactly as the preparation reference projects them from data.period_comparison. overall_trend_rows contains the twelve period/current_value/comparison_value/yoy_rate rows. largest_decline_group_rows flattens every group of every selected decline in ranked-month then source-group order, renaming the sealed category value to group_value and retaining current_value/comparison_value/yoy_rate/contribution_to_total_growth. These are governed chart collections, not new calculations or model-selected subsets.",
 ]);

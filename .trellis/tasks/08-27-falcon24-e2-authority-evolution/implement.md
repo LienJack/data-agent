@@ -1947,6 +1947,15 @@ Diagnostic/Q1/C1任一正式首次失败必须写既有 authority支持的 immut
 > 见 [A3发布修复复盘](research/complex-209de7a4-analysis-publish-repair.md)；修复提交后须新build/fresh scratch重验，
 > 当前B2旧构建虽已终态但尚未业务/UI复核，B3未提交，complex preflight/formal15均未PASS。
 
+> `72ae42df` fresh scratch 的 A1/A2 业务及同Run QA/Trace通过；A2真实触发表类型拒绝后，仅一条修复Cell和一次重新发布即成功，
+> 证明发布修复状态机生效。A3的Semantic/Text2SQL/Analysis、48行来源、整体同比排名和stage结果均通过，但只发布一张单面板
+> 分组折线图，未满足“保留整体趋势图并增加客户类型对比图”，独立业务复核冻结为
+> `COMPLEX_A3_REQUIRED_TWO_CHARTS_MISSING`，不验UI、不改写原Run。现把原`period_comparison`的12月整体同比和最差月完整分组
+> 确定性投影为两个顶层集合，合同要求原始表+两张派生表、恰好两张图；模型一次发布，FULL Oracle逐表逐图验证。
+> 仍按封存比较角色/源形状选择，不按题目关键词，不增加调用/修复/权限预算；两期B3无该同比映射，保持原合同。
+> 见 [A3双图合同复盘](research/complex-72ae42df-two-chart-contract.md)；修复提交后须新build/fresh scratch从A1重跑六题，
+> 本构建A1/A2不能拼接，formal15仍未PASS。
+
 **F6 READY 轮次恢复边界（2026-08-30，历史）**
 
 > 以下为历史记录；当前 forward recovery 已到 E16 FAILED，下一 fresh epoch 为 E17，见上一节。

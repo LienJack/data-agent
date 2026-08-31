@@ -17,7 +17,11 @@ import {
 } from "../../src/analysis/monthly-panel-oracle.js";
 import {
   compileMonthlyPanelPlan,
+  MONTHLY_PANEL_DECLINE_CHART_ID,
+  MONTHLY_PANEL_DECLINE_TABLE_ID,
   MONTHLY_PANEL_METHOD_ID,
+  MONTHLY_PANEL_OVERALL_CHART_ID,
+  MONTHLY_PANEL_OVERALL_TABLE_ID,
 } from "../../src/analysis/monthly-panel-planning.js";
 import { productTeamGovernedQueryInternals } from "../../src/analysis/product-team-query-port.js";
 import { productionGovernedAnalysisRuntimeInternals } from "../../src/analysis/production-governed-analysis-runtime.js";
@@ -198,62 +202,82 @@ async function fixture(two = true, derived = true, yoy = false) {
       },
     ]),
   };
+  const periodComparison = yoy
+    ? {
+        comparison_kind: "YEAR_OVER_YEAR" as const,
+        group_coverage: "BOTH_PERIOD_GROUPS" as const,
+        ranking_basis: "TOTAL_YOY_RATE" as const,
+        months: Array.from({ length: 12 }, (_, i) => ({
+          period: period(i + 1),
+          current_value: i === 2 ? 0 : i === 11 ? 40 : 160,
+          comparison_value: i === 2 ? 0 : i === 11 ? 80 : 40,
+          absolute_change: i === 2 ? 0 : i === 11 ? -40 : 120,
+          yoy_rate: i === 2 ? null : i === 11 ? -0.5 : 3,
+          ranking_eligible: i !== 2,
+        })),
+        largest_declines: [
+          {
+            period: period(12),
+            current_value: 40,
+            comparison_value: 80,
+            absolute_change: -40,
+            yoy_rate: -0.5,
+            ranking_eligible: true,
+            groups: [
+              {
+                group: { channel: "Email" },
+                current_value: 10,
+                comparison_value: 20,
+                absolute_change: -10,
+                yoy_rate: -0.5,
+                contribution_to_total_growth: -0.125,
+              },
+              {
+                group: { channel: "App" },
+                current_value: 30,
+                comparison_value: 60,
+                absolute_change: -30,
+                yoy_rate: -0.5,
+                contribution_to_total_growth: -0.375,
+              },
+            ],
+          },
+        ],
+      }
+    : null;
   const data = {
     ...rawData,
     measure_1: { groups: rawData.measure_1 },
     measure_2: { groups: rawData.measure_2 },
     measure_3: { groups: rawData.measure_3 },
     opposed_changes: { pairs: rawData.opposed_changes },
-    ...(yoy
+    ...(periodComparison
       ? {
-          period_comparison: {
-            comparison_kind: "YEAR_OVER_YEAR",
-            group_coverage: "BOTH_PERIOD_GROUPS",
-            ranking_basis: "TOTAL_YOY_RATE",
-            months: Array.from({ length: 12 }, (_, i) => ({
-              period: period(i + 1),
-              current_value: i === 2 ? 0 : i === 11 ? 40 : 160,
-              comparison_value: i === 2 ? 0 : i === 11 ? 80 : 40,
-              absolute_change: i === 2 ? 0 : i === 11 ? -40 : 120,
-              yoy_rate: i === 2 ? null : i === 11 ? -0.5 : 3,
-              ranking_eligible: i !== 2,
+          period_comparison: periodComparison,
+          overall_trend_rows: periodComparison.months.map(
+            ({ period: month, current_value, comparison_value, yoy_rate }) => ({
+              period: month,
+              current_value,
+              comparison_value,
+              yoy_rate,
+            }),
+          ),
+          largest_decline_group_rows: periodComparison.largest_declines.flatMap((month) =>
+            month.groups.map((group) => ({
+              period: month.period,
+              group_value: group.group.channel,
+              current_value: group.current_value,
+              comparison_value: group.comparison_value,
+              yoy_rate: group.yoy_rate,
+              contribution_to_total_growth: group.contribution_to_total_growth,
             })),
-            largest_declines: [
-              {
-                period: period(12),
-                current_value: 40,
-                comparison_value: 80,
-                absolute_change: -40,
-                yoy_rate: -0.5,
-                ranking_eligible: true,
-                groups: [
-                  {
-                    group: { channel: "Email" },
-                    current_value: 10,
-                    comparison_value: 20,
-                    absolute_change: -10,
-                    yoy_rate: -0.5,
-                    contribution_to_total_growth: -0.125,
-                  },
-                  {
-                    group: { channel: "App" },
-                    current_value: 30,
-                    comparison_value: 60,
-                    absolute_change: -30,
-                    yoy_rate: -0.5,
-                    contribution_to_total_growth: -0.375,
-                  },
-                ],
-              },
-            ],
-          },
+          ),
         }
       : {}),
   };
   const contract = plan.result_contract;
   const tableContract = contract.tables[0];
-  const chartContract = contract.charts[0];
-  if (!tableContract || !chartContract) throw new Error("TEST_CONTRACT_REQUIRED");
+  if (!tableContract || !contract.charts[0]) throw new Error("TEST_CONTRACT_REQUIRED");
   const result = {
     schema_version: "analysis-published-result@1.0.0",
     contract_id: contract.contract_id,
@@ -265,28 +289,58 @@ async function fixture(two = true, derived = true, yoy = false) {
     lineage: contract.lineage,
     data,
   };
-  const table = {
-    schema_version: "analysis-published-table@1.0.0",
-    table_id: tableContract.table_id,
-    title_zh: tableContract.title_zh,
-    columns: tableContract.columns,
-    rows: data.observations,
-    total_rows: data.observations.length,
-  };
-  const chart = {
-    schema_version: two ? "analysis-published-chart@1.1.0" : "analysis-published-chart@1.0.0",
-    chart_id: chartContract.chart_id,
-    title_zh: chartContract.title_zh,
-    intent: "TREND",
-    template_id: "line.multi-series@1",
-    bindings: plan.execution_contract.chart_bindings,
-    dataset: {
-      table_id: table.table_id,
-      columns: table.columns,
-      rows: table.rows,
-      total_rows: table.total_rows,
-    },
-  };
+  const rowsByTableId = new Map<string, readonly Record<string, unknown>[]>([
+    [tableContract.table_id, data.observations],
+  ]);
+  if (periodComparison) {
+    const overall = data.overall_trend_rows;
+    const declines = data.largest_decline_group_rows;
+    if (!overall || !declines) throw new Error("TEST_COMPARISON_ROWS_REQUIRED");
+    rowsByTableId.set(MONTHLY_PANEL_OVERALL_TABLE_ID, overall);
+    rowsByTableId.set(MONTHLY_PANEL_DECLINE_TABLE_ID, declines);
+  }
+  const tables = contract.tables.map((declared) => {
+    const rows = rowsByTableId.get(declared.table_id);
+    if (!rows) throw new Error("TEST_TABLE_ROWS_REQUIRED");
+    return {
+      schema_version: "analysis-published-table@1.0.0",
+      table_id: declared.table_id,
+      title_zh: declared.title_zh,
+      columns: declared.columns,
+      rows,
+      total_rows: rows.length,
+    };
+  });
+  const bindings = Array.isArray(plan.execution_contract.chart_bindings)
+    ? plan.execution_contract.chart_bindings
+    : [{ chart_id: contract.charts[0].chart_id, ...plan.execution_contract.chart_bindings }];
+  const charts = contract.charts.map((declared) => {
+    const table = tables.find((candidate) => candidate.table_id === declared.table_id);
+    const raw = bindings.find((candidate) => candidate.chart_id === declared.chart_id);
+    const template = declared.allowed_template_ids[0];
+    if (!table || !raw || !template) throw new Error("TEST_CHART_BINDING_REQUIRED");
+    const { chart_id: _chartId, ...chartBindings } = raw;
+    return {
+      schema_version:
+        "facet_field" in chartBindings && chartBindings.facet_field !== undefined
+          ? "analysis-published-chart@1.1.0"
+          : "analysis-published-chart@1.0.0",
+      chart_id: declared.chart_id,
+      title_zh: declared.title_zh,
+      intent: declared.intent,
+      template_id: template,
+      bindings: chartBindings,
+      dataset: {
+        table_id: table.table_id,
+        columns: table.columns,
+        rows: table.rows,
+        total_rows: table.total_rows,
+      },
+    };
+  });
+  const table = tables[0];
+  const chart = charts[0];
+  if (!table || !chart) throw new Error("TEST_OUTPUT_REQUIRED");
   const content = productTeamGovernedQueryInternals.materializeProductTeamArrow(
     document.projection,
     source.binding.columns,
@@ -297,8 +351,12 @@ async function fixture(two = true, derived = true, yoy = false) {
   };
   const outputs = [
     output("result", "RESULT", 60, result),
-    output(`table:${table.table_id}`, "TABLE", 61, table),
-    output(`chart:${chart.chart_id}`, "CHART", 62, chart),
+    ...tables.map((document, index) =>
+      output(`table:${document.table_id}`, "TABLE", 61 + index, document),
+    ),
+    ...charts.map((document, index) =>
+      output(`chart:${document.chart_id}`, "CHART", 70 + index, document),
+    ),
   ];
   // Schema-valid unit fixture only. Not a real sandbox execution, materialization or production-isolation receipt.
   const receipt = analysisSandboxExecutionReceiptSchema.parse({
@@ -559,7 +617,7 @@ describe("independent monthly panel oracle", () => {
       if (kind === "ranking") decline.period = period(2);
       if (kind === "contribution") group.contribution_to_total_growth = -0.25;
       if (kind === "group") decline.groups.pop();
-      if (kind === "basis") comparison.ranking_basis = "GROUP_MOM";
+      if (kind === "basis") (comparison as { ranking_basis: string }).ranking_basis = "GROUP_MOM";
       if (kind === "omit") delete test.result.data.period_comparison;
       test.input.sandbox_outputs = test.input.sandbox_outputs.map((original, i) =>
         i === 0
@@ -575,6 +633,37 @@ describe("independent monthly panel oracle", () => {
       ).rejects.toThrow("MONTHLY_PANEL_ORACLE_RESULT_MISMATCH");
     },
   );
+  it.each([
+    [`table:${MONTHLY_PANEL_OVERALL_TABLE_ID}`, "TABLE_MISMATCH"],
+    [`table:${MONTHLY_PANEL_DECLINE_TABLE_ID}`, "TABLE_MISMATCH"],
+    [`chart:${MONTHLY_PANEL_OVERALL_CHART_ID}`, "CHART_MISMATCH"],
+    [`chart:${MONTHLY_PANEL_DECLINE_CHART_ID}`, "CHART_MISMATCH"],
+  ])("rejects rehashed deterministic YoY output %s", async (artifactName, failure) => {
+    const test = await fixture(false, true, true);
+    const index = test.input.sandbox_outputs.findIndex(
+      (candidate) => candidate.artifact_name === artifactName,
+    );
+    const original = test.input.sandbox_outputs[index];
+    if (!original) throw new Error("TEST_OUTPUT_REQUIRED");
+    const document = JSON.parse(new TextDecoder().decode(original.content)) as {
+      rows?: unknown[];
+      dataset?: { rows?: unknown[] };
+    };
+    const rows = document.rows ?? document.dataset?.rows;
+    if (!rows || rows.length < 2) throw new Error("TEST_OUTPUT_ROWS_REQUIRED");
+    rows.reverse();
+    const corrupted = output(original.artifact_name, original.artifact_kind, 80 + index, document);
+    test.input.sandbox_outputs = test.input.sandbox_outputs.map((candidate, candidateIndex) =>
+      candidateIndex === index ? corrupted : candidate,
+    );
+    test.input.sandbox_receipt = {
+      ...test.input.sandbox_receipt,
+      outputs: test.input.sandbox_outputs.map(({ content: _content, ...rest }) => rest),
+    };
+    await expect(
+      createMonthlyPanelOracle(test.source.context).evaluate(test.input),
+    ).rejects.toThrow(`MONTHLY_PANEL_ORACLE_${failure}`);
+  });
   it("selects only the exact registered production oracle", async () => {
     const test = await fixture();
     const method = {

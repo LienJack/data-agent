@@ -85,6 +85,38 @@ describe("source-bound monthly group panel plan", () => {
     expect(plan.result_contract.result_fields.map(({ field }) => field)).toContain(
       "period_comparison",
     );
+    expect(plan.result_contract.result_fields.map(({ field }) => field)).toEqual(
+      expect.arrayContaining(["overall_trend_rows", "largest_decline_group_rows"]),
+    );
+    expect(plan.result_contract.tables.map(({ table_id }) => table_id)).toEqual([
+      "monthly_panel",
+      "monthly_overall_trend",
+      "monthly_decline_groups",
+    ]);
+    expect(
+      plan.result_contract.charts.map(({ chart_id, table_id }) => ({ chart_id, table_id })),
+    ).toEqual([
+      { chart_id: "monthly_overall_yoy_trend", table_id: "monthly_overall_trend" },
+      { chart_id: "monthly_decline_group_comparison", table_id: "monthly_decline_groups" },
+    ]);
+    expect(plan.execution_contract.chart_bindings).toEqual([
+      {
+        chart_id: "monthly_overall_yoy_trend",
+        x_field: "period",
+        y_fields: ["current_value", "comparison_value", "yoy_rate"],
+        series_field: null,
+        lower_bound_field: null,
+        upper_bound_field: null,
+      },
+      {
+        chart_id: "monthly_decline_group_comparison",
+        x_field: "group_value",
+        y_fields: ["current_value", "comparison_value"],
+        series_field: "period",
+        lower_bound_field: null,
+        upper_bound_field: null,
+      },
+    ]);
     expect(JSON.stringify(plan.execution_contract)).not.toContain('"largest_declines":[');
   });
   it.each(["missing-metadata", "current-only", "nonadditive"])(
