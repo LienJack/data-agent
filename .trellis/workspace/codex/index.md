@@ -8,8 +8,8 @@
 
 <!-- @@@auto:current-status -->
 - **Active File**: `journal-1.md`
-- **Total Sessions**: 1
-- **Last Active**: 2026-08-14
+- **Total Sessions**: 2
+- **Last Active**: 2026-08-31
 <!-- @@@/auto:current-status -->
 
 ---
@@ -19,7 +19,7 @@
 <!-- @@@auto:active-documents -->
 | File | Lines | Status |
 |------|-------|--------|
-| `journal-1.md` | ~42 | Active |
+| `journal-1.md` | ~67 | Active |
 <!-- @@@/auto:active-documents -->
 
 ---
@@ -29,6 +29,7 @@
 <!-- @@@auto:session-history -->
 | # | Date | Title | Commits | Branch |
 |---|------|-------|---------|--------|
+| 2 | 2026-08-31 | Falcon core scope closure and safe semantic clarification | `8d4679d4`, `b818da8d`, `ec289ef4`, `aa5c6a5b`, `41cbe76a` | `codex/falcon24-e1-authority-reset` |
 | 1 | 2026-08-14 | Q&A SSE 与对话轨迹 | `a7e4bdc` | `codex/qa-sse-trajectory` |
 <!-- @@@/auto:session-history -->
 
