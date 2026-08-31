@@ -418,99 +418,109 @@ describe("direct run-bound provider retry policy", () => {
     expect(validate("FINAL", ["publish_analysis_result"])).toBe(false);
   });
 
-  it("projects only strict tool observations and verifier feedback into later Root turns", () => {
-    const artifactRef = {
-      artifact_id: "90000000-0000-4000-8000-000000000010",
-      artifact_type: "QueryEvidence",
-      app_id: "90000000-0000-4000-8000-000000000011",
-      tenant_id: "90000000-0000-4000-8000-000000000012",
-      environment: "test",
-      run_id: "90000000-0000-4000-8000-000000000013",
-      revision: 1,
-      content_hash: `sha256:${"a".repeat(64)}`,
-    } as const;
-    const request = {
-      kind: "ROOT",
-      turn_index: 2,
-      accepted_input_artifacts: [
-        {
-          schema_version: "root-accepted-input-artifact@1.0.0",
-          artifact_ref: artifactRef,
-          safe_projection: {
-            schema_version: "root-tool-safe-projection@1.0.0",
-            artifact_ref: artifactRef,
-            projection_kind: "TABLE",
-            title: "已验收经营表格",
-            summary: "12 accepted input rows are available.",
-            column_keys: ["month", "revenue"],
-            total_rows: 12,
-            source_artifact_refs: [],
-          },
-        },
-      ],
-      tool_observations: [
-        {
-          schema_version: "root-tool-observation@1.0.0",
-          tool_call_id: "query-1",
-          profile_id: "governed-text2sql-agent",
-          status: "COMPLETED",
-          output_ref: artifactRef,
-          safe_projection: {
-            schema_version: "root-tool-safe-projection@1.0.0",
-            artifact_ref: artifactRef,
-            projection_kind: "TABLE",
-            title: "趋势",
-            summary: "12 accepted governed rows are available.",
-            column_keys: ["month", "revenue"],
-            total_rows: 12,
-            source_artifact_refs: [],
-          },
-          error_code: null,
-        },
-      ],
-      verifier_feedback: {
-        schema_version: "root-verifier-feedback@1.0.0",
-        status: "REJECTED",
-        reason_code: "ROOT_ANSWER_ARTIFACT_NOT_ACCEPTED",
-      },
-    } as const;
-    const messages = directRunBoundProviderDispatcherInternals.buildRootLoopMessages(request);
-
-    expect(messages).toEqual([
-      { role: "system", content: "Current normal Root turn index: 2." },
-      expect.objectContaining({
-        role: "user",
-        content: expect.stringContaining("Server-owned accepted input Artifact"),
-      }),
-      expect.objectContaining({
-        role: "user",
-        content: expect.stringContaining("Server-owned Tool Result"),
-      }),
-      expect.objectContaining({
-        role: "system",
-        content: expect.stringContaining("ROOT_ANSWER_ARTIFACT_NOT_ACCEPTED"),
-      }),
-    ]);
-    expect(messages[1]?.content).toContain('"schema_version":"root-accepted-input-artifact@1.0.0"');
-    expect(messages[1]?.content).not.toContain('"rows":');
-    expect(messages[2]).not.toHaveProperty("tool_call_id");
-    expect(messages[2]?.content).toContain('"tool_call_id":"query-1"');
-    expect(messages[2]?.content).toContain('"schema_version":"root-provider-tool-result@1.0.0"');
-    expect(messages[2]?.content).toContain('"total_rows":12');
-    expect(messages[2]?.content).not.toContain('"rows":');
-    expect(() =>
-      directRunBoundProviderDispatcherInternals.buildRootLoopMessages({
-        ...request,
-        tool_observations: [
+  it.each([
+    "ROOT_ANSWER_ARTIFACT_NOT_ACCEPTED",
+    "ROOT_AGENT_PROVIDED_UNSUPPORTED_INPUT_ARTIFACT",
+    "ROOT_AGENT_REQUESTED_UNSUPPORTED_OUTPUT_ARTIFACT",
+  ])(
+    "projects only strict tool observations and %s feedback into later Root turns",
+    (reasonCode) => {
+      const artifactRef = {
+        artifact_id: "90000000-0000-4000-8000-000000000010",
+        artifact_type: "QueryEvidence",
+        app_id: "90000000-0000-4000-8000-000000000011",
+        tenant_id: "90000000-0000-4000-8000-000000000012",
+        environment: "test",
+        run_id: "90000000-0000-4000-8000-000000000013",
+        revision: 1,
+        content_hash: `sha256:${"a".repeat(64)}`,
+      } as const;
+      const request = {
+        kind: "ROOT",
+        turn_index: 2,
+        accepted_input_artifacts: [
           {
-            ...request.tool_observations[0],
+            schema_version: "root-accepted-input-artifact@1.0.0",
+            artifact_ref: artifactRef,
             safe_projection: {
-              ...request.tool_observations[0].safe_projection,
-              rows: [{ revenue: 10 }],
+              schema_version: "root-tool-safe-projection@1.0.0",
+              artifact_ref: artifactRef,
+              projection_kind: "TABLE",
+              title: "已验收经营表格",
+              summary: "12 accepted input rows are available.",
+              column_keys: ["month", "revenue"],
+              total_rows: 12,
+              source_artifact_refs: [],
             },
           },
         ],
-      }),
-    ).toThrow();
-  });
+        tool_observations: [
+          {
+            schema_version: "root-tool-observation@1.0.0",
+            tool_call_id: "query-1",
+            profile_id: "governed-text2sql-agent",
+            status: "COMPLETED",
+            output_ref: artifactRef,
+            safe_projection: {
+              schema_version: "root-tool-safe-projection@1.0.0",
+              artifact_ref: artifactRef,
+              projection_kind: "TABLE",
+              title: "趋势",
+              summary: "12 accepted governed rows are available.",
+              column_keys: ["month", "revenue"],
+              total_rows: 12,
+              source_artifact_refs: [],
+            },
+            error_code: null,
+          },
+        ],
+        verifier_feedback: {
+          schema_version: "root-verifier-feedback@1.0.0",
+          status: "REJECTED",
+          reason_code: reasonCode,
+        },
+      } as const;
+      const messages = directRunBoundProviderDispatcherInternals.buildRootLoopMessages(request);
+
+      expect(messages).toEqual([
+        { role: "system", content: "Current normal Root turn index: 2." },
+        expect.objectContaining({
+          role: "user",
+          content: expect.stringContaining("Server-owned accepted input Artifact"),
+        }),
+        expect.objectContaining({
+          role: "user",
+          content: expect.stringContaining("Server-owned Tool Result"),
+        }),
+        expect.objectContaining({
+          role: "system",
+          content: expect.stringContaining(reasonCode),
+        }),
+      ]);
+      expect(messages[1]?.content).toContain(
+        '"schema_version":"root-accepted-input-artifact@1.0.0"',
+      );
+      expect(messages[3]?.content).toContain("Host Root verifier feedback:");
+      expect(messages[1]?.content).not.toContain('"rows":');
+      expect(messages[2]).not.toHaveProperty("tool_call_id");
+      expect(messages[2]?.content).toContain('"tool_call_id":"query-1"');
+      expect(messages[2]?.content).toContain('"schema_version":"root-provider-tool-result@1.0.0"');
+      expect(messages[2]?.content).toContain('"total_rows":12');
+      expect(messages[2]?.content).not.toContain('"rows":');
+      expect(() =>
+        directRunBoundProviderDispatcherInternals.buildRootLoopMessages({
+          ...request,
+          tool_observations: [
+            {
+              ...request.tool_observations[0],
+              safe_projection: {
+                ...request.tool_observations[0].safe_projection,
+                rows: [{ revenue: 10 }],
+              },
+            },
+          ],
+        }),
+      ).toThrow();
+    },
+  );
 });

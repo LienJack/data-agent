@@ -14,7 +14,10 @@ const hash = (character: string) => `sha256:${character.repeat(64)}`;
 const scope = { app_id: id(1), tenant_id: id(2), environment: "test" } as const;
 const runId = id(3);
 
-async function catalog(profileIds: readonly string[]) {
+async function catalog(
+  profileIds: readonly string[],
+  acceptedInputs: readonly "QueryEvidence"[] = [],
+) {
   return buildSubagentCapabilityCatalogSnapshot({
     schema_version: "subagent-capability-catalog-snapshot@1.0.0",
     catalog_id: id(4),
@@ -31,7 +34,7 @@ async function catalog(profileIds: readonly string[]) {
         when_to_use: [`Use ${profileId} for its declared governed objective.`],
         when_not_to_use: ["Do not use outside the declared Artifact contract."],
         examples: [],
-        accepted_input_artifact_types: [],
+        accepted_input_artifact_types: [...acceptedInputs],
         produced_artifact_types: ["AnalysisReport"],
         access_mode: "READ_ONLY",
       },
@@ -40,6 +43,72 @@ async function catalog(profileIds: readonly string[]) {
 }
 
 describe("Root Agent Harness", () => {
+  it("rejects Analysis's extra Semantic input and accepts a new call with only the exact QueryEvidence", async () => {
+    const frozenCatalog = await catalog(["governed-analysis-agent"], ["QueryEvidence"]);
+    const query = {
+      artifact_id: id(6),
+      artifact_type: "QueryEvidence",
+      ...scope,
+      run_id: runId,
+      revision: 1,
+      content_hash: hash("b"),
+    } as const;
+    const semantic = {
+      ...query,
+      artifact_id: id(7),
+      artifact_type: "SemanticQueryContext",
+    } as const;
+    const args = {
+      profile_id: "governed-analysis-agent",
+      objective: "Analyze the accepted complete panel.",
+      output_usage: "FINAL_ANSWER_EVIDENCE",
+      requested_artifact_types: ["AnalysisReport"],
+      input_artifact_refs: [query, semantic],
+      requested_budget: {
+        timeout_ms: 30_000,
+        max_steps: 8,
+        max_input_tokens: 10_000,
+        max_output_tokens: 2_000,
+        max_tool_calls: 1,
+        max_context_bytes: 8_192,
+      },
+    };
+    const normalize = (argumentsValue: unknown, callId: string) =>
+      normalizeRootAgentProviderTurn({
+        scope,
+        run_id: runId,
+        catalog: frozenCatalog,
+        output_text: "",
+        tool_calls: [
+          {
+            tool_name: "delegate_to_subagent@2",
+            tool_call_id: callId,
+            arguments: argumentsValue,
+          },
+        ],
+      });
+    await expect(normalize(args, "rejected-analysis")).rejects.toMatchObject({
+      code: "ROOT_AGENT_PROVIDED_UNSUPPORTED_INPUT_ARTIFACT",
+    });
+    await expect(
+      normalize({ ...args, input_artifact_refs: [query] }, "corrected-analysis"),
+    ).resolves.toMatchObject({
+      kind: "TOOL_CALLS",
+      tool_calls: [{ tool_call_id: "corrected-analysis", input_artifact_refs: [query] }],
+    });
+    expect(args.input_artifact_refs).toEqual([query, semantic]);
+  });
+
+  it("repairs only catalog Artifact types through the next normal native call", async () => {
+    const message = await buildRootAgentSystemMessage(await catalog(["semantic-management-agent"]));
+    expect(message).toContain("ROOT_AGENT_PROVIDED_UNSUPPORTED_INPUT_ARTIFACT");
+    expect(message).toContain("ROOT_AGENT_REQUESTED_UNSUPPORTED_OUTPUT_ARTIFACT");
+    expect(message).toContain("rejected before execution");
+    expect(message).toContain("accepted_input_artifact_types and produced_artifact_types");
+    expect(message).toContain("Do not requery accepted evidence");
+    expect(message).toContain("or increase the turn budget");
+  });
+
   it("separates ranking selection from the inherited comparison window and owns SQL mismatch feedback", async () => {
     const message = await buildRootAgentSystemMessage(await catalog(["semantic-management-agent"]));
     expect(message).toContain("Ranking cardinality is not time-window length");

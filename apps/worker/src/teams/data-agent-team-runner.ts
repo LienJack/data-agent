@@ -37,6 +37,13 @@ const reasonCodeSchema = z
   .max(128)
   .regex(/^[A-Z][A-Z0-9_]*$/u);
 
+// Only local, pre-admission Artifact type rejections can consume another normal turn.
+// Catalog identity, permissions, protocol and provider outcome failures remain terminal.
+const ROOT_CATALOG_TYPE_FEEDBACK_CODES = new Set([
+  "ROOT_AGENT_PROVIDED_UNSUPPORTED_INPUT_ARTIFACT",
+  "ROOT_AGENT_REQUESTED_UNSUPPORTED_OUTPUT_ARTIFACT",
+]);
+
 const rootRuntimeResultSchema = z.discriminatedUnion("status", [
   z.strictObject({ status: z.literal("ACCEPTED"), reason_code: reasonCodeSchema }),
   z.strictObject({
@@ -391,7 +398,28 @@ export function createDataAgentTeamRunner(
           tool_observations: state.accepted_tool_observations,
           verifier_feedback: state.verifier_feedback,
         });
-        if (!decision.ok) return failed(decision.error.code);
+        if (!decision.ok) {
+          if (!ROOT_CATALOG_TYPE_FEEDBACK_CODES.has(decision.error.code)) {
+            return failed(decision.error.code);
+          }
+          const exhausted = turnIndex + 1 >= input.lease.execution_policy.max_root_turns;
+          state = rootLoopStateSchema.parse({
+            ...state,
+            turn_index: turnIndex + 1,
+            checkpoint_version: state.checkpoint_version + 1,
+            verifier_feedback: {
+              schema_version: "root-verifier-feedback@1.0.0",
+              status: "REJECTED",
+              reason_code: decision.error.code,
+            },
+            terminal: exhausted,
+            terminal_error_code: exhausted ? "ROOT_AGENT_TURN_BUDGET_EXHAUSTED" : null,
+          });
+          const checkpoint = await checkpointLoop(input, state);
+          if (!checkpoint.ok) return failed(checkpoint.error.code);
+          if (exhausted) return failed("ROOT_AGENT_TURN_BUDGET_EXHAUSTED");
+          continue;
+        }
         if (
           decision.value.kind === "TOOL_CALLS" &&
           decision.value.tool_calls.some((call) =>

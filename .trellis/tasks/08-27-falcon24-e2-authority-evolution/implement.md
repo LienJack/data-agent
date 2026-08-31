@@ -1875,6 +1875,11 @@ Diagnostic/Q1/C1任一正式首次失败必须写既有 authority支持的 immut
     原算法0差异，但额外V2 SQL图丢category，48行重复12个x。整体业务FAIL，未验UI/提交A3。
     共用V2自动图现在对重复x返回null，原QueryEvidence和正确V3分群图不变，不改SQL/Oracle或模型预算。
     见 [自动图身份边界](research/complex-d9c3c7e3-group-chart.md)；旧scratch停机保留、源348表无漂移。
+  - 70b520e8新scratch A1业务+73节点UI/Trace通过；A2完整48行/同比/分解/最差月份来源Oracle通过，
+    额外V2图已不生成，但Root向Analysis多传SemanticQueryContext，在admission前失败，未创建Analysis/Stage。
+    仅输入/输出Artifact类型校验新增checkpoint后的正常回合反馈，原四回合预算、目录/权限/Oracle不变。
+    Worker61+AgentRuntime11聚焦测试及两包typecheck通过；旧Run不重放，源348表不变，临时服务关闭、卷保留。
+    见 [Root类型反馈闭包](research/complex-70b520e8-root-type-feedback.md)；A2整体FAIL，formal15仍未开始。
 
 **F6 READY 轮次恢复边界（2026-08-30，历史）**
 

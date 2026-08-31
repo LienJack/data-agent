@@ -71,7 +71,7 @@ async function fixture() {
     readonly context_receipt: Parameters<typeof createRunExecutionContext>[0]["context_receipt"];
   };
   const snapshots: MastraSnapshotBinding[] = [];
-  const createContext = () =>
+  const createContext = (checkpointError?: string) =>
     createRunExecutionContext({
       lease,
       effective_config: consumed.effective_config,
@@ -82,6 +82,12 @@ async function fixture() {
         commitSideEffect: vi.fn(),
         commitSnapshot: vi.fn(
           async ({ binding }: { binding: Omit<MastraSnapshotBinding, "snapshot_hash"> }) => {
+            if (checkpointError) {
+              return {
+                ok: false as const,
+                error: { code: checkpointError, message: "checkpoint failed", retryable: false },
+              };
+            }
             const committed = { ...binding, snapshot_hash: hash("f") } as MastraSnapshotBinding;
             snapshots.push(committed);
             return { ok: true as const, value: { binding: committed } };
@@ -234,13 +240,23 @@ function acceptedInput(input: Awaited<ReturnType<typeof fixture>>): RootAccepted
 }
 
 describe("bounded Root tool loop", () => {
-  it.each([
-    { artifactType: "AnalysisReport", usage: "FINAL_ANSWER_EVIDENCE", verified: true },
-    { artifactType: "QueryEvidence", usage: "FINAL_ANSWER_EVIDENCE", verified: true },
-    { artifactType: "AnalysisReport", usage: "CONTINUATION_INPUT", verified: true },
-    { artifactType: "AnalysisReport", usage: "FINAL_ANSWER_EVIDENCE", verified: false },
-  ] as const)(
-    "settles the last tool output: $artifactType / $usage / $verified",
+  it.each(
+    [
+      { artifactType: "AnalysisReport", usage: "FINAL_ANSWER_EVIDENCE", verified: true },
+      { artifactType: "QueryEvidence", usage: "FINAL_ANSWER_EVIDENCE", verified: true },
+      { artifactType: "AnalysisReport", usage: "CONTINUATION_INPUT", verified: true },
+      { artifactType: "AnalysisReport", usage: "FINAL_ANSWER_EVIDENCE", verified: false },
+    ].flatMap((testCase) => [
+      { ...testCase, rejectedTurn: false },
+      { ...testCase, rejectedTurn: true },
+    ]) as Array<{
+      artifactType: "AnalysisReport" | "QueryEvidence";
+      usage: "FINAL_ANSWER_EVIDENCE" | "CONTINUATION_INPUT";
+      verified: boolean;
+      rejectedTurn: boolean;
+    }>,
+  )(
+    "settles the last tool output: $artifactType / $usage / $verified / rejection=$rejectedTurn",
     async (testCase) => {
       const input = await fixture();
       const template = toolDecision(input);
@@ -251,6 +267,17 @@ describe("bounded Root tool loop", () => {
       const execute = vi.fn();
       const outputs: RootToolObservation[] = [];
       for (let index = 0; index < 4; index += 1) {
+        if (testCase.rejectedTurn && index === 2) {
+          decide.mockResolvedValueOnce({
+            ok: false,
+            error: {
+              code: "ROOT_AGENT_PROVIDED_UNSUPPORTED_INPUT_ARTIFACT",
+              message: "unsupported input",
+              retryable: false,
+            },
+          });
+          continue;
+        }
         const last = index === 3;
         const artifactType = last ? testCase.artifactType : "AnalysisReport";
         const profile =
@@ -340,7 +367,10 @@ describe("bounded Root tool loop", () => {
           };
       await expect(runner.execute(execution)).resolves.toEqual(expected);
       expect(decide).toHaveBeenCalledTimes(4);
-      expect(execute).toHaveBeenCalledTimes(testCase.usage === "CONTINUATION_INPUT" ? 4 : 5);
+      const toolCount = testCase.rejectedTurn ? 3 : 4;
+      expect(execute).toHaveBeenCalledTimes(
+        testCase.usage === "CONTINUATION_INPUT" ? toolCount : toolCount + 1,
+      );
       expect(input.snapshots.at(-1)?.mastra_snapshot).toMatchObject({ terminal: true });
       if (testCase.usage === "CONTINUATION_INPUT") return;
       const pendingSettlement = input.snapshots[3];
@@ -350,10 +380,10 @@ describe("bounded Root tool loop", () => {
         terminal: false,
         accepted_tool_observations: outputs,
       });
-      expect(execute.mock.calls[4]?.[0]).toMatchObject({
+      expect(execute.mock.calls[toolCount]?.[0]).toMatchObject({
         decision: {
           kind: "FINAL_ANSWER",
-          sections: [expect.objectContaining({ artifact_ref: outputs[3]?.output_ref })],
+          sections: [expect.objectContaining({ artifact_ref: outputs.at(-1)?.output_ref })],
         },
       });
       await expect(
@@ -364,7 +394,7 @@ describe("bounded Root tool loop", () => {
         }),
       ).resolves.toEqual(expected);
       expect(decide).toHaveBeenCalledTimes(4);
-      expect(execute).toHaveBeenCalledTimes(6);
+      expect(execute).toHaveBeenCalledTimes(toolCount + 2);
       const terminalSnapshot = input.snapshots.at(-1);
       if (!terminalSnapshot) throw new Error("terminal checkpoint required");
       await expect(
@@ -374,7 +404,7 @@ describe("bounded Root tool loop", () => {
           restored_snapshot: terminalSnapshot,
         }),
       ).resolves.toEqual(expected);
-      expect(execute).toHaveBeenCalledTimes(6);
+      expect(execute).toHaveBeenCalledTimes(toolCount + 2);
     },
   );
 
@@ -428,6 +458,185 @@ describe("bounded Root tool loop", () => {
     });
     expect(input.snapshots).toHaveLength(2);
     expect(input.snapshots.at(-1)?.mastra_snapshot).toMatchObject({ terminal: true });
+  });
+
+  it.each([
+    "ROOT_AGENT_PROVIDED_UNSUPPORTED_INPUT_ARTIFACT",
+    "ROOT_AGENT_REQUESTED_UNSUPPORTED_OUTPUT_ARTIFACT",
+  ])("checkpoints %s for a new normal turn without admitting the rejected call", async (code) => {
+    const input = await fixture();
+    const seeded = acceptedInput(input);
+    const accepted = observation(input);
+    const decide = vi
+      .fn()
+      .mockResolvedValueOnce({ ok: true, value: toolDecision(input) })
+      .mockResolvedValueOnce({
+        ok: false,
+        error: { code, message: "private rejected arguments", retryable: false },
+      })
+      .mockResolvedValueOnce({ ok: true, value: finalDecision(input) });
+    const execute = vi
+      .fn()
+      .mockResolvedValueOnce({
+        status: "CONTINUE",
+        reason_code: "ROOT_TOOL_OBSERVATIONS_READY",
+        observations: [accepted],
+        verifier_feedback: null,
+      })
+      .mockResolvedValue({ status: "ACCEPTED", reason_code: "ROOT_ANSWER_VERIFIED" });
+    const runner = createDataAgentTeamRunner({
+      ...input.dependencies,
+      accepted_inputs: { load: async () => ({ ok: true, value: [seeded] }) },
+      root: { decide },
+      root_runtime: { execute },
+    });
+    const execution = {
+      lease: input.lease,
+      restored_snapshot: null,
+      context: input.createContext(),
+      signal: new AbortController().signal,
+      deadline_at: input.lease.expires_at,
+    };
+    await expect(runner.execute(execution)).resolves.toEqual({ kind: "COMPLETED" });
+    const feedbackState = {
+      turn_index: 2,
+      accepted_input_artifacts: [seeded],
+      tool_observations: [accepted],
+      verifier_feedback: {
+        schema_version: "root-verifier-feedback@1.0.0",
+        status: "REJECTED",
+        reason_code: code,
+      },
+    };
+    expect(decide.mock.calls[2]?.[1]).toEqual(feedbackState);
+    expect(execute).toHaveBeenCalledTimes(2);
+    expect(execute.mock.calls.map(([call]) => call.turn_index)).toEqual([0, 2]);
+    const checkpoint = input.snapshots[2];
+    expect(checkpoint?.mastra_snapshot).toMatchObject({
+      turn_index: 2,
+      checkpoint_version: 3,
+      terminal: false,
+      accepted_tool_observations: [accepted],
+      verifier_feedback: feedbackState.verifier_feedback,
+    });
+    expect(JSON.stringify(checkpoint)).not.toContain("private rejected arguments");
+    if (!checkpoint) throw new Error("catalog feedback checkpoint missing");
+
+    // An interrupted loop resumes at the next index, never at the rejected Provider call.
+    decide.mockClear().mockResolvedValue({ ok: true, value: finalDecision(input) });
+    execute.mockClear();
+    await expect(
+      runner.execute({
+        ...execution,
+        restored_snapshot: checkpoint,
+        context: input.createContext(),
+      }),
+    ).resolves.toEqual({ kind: "COMPLETED" });
+    expect(decide).toHaveBeenCalledExactlyOnceWith(expect.anything(), feedbackState);
+    expect(execute).toHaveBeenCalledOnce();
+  });
+
+  it("exhausts the existing four turns on repeated catalog type rejections and restores terminally", async () => {
+    const input = await fixture();
+    const code = "ROOT_AGENT_PROVIDED_UNSUPPORTED_INPUT_ARTIFACT";
+    const decide = vi.fn(async () => ({
+      ok: false as const,
+      error: { code, message: "private", retryable: false },
+    }));
+    const execute = vi.fn();
+    const runner = createDataAgentTeamRunner({
+      ...input.dependencies,
+      root: { decide },
+      root_runtime: { execute },
+    });
+    const execution = {
+      lease: input.lease,
+      restored_snapshot: null,
+      context: input.createContext(),
+      signal: new AbortController().signal,
+      deadline_at: input.lease.expires_at,
+    };
+    const failure = { kind: "FAILED", error_code: "ROOT_AGENT_TURN_BUDGET_EXHAUSTED" };
+    await expect(runner.execute(execution)).resolves.toEqual(failure);
+    expect(decide).toHaveBeenCalledTimes(4);
+    const calls = decide.mock.calls as unknown as Array<[unknown, { turn_index: number }]>;
+    expect(calls.map(([, state]) => state.turn_index)).toEqual([0, 1, 2, 3]);
+    expect(execute).not.toHaveBeenCalled();
+    const terminal = input.snapshots.at(-1);
+    expect(terminal?.mastra_snapshot).toMatchObject({
+      turn_index: 4,
+      terminal: true,
+      terminal_error_code: failure.error_code,
+      verifier_feedback: { reason_code: code },
+    });
+    if (!terminal) throw new Error("terminal checkpoint missing");
+    await expect(
+      runner.execute({ ...execution, restored_snapshot: terminal, context: input.createContext() }),
+    ).resolves.toEqual(failure);
+    expect(decide).toHaveBeenCalledTimes(4);
+  });
+
+  it.each([
+    "ROOT_AGENT_SELECTED_PROFILE_NOT_IN_FROZEN_CATALOG",
+    "ROOT_AGENT_DECISION_CATALOG_CORRELATION_MISMATCH",
+    "ROOT_AGENT_TOOL_CALL_INVALID",
+    "ROOT_AGENT_RESPONSE_INVALID",
+    "ROOT_AGENT_DECISION_REJECTED",
+    "PROVIDER_OUTCOME_UNKNOWN",
+    "PROVIDER_LOGICAL_CALL_DUPLICATE",
+    "RUN_EXECUTION_CONTEXT_NOT_TRUSTED",
+  ])("does not turn %s into a model repair", async (code) => {
+    const input = await fixture();
+    const decide = vi.fn(async () => ({
+      ok: false as const,
+      error: { code, message: "private", retryable: false },
+    }));
+    const execute = vi.fn();
+    await expect(
+      createDataAgentTeamRunner({
+        ...input.dependencies,
+        root: { decide },
+        root_runtime: { execute },
+      }).execute({
+        lease: input.lease,
+        restored_snapshot: null,
+        context: input.createContext(),
+        signal: new AbortController().signal,
+        deadline_at: input.lease.expires_at,
+      }),
+    ).resolves.toEqual({ kind: "FAILED", error_code: code });
+    expect(decide).toHaveBeenCalledOnce();
+    expect(execute).not.toHaveBeenCalled();
+    expect(input.snapshots).toHaveLength(0);
+  });
+
+  it("does not start a correction if the rejection checkpoint cannot be persisted", async () => {
+    const input = await fixture();
+    const decide = vi.fn(async () => ({
+      ok: false as const,
+      error: {
+        code: "ROOT_AGENT_PROVIDED_UNSUPPORTED_INPUT_ARTIFACT",
+        message: "private",
+        retryable: false,
+      },
+    }));
+    const execute = vi.fn();
+    await expect(
+      createDataAgentTeamRunner({
+        ...input.dependencies,
+        root: { decide },
+        root_runtime: { execute },
+      }).execute({
+        lease: input.lease,
+        restored_snapshot: null,
+        context: input.createContext("ROOT_CHECKPOINT_UNAVAILABLE"),
+        signal: new AbortController().signal,
+        deadline_at: input.lease.expires_at,
+      }),
+    ).resolves.toEqual({ kind: "FAILED", error_code: "ROOT_CHECKPOINT_UNAVAILABLE" });
+    expect(decide).toHaveBeenCalledOnce();
+    expect(execute).not.toHaveBeenCalled();
+    expect(input.snapshots).toHaveLength(0);
   });
 
   it("feeds structured verifier rejection into a later normal turn", async () => {

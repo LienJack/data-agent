@@ -59,6 +59,13 @@ Root turn 0..3 (AUTO)
 - Multiple calls in one turn are allowed only when each call already has every required accepted input and can execute independently. Their parallel execution is a performance optimization, not a Host business planner。
 - Host validates only the current calls: frozen Card/Profile, scope, budget, accepted inputs, datasource/schema/release binding, SQL/Sandbox safety, idempotency and recovery. Host never selects a subsequent business capability。
 - Provider output is normalized through the strict Root Harness. Mixed text/tool output, unknown tools, unknown Profiles and catalog hash mismatch fail closed。
+- 仅 Root Provider 已完成、在本地 Catalog 校验且尚未 admission 时的
+  `ROOT_AGENT_PROVIDED_UNSUPPORTED_INPUT_ARTIFACT` / `ROOT_AGENT_REQUESTED_UNSUPPORTED_OUTPUT_ARTIFACT`
+  可成为普通下一回合的结构化 verifier feedback。原失败调用不执行；Host 不删改参数、不代选 Profile、不扩大输入类型。
+  只保存固定 reason_code，已验收输入/观察原样保留；先 checkpoint `turn_index+1`，持久化失败不调用下一回合。
+  纠正消耗原四回合预算，耗尽保存终态及最后反馈；恢复从下一 index 继续，绝不重放已拒绝 Provider 调用。
+  Catalog correlation、未知 Profile、权限/引用/hash、响应协议和 Provider outcome 错误不属于此白名单。
+  Root 依据冻结目录纠正 native call，不重新查询已有证据；最后回合产出最终证据仍只走既有确定性答案验收。
 - `ROOT_HARNESS@1` is the only Q&A executor. V1/V2/`LEGACY_FIXED@1` leases return `ROOT_AGENT_LEASE_VERSION_UNSUPPORTED` and never fall back。
 - Root v3 ProviderTask commit 必须消费 exact EffectiveConfig conversation receipt 与冻结的 `visible_message_refs`；历史 `START_L2_RESEARCH` lease 没有 refs 时只允许在 live Conversation version 仍等于 command version 的条件下保留无摘要 replay。两条分支共用同一个 RPC，不存在 legacy fallback writer 或第二套上下文权威。
 - Conversation summary 的确定性 UUID helper 由 `data_agent_provider_invocation_rpc_owner` 在 Security Definer 边界调用；该 owner 只获得 `extensions` schema lookup，`data_agent_backend` 不获得同类直接权限。

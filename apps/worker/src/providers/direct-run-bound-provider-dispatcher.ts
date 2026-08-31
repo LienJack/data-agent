@@ -110,7 +110,7 @@ export function buildRootLoopMessages(input: unknown) {
       ? [
           {
             role: "system" as const,
-            content: `Host final-answer verifier feedback: ${canonicalizeJson(request.verifier_feedback)}`,
+            content: `Host Root verifier feedback: ${canonicalizeJson(request.verifier_feedback)}`,
           },
         ]
       : []),
