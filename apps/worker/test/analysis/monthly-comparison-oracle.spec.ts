@@ -240,6 +240,7 @@ describe("independent monthly comparison oracle", () => {
     const summary = buildAnalysisNarrativeProjection(test.result);
     expect(summary.fields).toEqual({
       claim_strength: "DESCRIPTIVE",
+      observations: test.result.data.observations,
       measure_1: test.result.data.measure_1,
       measure_2: test.result.data.measure_2,
       measure_3: test.result.data.measure_3,

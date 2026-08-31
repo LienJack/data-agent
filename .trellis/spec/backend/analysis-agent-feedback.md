@@ -23,6 +23,12 @@
 - 缺失按字段读取：变化NULL不代表两个端点NULL，首端NULL不代表末端NULL；0是观测值。
   `RELATIVE_DELTA_UNDEFINED`是结果级限制，不能据此反推所有measure；被摘要省略不等于源值缺失。
 - 数值Oracle成功不是自然语言正确性证明；真实业务复核仍可在Run SUCCEEDED后记录独立FAIL，不能改写原Run。
+- `monthly-multi-measure-comparison.result` 的已发布、Oracle逐项验证过的完整12行聚合 `observations` 可原样进入
+  FINAL的`fields.observations`，按已批准业务日历保留period/value/NULL/顺序；不重算、切片、采样或生成新事实。
+  仍受单字段8KiB/总24KiB限制，超预算整字段省略，不扩大任意原始数据或operator输出的模型可见范围。
+  其他contract、非12行及其他collection仍不投影；分群同比优先使用原`period_comparison`，不以此改变分群摘要合同。
+- `highest/lowest`按值排序，不是按月份排序；总行数不能重建每月值。只有完整时间序列能支持“唯一、全部、连续、单调”等
+  穷尽性表述；序列省略时不能从排名/缺失总数猜完整序列。同比为负与同比增速持续下降不同，必须区分降幅扩大和收窄。
 - `largest_drops` 仅原序列相邻月变化，不能称同比；组统计不能称整体。分类同比只依据受验 `period_comparison` 的
   `TOTAL_YOY_RATE/BOTH_PERIOD_GROUPS`；增速贡献按百分点展示，不称损失占比。对象缺失/摘要省略须披露不能建立该拆解。
 
@@ -46,6 +52,8 @@ Bad：根据一个全局限制码写“两端均缺失”，或为了继续运�
 - 固定错误正例、类型不符/数据后缀负例；provider消息和进度不泄漏raw output；一次repair后原Publisher仍闭合。
 - objective投影；非对称NULL、0分母证据不变；原两字段响应、来源货币限制和摘要预算不变。
 - focused回归不算真实业务或UI验收；后续按同构建/same Run独立复核。
+- 月度完整聚合序列原样保留、跨年/非对称NULL/多个正增长月；错误contract、超12行/超预算仍省略，其他collections不泄漏。
+  生产Oracle成功后进入同一FINAL投影；保留原stage hash的离线输入复现不是原自然语言答案修复或新业务PASS。
 
 ## 7. Wrong vs Correct
 

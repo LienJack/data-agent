@@ -1839,6 +1839,12 @@ Diagnostic/Q1/C1任一正式首次失败必须写既有 authority支持的 immut
     Host输入只投影原批准DATETIME维度时区，绑定身份/恢复/提示一致；DATE/NULL/数值/字节不变，Oracle不放宽。
     NAS同镜像无网络Python8项通过，focused128项与Worker typecheck通过；详见 [日历边界](research/complex-3252b416-calendar-boundary.md)。
     原失败Run不重放；源348表不变，本轮临时服务清理、scratch停机保留。新clean build继续A/B，尚未复杂题PASS。
+  - [x] 47916676新scratch A1 Run SUCCEEDED/57events，Semantic/Text2SQL/Analysis接受，独立stage结果0差异；
+    但摘要错称5月是唯一正增长（实际6/7月）及持续下降，因此业务FAIL，未做UI、未提交A2/B。
+    原FINAL统一省略数组，现仅给已受验月度多结果合同保留完整12行聚合序列，预算不变，原Oracle不变；
+    明确排名/日历和负同比/降幅变化区别，3项RED后144项focused与Worker typecheck通过。
+    见 [摘要时间序列边界](research/complex-47916676-narrative-chronology.md)；源348表不变，临时服务清理、scratch停机保留。
+    下一步仍为新clean build/fresh scratch业务A/B；不能据结构化结果通过把错误文字视为PASS。
   再继续上述 F5 / F7；不另跑 child 历史六问，也不复用 core4 PASS。
 
 **F6 READY 轮次恢复边界（2026-08-30，历史）**
