@@ -299,6 +299,8 @@ method ID为`published-monthly-multi-measure-comparison@1`，ResultContract为`m
 - 原Metric最多3个，均须原发布`CHART_DATASET`、合法同月维度/时区/公式及原applicability；不改Skill限制。
 - 原文档/ref/hash、Context四字段、Scope/Run、Release/Schema id/revision/hash必须一致；比例复用来源权威校验，不成为Metric。
 - 严格3–5列、12行、唯一连续月份，DATE保留日历值、DATETIME按显式时区转日历月。未知role、多维、缺月份和全空measure不接受。
+- `column.nullable=true`是来源允许空值，不等于本次结果含空月份；按实际12个时间值判定非空/连续性，输出仍保留原nullable元数据。
+  不得仅因目录允许NULL拒绝完整结果，也不得把实际NULL时间改成日期或补零。
 - observations为原DIRECT集合，各列显式source；保留原值和NULL，仅按月份排序。一个图的所有y通过现有Web分图展示。
 - 每个measure独立JSON字段：观测/缺失数、极值、最低/最高3点、完整窗口首尾值/变化、最多3个相邻月下降；值与序数不得跨measure混算。
 - 缺失或零分母导致undefined时保留NULL；不可移动窗口端点或跨缺口相减。排序同值按月份升序。`claim_strength=DESCRIPTIVE`。
@@ -334,6 +336,7 @@ Bad：拼接不同窗口、把先后两个非空月假装相邻月、把ROI均�
 Oracle测试必须用手写已知值作为正例，不调用oracle算法生成自己的测试期望；覆盖重新封hash后的错误数值/计数/同值排序/
 换列/补零/跨缺口/额外总结/因果声明，真实Arrow的类型正确但数值漂移，以及零端点、中间缺失和溢出。
 生产注册正例必须更换问题文字仍选相同输入方法；两列输入保留原算子与oracle，删算子仍拒绝。
+月份DATE/DATETIME两种来源nullable=true但实际完整必须通过，实际空时间、重复月和缺月仍失败；类型/nullable元数据不得改写。
 匹配执行规则不含行/预计算值，未注册方法/缺规则拒绝；新方法通过production oracle选择器，叙述投影保留逐measure受验数值。
 
 ### 7. Wrong vs Correct

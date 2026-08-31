@@ -17,74 +17,82 @@ async function planInput() {
 }
 
 describe("published monthly multi-measure comparison plan", () => {
-  it.each(["row-order", "column-order", "aliases", "datetime"])(
-    "uses typed binding, not %s assumptions",
-    async (variant) => {
-      const input = await planInput();
-      const original = structuredClone(input.query_evidence_document);
-      const draft = structuredClone(original);
-      if (draft.projection.kind !== "TABLE" || draft.provenance?.kind !== "GOVERNED_QUERY_RESULT")
-        throw new Error("TEST_TABLE_REQUIRED");
-      const { binding_hash: _hash, ...binding } = draft.provenance.semantic_binding;
-      if (variant === "row-order") draft.projection.rows.reverse();
-      if (variant === "column-order") {
-        binding.columns.reverse();
-        draft.projection.columns.reverse();
-      }
-      if (variant === "aliases") {
-        const renamed: Record<string, string> = {
-          month: "t",
-          current: "alpha",
-          prior: "beta",
-          rate: "gamma",
-        };
-        binding.columns = binding.columns.map((column) => ({
-          ...column,
-          output_name: renamed[column.output_name] ?? column.output_name,
-        }));
-        draft.projection.columns = draft.projection.columns.map((column) => ({
-          ...column,
-          key: renamed[column.key] ?? column.key,
-        }));
-        draft.projection.rows = draft.projection.rows.map((row) =>
-          Object.fromEntries(
-            Object.entries(row).map(([key, value]) => [renamed[key] ?? key, value]),
-          ),
-        );
-      }
-      if (variant === "datetime") {
-        binding.columns = binding.columns.map((column) =>
-          column.output_name === "month" ? { ...column, logical_type: "DATETIME" } : column,
-        );
-        draft.projection.rows = draft.projection.rows.map((row) => ({
-          ...row,
-          month: new Date(Date.parse(`${String(row.month)}T00:00:00+08:00`)).toISOString(),
-        }));
-      }
-      draft.provenance.semantic_binding = await buildQueryEvidenceSemanticBinding(binding);
-      const document = await buildProductTeamArtifactDocument(draft);
-      if (document.artifact_ref.artifact_type !== "QueryEvidence")
-        throw new Error("TEST_QUERY_REQUIRED");
-      const plan = await compileMonthlyComparisonPlan({
-        ...input,
-        query_evidence_ref: document.artifact_ref,
-        query_evidence_document: document,
-      });
-      expect(plan.shape.ordered_rows.map((row) => row[plan.shape.time_column])).toEqual(
-        Array.from({ length: 12 }, (_, index) => `2024-${String(index + 1).padStart(2, "0")}-01`),
+  it.each([
+    "row-order",
+    "column-order",
+    "aliases",
+    "datetime",
+    "nullable-date",
+    "nullable-datetime",
+  ])("uses typed binding, not %s assumptions", async (variant) => {
+    const input = await planInput();
+    const original = structuredClone(input.query_evidence_document);
+    const draft = structuredClone(original);
+    if (draft.projection.kind !== "TABLE" || draft.provenance?.kind !== "GOVERNED_QUERY_RESULT")
+      throw new Error("TEST_TABLE_REQUIRED");
+    const { binding_hash: _hash, ...binding } = draft.provenance.semantic_binding;
+    if (variant === "row-order") draft.projection.rows.reverse();
+    if (variant === "column-order") {
+      binding.columns.reverse();
+      draft.projection.columns.reverse();
+    }
+    if (variant === "aliases") {
+      const renamed: Record<string, string> = {
+        month: "t",
+        current: "alpha",
+        prior: "beta",
+        rate: "gamma",
+      };
+      binding.columns = binding.columns.map((column) => ({
+        ...column,
+        output_name: renamed[column.output_name] ?? column.output_name,
+      }));
+      draft.projection.columns = draft.projection.columns.map((column) => ({
+        ...column,
+        key: renamed[column.key] ?? column.key,
+      }));
+      draft.projection.rows = draft.projection.rows.map((row) =>
+        Object.fromEntries(Object.entries(row).map(([key, value]) => [renamed[key] ?? key, value])),
       );
-      expect(input.query_evidence_document).toEqual(original);
-      expect(
-        plan.execution_contract.measure_fields.map(({ source_column }) => source_column),
-      ).toEqual(
-        variant === "aliases"
-          ? ["alpha", "beta", "gamma"]
-          : variant === "column-order"
-            ? ["rate", "prior", "current"]
-            : ["current", "prior", "rate"],
+    }
+    if (variant === "datetime" || variant === "nullable-datetime") {
+      binding.columns = binding.columns.map((column) =>
+        column.output_name === "month" ? { ...column, logical_type: "DATETIME" } : column,
       );
-    },
-  );
+      draft.projection.rows = draft.projection.rows.map((row) => ({
+        ...row,
+        month: new Date(Date.parse(`${String(row.month)}T00:00:00+08:00`)).toISOString(),
+      }));
+    }
+    if (variant.startsWith("nullable-")) {
+      binding.columns = binding.columns.map((column) => ({ ...column, nullable: true }));
+    }
+    draft.provenance.semantic_binding = await buildQueryEvidenceSemanticBinding(binding);
+    const document = await buildProductTeamArtifactDocument(draft);
+    if (document.artifact_ref.artifact_type !== "QueryEvidence")
+      throw new Error("TEST_QUERY_REQUIRED");
+    const plan = await compileMonthlyComparisonPlan({
+      ...input,
+      query_evidence_ref: document.artifact_ref,
+      query_evidence_document: document,
+    });
+    expect(plan.shape.ordered_rows.map((row) => row[plan.shape.time_column])).toEqual(
+      Array.from({ length: 12 }, (_, index) => `2024-${String(index + 1).padStart(2, "0")}-01`),
+    );
+    expect(input.query_evidence_document).toEqual(original);
+    if (variant.startsWith("nullable-")) {
+      expect(plan.result_contract.tables[0]?.columns.every((column) => column.nullable)).toBe(true);
+    }
+    expect(
+      plan.execution_contract.measure_fields.map(({ source_column }) => source_column),
+    ).toEqual(
+      variant === "aliases"
+        ? ["alpha", "beta", "gamma"]
+        : variant === "column-order"
+          ? ["rate", "prior", "current"]
+          : ["current", "prior", "rate"],
+    );
+  });
 
   it("binds each accepted source column while preserving role, NULL and original Metric authority", async () => {
     const input = await planInput();

@@ -1678,6 +1678,10 @@ Host-only execution_contract随既有registry hash进入上下文，只传给exa
 
 ### 25.25 全量分析不虚构请求日期
 
+前置真实来源复核补充：保留的cc9同比QueryEvidence月份为DATETIME且nullable=true，但12个实际月份均完整。月度比较输入门禁
+改为验证实际值，不把nullable元数据误当实际NULL；表合同保留原nullable。真实空月/缺月/重复月仍拒绝，未修改原输入或历史Run。
+此修复通过84项focused及只读来源shape检查；后者不是完整Analysis/Sandbox或新模型验收。
+
 QueryEvidence无窗时原Brief已有nullable表达，Program却强制有窗且Gate对无窗Brief跳过比对。现在显式全量以candidate2.1/
 Program1.1/envelope1.1表达；Compiler必须从原accepted QueryEvidence重验Run/Scope/Context/Release/Schema与null范围，Gate始终
 精确比对Brief和节点。null仅限无时间grain、无统计算子、无比较窗的open-python描述性节点，不能借此注册任意分析方法。

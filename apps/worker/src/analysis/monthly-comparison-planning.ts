@@ -95,7 +95,6 @@ export async function extractMonthlyComparisonShape(
     dimensions.length !== 1 ||
     !time ||
     !["DATE", "DATETIME"].includes(time.logical_type) ||
-    time.nullable ||
     time.grain.granularity !== "month" ||
     measures.length < 2 ||
     measures.length > 4 ||

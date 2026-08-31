@@ -113,3 +113,15 @@ Host新增approved_time_window，拒绝从coverage猜日期。原有窗Program�
 Contracts59/59、Worker144/144、Platform42/42，四包typecheck及Contracts/Worker build通过；新增范围8项预期行为先RED，
 3项负例fixture的Context须先剥离旧hash再重封，修正后重测通过；新Wire正例先RED，旧hash从改动前实现固定。
 这是契约、发布封包和消费方离线验证，不是Sandbox/模型/数据库写入或四层PASS。接续分类/分群方法、独立oracle及跨Run闭包。
+
+## 真实来源nullable复核与修正
+
+只读连接原专用scratch55475，验证cluster=falcon24-e17-cc9ff33e、transaction_read_only=on。三个原QueryEvidence表明列元数据均可能
+nullable=true。同比Run `9f17195a-11d5-86ac-be35-2f25f4123abc` 的原QueryEvidence
+`cf2377c3-708d-8e67-a71d-6499b32d7e19`（hash56652d942b16a62ed96d2091bb1946f769008a336dfcc4e8b822b148ef0ece9f）
+实际为完整12月DATETIME，首月UTC2023-10-31T16:00:00Z即上海11月1日。原新方法错误地先拒绝nullable元数据。
+
+现在保留原nullable，逐行检验实际日期/连续性；两个DATE/DATETIME反映此现场的正例先RED后通过。84项focused、Worker typecheck/build通过，
+同一只读原输入shape复核PASS；实际空时间/重复/缺月仍拒绝。没有构造新Context、模型Run、receipt或数据库写入，不是完整Analysis验收。
+ROAS/净ROI仍为4渠道、2个原currency Metric及一个FORMULA/REQUEST_DERIVED，time_window=null；两原Metric相同grain、单位、时区，
+均有CHART_DATASET。后续分类方法必须按真实值判空，保留这些原角色/NULL和方法权限。
