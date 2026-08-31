@@ -2,6 +2,8 @@
 
 > 最新执行状态（2026-08-31）：按用户简化门禁的授权，第 26 节 C0-C3 核心协作切片已完成，四题 4/4。
 > 第 25 节原四层记录保留，未完成复杂能力暂缓；不能修改历史 PASS/FAIL 或绕过发布安全边界。
+> 后续修复已 scoped commit，核心 62 份证据只读重验、最新 live 348 表零漂移与资源回收通过；
+> [最终范围与现场复核](research/core-scope-final-recheck-2026-08-31.md) 明确当前交付结束，不自动恢复延期 child。
 
 > W1-W7 已于 2026-08-28 实施并全量验证。用户已批准 exact review packet 与 W8；10795 已应用，旧 `e430` 已封存为 HOLD。
 > clean build 上唯一一次 `e431` Finalizer 因 smoke 幂等键未绑定 Worker build 而失败关闭，current 仍为 E3/gen1 且无 E4 污染。
