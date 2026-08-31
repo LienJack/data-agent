@@ -1811,6 +1811,11 @@ Diagnostic/Q1/C1任一正式首次失败必须写既有 authority支持的 immut
 - [x] 分类同比沿原proof/resolver接入一个已选atomic文本维度和可选认证非fanout LEFT JOIN；保留来源键、NULL与原修复预算。
   compiler/coverage、QueryEvidence/source绑定、SQL反例及独立NAS合成PostgreSQL预期通过；正式多层仍未通过。
   见 [分类同比证明](research/grouped-yoy-proof.md)，下一步新clean build/fresh scratch验证A/B复杂多轮。
+- [x] 50bd7f1e新scratch A1业务及QA/Trace76节点通过；A2 Run SUCCEEDED但独立business FAIL：Root跳过本Run Semantic，
+  多别名Metric绕过比较证明并读到覆盖外同期，Analysis把个别组环比误称总体同比。保留原失败，未提交A3/B。
+  原resolver补无比较解释的重复Metric输出拒绝，Root澄清历史assistant不是本轮Tool Result；先RED后验证，不加路由/重试。
+  live348表不变，临时服务/凭据清理、scratch停机保留；见 [A2比较边界](research/complex-50bd7f1e-comparison-boundary.md)。
+- [ ] 补齐结构化同比分群事实/总体完整性证明与摘要口径，再新构建继续A/B；不能用模型叙述补算或把单组变化称为总体变化。
   再继续上述 F5 / F7；不另跑 child 历史六问，也不复用 core4 PASS。
 
 **F6 READY 轮次恢复边界（2026-08-30，历史）**

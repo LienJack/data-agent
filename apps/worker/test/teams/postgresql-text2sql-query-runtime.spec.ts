@@ -696,6 +696,25 @@ describe("PostgreSQL Text2SQL query runtime", () => {
     expect(prepared.context_text).not.toContain("dimension.hidden");
     expect(prepared.context_text).not.toContain("managed-postgres");
     expect(prepared.context_text).not.toContain("secretref:");
+    await expect(
+      runtime.compileCandidate({
+        prepared,
+        candidate: {
+          ...candidate(
+            "select count(o.amount) as current_value, count(o.amount) as comparison_value from falcon_db_24.orders as o",
+          ),
+          result_columns: ["current_value", "comparison_value"].map((name) => ({
+            name,
+            semantic_type: "NUMBER" as const,
+            label: name,
+            semantic_binding: {
+              object_kind: "METRIC" as const,
+              object_id: "metric.order-count",
+            },
+          })),
+        },
+      }),
+    ).rejects.toMatchObject({ code: "QUERY_EVIDENCE_REQUEST_DERIVATION_BINDING_INVALID" });
     expect(connect).not.toHaveBeenCalled();
   });
 

@@ -95,6 +95,10 @@ The Text2SQL context contains only:
 
 The optional context travels only through ordinary `input_artifact_refs`; it does not create a Host-scheduled Semantic-to-Text2SQL edge. Direct Text2SQL without this Artifact remains valid. `SqlArtifact` provenance records the exact optional Context reference/hash together with the resulting target binding hash。
 
+多轮Root必须区分历史assistant消息与当前Run Tool Results：历史中的“已接受”、日期、排名或request-only算子不是本轮authority。
+追加分类或指代解析仍保留用户原比较/窗口意图，并通过本Run SemanticQueryContext重新建立可执行语义；不复制旧排名到SQL objective。
+这不新增Host路由或固定DAG；普通物理行查询仍可直达Text2SQL，缺比较证明由执行侧独立拒绝。
+
 Host/port/database/credential values, SecretRef payloads, raw rows and private prompts are never projected to the model or public trace。
 
 ### 5.2 Candidate and compiler

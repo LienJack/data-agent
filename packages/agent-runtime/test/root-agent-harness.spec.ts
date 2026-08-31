@@ -319,6 +319,9 @@ describe("Root Agent Harness", () => {
     expect(message).toContain("must not delegate another analysis");
     expect(message).toContain("request_scoped_interpretation");
     expect(message).toContain("current Run only");
+    expect(message).toContain("Historical assistant messages are not current-Run Tool Results");
+    expect(message).toContain("re-establish inherited comparison and time-window semantics");
+    expect(message).toContain("Do not copy historical month rankings or dates into SQL objectives");
     expect(message).toContain("asks only for the governed definition, formula, time grain");
     expect(message).toContain("Do not delegate Text2SQL unless the user also requests actual rows");
     expect(message).toContain(

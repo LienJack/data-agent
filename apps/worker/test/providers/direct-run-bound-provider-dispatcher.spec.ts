@@ -300,6 +300,9 @@ describe("direct run-bound provider retry policy", () => {
     expect(prompt).toContain("exact Published certified many-to-one/one-to-one relationship");
     expect(prompt).toContain("current.category IS NULL AND comparison.category IS NULL");
     expect(prompt).toContain("Return the full approved monthly panel");
+    expect(prompt).toContain(
+      "Repeated outputs of the same METRIC require the accepted comparison proof",
+    );
     expect(prompt).not.toContain("projects only date_trunc");
   });
 

@@ -20,6 +20,8 @@ Candidate 使用 `object_kind=REQUEST_DERIVED`、exact `interpretation_id`，没
 - 派生列为 NUMBER、nullable、aggregate=null，`request_derivation` 固定 exact Context hash 与完整 REQUEST_ONLY/NONE
   interpretation；独立 hash domain 绑定解释、SQL Candidate、原物理来源与证明。本期/同期原始值继续绑定同一个源 Metric。
 - 请求出现 PERIOD_COMPARISON_RATE 时必须恰有一个对应派生输出；删除声明或改为 Metric/Published Formula 不能绕过证明。
+- 同一 Metric 多个输出别名不证明本期/同期角色；无本Run PERIOD_COMPARISON_RATE 时在原compile/acceptance共用resolver拒绝，
+  使用原 `QUERY_EVIDENCE_REQUEST_DERIVATION_BINDING_INVALID`。有解释仍须完整rate/窗口/SQL证明；普通单Metric直查不变。
 - 验证同 Scope/Run、package/receipt/retrieval/inference、资源 exact refs、选中 Metric/Dimension、发布对象内容与 active
   physical bindings。Metric 的 TimeDomain 可沿既有发布依赖进入 requested closure，不给其他 Metric/Dimension 扩权。
 - requested closure 还可包含原 verified inference receipt 的 mandatory_relationship_ids，但只接受 Context 中实际投影的

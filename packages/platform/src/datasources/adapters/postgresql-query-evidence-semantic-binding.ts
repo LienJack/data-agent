@@ -691,6 +691,18 @@ function requestComparisonGroup(input: {
 export async function resolvePostgresqlRequestDerivedBindings(
   input: Omit<PostgresqlQueryEvidenceSemanticBindingInput, "result" | "target_binding_hash">,
 ) {
+  const metricIds = input.candidate.result_columns
+    .filter(({ semantic_binding }) => semantic_binding.object_kind === "METRIC")
+    .map(({ semantic_binding }) => semantic_binding.object_id);
+  // Multiple aliases do not prove temporal roles. Only the bounded comparison
+  // proof below can authorize current/prior outputs of the same Metric.
+  if (
+    new Set(metricIds).size !== metricIds.length &&
+    !input.semantic_query_context?.request_scoped_interpretations?.some(
+      ({ operator }) => operator.kind === "PERIOD_COMPARISON_RATE",
+    )
+  )
+    reject("QUERY_EVIDENCE_REQUEST_DERIVATION_BINDING_INVALID");
   const outputs = input.candidate.result_columns.filter(
     ({ semantic_binding }) => semantic_binding.object_kind === "REQUEST_DERIVED",
   );

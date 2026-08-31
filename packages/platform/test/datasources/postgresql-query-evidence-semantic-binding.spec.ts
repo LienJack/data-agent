@@ -1310,6 +1310,55 @@ async function withRequestedRelationship(
   return { ...input, semantic_context, semantic_query_context };
 }
 
+describe("repeated Metric outputs need a proved comparison", () => {
+  it.each(["no-context", "empty-context", "window-only"])(
+    "rejects two aliases of the same Metric with %s",
+    async (kind) => {
+      const original = await requestDerivationFixture();
+      const { semantic_query_context: originalContext, ...base } = original;
+      const { context_hash: _hash, ...draft } = originalContext;
+      const input = {
+        ...base,
+        candidate: {
+          ...original.candidate,
+          sql: original.candidate.sql.replace(", (c.v-p.v)/NULLIF(p.v,0) AS growth", ""),
+          result_columns: original.candidate.result_columns.slice(0, 3),
+          presentation: { ...original.candidate.presentation, y_keys: ["current_value"] },
+        },
+        ...(kind === "no-context"
+          ? {}
+          : {
+              semantic_query_context: await buildSemanticQueryContext({
+                ...draft,
+                request_scoped_interpretations:
+                  kind === "window-only"
+                    ? draft.request_scoped_interpretations?.filter(
+                        ({ operator }) => operator.kind === "RECENT_COMPLETE_PERIODS",
+                      )
+                    : [],
+              }),
+            }),
+      };
+      await expect(resolvePostgresqlRequestDerivedBindings(input)).rejects.toThrow(
+        "QUERY_EVIDENCE_REQUEST_DERIVATION_BINDING_INVALID",
+      );
+    },
+  );
+
+  it("keeps ordinary direct single-Metric queries valid", async () => {
+    await expect(resolvePostgresqlRequestDerivedBindings(await fixture())).resolves.toEqual([]);
+  });
+
+  it.each([requestDerivationFixture, groupedRequestDerivationFixture])(
+    "keeps fully proved current/prior Metric outputs valid",
+    async (fixture) => {
+      await expect(resolvePostgresqlRequestDerivedBindings(await fixture())).resolves.toHaveLength(
+        1,
+      );
+    },
+  );
+});
+
 describe.each([
   { name: "period comparison", fixture: requestDerivationFixture },
   { name: "aggregate ratio", fixture: aggregateRatioBindingFixture },
