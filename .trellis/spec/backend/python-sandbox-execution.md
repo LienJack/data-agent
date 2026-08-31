@@ -395,7 +395,7 @@ Correct：`requested_time_window = resolveAnalysisEvidenceTimeWindow(binding, co
 
 ### 1. Scope / Trigger
 
-已接受QueryEvidence有1–2个STRING/atomic分类维度和1–4个NUMBER结果列，1–200行；全量或已接受的显式窗口均可。
+已接受QueryEvidence有1–2个STRING/atomic分类维度和1–4个NUMBER结果列，1–64行；全量或已接受的显式窗口均可。
 独立oracle与唯一production composition按此输入形态启用；不是月份×分类或混单位/粒度方法。
 
 ### 2. Signatures
@@ -424,7 +424,7 @@ method=`published-category-multi-measure-comparison@1`，contract=`category-mult
 ### 4. Validation & Error Matrix
 
 来源/发布Metric/capability/维度/单位/粒度/空值政策漂移 → `CATEGORY_COMPARISON_AUTHORITY_INVALID`；
-超200行、空输入、时间维度、未知role或重复tuple → `CATEGORY_COMPARISON_SHAPE_INVALID`；
+超过原BAR图64行限制、空输入、时间维度、未知role或重复tuple → `CATEGORY_COMPARISON_SHAPE_INVALID`；
 实际NULL/空分类、非法数值或整列无观测 → `CATEGORY_COMPARISON_VALUE_INVALID`；派生来源仍走原authority拒绝码。
 oracle合同/输入/字节闭包漂移 → `CATEGORY_COMPARISON_ORACLE_*_INVALID`或原Arrow拒绝码；受验内容不等 →
 `CATEGORY_COMPARISON_ORACLE_{RESULT|TABLE|CHART}_MISMATCH`；缺生产执行规则与method绑定继续原production拒绝码。
@@ -441,6 +441,7 @@ Bad：把每个渠道的人群行合并成一点，或将4个ROI求平均后称�
 空输入、超行数、重复tuple、全空measure、时间维度/未知role。oracle用手写已知值正例，覆盖全部结果字段、同值排名/缺失group/
 补零/额外事实/因果、完整表图绑定与重新封hash、类型正确但篡改值的Arrow。真实投影保留两个分类与NULL，叙述保留受验值。
 生产选择更换问题文字仍不变；匹配规则及oracle通过，缺规则/错绑定拒绝。stub Sandbox receipt仅是unit边界fixture，不是执行回执。
+入口64行通过且可通过原V3 BAR schema，65行须在方法编译时拒绝；不能扩大图表预算或删行来迁就输入。
 
 ### 7. Wrong vs Correct
 

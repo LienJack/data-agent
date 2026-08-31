@@ -159,3 +159,9 @@ exact method/skill/contract与Host规则必须匹配；原single-series统计与
 Trace两个重新封hash的缺列/非DIMENSION反例先实际返回ok:true，补共用source校验后拒绝；原canonical/metadata/Scope/Run边界不变。
 最终Contracts53/53、Worker8文件145/145、Platform40/40，四包typecheck及三包build通过。新publisher测试中的空measure JSON仅用于暂存边界，
 不是独立oracle或完整Sandbox证明。未调用模型、写数据库或启动正式E17；下一步完成月度分群方法，不把该显示能力当业务验收。
+
+## 分类行数闭包纠正
+
+编译器最初允许200行但其必需BAR图仍为原64行上限；若不处理，会在分析完成后才拒绝显示。现方法/合同/rank schema统一收紧64，
+不增加预算、不丢弃source行；64/65两个反例先RED，64行同时通过原V3 BAR schema。历史合同/hash不改写，只应用于后继新构建。
+4文件69/69、Worker typecheck/build及2文件Biome通过；无模型调用或库写入。

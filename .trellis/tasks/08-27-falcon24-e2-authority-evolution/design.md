@@ -1716,3 +1716,6 @@ Chart1.1与V3 transform1.2显式封分面。无facet仍原1.0字节结构；完�
 Trace两个重封hash反例先RED（缺source、非DIMENSION），补共享字段/schema版本重验后通过；原canonical/raw hash/Scope/Run边界不变。
 Contracts53/53、Worker8文件145/145、Platform40/40及四包typecheck、Contracts/Worker/Platform build通过。原分类oracle擅加facet仍拒绝。
 仅离线publisher暂存/Trace组件验证，无真实Sandbox/模型/数据库写入；实际月度分群方法和后续业务链仍待完成。
+
+随后纠正分类方法行数闭包：最初200行入口与原V3 BAR的64行限制不一致，现将方法/合同/rank schema收紧到64，不扩大图表预算、不删行。
+64/65两项边界先RED，64行同时通过原BAR schema；旧少量分类/独立oracle/生产接线回归保持。该修改只影响新构建编译，不回写历史合同。

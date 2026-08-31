@@ -1,4 +1,5 @@
 import {
+  artifactWorkspaceChartProjectionV3Schema,
   buildProductTeamArtifactDocument,
   buildQueryEvidenceSemanticBinding,
 } from "@data-agent/contracts/artifacts";
@@ -18,6 +19,54 @@ async function inputFor(two = false, derived = false) {
 }
 
 describe("published category comparison planning", () => {
+  it.each([64, 65])(
+    "closes the unchanged bar-chart row limit before execution: %s rows",
+    async (count) => {
+      const input = await inputFor(true);
+      const draft = structuredClone(input.query_evidence_document);
+      if (draft.projection.kind !== "TABLE" || draft.provenance?.kind !== "GOVERNED_QUERY_RESULT")
+        throw new Error("TEST_QUERY_REQUIRED");
+      const first = draft.projection.rows[0];
+      if (!first) throw new Error("TEST_ROW_REQUIRED");
+      draft.projection.rows = Array.from({ length: count }, (_, index) => ({
+        ...first,
+        channel: `channel_${index}`,
+      }));
+      draft.projection.total_rows = count;
+      draft.provenance.row_count = count;
+      const document = await buildProductTeamArtifactDocument(draft);
+      if (document.artifact_ref.artifact_type !== "QueryEvidence")
+        throw new Error("TEST_QUERY_REQUIRED");
+      const operation = compileCategoryComparisonPlan({
+        ...input,
+        query_evidence_document: document,
+        query_evidence_ref: document.artifact_ref,
+      });
+      if (count === 65)
+        await expect(operation).rejects.toThrow("CATEGORY_COMPARISON_SHAPE_INVALID");
+      else {
+        expect((await operation).result_contract.limits.max_table_rows).toBe(64);
+        expect(
+          artifactWorkspaceChartProjectionV3Schema.parse({
+            kind: "CHART",
+            chart_type: "BAR",
+            title: "分类边界",
+            description: null,
+            unit: null,
+            x_key: "channel",
+            y_keys: ["spend", "revenue", "return_rate"],
+            series_key: "audience",
+            lower_bound_key: null,
+            upper_bound_key: null,
+            legend: { visible: true },
+            evidence_level: "L2_OBSERVATION",
+            table: draft.projection,
+          }).table.rows,
+        ).toHaveLength(64);
+      }
+    },
+  );
+
   it.each([
     [false, false],
     [true, false],

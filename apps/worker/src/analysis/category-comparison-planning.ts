@@ -17,7 +17,8 @@ export const CATEGORY_COMPARISON_METHOD_ID = "published-category-multi-measure-c
 export const CATEGORY_COMPARISON_CONTRACT_ID = "category-multi-measure-comparison.result";
 export const CATEGORY_COMPARISON_TABLE_ID = "category_comparison";
 export const CATEGORY_COMPARISON_CHART_ID = "category_comparison_bar";
-const MAX_ROWS = 200;
+// The required BAR projection preserves every row and the existing V3 chart bound is 64.
+const MAX_ROWS = 64;
 const rankedCategorySchema = z.strictObject({
   source_row_index: z
     .number()

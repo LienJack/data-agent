@@ -1750,6 +1750,8 @@ Diagnostic/Q1/C1任一正式首次失败必须写既有 authority支持的 immut
     原始STRING/DIMENSION字段、版本与template逐层闭合；Trace缺source/非DIMENSION两个重封hash反例先RED后GREEN，公共DTO不透传数据。
     Contracts53/53、Worker145/145、Platform40/40及四包typecheck、三包build通过；含原模型工具循环/统计路径与擅改旧oracle图合同拒绝。
     unit暂存中的空JSON measure不是oracle PASS；未调用模型、写库或创建E17正式Run。继续月度分群及其他未闭合能力。
+  - [x] 分类行数入口收紧到原BAR的64行，合同与rank schema同界；两项64/65边界先RED，64行同时通过V3原schema。
+    4文件69/69、Worker typecheck/build通过；不扩大图表预算、不丢行，历史证据不改。接续月度分群。
 - [ ] 所需能力离线闭合后最终clean build/full unit/fresh scratch，再fresh E17正式15回合从L1。当前ACTIVE，live E16 FAILED。
 
 **F6 READY 轮次恢复边界（2026-08-30，历史）**
