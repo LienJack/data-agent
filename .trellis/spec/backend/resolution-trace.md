@@ -46,6 +46,10 @@ GET /api/workspaces/{workspaceId}/sql-history?run_id=&conversation_id=&occurred_
   raw SQL、参数值、Result rows、credential 与 Provider body。
 - 暂存分析Chart读取1.0/显式facet的1.1，继续canonical bytes/raw hash/metadata重验；分面须原表STRING/DIMENSION且版本匹配，
   与Worker共用字段校验。详见[受治理分析图表](./governed-analysis-charts.md)，不增加Trace写权威或向公共DTO透传原行。
+- 暂存TABLE和CHART dataset的semantic_role须复用Contracts `analysisResultTableSemanticRoleSchema`，
+  与Worker publisher同源；不能复制旧四项枚举而把合法FORMULA/REQUEST_DERIVED误报corrupt。
+  两者只是保留原字段身份，不提升为Published Metric；未知role、canonical bytes/hash/来源漂移仍拒绝。
+  回归覆盖同一真实Store形状的两种新增role及旧METRIC、未知/大小写错误拒绝，公共DTO不透传列或数据。
 - `resolution-trace-detail@3.0.0` 是按 `run_id + expected_trace_hash + node_id` 懒加载的唯一严格公共投影，
   并为所有节点携带 content-first `run_context`、父 `trace_hash` 与自身 `detail_hash`。服务端必须在同一个
   `REPEATABLE READ` transaction 中重建 Trace；若其 hash 与调用方绑定值不同，返回

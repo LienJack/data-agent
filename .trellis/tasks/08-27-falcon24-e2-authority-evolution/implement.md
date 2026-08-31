@@ -1782,7 +1782,11 @@ Diagnostic/Q1/C1任一正式首次失败必须写既有 authority支持的 immut
 - [x] 8a82aac1 fresh scratch再次L4A1，安全诊断真实闭合：两次planner在非空operator_obligations[0]发生schema custom拒绝；
   接受输入对应现有描述性月度方法required_operator_obligations=[]。提示改为完整复制Host声明、明确空数组，不改schema或预算。
   Run48a12b09-191d-8798-b767-00c3d0b383c6 FAILED保留，未进入Python/UI；live348表仍完全一致。
-- [ ] 新clean build/scratch验证精确operator提示修复后继续上述 F5 / F7；不另跑 child 历史六问，也不复用 core4 PASS。
+- [x] 1f53b91e fresh scratch L4A1真实Semantic→Text2SQL→Analysis SUCCEEDED，57 events/无错误；独立源值/同比/表图/结论及QA刷新通过。
+  Trace却HTTP400：reader旧枚举不识别已由publisher发布的REQUEST_DERIVED，完整回合仍未PASS。新5项回归中2项先RED，
+  改共享schema后GREEN；旧Run用真实READ capability只读重建73节点/73详情通过，仅修复诊断、不补算UI。
+  live348表前后完全一致，临时服务/browser已停，见 [Trace缺口记录](research/complex-1f53b91e-trace-role.md)。
+- [ ] 新clean build/scratch验证完整L4A1及后续多轮，再继续上述 F5 / F7；不另跑 child 历史六问，也不复用 core4 PASS。
 
 **F6 READY 轮次恢复边界（2026-08-30，历史）**
 

@@ -11,6 +11,7 @@ import {
   analysisResultChartIntentSchema,
   analysisResultChartTemplateIdSchema,
   analysisResultStageArtifactSchema,
+  analysisResultTableSemanticRoleSchema,
   analysisResultValueTypeSchema,
   analysisSandboxExecutionReceiptSchema,
   appScopeSchema,
@@ -131,7 +132,7 @@ const analysisPublishedTableColumnSchema = z.strictObject({
   data_type: analysisResultValueTypeSchema.exclude(["JSON"]),
   nullable: z.boolean(),
   semantic_object_id: analysisIdentifierSchema,
-  semantic_role: z.enum(["METRIC", "DIMENSION", "DERIVED", "QUALITY"]),
+  semantic_role: analysisResultTableSemanticRoleSchema,
 });
 const analysisPublishedTableDataShape = {
   table_id: analysisIdentifierSchema,

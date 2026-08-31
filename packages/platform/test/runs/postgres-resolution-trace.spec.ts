@@ -764,6 +764,7 @@ async function falcon24DerivedAuthorityRows(
     readonly facet?: boolean;
     readonly facet_field?: string;
     readonly facet_role?: string;
+    readonly numeric_role?: string;
   } = {},
 ) {
   const stageId = id(50);
@@ -807,7 +808,7 @@ async function falcon24DerivedAuthorityRows(
           data_type: "NUMBER",
           nullable: false,
           semantic_object_id: "metric.revenue",
-          semantic_role: "METRIC",
+          semantic_role: options.numeric_role ?? "METRIC",
         },
       ],
       rows: [{ revenue: 110 }],
@@ -864,7 +865,7 @@ async function falcon24DerivedAuthorityRows(
             data_type: "NUMBER",
             nullable: false,
             semantic_object_id: "metric.revenue",
-            semantic_role: "METRIC",
+            semantic_role: options.numeric_role ?? "METRIC",
           },
         ],
         rows: [{ month: "2026-08", revenue: 110, ...(options.facet ? { audience: "新客" } : {}) }],
@@ -2282,6 +2283,51 @@ describe("PostgreSQL Resolution Trace projector", () => {
     );
 
     expect(result).toMatchObject({ ok: true });
+  });
+
+  it.each([
+    ["REQUEST_DERIVED", true],
+    ["FORMULA", true],
+    ["METRIC", true],
+    ["UNKNOWN", false],
+    ["request_derived", false],
+  ] as const)("reads the publisher's exact table/chart semantic role %s", async (role, valid) => {
+    const event = await eventRow();
+    const sql = await productTeamSqlArtifactRow();
+    const evidence = await productTeamQueryEvidenceRow(sql);
+    const analysis = await falcon24DerivedAuthorityRows(evidence, { numeric_role: role });
+    const { capability, authorizer } = issueCapability();
+    const { pool } = scriptedPool((text) => {
+      if (text.includes("from runs as run")) return { rows: [authorityRow()], rowCount: 1 };
+      if (text.includes("from run_events")) return { rows: [event], rowCount: 1 };
+      if (text.includes("from artifacts")) {
+        const rows = [
+          sql,
+          evidence,
+          analysis.derivedRow,
+          analysis.receiptRow,
+          ...analysis.resultRows,
+          ...analysis.supportRows,
+        ];
+        return { rows, rowCount: rows.length };
+      }
+      return undefined;
+    });
+    const result = await createPostgresResolutionTraceProjector({ pool, authorizer }).loadTrace(
+      capability,
+      { scope, run_id: ids.run },
+    );
+    if (valid) {
+      expect(result).toMatchObject({ ok: true });
+      if (!result.ok || !result.value) throw new Error("TEST_TRACE_REQUIRED");
+      const encoded = JSON.stringify(result.value);
+      expect(encoded).not.toContain('"rows"');
+      expect(encoded).not.toContain('"semantic_role"');
+    } else
+      expect(result).toMatchObject({
+        ok: false,
+        error: { code: "RESOLUTION_TRACE_ARTIFACT_CORRUPT" },
+      });
   });
 
   it("fails closed when Analysis System receipt or canonical result bytes are tampered", async () => {
