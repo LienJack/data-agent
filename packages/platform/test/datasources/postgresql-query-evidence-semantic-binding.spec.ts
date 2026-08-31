@@ -10,6 +10,7 @@ import {
   type SemanticContextCommitResult,
   type SemanticDimension,
   type SemanticFormulaExpression,
+  type SemanticRelationship,
   type Text2SqlQueryCandidate,
 } from "@data-agent/contracts";
 import { describe, expect, it } from "vitest";
@@ -108,6 +109,7 @@ async function physicalSnapshot(
 async function semanticContext(
   snapshot: Awaited<ReturnType<typeof physicalSnapshot>>,
   additionalIds: readonly string[] = [],
+  mandatoryRelationshipIds: readonly string[] = [],
 ): Promise<SemanticContextCommitResult> {
   const selectedObjectIds = [
     "column.orders.order_id",
@@ -147,7 +149,7 @@ async function semanticContext(
     ruleset_hash: hash("2"),
     steps: [],
     mandatory_object_ids: selectedObjectIds,
-    mandatory_relationship_ids: [],
+    mandatory_relationship_ids: mandatoryRelationshipIds,
     closure_complete: true,
     reason_codes: [],
   });
@@ -226,7 +228,7 @@ async function semanticContext(
     inference_receipt: inferenceReceipt,
     mandatory_closure: {
       object_ids: selectedObjectIds,
-      relationship_ids: [],
+      relationship_ids: mandatoryRelationshipIds,
       closure_hash: hash("7"),
     },
     analysis_capabilities: ["CHART_DATASET", "TREND_CHANGE"],
@@ -893,6 +895,117 @@ async function aggregateRatioBindingFixture(measuresNullable = true) {
     ),
   };
 }
+
+const requestedRelationship: SemanticRelationship = {
+  relationship_id: "relationship.order_customer",
+  name: "order_customer",
+  kind: "physical",
+  left_table_id: "orders",
+  left_column_ids: ["customer_id"],
+  right_table_id: "customers",
+  right_column_ids: ["customer_id"],
+  cardinality: "many-to-one",
+  left_row_preservation: "required",
+  right_row_preservation: "optional",
+  proof_kind: "SNAPSHOT_CERTIFIED",
+  proof_detail: "Fixed snapshot relationship fixture.",
+  tags: [],
+  analysis: { join_allowed: true, fanout_closed: true, ontology_path: [] },
+};
+
+async function withRequestedRelationship(
+  input:
+    | Awaited<ReturnType<typeof requestDerivationFixture>>
+    | Awaited<ReturnType<typeof aggregateRatioBindingFixture>>,
+  granted = true,
+) {
+  const additionalIds = input.semantic_context.package.retrieval_receipt.selected_object_ids.filter(
+    (id) =>
+      !["column.orders.order_id", "dimension.order_month", "metric.order_revenue"].includes(id),
+  );
+  const semantic_context = await semanticContext(
+    input.physical_snapshot,
+    additionalIds,
+    granted ? [requestedRelationship.relationship_id] : [],
+  );
+  const pkg = semantic_context.package;
+  const { context_hash: _hash, ...draft } = input.semantic_query_context;
+  const semantic_query_context = await buildSemanticQueryContext({
+    ...draft,
+    requested_object_ids: [
+      ...draft.requested_object_ids,
+      requestedRelationship.relationship_id,
+    ].sort(),
+    relationships: [requestedRelationship],
+    semantic_context_ref: {
+      package_id: pkg.package_id,
+      package_hash: pkg.package_hash,
+      receipt_id: semantic_context.receipt.receipt_id,
+      receipt_hash: semantic_context.receipt.receipt_hash,
+      retrieval_receipt_hash: pkg.retrieval_receipt.receipt_hash,
+      inference_receipt_hash: pkg.inference_receipt.receipt_hash,
+    },
+  });
+  return { ...input, semantic_context, semantic_query_context };
+}
+
+describe.each([
+  { name: "period comparison", fixture: requestDerivationFixture },
+  { name: "aggregate ratio", fixture: aggregateRatioBindingFixture },
+])("request-derived $name relationship closure", ({ fixture }) => {
+  it("admits requested relationship metadata from the verified inference receipt", async () => {
+    const input = await withRequestedRelationship(await fixture());
+    const selected = postgresqlQueryEvidenceSemanticBindingInternals.selectedSemanticObjects(
+      input.semantic_context,
+    );
+    expect(selected.has(requestedRelationship.relationship_id)).toBe(false);
+    const proof = await resolvePostgresqlRequestDerivedBindings(input);
+    expect(proof).toHaveLength(1);
+    const binding = await buildPostgresqlQueryEvidenceSemanticBinding(input);
+    expect(binding.columns[3]?.semantic_role).toBe("REQUEST_DERIVED");
+    expect(
+      binding.columns[3]?.physical_sources.every((source) => source.relation_name === "orders"),
+    ).toBe(true);
+  });
+
+  it("rejects a requested relationship absent from the inference receipt", async () => {
+    const input = await withRequestedRelationship(await fixture(), false);
+    await expect(resolvePostgresqlRequestDerivedBindings(input)).rejects.toThrow(
+      "QUERY_EVIDENCE_REQUEST_DERIVATION_BINDING_INVALID",
+    );
+  });
+
+  it("does not turn a metadata grant into a result Dimension", async () => {
+    const input = await withRequestedRelationship(await fixture());
+    input.candidate.result_columns = input.candidate.result_columns.map((column, index) =>
+      index === 0
+        ? {
+            ...column,
+            semantic_binding: {
+              object_kind: "DIMENSION",
+              object_id: requestedRelationship.relationship_id,
+            },
+          }
+        : column,
+    );
+    await expect(resolvePostgresqlRequestDerivedBindings(input)).rejects.toThrow();
+  });
+
+  it("still rejects a changed inference receipt without a new exact package", async () => {
+    const input = await withRequestedRelationship(await fixture());
+    input.semantic_context = {
+      ...input.semantic_context,
+      package: {
+        ...input.semantic_context.package,
+        inference_receipt: {
+          ...input.semantic_context.package.inference_receipt,
+          mandatory_relationship_ids: [],
+        },
+      },
+    };
+    await expect(resolvePostgresqlRequestDerivedBindings(input)).rejects.toThrow();
+  });
+});
 
 describe("request-only aggregate ratio binding", () => {
   it("does not drop an accepted time restriction to use the bounded full-total ratio proof", async () => {

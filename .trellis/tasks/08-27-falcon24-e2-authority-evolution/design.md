@@ -1587,3 +1587,14 @@ CASE NULL 和 NULLIF 的零值语义相同，不能借用已发布 ROAS 的0。�
 离线测试加只读 NAS 真实源探针证明工程路径；探针解释只在内存构造，未 accepted 为 Artifact、未发新 Run、无模型调用或权威写入。
 最新 clean build 后 fresh scratch 重新验证同比/订单/semantic/ROAS，并增加净 ROI 的真实问题、业务 oracle 和随后 QA/Trace。
 正式15回合仍须同一 fresh attempt 全通过；已知缺口与真实失败继续按 ACTIVE controller 离线修复，不拼接旧 PASS。
+
+### 25.18 请求派生结果的 mandatory Relationship metadata 闭包
+
+`49cbc84c` scratch 同比 Run `5a82c71e-e24b-88b0-a267-9b3f8f9b8533` FAILED/74 events，无 QueryEvidence。
+无模型重放原 accepted Context 与合法合成 Candidate，在请求闭包 membership 处复现拒绝；Scope/Run/回执/资源/物理绑定全部一致，
+唯一漏项是 verified inference receipt 的 `relationship.order_customer`。此遗漏在净 ROI 修复之前已存在，旧成功 Context 未显式请求该关系。
+
+结果层仅补上 Context 实际投影且原 inference receipt 授予的 Relationship metadata；不改全局 executable selection helper，
+不授权其他 Metric/Dimension/物理列/Join。原 SQL AST 子集、窗口、身份/hash、发布与重试预算完全不变。
+两算子正例先 RED 后 GREEN，并覆盖未授予关系、metadata 冒充输出对象和回执篡改。真实 NAS 只读重放原 Context：12个月/6个 NULL，
+独立源金额/同比相等；未重建历史失败 SQL、无模型或权威写入，不算业务 PASS。下一 clean build/fresh scratch 重做所有 canary。

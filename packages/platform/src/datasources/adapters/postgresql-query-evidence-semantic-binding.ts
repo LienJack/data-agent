@@ -589,10 +589,15 @@ export async function resolvePostgresqlRequestDerivedBindings(
   const authority = await verifySemanticContextCommitResult(input.semantic_context);
   const pkg = authority.package;
   const selected = selectedSemanticObjects(authority);
-  // Coverage metadata may be reached through an already-selected Metric; it is
-  // not an independent selection grant for a Dimension or another Metric.
+  // Requested metadata includes verified relationship closure and Metric time
+  // coverage. Neither is an executable selection grant for other objects.
   const allowedRequestedIds = new Set([
     ...selected,
+    ...context.relationships
+      .filter(({ relationship_id }) =>
+        pkg.inference_receipt.mandatory_relationship_ids.includes(relationship_id),
+      )
+      .map(({ relationship_id }) => relationship_id),
     ...input.semantic_catalog.executable.metrics.flatMap((metric) =>
       selected.has(metric.metric_id) &&
       context.requested_object_ids.includes(metric.metric_id) &&

@@ -22,6 +22,9 @@ Candidate 使用 `object_kind=REQUEST_DERIVED`、exact `interpretation_id`，没
 - 请求出现 PERIOD_COMPARISON_RATE 时必须恰有一个对应派生输出；删除声明或改为 Metric/Published Formula 不能绕过证明。
 - 验证同 Scope/Run、package/receipt/retrieval/inference、资源 exact refs、选中 Metric/Dimension、发布对象内容与 active
   physical bindings。Metric 的 TimeDomain 可沿既有发布依赖进入 requested closure，不给其他 Metric/Dimension 扩权。
+- requested closure 还可包含原 verified inference receipt 的 mandatory_relationship_ids，但只接受 Context 中实际投影的
+  Relationship。Semantic selection、Worker prepare 与结果验证必须一致；不能仅以 selected_object_ids 检查全部 metadata。
+  关系 ID 只补 metadata membership，不加入 executable selectedSemanticObjects，不授权结果 Metric/Dimension、物理列或额外 Join。
 - 首个可执行子集为同表单数值来源的 SUM，MONTH 维度、两个直接物理聚合 CTE、各自 exact current/comparison WHERE
   下上界、单 LEFT JOIN `current.month = comparison.month + $year::interval`，参数值 `1 year`，只投影当前月、两个原始值及
   `(current-comparison)/NULLIF(comparison,0)`。检查真实源码列、GROUP BY、类型提升、零值、年度对齐与返回值身份。
@@ -53,6 +56,7 @@ Bad：把增长率绑定为收入 Metric，或只新增 enum 而不验证算式/
 真实 parameterize/deparse round trip；错误聚合、源列、源表、CTE 分组、偏移、分母、补零、原始值、过滤、类型截断；
 Context hash/Run/receipt/Metric/binding/interpretation 漂移与重标绕过；LEFT JOIN NULL；Analysis materialization role/hash；
 compile 前零 target I/O、安全诊断、两次 bounded repair 不扩容。真实 scratch 必须另做业务/QA/Trace，不得拿离线测试替代。
+两个派生算子均须覆盖 requested mandatory Relationship 的成功、未授予关系拒绝、metadata 冒充结果对象拒绝和 inference 篡改拒绝。
 增加每个检查阶段的安全码、并发互不串线、未知码拒绝、修复上下文/公开事件传递、提示词无相反建议的断言。
 
 ### 7. Wrong / Correct

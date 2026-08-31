@@ -1656,6 +1656,20 @@ Diagnostic/Q1/C1任一正式首次失败必须写既有 authority支持的 immut
   从同比及三题回归重做，并新增净 ROI 真实 canary；业务通过后才执行各自 QA/Trace。旧三个 PASS 不复用。
   带窗/跨表 ratio 等更广形态仍不宣称支持；正式前继续核查所需能力，不能靠删要求、改 oracle 或增加预算通过。
 
+**E17 scratch 关系 metadata 闭包修复（2026-08-31）**
+
+- `49cbc84c` force build8/8、single-concurrent full unit15/15、attestation 通过。fresh NAS scratch55473/独立volume与cluster，
+  原数据指纹一致；正常认证、scratch baseline `e573ce52-2149-5cfe-88a9-c4b77b5382c4` 激活，live E16 不变。
+- 同比唯一提交 Run `5a82c71e-e24b-88b0-a267-9b3f8f9b8533` FAILED/74 events：4次 request binding 拒绝、2次 alias 拒绝，
+  仅 accepted SQC，无 SQL/QueryEvidence。一次业务失败记录及完整 source 封存在 `e17-yoy-canary-49cbc84c`，未做 QA/Trace。
+  其他四 canary 未提交；owned Web/Worker/OpenSandbox/browser/vault 均已停止，数据库/volume/audit 保留。
+- 离线复现确认结果层遗漏已验证 mandatory Relationship metadata；两算子8个回归中的两个正例先 RED，其余反例保持拒绝。
+  只补 requested metadata membership，不改 executable selection、SQL证明、发布或预算。Platform233/233、Worker90/90 focused通过。
+- 重建 Platform 后，真实 Worker compile/shared proof/只读 PG query 对原 SQC 成功：12个月/6个 NULL，OID1114/701/701/701，
+  独立源金额/同比一致。`monthly-readonly-probe.json` 明确 synthetic Candidate、historical_candidate_reconstructed=false、
+  provider_calls/authority_writes/artifact_commits=0；不是模型/正式 PASS。详见 `research/e17-request-relationship-closure.md`。
+- 当前 ACTIVE；完成 scoped commit 后 fresh clean build/full gate/scratch 重新验证五题。live E17 尚未激活，旧 PASS 不拼入。
+
 **F6 READY 轮次恢复边界（2026-08-30，历史）**
 
 > 以下为历史记录；当前 forward recovery 已到 E16 FAILED，下一 fresh epoch 为 E17，见上一节。
