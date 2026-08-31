@@ -1162,6 +1162,54 @@ describe("PostgreSQL Text2SQL query runtime", () => {
         result_columns: compiledCandidate.result_columns,
         time_window: compiledCandidate.time_window,
       });
+      // Canonical interpretation ids can place either operator first. The order
+      // must not change SQL or dates; the derived result retains its exact new id.
+      const { context_hash: _forwardHash, ...forwardContext } = contextWithTimeDependency;
+      const reversedPrepared = await runtime.prepare({
+        effective_config: config as never,
+        semantic_context: semanticContext,
+        semantic_catalog: catalogWithTimeDependency as never,
+        semantic_query_context: await buildSemanticQueryContext({
+          ...forwardContext,
+          request_scoped_interpretations: (forwardContext.request_scoped_interpretations ?? [])
+            .map((interpretation) => ({
+              ...interpretation,
+              interpretation_id:
+                interpretation.operator.kind === "PERIOD_COMPARISON_RATE"
+                  ? "request-scoped.a-yoy"
+                  : interpretation.interpretation_id,
+            }))
+            .sort((a, b) => a.interpretation_id.localeCompare(b.interpretation_id)),
+        }),
+        max_context_bytes: 32_000,
+      });
+      const reversedCandidate = JSON.parse(
+        reversedPrepared.context_text,
+      ).period_comparison_candidate;
+      expect(reversedCandidate).toEqual({
+        ...compiledCandidate,
+        result_columns: compiledCandidate.result_columns.map(
+          (column: { semantic_binding: { object_kind: string; object_id: string } }) =>
+            column.semantic_binding.object_kind === "REQUEST_DERIVED"
+              ? {
+                  ...column,
+                  semantic_binding: {
+                    ...column.semantic_binding,
+                    object_id: "request-scoped.a-yoy",
+                  },
+                }
+              : column,
+        ),
+      });
+      expect(reversedPrepared.requested_time_window).toEqual(prepared.requested_time_window);
+      await expect(
+        runtime.compileCandidate({ prepared: reversedPrepared, candidate: reversedCandidate }),
+      ).resolves.toMatchObject({ time_window: compiledCandidate.time_window });
+      const narrowedToRankedPeriods = structuredClone(compiledCandidate);
+      narrowedToRankedPeriods.parameters[1] = "2024-08-01T00:00:00.000Z";
+      await expect(
+        runtime.compileCandidate({ prepared, candidate: narrowedToRankedPeriods }),
+      ).rejects.toMatchObject({ code: "TEXT2SQL_REQUEST_TIME_WINDOW_MISMATCH" });
       const drifted = structuredClone(compiledCandidate);
       drifted.parameters[3] = "2022-11-01T00:00:00.000Z";
       await expect(runtime.compileCandidate({ prepared, candidate: drifted })).rejects.toThrow();

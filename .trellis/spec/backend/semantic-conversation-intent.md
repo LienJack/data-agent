@@ -37,6 +37,12 @@ Root 多轮问答、Semantic Context Request/Snapshot/Receipt、检索候选容�
    `TEAM_SEMANTIC_COMPARISON_WINDOW_REQUIRED`。Semantic 从同一有界用户意图补齐窗口，
    没有可支持的时长则声明 TIME_DOMAIN ambiguity；Root 在原预算内反馈 Semantic，不能重复提交 Text2SQL。
    不增重试预算、不默认12月、不复制旧 Run 操作；SEMANTIC_FACTS_ONLY 定义查询不要求数据窗口。
+10. 排名数量与取数窗口是两个维度：“其中最差N个月再按分类拆解”保留继承的完整窗口，
+    除非用户明确改变时间范围。Root 向 Semantic 区分时长与排名数量，向 Text2SQL 委派完整窗口、
+    全部分组的比较面板；Analysis 从新 QueryEvidence 重算整体排名后再拆解，不能先筛历史获选日期。
+    `TEXT2SQL_REQUEST_TIME_WINDOW_MISMATCH` 是已有窗口与 SQL Candidate 冲突，不等于第9项的
+    Semantic 窗口缺失。不得因此要求 Semantic 缩短窗口或增加失败 task 重试预算。SQL repair 的窄反馈
+    引用原 resolved_time_window/period_comparison_candidate，不改 Candidate、上下文或原时间校验。
 
 ## 禁止
 
@@ -53,5 +59,7 @@ Root 多轮问答、Semantic Context Request/Snapshot/Receipt、检索候选容�
   lease/Run/scope/hash/Conversation/version/current-question/history漂移与Task失败时零模型调用。
 - Semantic：多轮弱匹配月份召回、显式与总容量、去重、excluded对象、依赖闭包；不得用测试题字符串分支。
 - Semantic projection：缺失同比窗口时零 Artifact commit/零 Text2SQL；完整窗口、纯定义和已声明歧义保持原契约。
+- Root/SQL repair：排名数不替代继承时长，两种窗口错误分责；RECENT/PERIOD 顺序不改变已证明 Candidate，
+  把完整窗口缩成排名子集仍须拒绝。Prompt 回归只证明指令装配，不等于模型行为或业务 PASS。
 - PostgreSQL：clean install、populated clone升级和347张业务表hash不变、只投影最后8条user/text、原安全边界和reader窄grant。
 - 真实复杂 Run 仍需新clean build/scratch后的业务及同Run UI/Trace证明；离线历史重编译不是验收PASS。

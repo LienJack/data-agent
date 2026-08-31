@@ -205,7 +205,9 @@ function buildText2SqlSpecialistMessages(input: {
       ? "Add an explicit alias to every physical and CTE FROM/JOIN reference and qualify columns with that alias. A WITH declaration does not alias a FROM reference."
       : code === "TEXT2SQL_PUBLISHED_FORMULA_EXPRESSION_MISMATCH"
         ? "Read the selected published formula.expression and reproduce its exact AST. CASE WHEN denominator = 0 THEN 0 ELSE numerator / denominator END is not equivalent to numerator / NULLIF(denominator,0). Keep the published zero/null result unchanged; do not relabel the output to evade proof."
-        : "Correct the rejected SQL expression or declaration using the frozen context and the matching Host policy above.");
+        : code === "TEXT2SQL_REQUEST_TIME_WINDOW_MISMATCH"
+          ? "The SQL candidate conflicts with semantic_context.resolved_time_window, not with missing Semantic authority. Copy that exact dimension_id/start/end and point time_window to their parameter indices. Use the full accepted acquisition window, not the requested number of ranked periods or dates named in the delegation objective; downstream Analysis selects the extremes from the complete current-Run panel. When supplied, copy sql, parameters, result_columns and time_window from period_comparison_candidate unchanged. Do not change Semantic authority, copy prior answers, bind the window to comparison dates, or remove the time restriction."
+          : "Correct the rejected SQL expression or declaration using the frozen context and the matching Host policy above.");
   messages.push(
     { role: "assistant", content: canonicalizeJson(rejected_candidate) },
     {

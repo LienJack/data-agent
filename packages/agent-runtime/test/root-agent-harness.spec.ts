@@ -40,6 +40,17 @@ async function catalog(profileIds: readonly string[]) {
 }
 
 describe("Root Agent Harness", () => {
+  it("separates ranking selection from the inherited comparison window and owns SQL mismatch feedback", async () => {
+    const message = await buildRootAgentSystemMessage(await catalog(["semantic-management-agent"]));
+    expect(message).toContain("Ranking cardinality is not time-window length");
+    expect(message).toContain("query the full accepted window and all selected groups");
+    expect(message).toContain("rank overall periods from the new QueryEvidence before decomposing");
+    expect(message).toContain("TEXT2SQL_REQUEST_TIME_WINDOW_MISMATCH is a rejected SQL candidate");
+    expect(message).toContain("not TEAM_SEMANTIC_COMPARISON_WINDOW_REQUIRED");
+    expect(message).toContain("Do not ask Semantic to shorten an already accepted window");
+    expect(message).toContain("never extend a failed task's retry budget");
+  });
+
   it("supplies the executable final-answer schema for AUTO text completion", async () => {
     const message = await buildRootAgentSystemMessage(await catalog(["semantic-management-agent"]));
     const prefix = "Root final-answer JSON Schema: ";

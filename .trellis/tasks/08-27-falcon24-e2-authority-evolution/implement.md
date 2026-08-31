@@ -1865,6 +1865,10 @@ Diagnostic/Q1/C1任一正式首次失败必须写既有 authority支持的 immut
   - [x] 原月度分群execution_contract新增无数据Python准备参考与显式原列/时间类型；模型实际Cell仍走原策略/执行/Publisher/Oracle。
     NAS原Agent镜像12种数据边界逐字段对原Oracle0差异，原operator镜像Cell策略通过，原输入不变，未调用模型/数据库。
     固定方法参考辅助执行不等同自由算法合成；见 [分群准备边界](research/complex-40a04db9-panel-preparation.md)。
+  - a97bd856新scratch A1业务+同Run UI/Trace通过，A2在SQL窗口校验失败（0 QueryEvidence/0 Stage），
+    Root将排名数误当取数窗口并向Semantic要求缩窗；已修正排名/窗口分责和定向SQL反馈，原校验不变。
+    Root/repair两项RED→GREEN及合法操作顺序/缩窗拒绝回归；旧运行348表无漂移，服务关闭、卷与历史保留。
+    尚未证明A2 Python参考/复杂A-B闭环，formal15仍未开始；见 [排名窗口复盘](research/complex-a97bd856-ranked-window.md)。
     下一步新clean build/fresh scratch从A1验证，不复用40a04db9 A1或失败A2。
   再继续上述 F5 / F7；不另跑 child 历史六问，也不复用 core4 PASS。
 

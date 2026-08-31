@@ -104,6 +104,20 @@ describe("direct run-bound provider retry policy", () => {
     expect(windowMessages?.[3]?.content).toContain(
       "declared parameter indices and exact Host bounds",
     );
+    formulaRepair.rejection.diagnostic_code = "TEXT2SQL_REQUEST_TIME_WINDOW_MISMATCH";
+    const currentWindowMessages =
+      directRunBoundProviderDispatcherInternals.buildText2SqlSpecialistMessages({
+        ...input,
+        context_text: JSON.stringify(formulaRepair),
+      });
+    expect(currentWindowMessages?.[0]?.content).toEqual(messages[0]?.content);
+    expect(currentWindowMessages?.[3]?.content).toContain("semantic_context.resolved_time_window");
+    expect(currentWindowMessages?.[3]?.content).toContain(
+      "not the requested number of ranked periods",
+    );
+    expect(currentWindowMessages?.[3]?.content).toContain("period_comparison_candidate unchanged");
+    expect(currentWindowMessages?.[3]?.content).toContain("Do not change Semantic authority");
+    expect(JSON.parse(currentWindowMessages?.[2]?.content ?? "null")).toEqual(candidate);
     expect(
       directRunBoundProviderDispatcherInternals
         .buildText2SqlSpecialistMessages({ ...input, context_text: JSON.stringify(frozen) })
