@@ -100,6 +100,13 @@ ANALYZE
 - Publisher 再提取受控符号，规范化后必须与宿主治理结果的 `result_sha256` 一致。AST protected-prefix 策略是纵深防御，双哈希是 fail-closed 权威门禁。
 - 资源起点：Agent 1 vCPU/2 GiB（ML/CAUSAL 2 vCPU/4 GiB），Operator 2 vCPU/2 GiB（ML/CAUSAL 4 GiB），`pids_limit` 128/256，全部 BLAS threads=1，Cell 30s，Operator 60–120s，result 16 MiB，closure 64 MiB，stdout/stderr 4/16 KiB。
 - 每次 Run 逻辑 Sandbox 必须 `before=0、peak<=2、after=0`；cleanup 失败不得伪装成功，TTL sweeper 只清孤儿，不替代当次清理证明。
+- 输入的逻辑 DATE/TIMESTAMP 不保证 pandas datetime dtype：Arrow 文本或 Python date 可落为 object。
+  Agent 如需 `.dt`，只对声明的日期列在派生 Series 中显式 `pandas.to_datetime(..., errors='raise')`；保留原日历日期、
+  timezone、NULL 和行，不以 `errors='coerce'` 吞掉异常或改动 protected input。已规范化 ISO DATE 可直接保留。
+- Cell 反馈不发送 stdout/stderr/raw error；固定 pandas `.dt` / `.str` AttributeError 全文精确匹配后，分别投影为
+  `PANDAS_DATETIME_ACCESSOR_REQUIRES_CONVERSION` / `PANDAS_STRING_ACCESSOR_REQUIRES_STRING_VALUES`，并提供等权限修复指令。
+  未知消息、附带数据的后缀及错误类型不符不按此规则投影。仍仅一次 CELL_EXECUTION repair，strict 模式零次。
+  单测必须覆盖真实库固定消息、负例、provider 消息/进度不泄漏 raw output，以及一次修复后原 Publisher 闭包通过。
 
 ### Falcon24 E1 runtime attestation
 

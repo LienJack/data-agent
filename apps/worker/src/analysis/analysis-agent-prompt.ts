@@ -14,6 +14,9 @@ import { analysisOperatorArgumentSymbols } from "./analysis-operator-symbols.js"
 
 type AnalysisProgramNode = AnalysisProgramPayload["nodes"][number];
 
+const inputDateTimeRule =
+  "A logical DATE/TIMESTAMP field is not a pandas datetime dtype guarantee: Arrow may materialize ISO text or Python date objects as object dtype. Before using .dt on a declared date/time field, create a derived Series with pandas.to_datetime(series, errors='raise'); preserve the declared timezone and original calendar dates. Never coerce invalid dates to NaT, infer a new time window, or mutate the protected input. Already normalized ISO date strings may be retained directly when the result contract requires the same dates.";
+
 const inputSchemaProjectionSchema = z.strictObject({
   input_name: z.string().regex(/^[A-Za-z_][A-Za-z0-9_.-]{0,62}$/u),
   format: z.enum(["JSON", "CSV", "ARROW"]),
@@ -187,6 +190,7 @@ export async function buildAnalysisAgentInitialMessages(input: {
       "A protected operator result symbol exactly follows its obligation's result_symbol contract. Read the declared collection path directly; never spend a Cell printing or probing its type, keys, contents, shape, or attributes.",
       "Use each declared server-bound input symbol directly; do not open input paths or parse Arrow, CSV, or JSON yourself. Network, subprocess, package installation, credentials, database access, arbitrary paths, pickle, eval, and final artifact serialization are forbidden.",
       "Every declared server-bound input symbol is already a pandas.DataFrame. Do not call to_pandas(), read it again, or wrap it in a parser; start transformations from the bound symbol directly (a shallow copy is allowed).",
+      inputDateTimeRule,
       "Use only Python stdlib plus the libraries declared by the runtime profile. CORE_ANALYSIS provides pandas, numpy, pyarrow, scipy, and matplotlib; do not probe or import optional packages such as seaborn, plotly, statsmodels, or scikit-learn.",
       "The Cell policy forbids reflection and authority-probing names including dir, globals, locals, vars, getattr, hasattr, builtins, os, pathlib, sys, and subprocess. Never use them, including while repairing a failed Cell.",
       "Treat the declared input schema as authoritative. Do not spend a Cell only printing head(), dtypes, shape, or descriptive previews; prefer one cohesive material preparation Cell per governed operator, with assertions embedded in that Cell.",
@@ -265,6 +269,7 @@ export async function buildAnalysisAgentInitialMessages(input: {
 }
 
 export const analysisAgentPromptInternals = Object.freeze({
+  inputDateTimeRule,
   governedAnalysisContractSchema,
   operatorCards,
 });

@@ -20,6 +20,16 @@ function contract() {
 }
 
 describe("governed analysis agent contract v3", () => {
+  it("distinguishes logical date fields from pandas dtype without permitting silent coercion", () => {
+    const rule = analysisAgentPromptInternals.inputDateTimeRule;
+    expect(rule).toContain("logical DATE/TIMESTAMP");
+    expect(rule).toContain("not a pandas datetime dtype guarantee");
+    expect(rule).toContain("pandas.to_datetime");
+    expect(rule).toContain("errors='raise'");
+    expect(rule).toContain("declared timezone");
+    expect(rule).toContain("Never coerce invalid dates to NaT");
+  });
+
   it("accepts Host-owned objective, result hash and exact governed operators", () => {
     expect(analysisAgentPromptInternals.governedAnalysisContractSchema.parse(contract())).toEqual(
       contract(),

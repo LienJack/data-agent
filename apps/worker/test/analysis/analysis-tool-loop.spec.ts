@@ -168,6 +168,37 @@ describe("safe cell diagnostics", () => {
       ),
     ).toBeNull();
   });
+
+  it.each([
+    [
+      "AttributeError",
+      "Can only use .dt accessor with datetimelike values",
+      "PANDAS_DATETIME_ACCESSOR_REQUIRES_CONVERSION",
+    ],
+    [
+      "AttributeError",
+      "Can only use .str accessor with string values!",
+      "PANDAS_STRING_ACCESSOR_REQUIRES_STRING_VALUES",
+    ],
+    ["ValueError", "Can only use .dt accessor with datetimelike values", null],
+    ["AttributeError", "Can only use .dt accessor with datetimelike values: secret row", null],
+    ["AttributeError", "Can only use .str accessor with string values! secret row", null],
+  ])("classifies only exact data-free accessor failures: %s / %s", (name, value, expected) => {
+    expect(
+      analysisToolLoopInternals.safeCellErrorIdentifier({
+        schema_version: "analysis-cell-observation@1.0.0",
+        cell_id: "failed-cell",
+        status: "FAILED",
+        execution_id: null,
+        execution_count: null,
+        elapsed_ms: 1,
+        stdout: "secret row",
+        stderr: "secret traceback",
+        result_text: null,
+        error: { name, value },
+      }),
+    ).toBe(expected);
+  });
 });
 
 function digest(bytes: Uint8Array): `sha256:${string}` {
@@ -417,6 +448,7 @@ function scriptedModel(
 interface SessionOptions {
   readonly policy_rejections?: ReadonlySet<string>;
   readonly runtime_failures?: ReadonlySet<string>;
+  readonly runtime_error?: { readonly name: string; readonly value: string };
   readonly invalid_publish_attempts?: number;
   readonly log?: string[];
   readonly operator_requests?: unknown[];
@@ -587,7 +619,7 @@ function session(options: SessionOptions = {}): OpenSandboxAnalysisSession {
           stdout: "secret stdout",
           stderr: "secret traceback",
           result_text: null,
-          error: { name: "ValueError", value: "secret raw row" },
+          error: options.runtime_error ?? { name: "ValueError", value: "secret raw row" },
         };
       }
       return successfulCell(input.cell_id, executionCount);
@@ -915,6 +947,43 @@ async function run(input: {
 }
 
 describe("unique analysis Result Publisher state machine", () => {
+  it("gives a date-accessor failure actionable data-free feedback within the existing single repair", async () => {
+    const calls: Parameters<AnalysisAgentModelPort["turn"]>[0][] = [];
+    const progress: AnalysisToolLoopProgressEvent[] = [];
+    const result = await run({
+      script: [cell("date-bad"), cell("date-fixed"), publishCall("date-result", false)],
+      obligations: [],
+      calls,
+      progress,
+      session: session({
+        runtime_failures: new Set(["date-bad"]),
+        runtime_error: {
+          name: "AttributeError",
+          value: "Can only use .dt accessor with datetimelike values",
+        },
+      }),
+    });
+    const feedback = calls[1]?.messages.map(({ content }) => content).join("\n") ?? "";
+    expect(feedback).toContain("PANDAS_DATETIME_ACCESSOR_REQUIRES_CONVERSION");
+    expect(feedback).toContain("pandas.to_datetime");
+    expect(feedback).toContain("errors='raise'");
+    expect(feedback).toContain("declared timezone");
+    expect(feedback).not.toContain("secret row");
+    expect(feedback).not.toContain("secret stdout");
+    expect(feedback).not.toContain("secret traceback");
+    expect(progress).toContainEqual(
+      expect.objectContaining({
+        cell_error_name: "AttributeError",
+        cell_error_identifier: "PANDAS_DATETIME_ACCESSOR_REQUIRES_CONVERSION",
+        repair_category: "CELL_EXECUTION",
+      }),
+    );
+    expect(result.repair_attempts.CELL_EXECUTION).toBe(1);
+    expect(
+      result.cells.filter(({ observation }) => observation.status === "SUCCEEDED"),
+    ).toHaveLength(1);
+  });
+
   it("fails on the first invalid turn when strict acceptance disables repair", async () => {
     const log: string[] = [];
     await expect(

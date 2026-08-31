@@ -1786,6 +1786,10 @@ Diagnostic/Q1/C1任一正式首次失败必须写既有 authority支持的 immut
   Trace却HTTP400：reader旧枚举不识别已由publisher发布的REQUEST_DERIVED，完整回合仍未PASS。新5项回归中2项先RED，
   改共享schema后GREEN；旧Run用真实READ capability只读重建73节点/73详情通过，仅修复诊断、不补算UI。
   live348表前后完全一致，临时服务/browser已停，见 [Trace缺口记录](research/complex-1f53b91e-trace-role.md)。
+- [x] 3f876865 fresh scratch L4A1进入Python，两次Analysis均AttributeError且一次repair用尽，Run FAILED/72events；
+  原始错误未保留，不声称具体原因已知。补固定accessor错误的安全反馈与逻辑DATE/dtype契约；4项RED→GREEN，
+  NAS原image离线复现Arrow文本日期的`.dt`故障并验证显式转换不改值。live348表不变，未继续A2/UI，
+  见 [Cell反馈记录](research/complex-3f876865-cell-feedback.md)。
 - [ ] 新clean build/scratch验证完整L4A1及后续多轮，再继续上述 F5 / F7；不另跑 child 历史六问，也不复用 core4 PASS。
 
 **F6 READY 轮次恢复边界（2026-08-30，历史）**

@@ -212,6 +212,15 @@ function safeCellErrorName(observation: AnalysisCellObservation): string | null 
 
 function safeCellErrorIdentifier(observation: AnalysisCellObservation): string | null {
   const value = observation.error?.value.trim() ?? "";
+  // These fixed library messages carry no data. Never include an unknown message or suffix.
+  if (observation.error?.name === "AttributeError") {
+    if (value === "Can only use .dt accessor with datetimelike values") {
+      return "PANDAS_DATETIME_ACCESSOR_REQUIRES_CONVERSION";
+    }
+    if (value === "Can only use .str accessor with string values!") {
+      return "PANDAS_STRING_ACCESSOR_REQUIRES_STRING_VALUES";
+    }
+  }
   const boundedCode = value.match(/^([A-Z][A-Z0-9_]{2,127})$/u)?.[1];
   if (boundedCode) return boundedCode;
   const direct = value.match(/^['"]([A-Za-z_][A-Za-z0-9_.-]{0,127})['"]$/u)?.[1];
@@ -245,6 +254,15 @@ function safePolicyViolationIdentifier(input: {
 }
 
 function cellRepairInstruction(observation: AnalysisCellObservation): string {
+  if (observation.error?.name === "AttributeError") {
+    const identifier = safeCellErrorIdentifier(observation);
+    if (identifier === "PANDAS_DATETIME_ACCESSOR_REQUIRES_CONVERSION") {
+      return "Submit changed source. The logical date schema does not guarantee a pandas datetime dtype. For a declared date/time column only, use pandas.to_datetime(series, errors='raise') before .dt access. Preserve the declared timezone, original calendar dates, rows, and nulls; never coerce invalid dates to NaT or infer a new time window. Work on a derived Series or DataFrame copy, not the protected input. The server will assign a fresh Cell identity.";
+    }
+    if (identifier === "PANDAS_STRING_ACCESSOR_REQUIRES_STRING_VALUES") {
+      return "Submit changed source. Use string operations only on a declared STRING column, explicitly preserving null values. Never stringify numeric measures or missing values to force .str access; keep the protected input unchanged. The server will assign a fresh Cell identity.";
+    }
+  }
   if (observation.error?.name === "KeyError") {
     return "Submit changed source. Use only exact field names from inputs[].fields in the initial governed context. Do not inspect runtime state with reflection, denied imports, or file reads. The server will assign a fresh Cell identity.";
   }
