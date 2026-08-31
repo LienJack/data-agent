@@ -22,6 +22,7 @@ import {
   sha256ContentHash,
   sideEffectReceiptSchema,
 } from "@data-agent/contracts";
+import { publicAnalysisProgramProtocolDiagnostic } from "../providers/analysis-program-protocol-diagnostic.js";
 import type { RunDisplayEventInput, RunExecutionContext } from "./run-worker-runner.js";
 import { failure, occurredAt, receiptMatchesRequest, success } from "./run-worker-shared.js";
 
@@ -275,7 +276,12 @@ export function createRunExecutionContext({
               tool_name: MODEL_REQUEST_TOOL_NAME,
               summary: `模型请求失败 · ${provider}/${modelId}`,
               error_code: result.error.code,
-              output: null,
+              output:
+                input.turn?.kind === "SPECIALIST" &&
+                input.turn.stage === "ANALYSIS_PROGRAM" &&
+                result.error.code === "MODEL_STREAM_PROTOCOL_VIOLATION"
+                  ? publicAnalysisProgramProtocolDiagnostic(result.error.details)
+                  : null,
               duration_ms: measuredDuration,
               profile_id: null,
               task_id: null,

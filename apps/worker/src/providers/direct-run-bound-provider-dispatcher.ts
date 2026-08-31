@@ -43,6 +43,7 @@ import {
   buildRootConversationMessages,
   collectProviderTaskContextMessageIds,
 } from "../teams/conversation-context-builder.js";
+import { createAnalysisProgramProtocolDiagnostic } from "./analysis-program-protocol-diagnostic.js";
 import type { ProviderTaskArtifactAuthority } from "./postgres-provider-task-artifact.js";
 import { createTrustedUtf8InputTokenUpperBoundCounter } from "./trusted-input-token-upper-bound.js";
 
@@ -748,7 +749,12 @@ export function createDirectRunBoundProviderDispatcher(input: {
           : createDirectModelProviderPort(providerInput);
         try {
           const toolCalls: unknown[] = [];
+          const programDiagnostic =
+            specialistTurn?.stage === "ANALYSIS_PROGRAM"
+              ? createAnalysisProgramProtocolDiagnostic()
+              : null;
           for await (const event of provider.stream(request)) {
+            if (event.event_type === "TEXT_DELTA") programDiagnostic?.append(event.delta);
             if (event.event_type === "TOOL_CALL_CANDIDATE") {
               toolCalls.push(projectToolCallCandidate(event));
             }
@@ -797,6 +803,17 @@ export function createDirectRunBoundProviderDispatcher(input: {
               };
             }
             if (event.event_type === "FAILED" || event.event_type === "THROTTLED") {
+              if (event.reason_code === "MODEL_STREAM_PROTOCOL_VIOLATION" && programDiagnostic) {
+                return {
+                  ok: false,
+                  error: {
+                    code: event.reason_code,
+                    message: "模型 Provider 调用失败。",
+                    retryable: event.retryable,
+                    details: { analysis_program_protocol: programDiagnostic.finish() },
+                  },
+                };
+              }
               return failure(event.reason_code, "模型 Provider 调用失败。", event.retryable);
             }
           }

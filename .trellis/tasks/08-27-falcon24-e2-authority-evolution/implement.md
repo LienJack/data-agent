@@ -1776,7 +1776,10 @@ Diagnostic/Q1/C1任一正式首次失败必须写既有 authority支持的 immut
     先观察缺模块/旧Profile RED，后补输入/生产Tool/真实admission与完成校验；旧占位哈希夹具改为真实已提交引用。
     最终 Worker Analysis/Teams/dispatcher、admission和依赖边界54文件643/643，Worker typecheck/build、9文件Biome、
     Trellis validate/diff check通过；没有调用外部模型或写库，复杂四层业务仍待fresh scratch/正式15回合。
-- [ ] 全部组件闭合后进入上述 fresh scratch / F5 / F7；不另跑 child 历史六问，也不复用 core4 PASS。
+- [x] clean6b354a6e build8/8/full unit15/15及scratch原认证/Finalizer通过；真实L4A1出现planner协议失败，Semantic/Text2SQL已接受，
+  Python尚未执行。保留FAILED Run，不继续后续题或UI；live348表before/after一致，当前临时服务/browser停用。
+  已补安全结构诊断和producer→display回归，实际provider失败原因仍待新build证明，详见 [失败记录](research/complex-6b354a6e-planner-failure.md)。
+- [ ] 新clean build/scratch依据真实planner诊断修复后继续上述 F5 / F7；不另跑 child 历史六问，也不复用 core4 PASS。
 
 **F6 READY 轮次恢复边界（2026-08-30，历史）**
 

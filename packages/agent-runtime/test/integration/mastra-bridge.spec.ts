@@ -682,6 +682,7 @@ describe("Mastra execution bridge integration", () => {
       reason_code: "MODEL_STREAM_PROTOCOL_VIOLATION",
       retryable: false,
     });
+    expect(events.some((event) => event.event_type === "TEXT_DELTA")).toBe(true);
   });
 
   it.each([

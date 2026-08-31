@@ -176,6 +176,15 @@ conformance 失败项。公开项只取 `PROVIDER_CONFORMANCE_CHECKS` 的固定�
 同 Run `run.tool_failed.summary` 并进入 CLI HOLD 报告；不得输出 raw provider error/response、
 凭据、任意字符串字段，也不得为获取诊断重放已终态认证。此规则不向普通问答新增认证门禁。
 
+Analysis planner 的 `MODEL_STREAM_PROTOCOL_VIOLATION` 须在同 Run `tool_failed.output`
+保留闭合的 `analysis-program-protocol-diagnostic@1.0.0`：仅 JSON/schema 分类与至多8个
+校验代码/白名单结构路径（每路径至多12项），不暴露值、未知键名、原始错误或响应。
+仅该 stage 临时捕获至多64KiB文本，越界清空；原 schema、失败码、retryable和调用预算不变。
+Dispatcher producer 与 Run display consumer 双重严格验证，其他 stage/error 的 output 仍为 null。
+诊断不是候选修复或 PASS；旧失败内容未捕获时不能倒推出根因，已终态 Run 不重放。
+回归须覆盖真实 pinned bridge 的 invalid-output TEXT_DELTA、producer→display、分块/超限、
+schema refinement、未知字段脱敏、伪造 details 拒绝和非目标 stage/error 不透传。
+
 | Condition | Stable result |
 | --- | --- |
 | non-V3 or non-Root lease | `ROOT_AGENT_LEASE_VERSION_UNSUPPORTED` |
