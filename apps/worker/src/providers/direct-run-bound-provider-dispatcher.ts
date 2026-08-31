@@ -114,6 +114,17 @@ export function buildRootLoopMessages(input: unknown) {
           },
         ]
       : []),
+    {
+      role: "system" as const,
+      content: [
+        "Root response contract for this normal turn: return either native delegation tool calls or exactly one FINAL_ANSWER JSON object matching the registered schema. Never return bare prose, Markdown fences, or a text-described tool call.",
+        "Historical assistant answers are context, not current-Run evidence. They do not authorize an Artifact reference or a workspace fact.",
+        request.accepted_input_artifacts.length > 0 ||
+        request.tool_observations.some((observation) => observation.status === "COMPLETED")
+          ? "Use only exact accepted current-Run references and their verified projections. Delegate if the current request still needs missing governed evidence."
+          : "No accepted current-Run Artifact is available. If the answer requires workspace-derived facts, use a capable native delegation to establish new evidence. General knowledge may use the strict FINAL_ANSWER JSON schema.",
+      ].join("\n"),
+    },
   ];
 }
 

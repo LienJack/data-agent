@@ -39,6 +39,10 @@ Root turn 0..3 (AUTO)
   或通过伪 Tool Call 包装最终答案。REQUIRED/无可用工具的 structured-output 路径不变。
 - Root system message 从实际 `rootAgentFinalAnswerOutputSchema` 派生完整 JSON Schema，不能只给 `sections:[...]` 占位形状。
   Schema 进入原 message projection/hash/token preflight；不另设模型输出或答案权威。
+- 每个正常 Root turn 在冻结历史、当前接受证据与反馈之后追加 server-owned 协议提醒：native delegation 或严格
+  `FINAL_ANSWER` JSON，不允许裸 prose/Markdown/文本伪工具调用。历史 assistant 不是本 Run 证据；没有接受输入或
+  completed Tool Result 时必须明确当前无 Artifact，不能把上一轮表格/图表引用提升为当前事实。一般知识仍可严格 JSON 直答。
+  提醒进入同一消息 hash/token preflight，不修改历史、不修补模型原文、不把已失败/OUTCOME_UNKNOWN调用重放。
 - 最后一次正常模型决策可以委派产出最终证据。其已验收 `FINAL_ANSWER_EVIDENCE` 在四次决策预算之外仍须通过既有
   Host answer verifier 进行纯确定性收敛；这不是第五次 Root/model/tool 决策，不增加任何模型或工具调用预算。
   先保存 `turn_index=4, terminal=false` 的最终证据 checkpoint，再验收并保存终态。中断恢复只重复幂等答案验收，
@@ -105,6 +109,11 @@ The optional context travels only through ordinary `input_artifact_refs`; it doe
 多轮Root必须区分历史assistant消息与当前Run Tool Results：历史中的“已接受”、日期、排名或request-only算子不是本轮authority。
 追加分类或指代解析仍保留用户原比较/窗口意图，并通过本Run SemanticQueryContext重新建立可执行语义；不复制旧排名到SQL objective。
 这不新增Host路由或固定DAG；普通物理行查询仍可直达Text2SQL，缺比较证明由执行侧独立拒绝。
+
+Root 同样必须区分 published `min_time/max_time` 覆盖元数据和用户请求窗口。当前/历史用户没有时间限制的总量，
+不能由 Root objective 自行加入覆盖期筛选。无界总量被报 time binding/window 错误时，先纠正自己额外加入的范围，
+不能将同一矛盾重复派发给 Text2SQL。用户显式/继承的时间范围必须保留并获得 exact temporal Dimension/context。
+现有 SQL 时间选择、source coverage 和发布范围校验不变；Root 指令不能授权未选 Dimension 或覆盖 compiler。
 
 Host/port/database/credential values, SecretRef payloads, raw rows and private prompts are never projected to the model or public trace。
 

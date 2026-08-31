@@ -43,6 +43,15 @@ async function catalog(
 }
 
 describe("Root Agent Harness", () => {
+  it("does not turn published coverage into an unrequested SQL time filter", async () => {
+    const message = await buildRootAgentSystemMessage(await catalog(["semantic-management-agent"]));
+    expect(message).toContain("Published time-domain coverage is not a requested time window");
+    expect(message).toContain("min_time/max_time are availability metadata");
+    expect(message).toContain("unbounded totals remain unbounded");
+    expect(message).toContain("Correct your delegation objective before another Text2SQL call");
+    expect(message).toContain("retain the user's explicit or inherited time restriction");
+  });
+
   it("rejects Analysis's extra Semantic input and accepts a new call with only the exact QueryEvidence", async () => {
     const frozenCatalog = await catalog(["governed-analysis-agent"], ["QueryEvidence"]);
     const query = {

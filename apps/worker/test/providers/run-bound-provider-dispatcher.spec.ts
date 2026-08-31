@@ -267,6 +267,10 @@ describe("audited run-bound Root provider coordinator", () => {
         { role: "assistant", content: history.content },
         { role: "user", content: current.content },
         { role: "system", content: "Current normal Root turn index: 0." },
+        expect.objectContaining({
+          role: "system",
+          content: expect.stringContaining("No accepted current-Run Artifact is available"),
+        }),
       ],
       tool_allowlist: ["delegate_to_subagent@2"],
     });

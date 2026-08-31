@@ -418,6 +418,24 @@ describe("direct run-bound provider retry policy", () => {
     expect(validate("FINAL", ["publish_analysis_result"])).toBe(false);
   });
 
+  it("ends a fresh Root turn with the strict output and historical-evidence boundary", () => {
+    const messages = directRunBoundProviderDispatcherInternals.buildRootLoopMessages({
+      kind: "ROOT",
+      turn_index: 0,
+      tool_observations: [],
+      verifier_feedback: null,
+    });
+    expect(messages.at(-1)).toMatchObject({ role: "system" });
+    expect(messages.at(-1)?.content).toContain(
+      "native delegation tool calls or exactly one FINAL_ANSWER JSON object",
+    );
+    expect(messages.at(-1)?.content).toContain("Never return bare prose");
+    expect(messages.at(-1)?.content).toContain("No accepted current-Run Artifact is available");
+    expect(messages.at(-1)?.content).toContain(
+      "Historical assistant answers are context, not current-Run evidence",
+    );
+  });
+
   it.each([
     "ROOT_ANSWER_ARTIFACT_NOT_ACCEPTED",
     "ROOT_AGENT_PROVIDED_UNSUPPORTED_INPUT_ARTIFACT",
@@ -496,11 +514,18 @@ describe("direct run-bound provider retry policy", () => {
           role: "system",
           content: expect.stringContaining(reasonCode),
         }),
+        expect.objectContaining({
+          role: "system",
+          content: expect.stringContaining("Use only exact accepted current-Run references"),
+        }),
       ]);
       expect(messages[1]?.content).toContain(
         '"schema_version":"root-accepted-input-artifact@1.0.0"',
       );
       expect(messages[3]?.content).toContain("Host Root verifier feedback:");
+      expect(messages.at(-1)?.content).not.toContain(
+        "No accepted current-Run Artifact is available",
+      );
       expect(messages[1]?.content).not.toContain('"rows":');
       expect(messages[2]).not.toHaveProperty("tool_call_id");
       expect(messages[2]?.content).toContain('"tool_call_id":"query-1"');

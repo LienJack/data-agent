@@ -1880,6 +1880,13 @@ Diagnostic/Q1/C1任一正式首次失败必须写既有 authority支持的 immut
     仅输入/输出Artifact类型校验新增checkpoint后的正常回合反馈，原四回合预算、目录/权限/Oracle不变。
     Worker61+AgentRuntime11聚焦测试及两包typecheck通过；旧Run不重放，源348表不变，临时服务关闭、卷保留。
     见 [Root类型反馈闭包](research/complex-70b520e8-root-type-feedback.md)；A2整体FAIL，formal15仍未开始。
+  - 5d1cf6f0新scratch A1及A2均业务+同Run UI通过（分别73/76 Trace节点）；A2完整48行、分群Python输出
+    原算法0差异、整体同比排名/贡献均通过来源核验。没有拼接旧构建PASS。
+    A3首个Root调用为`AUTO_RESPONSE_INVALID_JSON`→OUTCOME_UNKNOWN，未执行Subagent；独立B1 Root把coverage
+    当请求过滤，3个Text2SQL task各2候选失败。原失败保留，B2/B3未提交，formal15未开始。
+    Root补齐coverage≠请求窗口规则，并在历史/观察之后重申原响应协议；不改SQL、权限、Provider失败处理或预算。
+    95项聚焦测试与两包typecheck通过；源348表不变，服务/两浏览器关闭、scratch卷保留。
+    见 [Root交接复盘](research/complex-5d1cf6f0-root-handoff.md)；后续需新clean build验证真实效果。
 
 **F6 READY 轮次恢复边界（2026-08-30，历史）**
 
