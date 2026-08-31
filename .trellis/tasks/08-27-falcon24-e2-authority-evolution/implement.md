@@ -1779,7 +1779,10 @@ Diagnostic/Q1/C1任一正式首次失败必须写既有 authority支持的 immut
 - [x] clean6b354a6e build8/8/full unit15/15及scratch原认证/Finalizer通过；真实L4A1出现planner协议失败，Semantic/Text2SQL已接受，
   Python尚未执行。保留FAILED Run，不继续后续题或UI；live348表before/after一致，当前临时服务/browser停用。
   已补安全结构诊断和producer→display回归，实际provider失败原因仍待新build证明，详见 [失败记录](research/complex-6b354a6e-planner-failure.md)。
-- [ ] 新clean build/scratch依据真实planner诊断修复后继续上述 F5 / F7；不另跑 child 历史六问，也不复用 core4 PASS。
+- [x] 8a82aac1 fresh scratch再次L4A1，安全诊断真实闭合：两次planner在非空operator_obligations[0]发生schema custom拒绝；
+  接受输入对应现有描述性月度方法required_operator_obligations=[]。提示改为完整复制Host声明、明确空数组，不改schema或预算。
+  Run48a12b09-191d-8798-b767-00c3d0b383c6 FAILED保留，未进入Python/UI；live348表仍完全一致。
+- [ ] 新clean build/scratch验证精确operator提示修复后继续上述 F5 / F7；不另跑 child 历史六问，也不复用 core4 PASS。
 
 **F6 READY 轮次恢复边界（2026-08-30，历史）**
 

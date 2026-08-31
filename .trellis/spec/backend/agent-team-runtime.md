@@ -185,6 +185,11 @@ Dispatcher producer 与 Run display consumer 双重严格验证，其他 stage/e
 回归须覆盖真实 pinned bridge 的 invalid-output TEXT_DELTA、producer→display、分块/超限、
 schema refinement、未知字段脱敏、伪造 details 拒绝和非目标 stage/error 不透传。
 
+Planner 必须按选中方法顺序完整复制 `required_operator_obligations`（含全部嵌套绑定）；
+空数组是明确的描述性合同，不能因问题包含趋势/同比等意图自行增加统计检验。
+提示、method registry 与 compiler exact-equality 校验必须一致；不删除既有强制统计方法的算子。
+回归同时验证 descriptive `[]`、合法但未经要求的算子拒绝、强制算子不许遗漏。
+
 | Condition | Stable result |
 | --- | --- |
 | non-V3 or non-Root lease | `ROOT_AGENT_LEASE_VERSION_UNSUPPORTED` |

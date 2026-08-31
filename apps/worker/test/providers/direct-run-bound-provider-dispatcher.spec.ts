@@ -5,6 +5,20 @@ import {
 } from "../../src/providers/direct-run-bound-provider-dispatcher.js";
 
 describe("direct run-bound provider retry policy", () => {
+  it("requires exact Host operator obligations, including empty descriptive methods", () => {
+    const prompt = directRunBoundProviderDispatcherInternals.analysisProgramSpecialistSystemPrompt(
+      '{"method_registry":{"entries":[{"method_id":"published-monthly-multi-measure-comparison@1","required_operator_obligations":[]}]}}',
+    );
+    expect(prompt).toContain("Copy each selected method's complete required_operator_obligations");
+    expect(prompt).toContain("preserve their order and every nested field exactly");
+    expect(prompt).toContain('return "operator_obligations":[]');
+    expect(prompt).toContain(
+      "Do not add statistical tests merely because the question asks for a trend",
+    );
+    expect(prompt).toContain(
+      "Do not reconstruct operator ids, call ids, input lineage or result bindings",
+    );
+  });
   it("expresses a rejected SQL candidate as assistant history followed by current Host feedback", () => {
     const candidate = {
       schema_version: "text2sql-query-candidate@1.0.0",

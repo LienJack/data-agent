@@ -442,6 +442,21 @@ describe("generic analysis program host compiler", () => {
     ).rejects.toThrowError("ANALYSIS_PROGRAM_OPERATOR_REQUIREMENT_MISMATCH");
   });
 
+  it("rejects a model-invented operator even when it is schema-valid for an empty descriptive method", async () => {
+    const input = await fixture();
+    const validButUnrequired = await candidateV2(input, {
+      operator_obligations: [trendObligation()],
+    });
+    expect(analysisProgramCandidateSchema.safeParse(validButUnrequired).success).toBe(true);
+    await expect(
+      compileAnalysisProgramCandidate({
+        ...input,
+        candidate: validButUnrequired,
+        method_registry: methodRegistry(input),
+      }),
+    ).rejects.toThrowError("ANALYSIS_PROGRAM_OPERATOR_REQUIREMENT_MISMATCH");
+  });
+
   it("rejects a host contract outside the selected semantic authority", async () => {
     const input = await fixture();
     const mismatchedContract = await buildAnalysisResultContract(
