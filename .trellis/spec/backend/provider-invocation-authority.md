@@ -132,6 +132,10 @@ return committed.protectedResponse;
 - 允许对明确可重试的网络、限流、超时或不可用错误做一次进程内重试；不确定是否送达时不得无限重试。
 - 直连结果不是 SQL、Evidence 或业务结论权威。数据问题仍必须先走只读 Sandbox，并提交 QueryEvidence；
   通用问答输出只能作为 Run 的公开回答投影。
+- Analysis FINAL可携带内部Executor在原Oracle后生成的`final_summary_constraint`，不是浏览器或模型提供的Schema。
+  仅对该调用建立原两字段响应的literal收窄，约束内容进入task hash；共享registry、其他请求及旧响应协议不变。
+  TOOL阶段、空白/超长约束在网络前拒绝；不能把不匹配的模型文本替换成服务端文本后伪称原响应。
+  业务来源/解释接收和恢复仍由 [Analysis反馈契约](./analysis-agent-feedback.md) 及原阶段权威验证。
 
 ### Required tests
 

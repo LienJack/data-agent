@@ -30,6 +30,7 @@ import {
 import { semanticQuerySelectionIntentSchema } from "@data-agent/contracts/artifacts";
 import { POSTGRESQL_REQUEST_DERIVATION_REPAIR_HINTS } from "@data-agent/platform/datasource-adapters";
 import { z } from "zod";
+import { analysisFinalResponseSchema } from "../analysis/analysis-final-response.js";
 import { analysisProgramCandidateSchema } from "../analysis/analysis-program-compiler.js";
 import {
   ANALYSIS_MODEL_TOOL_ALLOWLIST,
@@ -414,6 +415,20 @@ export function createDirectRunBoundProviderDispatcher(input: {
 
       const analysisPython = requestInput.analysis_python;
       const analysisAgent = requestInput.analysis_agent;
+      let responseSchemas = schemas;
+      if (analysisAgent?.final_summary_constraint !== undefined) {
+        try {
+          if (analysisAgent.phase !== "FINAL") throw new TypeError("FINAL_REQUIRED");
+          responseSchemas = new ServerModelResponseSchemaRegistry([
+            {
+              response_schema_version: ANALYSIS_AGENT_FINAL_RESPONSE_SCHEMA_VERSION,
+              schema: analysisFinalResponseSchema(analysisAgent.final_summary_constraint),
+            },
+          ]);
+        } catch {
+          return failure("ANALYSIS_FINAL_CONSTRAINT_INVALID", "分析事实摘要约束无效。");
+        }
+      }
       const providerSmoke = requestInput.turn?.kind === "PROVIDER_SMOKE";
       const rootTurn = requestInput.turn?.kind === "ROOT";
       const rootRequest = rootTurn ? requestInput.turn : null;
@@ -621,6 +636,9 @@ export function createDirectRunBoundProviderDispatcher(input: {
                     phase: analysisAgent.phase,
                     allowed_tool_names: analysisAgent.allowed_tool_names,
                     messages: analysisAgent.messages,
+                    ...(analysisAgent.final_summary_constraint !== undefined
+                      ? { final_summary_constraint: analysisAgent.final_summary_constraint }
+                      : {}),
                   }
                 : analysisPython
                   ? {
@@ -789,7 +807,7 @@ export function createDirectRunBoundProviderDispatcher(input: {
                 ? binding
                 : null,
           },
-          response_schema_registry: schemas,
+          response_schema_registry: responseSchemas,
           input_token_counter: createTrustedUtf8InputTokenUpperBoundCounter(),
           dispatch_marker: { mark_dispatched: async () => {} },
           abort_signal: signal,

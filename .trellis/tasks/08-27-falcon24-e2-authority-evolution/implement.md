@@ -1851,6 +1851,12 @@ Diagnostic/Q1/C1任一正式首次失败必须写既有 authority支持的 immut
     缺窗口先RED，完整窗口/纯定义/歧义兼容；Worker134与Agent Runtime8项、两包typecheck通过。
     见 [同比窗口完整性](research/complex-d9a91228-comparison-window.md)；源348表不变，本轮临时服务清理，scratch停机保留。
     下一步新clean build/fresh scratch从A1开始，未提交A3/B或formal15，不拼接本次A1。
+  - [x] a7438392新scratch A1 SUCCEEDED/57events、来源/原stage0差异，但摘要同时写7月+0.96%和下半年持续负，业务FAIL。
+    没有A2/UI，不能声称新窗口校验已获真实证明；源348表不变，本轮临时服务清理，scratch停机保留。
+    按用户允许降低重复失败题难度，月度/分组同比改用原Oracle后受验事实文本和当前请求literal响应约束，
+    仍实际调用模型且拒绝不匹配文本；记录前/恢复时重验，不替换旧答案、不改值/表/图/SQL proof、原调用预算不变。
+    37文件432项相关测试、Worker typecheck、Biome/Trellis/diff通过；不以单测代替下一真实Run。
+    见 [事实摘要边界](research/complex-a7438392-factual-summary.md)；新clean build后从A1继续复杂链路，未签formal15 PASS。
   再继续上述 F5 / F7；不另跑 child 历史六问，也不复用 core4 PASS。
 
 **F6 READY 轮次恢复边界（2026-08-30，历史）**

@@ -9,6 +9,10 @@ import {
 } from "@data-agent/contracts/ports";
 import type { RunProviderDispatchCapability } from "../runs/run-execution-context.js";
 import {
+  analysisFinalResponseSchema,
+  assertAnalysisFinalSummary,
+} from "./analysis-final-response.js";
+import {
   analysisModelToolCallCandidateSchema,
   analysisOperatorArgumentSymbols,
 } from "./analysis-tool-descriptors.js";
@@ -53,6 +57,7 @@ export interface AnalysisAgentModelPort {
     readonly allowed_tool_names: readonly AnalysisToolCallCandidate["tool_name"][];
     readonly messages: ModelProviderRequest["messages"];
     readonly max_output_tokens: number;
+    readonly final_summary_constraint?: string;
   }): Promise<AnalysisAgentModelTurnResult>;
 }
 
@@ -193,6 +198,10 @@ export function createRunBoundDeepSeekAnalysisAgentModel(
 ): AnalysisAgentModelPort {
   return Object.freeze({
     async turn(input: Parameters<AnalysisAgentModelPort["turn"]>[0]) {
+      if (input.final_summary_constraint !== undefined) {
+        if (input.phase !== "FINAL") throw new TypeError("ANALYSIS_FINAL_CONSTRAINT_INVALID");
+        analysisFinalResponseSchema(input.final_summary_constraint);
+      }
       const logicalCallId = deterministicAnalysisUuid(
         `analysis-agent-provider\0${input.run_id}\0${input.analysis_program_id}\0${input.node_id}\0${input.turn_index}\0${input.phase}`,
       );
@@ -206,6 +215,9 @@ export function createRunBoundDeepSeekAnalysisAgentModel(
           messages: input.messages,
           response_schema_version: "analysis-agent-final@1.0.0",
           max_output_tokens: input.max_output_tokens,
+          ...(input.final_summary_constraint !== undefined
+            ? { final_summary_constraint: input.final_summary_constraint }
+            : {}),
         },
       });
       if (!result.ok) throw new TypeError(result.error.code);
@@ -260,11 +272,13 @@ export function createRunBoundDeepSeekAnalysisAgentModel(
       if (result.value.tool_calls.length !== 0) {
         throw new TypeError("ANALYSIS_AGENT_TOOL_PROTOCOL_INVALID");
       }
+      const response = analysisAgentFinalResponseSchema.parse(
+        parseJsonDocument(result.value.output_text),
+      );
+      assertAnalysisFinalSummary(response.summary_zh, input.final_summary_constraint);
       return {
         phase: "FINAL" as const,
-        response: analysisAgentFinalResponseSchema.parse(
-          parseJsonDocument(result.value.output_text),
-        ),
+        response,
         provider_invocation_ref: providerInvocationRef,
       };
     },

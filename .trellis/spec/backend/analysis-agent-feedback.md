@@ -10,6 +10,8 @@
 - `buildAnalysisAgentInitialMessages`：受治理输入schema、绑定symbol、固定runtime与result合同。
 - `safeCellErrorIdentifier` / `cellRepairInstruction`：无数据的错误类别与等权限修复说明。
 - `buildAnalysisFinalMessages({ objective, result_summary, metric_units, ... })`：Oracle后的唯一解释上下文。
+- `buildVerifiedMonthlySummary`：原FULL Oracle后、原当前Run Context/QueryEvidence/contract重新绑定的同比事实展示。
+- `analysisFinalResponseSchema` / `assertAnalysisFinalSummary`：当前请求的原两字段响应收窄和接收/恢复校验。
 
 ## 3. Contracts
 
@@ -31,6 +33,16 @@
   穷尽性表述；序列省略时不能从排名/缺失总数猜完整序列。同比为负与同比增速持续下降不同，必须区分降幅扩大和收窄。
 - `largest_drops` 仅原序列相邻月变化，不能称同比；组统计不能称整体。分类同比只依据受验 `period_comparison` 的
   `TOTAL_YOY_RATE/BOTH_PERIOD_GROUPS`；增速贡献按百分点展示，不称损失占比。对象缺失/摘要省略须披露不能建立该拆解。
+- 用户允许降低反复失败问题的难度后，当前月度同比/分组同比采用受验事实摘要，不再把模型自由概括当作必备能力。
+  仅适用上述两个原月度合同且含明确PERIOD_COMPARISON_RATE映射；按合同/源角色选择，不按题目、列名或测试数据路由。
+  原FULL Oracle先完成；重验同Run QueryEvidence、AnalysisContext、原plan/contract hash、完整observations和原描述性算法结果。
+  按原业务日历展示本期/同期/同比及首尾（不声称连续趋势）；分组按已受验整体同比和百分点贡献展示至多3个最差月、每月至多3个负向贡献类，明确完整组见表。
+  缺失/零基数、限制标识和原单位保留，禁止推断币种/因果；格式化仅用于展示，不修改原数值/表/图。
+  文本最多6000字符/18000 UTF-8字节；超限失败关闭，不截断或回退自由解释。
+- Executor把上述文本作为服务端`final_summary_constraint`交给原一次FINAL调用：当前请求Zod将原`summary_zh`收窄为精确literal，
+  该约束进入dispatch task hash，不修改共享registry或外部请求Schema版本。模型响应必须逐字匹配；不得后台替换不符的响应。
+  新响应在recordExplanation前检查；恢复时原explanation hash通过后仍重验约束，不调用模型改写历史。
+  原stage/Oracle/Explanation/Authority链和预算不变；其他合同保持原两字段解释。此模式证明事实展示，不宣称自由语言推理通过。
 
 ## 4. Validation & Error Matrix
 
@@ -54,6 +66,8 @@ Bad：根据一个全局限制码写“两端均缺失”，或为了继续运�
 - focused回归不算真实业务或UI验收；后续按同构建/same Run独立复核。
 - 月度完整聚合序列原样保留、跨年/非对称NULL/多个正增长月；错误contract、超12行/超预算仍省略，其他collections不泄漏。
   生产Oracle成功后进入同一FINAL投影；保留原stage hash的离线输入复现不是原自然语言答案修复或新业务PASS。
+- 精确文本的接收/拒绝、原不受限协议兼容、非法TOOL约束零调用、per-request registry互不污染、约束改变task hash；
+  多月正负/空值/0、别名与时区不改角色、单位不推断、分组排名和百分点贡献、源/contract/Run/数据篡改拒绝。
 
 ## 7. Wrong vs Correct
 

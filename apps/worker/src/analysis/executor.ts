@@ -46,6 +46,7 @@ import {
   buildAnalysisSandboxExecutionReceipt,
   executeAnalysisAgentSandbox,
 } from "./analysis-agent-sandbox-executor.js";
+import { assertAnalysisFinalSummary } from "./analysis-final-response.js";
 import type { AnalysisLifecycleAuthorityPort } from "./analysis-lifecycle-authority.js";
 import type { AnalysisToolLoopProgressEvent } from "./analysis-tool-loop.js";
 import type { AnalysisAgentModelPort } from "./deepseek-analysis-agent.js";
@@ -61,6 +62,7 @@ import { MONTHLY_COMPARISON_CONTRACT_ID } from "./monthly-comparison-planning.js
 import { gateAnalysisProgram } from "./program-gate.js";
 import type { AnalysisResultClosureArtifact } from "./result-publisher.js";
 import { type AnalysisSkillCatalog, DEFAULT_ANALYSIS_SKILL_CATALOG } from "./skill-catalog.js";
+import { buildVerifiedMonthlySummary } from "./verified-monthly-summary.js";
 
 type AnalysisProgramNode = AnalysisProgramPayload["nodes"][number];
 
@@ -156,11 +158,17 @@ export function buildAnalysisFinalMessages(input: {
   readonly oracle_result: unknown;
   readonly limitation_codes: readonly string[];
   readonly metric_units: readonly Pick<AnalysisContext["metrics"][number], "metric_ref" | "unit">[];
+  readonly final_summary_constraint?: string;
 }) {
   return [
     Object.freeze({
       role: "system" as const,
       content: [
+        ...(input.final_summary_constraint !== undefined
+          ? [
+              "This is a source-constrained factual summary. Return final_summary_constraint exactly as summary_zh, without additions, paraphrases, deletions or new interpretations. The per-request response schema and Host verify this exact text; the original Python result, Oracle and publication contract are unchanged.",
+            ]
+          : []),
         'Return exactly one JSON object with only these two properties: {"schema_version":"analysis-agent-final@1.0.0","summary_zh":"..."}. Put all disclosed limitations inside summary_zh. The root property limitations and every other additional property are forbidden.',
         "Answer the objective in concise business Chinese using only the verified summary. The objective is intent, not evidence or permission to invent facts. Do not enumerate every auxiliary series statistic, quote internal task instructions, or turn a change in a rate into a new business growth claim.",
         "Read missingness field by field. A null change does not imply both endpoints are null: check first_value and last_value independently; zero is an observed value, not missing. RELATIVE_DELTA_UNDEFINED is a result-level limitation, not evidence that every measure or either particular endpoint is missing. Do not infer missing values from an omitted summary field, collection count, or limitation code; say that the summary does not establish that detail if needed.",
@@ -182,8 +190,13 @@ export function buildAnalysisFinalMessages(input: {
         oracle_result: input.oracle_result,
         limitation_codes: input.limitation_codes,
         metric_units: input.metric_units.map(({ metric_ref, unit }) => ({ metric_ref, unit })),
+        ...(input.final_summary_constraint !== undefined
+          ? { final_summary_constraint: input.final_summary_constraint }
+          : {}),
         instruction:
-          "Explain this immutable Oracle-verified summary in Chinese. State that the complete data table and chart are attached authoritative artifacts, and do not recreate omitted rows or claim causality beyond the accepted analysis. Return only schema_version and summary_zh; express every disclosed limitation inside summary_zh and never add a limitations property.",
+          input.final_summary_constraint !== undefined
+            ? "Return only schema_version and summary_zh. Copy final_summary_constraint exactly into summary_zh; do not independently explain, rewrite or extend the verified facts."
+            : "Explain this immutable Oracle-verified summary in Chinese. State that the complete data table and chart are attached authoritative artifacts, and do not recreate omitted rows or claim causality beyond the accepted analysis. Return only schema_version and summary_zh; express every disclosed limitation inside summary_zh and never add a limitations property.",
       }),
     }),
   ];
@@ -866,6 +879,19 @@ export function createAnalysisProgramExecutor(dependencies: AnalysisExecutorDepe
           ({ artifact_kind: artifactKind }) => artifactKind === "RESULT",
         );
         if (!resultArtifact) throw new TypeError("ANALYSIS_RESULT_PUBLISHED_DOCUMENT_MISSING");
+        const resultDocument: unknown = JSON.parse(
+          new TextDecoder("utf-8", { fatal: true }).decode(resultArtifact.content),
+        );
+        const finalSummary = await buildVerifiedMonthlySummary({
+          result_document: resultDocument,
+          result_contract: node.result_contract,
+          governed_inputs: governedInputs,
+          context: input.context,
+          run_id: input.lease.run_id,
+          limitation_codes: expectation.limitation_codes,
+        });
+        const finalConstraint =
+          finalSummary === undefined ? {} : { final_summary_constraint: finalSummary };
         let explanation: z.infer<typeof analysisAgentFinalResponseSchema>;
         let explanationHash: `sha256:${string}`;
         let explanationProviderInvocationRef: ProviderInvocationResourceRef;
@@ -877,6 +903,7 @@ export function createAnalysisProgramExecutor(dependencies: AnalysisExecutorDepe
           if ((await sha256ContentHash(explanation)) !== explanationHash) {
             throw new TypeError("ANALYSIS_STAGE_EXPLANATION_HASH_MISMATCH");
           }
+          assertAnalysisFinalSummary(explanation.summary_zh, finalSummary);
         } else {
           const finalTurn = await dependencies.model.turn({
             run_id: input.lease.run_id,
@@ -886,15 +913,13 @@ export function createAnalysisProgramExecutor(dependencies: AnalysisExecutorDepe
             phase: "FINAL",
             result_contract: node.result_contract,
             allowed_tool_names: [],
+            ...finalConstraint,
             messages: buildAnalysisFinalMessages({
               objective: input.brief.question,
               stage_id: execution.stage.stage_id,
               stage_hash: execution.stage.stage_hash,
-              result_summary: buildAnalysisNarrativeProjection(
-                JSON.parse(
-                  new TextDecoder("utf-8", { fatal: true }).decode(resultArtifact.content),
-                ),
-              ),
+              result_summary: buildAnalysisNarrativeProjection(resultDocument),
+              ...finalConstraint,
               artifacts: execution.tool_loop.published_result.observation.artifacts,
               oracle_result: expectation.result,
               limitation_codes: expectation.limitation_codes,
@@ -908,6 +933,7 @@ export function createAnalysisProgramExecutor(dependencies: AnalysisExecutorDepe
             throw new TypeError("ANALYSIS_AGENT_TOOL_PROTOCOL_INVALID");
           }
           explanation = finalTurn.response;
+          assertAnalysisFinalSummary(explanation.summary_zh, finalSummary);
           explanationProviderInvocationRef = finalTurn.provider_invocation_ref;
           explanationHash = await dependencies.lifecycle.recordExplanation({
             ...lifecycleIdentity,

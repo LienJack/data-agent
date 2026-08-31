@@ -67,6 +67,7 @@ export interface RunAnalysisAgentTurnRequest {
   readonly messages: ModelProviderRequest["messages"];
   readonly response_schema_version: "analysis-agent-final@1.0.0";
   readonly max_output_tokens: number;
+  readonly final_summary_constraint?: string;
 }
 
 export interface RunAnalysisPythonGenerationRequest {

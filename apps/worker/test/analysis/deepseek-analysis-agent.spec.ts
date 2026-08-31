@@ -84,6 +84,41 @@ describe("run-bound DeepSeek analysis Agent model", () => {
     });
   });
 
+  it.each([true, false])(
+    "binds and checks a source-constrained final response (matches=%s)",
+    async (matches) => {
+      const summary = "2024-07同比0.96%；2024-08同比-12.39%。";
+      const invoke = vi.fn(
+        async (input: Parameters<RunProviderDispatchCapability["invoke"]>[0]) => ({
+          ok: true as const,
+          value: {
+            output_text: JSON.stringify({
+              schema_version: "analysis-agent-final@1.0.0",
+              summary_zh: matches ? summary : "下半年同比持续为负。",
+            }),
+            tool_calls: [],
+            projection: {
+              invocation_id: input.logical_call_id,
+              status: "COMPLETED" as const,
+              provider: "deepseek",
+              model_id: "deepseek-v4-flash",
+            },
+          },
+        }),
+      );
+      const model = createRunBoundDeepSeekAnalysisAgentModel({ invoke });
+      const result = model.turn({ ...request("FINAL"), final_summary_constraint: summary });
+      if (matches)
+        await expect(result).resolves.toMatchObject({
+          phase: "FINAL",
+          response: { summary_zh: summary },
+        });
+      else await expect(result).rejects.toThrow("ANALYSIS_FINAL_SUMMARY_CONSTRAINT_MISMATCH");
+      expect(invoke.mock.calls[0]?.[0].analysis_agent?.final_summary_constraint).toBe(summary);
+      expect(invoke).toHaveBeenCalledOnce();
+    },
+  );
+
   it.each([false, true])(
     "binds chart identity and its table symbol from the server-owned result contract (facet=%s)",
     async (facet) => {
