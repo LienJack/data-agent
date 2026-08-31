@@ -345,6 +345,15 @@ describe("direct run-bound provider retry policy", () => {
     expect(prompt).toContain("do not expose index or governance lookup failures");
   });
 
+  it("can request clarification without inventing candidates or claiming global absence", () => {
+    const prompt = directRunBoundProviderDispatcherInternals.semanticSpecialistSystemPrompt("{}");
+    expect(prompt).toContain("zero or at least two unique sorted candidate_ids");
+    expect(prompt).toContain("no safe mapping for a required part of the request");
+    expect(prompt).toContain("do not invent unrelated candidates");
+    expect(prompt).toContain("does not prove global absence or missing database rows");
+    expect(prompt).toContain("Use request_scoped_operations");
+  });
+
   it("fails closed unless a tool turn exposes a non-empty unique registered subset", () => {
     const validate = directRunBoundProviderDispatcherInternals.validAnalysisToolAllowlist;
     expect(validate("TOOL", ["python_cell"])).toBe(true);

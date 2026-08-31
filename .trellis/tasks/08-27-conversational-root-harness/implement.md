@@ -176,3 +176,13 @@ Semantic → Text2SQL → Analysis，源表/12 行/图表/Context 引用核对�
 审核发现缺口；未运行后续浏览器门禁，未提交后续追问，C7 不得勾选完成。
 详见 [本轮证据与单位上下文修复](research/c7-ad556015-observation.md)。
 先修复已定位的报告边界，focused validation + scoped commit；再继续未完成的同会话协作验收。
+
+## 2026-08-31 后续检查点：未解析映射
+
+`b818da8d` 首轮真实业务与 99-node Trace/QA 已通过；第二轮冻结历史正确，但 Semantic
+协议失败四次、Root 预算耗尽。未重提或续交后续题。见
+[不可变观察与合同缺口分析](research/c7-b818da8d-observation.md)。
+本次补齐零候选 unresolved 状态、Root 澄清及公开解释；SQL pre-I/O 拒绝保持不变。
+下一步按用户允许降低业务难度的最新授权，先做轻量查询—澄清—继续查询的同会话单链路；
+提交前冻结新问题与验收条件，失败停止该 slice 并修复，不能把不同 build 拼接成 PASS。
+C7、本任务与父任务当前仍未完成；生产隔离 HOLD 与旧 formal failure 不变。

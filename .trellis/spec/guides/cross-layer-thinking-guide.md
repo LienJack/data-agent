@@ -53,6 +53,19 @@ For each boundary:
 
 ## Common Cross-Layer Mistakes
 
+### Missing Safe Negative Outcome
+
+A model-facing selection contract must represent a required meaning that cannot
+be safely resolved from its supplied scope. Requiring two candidates for every
+unresolved choice forces an unsupported request toward invented IDs or protocol
+failure. Distinguish unresolved mapping, multiple candidates, empty query results,
+permission denial, and infrastructure failure; none proves the others.
+
+Trace the safe negative outcome through producer prompt, strict contract,
+Host projection, next-agent decision, pre-I/O execution denial, and public answer.
+Test the complete round-trip and unchanged legacy hashes. A reproducible contract
+gap does not prove what an unavailable historical provider response contained.
+
 ### Mistake 1: Implicit Format Assumptions
 
 **Bad**: Assuming date format without checking

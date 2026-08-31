@@ -213,6 +213,24 @@ function renderArtifactFacts(
             .map(({ user_explanation: explanation }) => explanation)
             .join("\n");
         }
+        if (selector === "projection.context.unresolved_ambiguities") {
+          const kinds = {
+            METRIC: "指标",
+            DIMENSION: "维度",
+            FORMULA: "公式",
+            RELATIONSHIP: "关系",
+            TIME: "时间口径",
+            QUALITY: "质量约束",
+          };
+          return semanticContext.unresolved_ambiguities
+            .map((ambiguity) => {
+              const kind = kinds[ambiguity.object_kind];
+              return ambiguity.candidate_ids.length === 0
+                ? `当前请求所需的${kind}映射尚未明确，请先确认业务口径；这不表示系统全局缺少定义或数据库没有记录。`
+                : `${kind}存在多个候选：${ambiguity.candidate_ids.join("、")}，请确认所需口径。`;
+            })
+            .join("\n");
+        }
         return `${selector}=${canonicalizeJson(allowed.get(selector))}`;
       })
       .filter((value) => value.length > 0)

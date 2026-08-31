@@ -135,7 +135,11 @@ export const semanticRequestScopedInterpretationSchema = z
 
 export const semanticQueryAmbiguitySchema = z.strictObject({
   object_kind: semanticQueryObjectKindSchema,
-  candidate_ids: canonicalIdsSchema(32).min(2),
+  // Zero candidates keeps a required mapping unresolved; it does not prove
+  // global absence or authorize inventing a binding. One candidate is not ambiguous.
+  candidate_ids: canonicalIdsSchema(32).refine((ids) => ids.length !== 1, {
+    message: "Unresolved semantic selection needs zero or at least two candidates.",
+  }),
 });
 
 const semanticQuerySelectionIntentDraftSchema = z

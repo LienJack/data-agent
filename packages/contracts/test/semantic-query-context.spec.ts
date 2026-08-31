@@ -190,6 +190,78 @@ function contextInput() {
 }
 
 describe("SemanticQueryContext", () => {
+  it("represents a required semantic mapping with no safe candidate as unresolved", async () => {
+    const ambiguity = { object_kind: "DIMENSION", candidate_ids: [] };
+    const intent = semanticQuerySelectionIntentSchema.parse({
+      schema_version: "semantic-query-selection-intent@1.0.0",
+      answer_scope: "DATA_RESULT_REQUIRED",
+      selected_metric_ids: [],
+      selected_dimension_ids: [],
+      selected_formula_ids: [],
+      selected_relationship_ids: [],
+      selected_time_domain_ids: [],
+      selected_quality_constraint_ids: [],
+      unresolved_ambiguities: [ambiguity],
+    });
+    expect(intent.unresolved_ambiguities).toEqual([ambiguity]);
+    const context = await buildSemanticQueryContext({
+      ...contextInput(),
+      requested_object_ids: [],
+      metrics: [],
+      dimensions: [],
+      formulas: [],
+      relationships: [],
+      physical_bindings: [],
+      time_semantics: [],
+      quality_constraints: [],
+      unresolved_ambiguities: [ambiguity],
+    });
+    expect(await verifySemanticQueryContext(context)).toEqual(context);
+    expect(context.requested_object_ids).toEqual([]);
+    expect(context.unresolved_ambiguities).toEqual([ambiguity]);
+    expect(
+      semanticQuerySelectionIntentSchema.safeParse({
+        ...intent,
+        unresolved_ambiguities: [],
+      }).success,
+    ).toBe(false);
+    expect(
+      semanticQuerySelectionIntentSchema.safeParse({
+        ...intent,
+        unresolved_ambiguities: [{ object_kind: "DIMENSION", candidate_ids: ["dimension.month"] }],
+      }).success,
+    ).toBe(false);
+    for (const candidate_ids of [
+      ["dimension.month", "dimension.month"],
+      ["dimension.z", "dimension.a"],
+      Array.from({ length: 33 }, (_, index) => `dimension.${String(index).padStart(2, "0")}`),
+    ]) {
+      expect(
+        semanticQuerySelectionIntentSchema.safeParse({
+          ...intent,
+          unresolved_ambiguities: [{ object_kind: "DIMENSION", candidate_ids }],
+        }).success,
+      ).toBe(false);
+    }
+    expect(
+      semanticQuerySelectionIntentSchema.safeParse({
+        ...intent,
+        unresolved_ambiguities: [ambiguity, ambiguity],
+      }).success,
+    ).toBe(false);
+    expect(
+      semanticQuerySelectionIntentSchema.safeParse({
+        ...intent,
+        unresolved_ambiguities: [
+          { object_kind: "DIMENSION", candidate_ids: ["dimension.a", "dimension.z"] },
+        ],
+      }).success,
+    ).toBe(true);
+    await expect(
+      verifySemanticQueryContext({ ...context, unresolved_ambiguities: [] }),
+    ).rejects.toThrow();
+  });
+
   async function comparisonContext(
     minimum: string | null,
     end = "2024-11-01T00:00:00.000Z",

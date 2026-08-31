@@ -53,6 +53,15 @@ describe("Root Agent Harness", () => {
     expect(message).toContain("CONTINUATION_INPUT does not force another delegation");
   });
 
+  it("asks for clarification from accepted unresolved semantics without repeating lookup or SQL", async () => {
+    const message = await buildRootAgentSystemMessage(await catalog(["semantic-management-agent"]));
+    expect(message).toContain("non-empty unresolved_ambiguities");
+    expect(message).toContain("projection.context.unresolved_ambiguities");
+    expect(message).toContain("ask a concise clarification question");
+    expect(message).toContain("Do not repeat the same lookup or delegate Text2SQL");
+    expect(message).toContain("not proof of global absence or empty query results");
+  });
+
   it("allows a terminal answer to cite the accepted AnalysisReport", () => {
     expect(
       rootAgentFinalAnswerOutputSchema.safeParse({

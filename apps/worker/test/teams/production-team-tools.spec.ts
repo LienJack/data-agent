@@ -432,7 +432,7 @@ describe("Production Team governed chart publication", () => {
     }
   });
 
-  it("projects frozen relationships and request-scoped YoY without invoking Text2SQL", async () => {
+  it.each(["derived", "unresolved"])("projects %s semantics without SQL", async (mode) => {
     const scope = { app_id: id(1), tenant_id: id(2), environment: "test" } as const;
     const lease = {
       scope,
@@ -463,26 +463,30 @@ describe("Production Team governed chart publication", () => {
       value: {
         output_text: JSON.stringify({
           schema_version: "semantic-query-selection-intent@1.0.0",
-          answer_scope: "SEMANTIC_FACTS_ONLY",
-          selected_metric_ids: ["metric.order_revenue"],
-          selected_dimension_ids: ["dimension.order_month"],
+          answer_scope: mode === "unresolved" ? "DATA_RESULT_REQUIRED" : "SEMANTIC_FACTS_ONLY",
+          selected_metric_ids: mode === "unresolved" ? [] : ["metric.order_revenue"],
+          selected_dimension_ids: mode === "unresolved" ? [] : ["dimension.order_month"],
           selected_formula_ids: [],
-          selected_relationship_ids: ["relationship.order_customer"],
-          selected_time_domain_ids: ["time.order_month"],
+          selected_relationship_ids: mode === "unresolved" ? [] : ["relationship.order_customer"],
+          selected_time_domain_ids: mode === "unresolved" ? [] : ["time.order_month"],
           selected_quality_constraint_ids: [],
-          unresolved_ambiguities: [],
-          request_scoped_operations: [
-            {
-              requested_term: "订单收入同比增长",
-              operator: {
-                kind: "PERIOD_COMPARISON_RATE",
-                metric_id: "metric.order_revenue",
-                time_dimension_id: "dimension.order_month",
-                comparison_offset: { unit: "YEAR", value: 1 },
-                formula: "(current_value - comparison_value) / NULLIF(comparison_value, 0)",
-              },
-            },
-          ],
+          unresolved_ambiguities:
+            mode === "unresolved" ? [{ object_kind: "DIMENSION", candidate_ids: [] }] : [],
+          request_scoped_operations:
+            mode === "unresolved"
+              ? []
+              : [
+                  {
+                    requested_term: "订单收入同比增长",
+                    operator: {
+                      kind: "PERIOD_COMPARISON_RATE",
+                      metric_id: "metric.order_revenue",
+                      time_dimension_id: "dimension.order_month",
+                      comparison_offset: { unit: "YEAR", value: 1 },
+                      formula: "(current_value - comparison_value) / NULLIF(comparison_value, 0)",
+                    },
+                  },
+                ],
         }),
         tool_calls: [],
         projection: { status: "COMPLETED" as const },
@@ -762,7 +766,12 @@ describe("Production Team governed chart publication", () => {
         accepted_semantic_query_context_ref: null,
         delegation: {
           profile: { revision: { profile_id: "semantic-management-agent" } },
-          call: { objective: "订单收入同比如何计算，订单与客户实体如何关联" },
+          call: {
+            objective:
+              mode === "unresolved"
+                ? "按未明确映射的地区筛选收入"
+                : "订单收入同比如何计算，订单与客户实体如何关联",
+          },
         } as ProductionTeamToolFactoryInput["delegation"],
       },
     );
@@ -801,7 +810,38 @@ describe("Production Team governed chart publication", () => {
     });
     expect(JSON.stringify(specialistContext)).not.toContain("unrelated");
     expect(text2sqlPrepare).not.toHaveBeenCalled();
+    expect(text2sqlCompile).not.toHaveBeenCalled();
     expect(text2sqlExecute).not.toHaveBeenCalled();
+    if (mode === "unresolved") {
+      expect(committed).toMatchObject({
+        projection: {
+          kind: "SEMANTIC_CONTEXT",
+          context: {
+            schema_version: "semantic-query-context@1.0.0",
+            answer_scope: "DATA_RESULT_REQUIRED",
+            run_id: lease.run_id,
+            semantic_release: config.semantic_release,
+            datasource: config.datasource,
+            schema_snapshot: config.schema_snapshot,
+            requested_object_ids: [],
+            metrics: [],
+            dimensions: [],
+            formulas: [],
+            // The frozen inference receipt still requires this exact relationship;
+            // unresolved selection must not erase authoritative closure evidence.
+            relationships: [
+              expect.objectContaining({ relationship_id: "relationship.order_customer" }),
+            ],
+            physical_bindings: [],
+            time_semantics: [],
+            quality_constraints: [],
+            unresolved_ambiguities: [{ object_kind: "DIMENSION", candidate_ids: [] }],
+          },
+        },
+      });
+      expect(JSON.stringify(committed)).not.toContain("request_scoped_interpretations");
+      return;
+    }
     expect(committed).toMatchObject({
       projection: {
         kind: "SEMANTIC_CONTEXT",

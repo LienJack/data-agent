@@ -139,6 +139,17 @@ The only model output contract is `text2sql-query-candidate@1.0.0`:
 
 - Semantic consumption verifies the exact historical release and current publication projection hashes. It reads executable metrics/dimensions/formulas, relationships, time semantics and quality constraints from the frozen release contract; no legacy Explorer projection is accepted。
 - The Semantic model returns only `semantic-query-selection-intent@1.0.0`: canonical exact metric/dimension/formula/relationship/time/quality IDs or typed ambiguity candidates. It cannot author definitions, formulas, joins, bindings, SQL or an answer。
+- `unresolved_ambiguities[].candidate_ids` 允许 0 或至少 2 个规范排序、唯一、最多 32 个 ID，禁止单候选。
+  0 仅表示当前冻结范围内，所需映射没有安全解析；不是全局定义不存在、无权限或数据库无记录的证据。
+  已知 primitives 能被现有 request-scoped operator 无歧义闭合时仍必须正常闭合，不得借澄清跳过支持的请求。
+  Host 保留 exact 已选对象与 mandatory inference closure，不编造地区/公式/候选，也不新增发布权威。
+- Accepted context 有任何 unresolved entry 时，Root 引用其 exact Artifact 的
+  `projection.context.unresolved_ambiguities` 并提出简洁澄清；不能重复同一 lookup 或忽略约束后发 SQL。
+  Host 不自动完成 unresolved semantic facts；Text2SQL 的 `TEXT2SQL_SEMANTIC_CONTEXT_AMBIGUOUS`
+  继续在 schema/datasource/Secret/connection I/O 前拒绝。Root Prompt 不替代该执行侧拒绝。
+- 该兼容扩展保持旧合法 payload/hash 字节不变；新的零候选 payload 要求同一冻结构建中的 producer/consumer 同步更新。
+  回归必须覆盖零候选 round-trip、单候选/重复/乱序/超界拒绝、hash tamper、精确 Artifact 引用及 SQL pre-I/O 拒绝；
+  provider 错误码不能替代原始响应证据，不得把可复现的合同缺口宣称为某个历史 provider failure 的唯一已证根因。
 - Host validates every selected ID against the frozen retrieval/inference closure, expands required formula/time/dimension-parent/relationship and physical-binding context, then commits `semantic-query-context@1.0.0` with exact Scope/Run, release/generation/digest, schema snapshot, datasource, retrieval/inference receipts and `context_hash`。
 - `SemanticQueryContext` returns to Root as a structured safe Tool Result. Root may answer a semantic-only question from allowlisted exact fields, or a later Root turn may pass the accepted Artifact through ordinary `input_artifact_refs`; Host does not schedule that later call。
 - Report can run only after accepted `QueryEvidence` is available and must bind source refs exactly。

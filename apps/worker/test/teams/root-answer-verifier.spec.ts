@@ -44,7 +44,7 @@ async function report() {
   });
 }
 
-async function semanticContextDocument() {
+async function semanticContextDocument(unresolved = false) {
   const datasourceId = id(30);
   const context = await buildSemanticQueryContext({
     schema_version: "semantic-query-context@1.0.0",
@@ -84,7 +84,7 @@ async function semanticContextDocument() {
     physical_bindings: [],
     time_semantics: [],
     quality_constraints: [],
-    unresolved_ambiguities: [],
+    unresolved_ambiguities: unresolved ? [{ object_kind: "DIMENSION", candidate_ids: [] }] : [],
   });
   return buildProductTeamArtifactDocument({
     schema_version: "product-team-artifact@2.0.0",
@@ -106,6 +106,38 @@ async function semanticContextDocument() {
 }
 
 describe("Root answer verifier", () => {
+  it("renders accepted unresolved mapping evidence without claiming missing data or global absence", async () => {
+    const document = await semanticContextDocument(true);
+    const verifier = createRootAnswerVerifier({
+      artifacts: { resolveCommitted: async () => ({ ok: true, value: document }) },
+    });
+    const result = await verifier.verify({
+      decision: {
+        schema_version: "root-agent-turn-candidate@1.0.0",
+        kind: "FINAL_ANSWER",
+        scope,
+        run_id: id(3),
+        catalog_snapshot_hash: hash("a"),
+        sections: [
+          {
+            kind: "ARTIFACT_FACTS",
+            artifact_ref: document.artifact_ref,
+            fact_selectors: ["projection.context.unresolved_ambiguities"],
+          },
+        ],
+        public_summary: "需要确认业务口径。",
+      },
+      accepted_artifact_refs: [document.artifact_ref],
+      visible_message_refs: [],
+    });
+    expect(result).toMatchObject({
+      status: "ACCEPTED",
+      evidence_refs: [document.artifact_ref],
+      rendered_text:
+        "当前请求所需的维度映射尚未明确，请先确认业务口径；这不表示系统全局缺少定义或数据库没有记录。",
+    });
+  });
+
   it("renders verified table facts as bounded readable Markdown, not internal JSON", async () => {
     const document = await buildProductTeamArtifactDocument({
       schema_version: "product-team-artifact@2.0.0",
@@ -421,6 +453,24 @@ describe("Root answer verifier", () => {
 
     expect(rendered).toBe(explanation);
     expect(rendered).not.toMatch(/索引|未受治理|INDEX_NOT_FOUND/u);
+  });
+
+  it("preserves exact competing candidates when rendering ambiguity", () => {
+    expect(
+      rootAnswerVerifierInternals.renderArtifactFacts(
+        {
+          projection: {
+            kind: "SEMANTIC_CONTEXT",
+            context: {
+              unresolved_ambiguities: [
+                { object_kind: "DIMENSION", candidate_ids: ["dimension.a", "dimension.b"] },
+              ],
+            },
+          },
+        } as never,
+        ["projection.context.unresolved_ambiguities"],
+      ),
+    ).toBe("维度存在多个候选：dimension.a、dimension.b，请确认所需口径。");
   });
 
   it("renders governed metric and relationship facts as readable semantic evidence", () => {

@@ -1096,6 +1096,40 @@ describe("PostgreSQL Text2SQL query runtime", () => {
     },
   );
 
+  it("rejects an unresolved zero-candidate mapping before all schema, credential and target I/O", async () => {
+    const { config, semanticCatalog, semanticContext, semanticQueryContext } = await fixture();
+    const { context_hash: _contextHash, ...draft } = semanticQueryContext;
+    const unresolvedContext = await buildSemanticQueryContext({
+      ...draft,
+      unresolved_ambiguities: [{ object_kind: "DIMENSION", candidate_ids: [] }],
+    });
+    const getSnapshot = vi.fn();
+    const getDatasource = vi.fn();
+    const getSecret = vi.fn();
+    const connect = vi.fn();
+    const runtime = createPostgresqlText2SqlQueryRuntime({
+      pool: { connect } as never,
+      capability: {},
+      schema_snapshots: { getSnapshot } as never,
+      datasources: { getDatasource } as never,
+      secrets: { get: getSecret } as never,
+    });
+
+    await expect(
+      runtime.prepare({
+        effective_config: config as never,
+        semantic_context: semanticContext,
+        semantic_catalog: semanticCatalog,
+        semantic_query_context: unresolvedContext,
+        max_context_bytes: 32_000,
+      }),
+    ).rejects.toMatchObject({ code: "TEXT2SQL_SEMANTIC_CONTEXT_AMBIGUOUS" });
+    expect(getSnapshot).not.toHaveBeenCalled();
+    expect(getDatasource).not.toHaveBeenCalled();
+    expect(getSecret).not.toHaveBeenCalled();
+    expect(connect).not.toHaveBeenCalled();
+  });
+
   it("rejects a stale SecretRef before opening a database connection", async () => {
     const { config, datasource, semanticCatalog, semanticContext, snapshot } = await fixture();
     const connect = vi.fn();
