@@ -1815,6 +1815,11 @@ git diff --check
 - [ ] 新建显式 NAS scratch 物理克隆，验证 source dataset/发布身份/受保护历史；原认证及 Finalizer 仅作用 scratch。
 - [ ] 启动 attested Web/Worker 与必要依赖；保持 OrbStack 关闭，不连接普通 NAS data_agent 作为 Falcon authority。
 
+预检记录：`fa03e0ed` force build 8/8 通过，full unit 在 DeepSeek Strict 的可选facet投影处失败，未创建/激活新scratch、未调用模型。
+补充真实model与authority两个schema分支测试，先观察3个RED；改为closed/all-required object union后Agent Runtime 15/15、Contracts 11/11、
+Worker 84/84，以及Contracts/Agent Runtime/Worker typecheck、Contracts build通过。投影器与原payload/版本/refinement不放宽；新构建重新验证。
+只读live审计捕获348张表：既有347张加单独统计的`platform.migration_ledger`，没有缺表；live仍E16。
+
 ### C2 — 四题单链路证明
 
 - [ ] 依次执行 C1 语义口径、C2 最近订单、C3 发布 ROAS、C4 显式净 ROI；每题一次 composer，不重新提交已存在 Run。

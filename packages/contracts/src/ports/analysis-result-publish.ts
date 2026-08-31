@@ -97,7 +97,6 @@ const chartBindingFields = {
   x_field: fieldNameSchema,
   y_fields: z.array(fieldNameSchema).min(1).max(8),
   series_field: optionalFieldNameSchema,
-  facet_field: analysisChartFacetFieldSchema,
   lower_bound_field: optionalFieldNameSchema,
   upper_bound_field: optionalFieldNameSchema,
 } as const;
@@ -130,20 +129,30 @@ const refineChartBinding = (
   }
 };
 
-const chartBindingSchema = z.strictObject(chartBindingFields).superRefine((binding, context) => {
-  refineChartBinding(binding, context);
-});
+const baseChartBindingSchema = z.strictObject(chartBindingFields);
+// Each provider-facing branch is closed and all-required. An optional property
+// would make every analysis tool registration fail DeepSeek Strict projection.
+const chartBindingSchema: z.ZodType<
+  z.infer<typeof baseChartBindingSchema> & { facet_field?: string | undefined }
+> = z
+  .union([baseChartBindingSchema, baseChartBindingSchema.extend({ facet_field: fieldNameSchema })])
+  .superRefine(refineChartBinding);
 
-const modelChartBindingSchema = z
-  .strictObject({
-    chart_id: chartBindingFields.chart_id,
-    x_field: chartBindingFields.x_field,
-    y_fields: chartBindingFields.y_fields,
-    series_field: chartBindingFields.series_field,
-    facet_field: chartBindingFields.facet_field,
-    lower_bound_field: chartBindingFields.lower_bound_field,
-    upper_bound_field: chartBindingFields.upper_bound_field,
-  })
+const baseModelChartBindingSchema = z.strictObject({
+  chart_id: chartBindingFields.chart_id,
+  x_field: chartBindingFields.x_field,
+  y_fields: chartBindingFields.y_fields,
+  series_field: chartBindingFields.series_field,
+  lower_bound_field: chartBindingFields.lower_bound_field,
+  upper_bound_field: chartBindingFields.upper_bound_field,
+});
+const modelChartBindingSchema: z.ZodType<
+  z.infer<typeof baseModelChartBindingSchema> & { facet_field?: string | undefined }
+> = z
+  .union([
+    baseModelChartBindingSchema,
+    baseModelChartBindingSchema.extend({ facet_field: fieldNameSchema }),
+  ])
   .superRefine(refineChartBinding);
 
 const operatorBindingSchema = z.strictObject({

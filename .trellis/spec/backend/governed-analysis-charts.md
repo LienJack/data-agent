@@ -23,6 +23,8 @@ Publish model binding可选`facet_field`；Host按是否存在该字段选择`an
 - 完整原表仍为document/preview/hash的唯一数据，分图只是视图。旧1.0/1.1拒绝facet，新字段缺省时旧hash不变。
 - 分面必须指向原ResultContract表的STRING/DIMENSION，template限定原line.multi-series/bar.grouped/bar.stacked；不可与x/y/series重叠。
   publish1.1必须至少一个facet，单个chart1.1必须恰有facet；旧版带新字段和新版无分面均拒绝。工具manifest升级1.1，旧输入不注入新字段。
+- Provider-facing model/authority chart binding 用两个 closed/all-required object 分支表达有无facet，不能直接加入 optional property。
+  DeepSeek Strict 原投影仍拒 optional/null/open object；两个分支复用原字段/refinement，不增加空字符串或NULL哨兵，也不改旧输入bytes。
 - 同一publisher保留完整原表，不因facet改RESULT/TABLE字节。manifest/chart/closure hash绑定该字段；Worker投影facet_key，assemble选择transform1.2。
   Trace继续原READ事务、canonical bytes/raw hash/metadata/Scope/Run验证，新增版本不是绕过列身份的理由。
 - 新发布格式不等于新方法能力；原月度/分类oracle继续要求原精确图合同，不能擅自加facet。月份×分类方法仍须独立来源与oracle验证。
@@ -48,6 +50,7 @@ Bad：series只保留渠道，将不同客群的同月值连成一条线，或�
 源表与NULL不变、含分隔符的分类、每原行在每measure恰好一个分面、分图标签/独立轴与初始PENDING。静态组件不是浏览器验收。
 模型到Host版本选择、真实Arrow到原publisher到V3的完整行/NULL、无facet时原RESULT/TABLE/旧图不变；重封hash仍拒绝错版本/缺列/非DIMENSION。
 Trace新增chart1.1与原1.0读取、原scope/bytes/canonical/ref拒绝；原方法擅加facet仍被独立oracle拒绝。publisher unit的空JSON measure仅测暂存，不能称oracle PASS。
+DeepSeek Strict必须对真实model和authority两份Zod schema做投影回归；两种chart分支各自required覆盖全部properties，保留原可选/null拒绝测试。
 
 ### 7. Wrong vs Correct
 

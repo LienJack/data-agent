@@ -1743,3 +1743,6 @@ ROAS 使用实际已发布 Formula 的聚合与零分母规则，不用旧文案
 
 月度分群草稿仅两份未实现测试，移至 `research/deferred-monthly-panel/*.ts.txt` 保留。它们不是已通过测试或生产代码，
 已观察到的 RED 原因为目标模块尚未实现。恢复该增强项前须重新确认范围、实现与验证，不能让草稿阻塞当前全量回归。
+
+核心预检发现分面optional property破坏DeepSeek Strict工具schema投影。保留旧/新两种输入字节，改为两个closed且各自all-required的
+object分支，沿用相同字段/refinement；Provider投影器不放宽。真实model与authority schema均加入回归，不因本次无需Analysis而跳过此缺陷。
