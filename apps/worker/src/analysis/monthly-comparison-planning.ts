@@ -55,7 +55,7 @@ function fail(kind: "AUTHORITY" | "SHAPE" | "VALUE" | "WINDOW"): never {
   throw new TypeError(`MONTHLY_COMPARISON_${kind}_INVALID`);
 }
 
-function calendarDate(value: string, timezone: string): string {
+export function calendarDate(value: string, timezone: string): string {
   if (/^\d{4}-\d{2}-\d{2}$/u.test(value)) return value;
   const instant = new Date(value);
   if (!Number.isFinite(instant.valueOf())) return fail("VALUE");

@@ -1763,7 +1763,9 @@ Diagnostic/Q1/C1任一正式首次失败必须写既有 authority支持的 immut
 
 - [x] `fd42ac59` clean worktree 接管；NAS SSH 可达，普通 PostgreSQL/Neo4j healthy，Falcon live 独立容器仍绑定 55433。
   本次只读检查未启动 Web/Worker/OpenSandbox 或写数据库；旧 core/C7 checkpoint 与 volume 保留。
-- [ ] 月度分群叶子：复用描述性合同编码，原月份/分类/measure 身份与 NULL 保留；边界测试先 RED 再实现并 scoped commit。
+- [x] 月度分群叶子：复用描述性合同编码和月度 schema，原月份/分类/measure 身份与 NULL 保留；≤32组/384行/16分面。
+  恢复草稿先观察缺模块 RED；修正草稿误改冻结 fixture 后，30项新测试及旧方法/固定hash/编译回归共5文件93/93通过，Worker typecheck/build通过。
+  仅叶子合同，无 production 注册、Oracle、模型调用或数据库写入；不能记为复杂业务 PASS。
 - [ ] 月度分群独立 source/Arrow Oracle 与唯一 production composition；不以 planner 单测代替执行验收。
 - [ ] 核对复杂多输入及 L4 当前 Run 事实重验、指代、口径纠正、报告/图表组合；有缺口先做 focused 修复与 scoped commit。
 - [ ] 全部组件闭合后进入上述 fresh scratch / F5 / F7；不另跑 child 历史六问，也不复用 core4 PASS。
