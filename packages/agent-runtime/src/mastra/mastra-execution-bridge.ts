@@ -387,8 +387,8 @@ function structuredOutputProviderOptions(
   return undefined;
 }
 
-/** JSON syntax constraint only; AUTO still returns native calls or original text. */
-function withAutoJsonResponse(model: ReturnType<typeof createProviderRuntimeModel>) {
+/** JSON syntax constraint only; callers still validate the untouched original text. */
+function withJsonResponse(model: ReturnType<typeof createProviderRuntimeModel>) {
   return {
     specificationVersion: model.specificationVersion,
     provider: model.provider,
@@ -520,13 +520,17 @@ class MastraExecutionBridge implements ModelExecutionBridge {
 
     const runtimeModel = this.#runtimeModelFactory(binding, credential);
     const usesToolCalling = descriptors.length > 0;
+    const usesJsonTextResponse = !usesToolCalling && responseSchema.delivery_mode === "JSON_TEXT";
     // DeepSeek AUTO needs JSON mode without Mastra's separate object parsing or
     // formatting pass. The original SDK sends json_object and retains tool_choice
     // auto. The pinned SDK adds only its standard "Return JSON." syntax prefix;
     // original messages/tools, credentials, responses and call budgets are retained.
     const model =
-      binding.provider === "deepseek" && usesToolCalling && this.#serverToolChoicePolicy === "AUTO"
-        ? withAutoJsonResponse(runtimeModel)
+      (binding.provider === "deepseek" &&
+        usesToolCalling &&
+        this.#serverToolChoicePolicy === "AUTO") ||
+      usesJsonTextResponse
+        ? withJsonResponse(runtimeModel)
         : runtimeModel;
     const agent = new Agent({
       id: `model-provider-${input.request.request_id}`,
@@ -572,20 +576,25 @@ class MastraExecutionBridge implements ModelExecutionBridge {
             ...commonExecutionOptions,
             toolChoice: "auto",
           })
-      : await agent.stream(projected.messages, {
-          ...commonExecutionOptions,
-          structuredOutput: {
-            schema: responseSchema.schema,
-          },
-          toolChoice: "none",
-        });
+      : usesJsonTextResponse
+        ? await agent.stream(projected.messages, {
+            ...commonExecutionOptions,
+            toolChoice: "none",
+          })
+        : await agent.stream(projected.messages, {
+            ...commonExecutionOptions,
+            structuredOutput: {
+              schema: responseSchema.schema,
+            },
+            toolChoice: "none",
+          });
 
     let observedToolCalls = 0;
     let streamedTextBytes = 0;
     let textDeltaChunks = 0;
     let nonWhitespaceTextObserved = false;
     let nonTextResponseActivity = false;
-    const autoResponseTextParts: string[] = [];
+    const jsonResponseTextParts: string[] = [];
     const reader = output.fullStream.getReader();
     try {
       while (true) {
@@ -607,8 +616,11 @@ class MastraExecutionBridge implements ModelExecutionBridge {
               streamedTextBytes += new TextEncoder().encode(chunk.payload.text).byteLength;
               textDeltaChunks += 1;
               nonWhitespaceTextObserved ||= chunk.payload.text.trim().length > 0;
-              if (usesToolCalling && this.#serverToolChoicePolicy === "AUTO") {
-                autoResponseTextParts.push(chunk.payload.text);
+              if (
+                (usesToolCalling && this.#serverToolChoicePolicy === "AUTO") ||
+                usesJsonTextResponse
+              ) {
+                jsonResponseTextParts.push(chunk.payload.text);
               }
               yield {
                 chunk_type: "TEXT_DELTA",
@@ -698,12 +710,9 @@ class MastraExecutionBridge implements ModelExecutionBridge {
     }
 
     const usage = normalizeUsage(fullOutput.totalUsage);
-    let outputText: string;
-    if (usesToolCalling && observedToolCalls > 0) {
-      outputText = fullOutput.text ?? "";
-    } else if (usesToolCalling && this.#serverToolChoicePolicy === "AUTO") {
-      // AUTO omits Mastra structuredOutput: the no-tool branch has original text,
-      // not a parsed object, even when the provider transport uses JSON mode.
+    const canonicalizeJsonTextOutput = (
+      stage: "AUTO_RESPONSE_INVALID_JSON" | "JSON_TEXT_RESPONSE_INVALID_JSON",
+    ): string => {
       let candidate: unknown;
       try {
         candidate = JSON.parse(fullOutput.text ?? "");
@@ -712,8 +721,8 @@ class MastraExecutionBridge implements ModelExecutionBridge {
         const error = new MastraExecutionError(
           "MODEL_STREAM_PROTOCOL_VIOLATION",
           false,
-          "AUTO 无工具响应必须是完整 JSON。",
-          "AUTO_RESPONSE_INVALID_JSON",
+          "JSON 文本响应必须是完整 JSON。",
+          stage,
           undefined,
           {
             finish_reason: fullOutput.finishReason ?? "unknown",
@@ -726,8 +735,8 @@ class MastraExecutionBridge implements ModelExecutionBridge {
             output_tokens: usage.availability === "AVAILABLE" ? usage.output_tokens : null,
           },
         );
-        // Fully observed text rejection is not an unknown network outcome.
-        // Do not repair it, accept it, replay it, or promote partial tool activity.
+        // A complete original response can be classified without accepting,
+        // repairing, extracting or replaying any model text.
         if (
           !input.signal.aborted &&
           !nonTextResponseActivity &&
@@ -740,13 +749,23 @@ class MastraExecutionBridge implements ModelExecutionBridge {
           if (!nonWhitespaceTextObserved && text.trim().length === 0) {
             throw markFullyObservedEmptyResponse(error);
           }
-          if (text.trim().length > 0 && text === autoResponseTextParts.join("")) {
+          if (text.trim().length > 0 && text === jsonResponseTextParts.join("")) {
             throw markFullyObservedInvalidJsonResponse(error);
           }
         }
         throw error;
       }
-      outputText = canonicalizeStructuredOutput(responseSchema, candidate);
+      return canonicalizeStructuredOutput(responseSchema, candidate);
+    };
+    let outputText: string;
+    if (usesToolCalling && observedToolCalls > 0) {
+      outputText = fullOutput.text ?? "";
+    } else if (usesToolCalling && this.#serverToolChoicePolicy === "AUTO") {
+      // AUTO omits Mastra structuredOutput: the no-tool branch has original text,
+      // not a parsed object, even when the provider transport uses JSON mode.
+      outputText = canonicalizeJsonTextOutput("AUTO_RESPONSE_INVALID_JSON");
+    } else if (usesJsonTextResponse) {
+      outputText = canonicalizeJsonTextOutput("JSON_TEXT_RESPONSE_INVALID_JSON");
     } else {
       outputText = canonicalizeStructuredOutput(responseSchema, fullOutput.object);
     }

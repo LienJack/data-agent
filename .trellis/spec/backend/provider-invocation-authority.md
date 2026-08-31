@@ -158,7 +158,14 @@ return committed.protectedResponse;
 - DeepSeek 的 server-owned AUTO+tools 使用原 SDK JSON mode，仅约束文本语法，不强制工具、注入新业务信息或增加调用。
   `json_object` 由固定 SDK 从 `responseFormat:{type:"json"}` 产生；固定 `Return JSON.` prefix 必须在真实 SDK 离线 wire 测试中锁定。
   不剥离 fence/prose、不兜底重写 JSON、不接受空内容；原 Response Schema 与 dispatcher marker/终态/不重放边界不变。
-  REQUIRED、零工具和其他 Provider 保持原行为；不能由用户 payload 开关这项部署策略。
+  REQUIRED 和其他 Provider 默认保持原行为；不能由用户 payload 开关这项部署策略。
+- 零工具调用默认继续使用 Mastra Structured Output。只有 server-owned `ServerModelResponseSchemaRegistry` 对 exact schema version
+  固定 `delivery_mode=JSON_TEXT` 时，才允许同一次调用使用原 SDK JSON mode；当前仅 Semantic selection schema 启用。原始完整文本必须
+  先 `JSON.parse`，再通过同一个注册 Zod strict schema 并 canonicalize；空白、非 JSON、Markdown fence、尾随 prose、错类型、额外字段和
+  schema mismatch 全部失败关闭。禁止提取局部 JSON、修补模型文本、增加 Provider 调用、跳过 schema 或把该模式用于工具调用。
+- `JSON_TEXT` 是 build-bound 服务端部署策略，不进入用户请求或模型输出。Trusted token upper bound 仍按完整注册 schema 计算；
+  dispatch marker、usage、known empty/invalid JSON 分类、protected response commit 与不重放边界不变。私有协议诊断只记录固定
+  `JSON_TEXT_RESPONSE_INVALID_JSON` stage 与有界计数，不能记录原文或反向授予成功。
 - 凭据只从服务端环境解析，不写入数据库、Artifact、Event、日志或浏览器投影。
 - 调用请求必须绑定 exact Scope、Run、Attempt、Model 与响应 Schema，并在边界解析所有 Provider 事件。
 - 不读取模型认证状态，不创建 Intent/Permit/Dispatch/Usage 权威记录，也不执行积分、额度或扣费步骤。
@@ -174,4 +181,6 @@ return committed.protectedResponse;
 
 - Contract 测试证明直连请求不需要 Certification Receipt 或 Permit 仍可获得严格品牌。
 - Worker 测试覆盖 Scope/Run/Attempt 换绑、缺凭据、非法请求、Provider 稳定错误码与单次重试上限。
+- Agent Runtime 离线真实 SDK wire 测试覆盖 server-owned `JSON_TEXT` 的一次 DeepSeek fetch、`json_object`、零 tools、strict PASS、
+  schema mismatch、空白与非 JSON；默认 schema 仍走 Structured Output，用户请求不能选择 delivery mode。
 - 真实运行证明调用前后持久 Intent/Permit 行数不增加，且公开 Event 不出现 Root/Specialist 生命周期。

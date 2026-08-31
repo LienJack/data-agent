@@ -378,6 +378,7 @@ export function createDirectRunBoundProviderDispatcher(input: {
     {
       response_schema_version: SEMANTIC_QUERY_SELECTION_INTENT_SCHEMA_VERSION,
       schema: semanticQuerySelectionIntentSchema,
+      delivery_mode: "JSON_TEXT",
     },
     {
       response_schema_version: PROVIDER_SMOKE_RESPONSE_SCHEMA_VERSION,

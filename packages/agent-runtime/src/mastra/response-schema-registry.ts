@@ -6,12 +6,14 @@ export type ServerModelStructuredOutput = Record<string, unknown>;
 export interface ServerModelResponseSchemaDescriptor {
   readonly response_schema_version: string;
   readonly schema: z.ZodType<ServerModelStructuredOutput>;
+  readonly delivery_mode?: "STRUCTURED_OUTPUT" | "JSON_TEXT";
 }
 
 export interface RegisteredServerModelResponseSchema {
   readonly response_schema_version: string;
   readonly schema: z.ZodType<ServerModelStructuredOutput>;
   readonly canonical_schema_bytes: number;
+  readonly delivery_mode: "STRUCTURED_OUTPUT" | "JSON_TEXT";
 }
 
 function parseDescriptor(
@@ -23,6 +25,10 @@ function parseDescriptor(
     typeof Reflect.get(input.schema, "safeParse") !== "function"
   ) {
     throw new TypeError("Server Response Schema Descriptor 必须提供可执行的 Zod Schema。");
+  }
+  const deliveryMode = input.delivery_mode ?? "STRUCTURED_OUTPUT";
+  if (deliveryMode !== "STRUCTURED_OUTPUT" && deliveryMode !== "JSON_TEXT") {
+    throw new TypeError("Server Response Schema Delivery Mode 无效。");
   }
 
   let canonicalSchema: string;
@@ -36,6 +42,7 @@ function parseDescriptor(
     response_schema_version: versionIdentifierSchema.parse(input.response_schema_version),
     schema: input.schema,
     canonical_schema_bytes: Buffer.byteLength(canonicalSchema, "utf8"),
+    delivery_mode: deliveryMode,
   });
 }
 

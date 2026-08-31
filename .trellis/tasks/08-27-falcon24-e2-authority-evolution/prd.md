@@ -753,3 +753,17 @@ ROAS 始终以实际已发布 AST 为准：当前是 `CASE WHEN SUM(spend)=0 THE
 若无渠道符合条件，如实报告空集合，不通过改比较期寻找结果。建议须标为待验证假设，不把两个月差异说成持续趋势或因果。
 §20原B3与V1门禁hash、所有失败Run保留。本版先作为新scratch预检；正式使用前必须更新版本化manifest与原authority绑定，
 不允许将新题答案写入旧题receipt。其余15题覆盖/5+2+2+6顺序与来源、安全、同Run UI要求不降低。
+
+### 22.2 B3 Semantic Provider 传输闭包
+
+`966760f5` fresh scratch 中 A1/A2/A3/B1/B2 已通过独立业务与同 Run QA/Trace；原 B3 和把净 ROI、完整月、筛选顺序全部
+显式写入题面的独立诊断，各自连续四次在 `semantic-query-selection-intent@1.0.0` 的 Mastra Structured Output 阶段失败。
+八次均为完整 Provider 已知响应、零 Semantic Artifact、零 SQL/Analysis，证明题面降歧义不能修复传输缺口。
+
+- **R-FL-JSON-01** Semantic 仍必须返回原 strict selection schema；不得改成自由文本、Host 关键词路由或确定性业务答案。
+- **R-FL-JSON-02** exact schema 可由服务端注册 `JSON_TEXT` delivery；DeepSeek 只发一次原生 JSON-mode 请求，Host 对完整原文
+  执行 `JSON.parse -> 原Zod strict schema -> canonicalize`，任何格式或 schema 错误失败关闭。
+- **R-FL-JSON-03** delivery mode 不能由用户、题库、模型或 Run payload 选择；不增加调用/turn/token预算，不提取/修补 JSON，
+  不改变 marker、usage、response protection、Oracle、Semantic/Text2SQL/Analysis authority 或 live 数据。
+- **AC-FL-JSON-01** 离线真实 SDK wire 覆盖一次请求、`json_object`、零 tools、strict PASS 与空白/非JSON/错schema拒绝；新 clean
+  build/fresh scratch 的 B3 必须真实形成 Semantic -> Text2SQL -> Analysis 后，才证明修复有效。

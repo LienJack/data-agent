@@ -1808,3 +1808,28 @@ Python参考显式接收month_count，独立Host Oracle复用原月度算术；�
 FULL Oracle 从当前 Run 原 Arrow 重新计算 `period_comparison` 及两个集合，逐项比较 RESULT、3张表、2张图、绑定、顺序和 hash；
 任何篡改按既有 `RESULT/TABLE/CHART_MISMATCH` 或 closure 错误失败关闭。修复不新增模型调用、Cell/Publisher repair、timeout、
 权限、数据库状态或发布权威。组件验证后必须新 clean build、fresh 专用 scratch，从 A1 开始重跑 A/B 六题；旧 A1/A2 不拼接。
+
+## 30. Semantic 零工具 JSON 文本传输（前向修复）
+
+`966760f5` 的原 B3 与显式定义版 B3 共八次停在 Semantic Structured Output，Provider response artifact 仅有空白文本，
+没有可供 Host 修复的 selection candidate。A1/A2/A3/B1/B2 同构建均已通过，且显式题面仍复现，因此缺口位于
+DeepSeek 零工具 Structured Output transport，不位于业务公式、SQL、数据库或题面歧义。
+
+服务端 response schema registry 新增冻结的 delivery mode，默认 `STRUCTURED_OUTPUT`；只有 Semantic selection exact version
+注册为 `JSON_TEXT`。数据流固定为：
+
+```text
+server-owned schema + JSON_TEXT
+  -> original SDK response_format=json_object, tool_choice=none, one fetch
+  -> fully drain original text/usage
+  -> JSON.parse exact full text
+  -> same registered Zod strict schema
+  -> canonical JSON -> protected response -> existing Semantic Host validation
+```
+
+该模式只改变传输表示，不改变 schema 或语义 Authority。不得剥 fence、截取第一个对象、删除尾随 prose、补字段、排序模型数组、
+重放调用或在失败后伪造 candidate。空白/非JSON可沿用完整响应 known rejection；合法 JSON 但错 schema 仍是协议失败。
+delivery mode 不进入 request contract，用户/模型无法覆盖；工具调用、Text2SQL、Analysis、Report 和其他 schema 保持原模式。
+
+测试必须同时锁定 registry 默认值、server-owned override、DeepSeek wire 的 `json_object`/零 tools/一次 fetch、strict canonical output、
+错 schema/非JSON/空白拒绝和 raw-free diagnostic。真实验收仍需新 clean build/fresh scratch 跑 B3 全链，单测不计业务 PASS。

@@ -413,6 +413,114 @@ describe("Mastra execution bridge integration", () => {
     },
   );
 
+  it.each([
+    {
+      name: "valid strict JSON",
+      text: '{"summary":"accepted facts","confidence":1}',
+      terminal: "COMPLETED",
+    },
+    {
+      name: "wrong schema",
+      text: '{"summary":7,"confidence":1}',
+      terminal: "MODEL_STREAM_PROTOCOL_VIOLATION",
+    },
+    {
+      name: "non JSON",
+      text: "private-invalid-answer",
+      terminal: "MODEL_RESPONSE_INVALID_JSON",
+    },
+    {
+      name: "empty",
+      text: "   ",
+      terminal: "MODEL_RESPONSE_EMPTY",
+    },
+  ])(
+    "uses one server-owned DeepSeek JSON text call for a zero-tool schema ($name)",
+    async ({ text, terminal }) => {
+      const warning = vi.spyOn(console, "warn").mockImplementation(() => {});
+      try {
+        const binding = getModelProviderBinding("deepseek");
+        const registry = new ServerModelResponseSchemaRegistry([
+          {
+            response_schema_version: "1.0.0",
+            schema: responseSchema,
+            delivery_mode: "JSON_TEXT",
+          },
+        ]);
+        let marked = false;
+        let calls = 0;
+        const bodies: Record<string, unknown>[] = [];
+        const request = await makeInvocation(binding);
+        const bridge = createMastraModelExecutionBridgeForTesting({
+          credential_resolver: { resolve: async () => "offline-placeholder-credential" },
+          response_schema_registry: registry,
+          input_token_counter: trustedInputTokenCounter,
+          runtime_model_factory: (resolved, credential) =>
+            createProviderRuntimeModel(resolved, credential, {
+              fetch: async (_url, init) => {
+                expect(marked).toBe(true);
+                calls += 1;
+                bodies.push(JSON.parse(String(init?.body)));
+                const common = {
+                  id: "offline-json-text",
+                  object: "chat.completion.chunk",
+                  created: 1,
+                  model: binding.default_model_id,
+                };
+                return new Response(
+                  [
+                    `data: ${JSON.stringify({ ...common, choices: [{ index: 0, delta: { content: text }, finish_reason: null }] })}\n\n`,
+                    `data: ${JSON.stringify({ ...common, choices: [{ index: 0, delta: {}, finish_reason: "stop" }], usage: { prompt_tokens: 8, completion_tokens: 5, total_tokens: 13 } })}\n\n`,
+                    "data: [DONE]\n\n",
+                  ].join(""),
+                  { headers: { "content-type": "text/event-stream" } },
+                );
+              },
+            }),
+        });
+        const events = [];
+        for await (const event of new MastraModelProviderAdapter({
+          bridge,
+          dispatch_marker: {
+            mark_dispatched: async () => {
+              marked = true;
+            },
+          },
+          authorization: "LEGACY_TEST_ONLY",
+        }).stream(request))
+          events.push(event);
+
+        expect(calls).toBe(1);
+        expect(bodies[0]).toMatchObject({
+          model: binding.default_model_id,
+          response_format: { type: "json_object" },
+          thinking: { type: "disabled" },
+          max_tokens: 100,
+        });
+        expect(bodies[0]?.tools).toBeUndefined();
+        expect(bodies[0]?.messages).toEqual([
+          { role: "system", content: "Return JSON." },
+          ...request.messages,
+        ]);
+        expect(events.at(-1)).toMatchObject(
+          terminal === "COMPLETED"
+            ? {
+                event_type: "COMPLETED",
+                output_text: '{"confidence":1,"summary":"accepted facts"}',
+              }
+            : {
+                event_type: "FAILED",
+                reason_code: terminal,
+                retryable: false,
+              },
+        );
+        expect(JSON.stringify(warning.mock.calls)).not.toContain("private-invalid-answer");
+      } finally {
+        warning.mockRestore();
+      }
+    },
+  );
+
   it("keeps the real AI SDK doStream call suspended until durable dispatch marking completes", async () => {
     const binding = getModelProviderBinding("openai");
     let streamCalls = 0;
