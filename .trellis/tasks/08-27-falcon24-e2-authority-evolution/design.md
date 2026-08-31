@@ -1609,3 +1609,20 @@ CASE NULL 和 NULLIF 的零值语义相同，不能借用已发布 ROAS 的0。�
 统一经原 registry、Worker allowlist、显式两候选 repair 和模型消息传递。逐表达式重置诊断；不泄露 AST/标识符/SQL/值，不扩大调用预算。
 六个 parser/deparse 回归先 RED 后 GREEN，公开链路与真实 dispatcher 的离线 capture 全覆盖；正向 SQL/参数 round trip 保持通过。
 本项证明可观测性修复，不宣称历史候选根因已查明或模型问题已解决；新 clean build/fresh scratch 才能继续业务验证。
+
+### 25.20 复杂分析前置：精确月窗的请求比例输入
+
+`cc9ff33e` 的同一 fresh scratch 五项基础 canary 均已通过 business → QA → Trace。正式前源码审计确认：
+生产 Analysis registry/oracle 仅支持12个月单指标趋势；请求净 ROI 仍只支持全量单表，不能据此激活正式门禁。
+先补齐带窗数据输入，再补 Analysis 方法；所有正式需求和冻结题库不变，live 继续 E16 FAILED。
+
+本小项沿原 AGGREGATE_RATIO proof 支持与 RECENT_COMPLETE_PERIODS 一起接受的 exact current window：
+时间 Dimension 必须在 Context/发布/选择/物理绑定中一致，属于两个 SUM Metric 的 allowed dimensions，且两者使用同表同时间列。
+窗口必须等于 Host 解析值并落在两个非空发布 coverage 内，时区相同；任一 min/max 缺失即拒绝。
+纯 AST 证明 WHERE 只有 direct time >= $start AND time < $end，
+参数序号与声明逐一相等。text time 仅显式 timestamp cast；可输出同一时间维度的 MONTH bucket，并与分类维度共同精确 GROUP BY。
+不接受任意日期、额外条件、过滤后比例、跨表、CTE、窗口函数、隐藏分组或丢弃原时间要求。原无窗证明与历史 hash 不变。
+
+先写真实 compiler round-trip 和 exact Context 的失败测试，再修改共享证明、结果解析和公开修复提示。
+验证正例含窗口总计/月度渠道分组；反例含来源、权限、双指标 coverage/时区、错下上界/参数、月桶、额外筛选与无窗退化。
+这只闭合查询输入，不声称已完成复杂 Analysis、跨 Run 指代或正式15题；后续依原 ACTIVE 流程逐项补齐。

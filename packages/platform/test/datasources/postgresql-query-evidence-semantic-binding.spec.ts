@@ -896,6 +896,113 @@ async function aggregateRatioBindingFixture(measuresNullable = true) {
   };
 }
 
+async function aggregateRatioWindowBindingFixture(
+  projectMonth = true,
+  timeType: "date" | "text" = "date",
+) {
+  const input = await aggregateRatioBindingFixture();
+  const month = semanticCatalog().executable.dimensions[0];
+  if (!month) throw new Error("DIMENSION_FIXTURE_REQUIRED");
+  const domain = {
+    time_domain_id: "order-time",
+    calendar: "gregorian" as const,
+    timezone: "Asia/Shanghai",
+    min_time: "2023-01-01T00:00:00.000Z",
+    max_time: "2024-11-01T00:00:00.000Z",
+  };
+  const metrics = input.semantic_catalog.executable.metrics.map((metric) => ({
+    ...metric,
+    time_domain: domain,
+    analysis: {
+      ...metric.analysis,
+      allowed_dimension_ids: ["dimension.channel", month.dimension_id],
+    },
+  }));
+  const snapshot = await physicalSnapshot(timeType, true);
+  const committed = await semanticContext(snapshot, ["dimension.channel", "metric.order_spend"]);
+  const pkg = committed.package;
+  const dimensions = [...input.semantic_catalog.executable.dimensions, month];
+  const catalog: QueryEvidenceSemanticCatalog = {
+    ...input.semantic_catalog,
+    executable: { ...input.semantic_catalog.executable, metrics, dimensions },
+  };
+  const { context_hash: _hash, ...draft } = input.semantic_query_context;
+  const context = await buildSemanticQueryContext({
+    ...draft,
+    metrics,
+    dimensions,
+    schema_snapshot: pkg.schema_snapshot,
+    semantic_context_ref: {
+      package_id: pkg.package_id,
+      package_hash: pkg.package_hash,
+      receipt_id: committed.receipt.receipt_id,
+      receipt_hash: committed.receipt.receipt_hash,
+      retrieval_receipt_hash: pkg.retrieval_receipt.receipt_hash,
+      inference_receipt_hash: pkg.inference_receipt.receipt_hash,
+    },
+    time_semantics: [domain],
+    requested_object_ids: [...draft.requested_object_ids, month.dimension_id].sort(),
+    request_scoped_interpretations: [
+      {
+        interpretation_id: "request-scoped.calendar",
+        requested_term: "最近12个完整月",
+        scope: "REQUEST_ONLY",
+        source_object_ids: [month.dimension_id, "metric.order_revenue"],
+        operator: {
+          kind: "RECENT_COMPLETE_PERIODS",
+          metric_id: "metric.order_revenue",
+          time_dimension_id: month.dimension_id,
+          period_count: 12,
+          period_unit: "MONTH",
+          anchor: "PUBLISHED_COMPLETE_FRONTIER",
+        },
+        user_explanation: "发布边界前12个完整月。",
+        publication_effect: "NONE",
+      },
+      ...(draft.request_scoped_interpretations ?? []),
+    ],
+  });
+  const time = timeType === "text" ? "o.order_date::pg_catalog.timestamp" : "o.order_date";
+  const query = input.candidate;
+  query.sql = query.sql.replace(
+    "GROUP BY o.order_id",
+    `WHERE ${time} >= $1::pg_catalog.timestamp AND ${time} < $2::pg_catalog.timestamp GROUP BY o.order_id`,
+  );
+  query.parameters = ["2023-11-01", "2024-11-01"];
+  query.time_window = {
+    dimension_id: month.dimension_id,
+    start_parameter: 1,
+    end_parameter: 2,
+    semantics: "HALF_OPEN",
+  };
+  if (projectMonth) {
+    query.sql = query.sql
+      .replace("SELECT ", `SELECT date_trunc($3, ${time})::date AS month, `)
+      .replace("GROUP BY o.order_id", "GROUP BY month,o.order_id");
+    query.parameters.push("month");
+    query.result_columns.unshift({
+      name: "month",
+      label: "月份",
+      semantic_type: "DATE",
+      semantic_binding: { object_kind: "DIMENSION", object_id: month.dimension_id },
+    });
+  }
+  return {
+    ...input,
+    candidate: query,
+    semantic_context: committed,
+    semantic_query_context: context,
+    semantic_catalog: catalog,
+    physical_snapshot: snapshot,
+    result: projectMonth
+      ? await queryResult(
+          [{ name: "month", type: "1082" }, ...input.result.columns],
+          [{ month: "2024-01-01", channel: "test", revenue: "10", spend: "5", net_roi: "1" }],
+        )
+      : input.result,
+  };
+}
+
 const requestedRelationship: SemanticRelationship = {
   relationship_id: "relationship.order_customer",
   name: "order_customer",
@@ -1008,6 +1115,160 @@ describe.each([
 });
 
 describe("request-only aggregate ratio binding", () => {
+  it.each(["date", "text"] as const)(
+    "binds exact complete-month ratio and physical time source for %s",
+    async (type) => {
+      const input = await aggregateRatioWindowBindingFixture(true, type);
+      await expect(resolvePostgresqlRequestDerivedBindings(input)).resolves.toHaveLength(1);
+      const binding = await buildPostgresqlQueryEvidenceSemanticBinding(input);
+      expect(binding.time_window).toEqual({
+        dimension_id: "dimension.order_month",
+        start: "2023-11-01",
+        end: "2024-11-01",
+        semantics: "HALF_OPEN",
+        timezone: "Asia/Shanghai",
+      });
+      expect(binding.columns[4]?.physical_sources.map((source) => source.column_name)).toEqual([
+        "amount",
+        "order_date",
+        "order_id",
+        "spend",
+      ]);
+      expect(binding.columns[4]?.semantic_role).toBe("REQUEST_DERIVED");
+      expect(binding.columns[0]?.semantic_role).toBe("DIMENSION");
+    },
+  );
+
+  it("keeps the window time lineage when no time column is returned", async () => {
+    const input = await aggregateRatioWindowBindingFixture(false);
+    const binding = await buildPostgresqlQueryEvidenceSemanticBinding(input);
+    expect(binding.time_window?.dimension_id).toBe("dimension.order_month");
+    expect(binding.columns[3]?.physical_sources.map((source) => source.column_name)).toContain(
+      "order_date",
+    );
+  });
+
+  it.each(["not-published", "not-selected", "not-requested"])(
+    "rejects an otherwise valid time Dimension that is %s",
+    async (variant) => {
+      const input = await aggregateRatioWindowBindingFixture();
+      const { context_hash: _hash, ...draft } = input.semantic_query_context;
+      const timeId = "dimension.order_month";
+      if (variant === "not-published") {
+        input.semantic_catalog = {
+          ...input.semantic_catalog,
+          executable: {
+            ...input.semantic_catalog.executable,
+            dimensions: input.semantic_catalog.executable.dimensions.filter(
+              (d) => d.dimension_id !== timeId,
+            ),
+          },
+        };
+      }
+      if (variant === "not-requested")
+        draft.requested_object_ids = draft.requested_object_ids.filter((id) => id !== timeId);
+      if (variant === "not-selected") {
+        // Unit fixture only: preserve the original retrieval/closure receipts;
+        // a new published Dimension must not inherit the old selection grant.
+        const otherId = "dimension.unselected_month";
+        draft.dimensions = draft.dimensions.map((d) =>
+          d.dimension_id === timeId ? { ...d, dimension_id: otherId } : d,
+        );
+        draft.requested_object_ids = draft.requested_object_ids.map((id) =>
+          id === timeId ? otherId : id,
+        );
+        draft.request_scoped_interpretations = draft.request_scoped_interpretations?.map((i) =>
+          i.operator.kind === "RECENT_COMPLETE_PERIODS"
+            ? {
+                ...i,
+                source_object_ids: i.source_object_ids.map((id) => (id === timeId ? otherId : id)),
+                operator: { ...i.operator, time_dimension_id: otherId },
+              }
+            : i,
+        );
+        draft.metrics = draft.metrics.map((m) => ({
+          ...m,
+          analysis: {
+            ...m.analysis,
+            allowed_dimension_ids: m.analysis.allowed_dimension_ids.map((id) =>
+              id === timeId ? otherId : id,
+            ),
+          },
+        }));
+        input.semantic_catalog = {
+          ...input.semantic_catalog,
+          executable: {
+            ...input.semantic_catalog.executable,
+            dimensions: draft.dimensions,
+            metrics: draft.metrics,
+          },
+        };
+        input.candidate.result_columns = input.candidate.result_columns.map((c) =>
+          c.semantic_binding.object_id === timeId
+            ? { ...c, semantic_binding: { ...c.semantic_binding, object_id: otherId } }
+            : c,
+        );
+        if (input.candidate.time_window) input.candidate.time_window.dimension_id = otherId;
+      }
+      input.semantic_query_context = await buildSemanticQueryContext(draft);
+      await expect(resolvePostgresqlRequestDerivedBindings(input)).rejects.toThrow(
+        "QUERY_EVIDENCE_REQUEST_DERIVATION_BINDING_INVALID",
+      );
+    },
+  );
+
+  it.each([
+    "missing-window",
+    "changed-bound",
+    "missing-context-window",
+    "second-metric-coverage",
+    "second-metric-coverage-unavailable",
+    "second-metric-timezone",
+    "second-metric-time-column",
+    "second-metric-dimension-permission",
+  ])("rejects ratio time authority drift: %s", async (variant) => {
+    const input = await aggregateRatioWindowBindingFixture();
+    if (variant === "missing-window") input.candidate.time_window = null;
+    if (variant === "changed-bound") input.candidate.parameters[0] = "2023-12-01";
+    const { context_hash: _hash, ...draft } = input.semantic_query_context;
+    const metrics = draft.metrics.map((metric) => {
+      if (metric.metric_id !== "metric.order_spend") return metric;
+      const domain = metric.time_domain;
+      if (!domain) throw new Error("TIME_DOMAIN_FIXTURE_REQUIRED");
+      return {
+        ...metric,
+        ...(variant === "second-metric-coverage"
+          ? { time_domain: { ...domain, min_time: "2024-01-01T00:00:00.000Z" } }
+          : {}),
+        ...(variant === "second-metric-coverage-unavailable"
+          ? { time_domain: { ...domain, min_time: null, max_time: null } }
+          : {}),
+        ...(variant === "second-metric-timezone"
+          ? { time_domain: { ...domain, timezone: "UTC" } }
+          : {}),
+        ...(variant === "second-metric-time-column" ? { time_column_id: "other_date" } : {}),
+        ...(variant === "second-metric-dimension-permission"
+          ? { analysis: { ...metric.analysis, allowed_dimension_ids: ["dimension.channel"] } }
+          : {}),
+      };
+    });
+    input.semantic_catalog = {
+      ...input.semantic_catalog,
+      executable: { ...input.semantic_catalog.executable, metrics },
+    };
+    input.semantic_query_context = await buildSemanticQueryContext({
+      ...draft,
+      metrics,
+      request_scoped_interpretations:
+        variant === "missing-context-window"
+          ? draft.request_scoped_interpretations?.filter(
+              (i) => i.operator.kind !== "RECENT_COMPLETE_PERIODS",
+            )
+          : draft.request_scoped_interpretations,
+    });
+    await expect(resolvePostgresqlRequestDerivedBindings(input)).rejects.toThrow();
+  });
+
   it("does not drop an accepted time restriction to use the bounded full-total ratio proof", async () => {
     const input = await aggregateRatioBindingFixture();
     const month = semanticCatalog().executable.dimensions[0];

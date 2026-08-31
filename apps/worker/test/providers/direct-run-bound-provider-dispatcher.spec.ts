@@ -76,6 +76,20 @@ describe("direct run-bound provider retry policy", () => {
     expect(ratioMessages?.[3]?.content).toContain("request-only NULL rule");
     expect(ratioMessages?.[0]?.content).toEqual(messages[0]?.content);
     expect(ratioMessages?.[0]?.content).toContain("For AGGREGATE_RATIO, use REQUEST_DERIVED");
+    expect(ratioMessages?.[0]?.content).toContain(
+      "When the accepted context has RECENT_COMPLETE_PERIODS",
+    );
+    expect(ratioMessages?.[0]?.content).toContain("No row-level average, numeric casts");
+    formulaRepair.rejection.diagnostic_code = "TEXT2SQL_RATIO_WINDOW_REJECTED";
+    const windowMessages =
+      directRunBoundProviderDispatcherInternals.buildText2SqlSpecialistMessages({
+        ...input,
+        context_text: JSON.stringify(formulaRepair),
+      });
+    expect(windowMessages?.[0]?.content).toEqual(messages[0]?.content);
+    expect(windowMessages?.[3]?.content).toContain(
+      "declared parameter indices and exact Host bounds",
+    );
     expect(
       directRunBoundProviderDispatcherInternals
         .buildText2SqlSpecialistMessages({ ...input, context_text: JSON.stringify(frozen) })

@@ -1683,6 +1683,26 @@ Diagnostic/Q1/C1任一正式首次失败必须写既有 authority支持的 immut
   详见 `research/e17-monthly-projection-diagnostics.md`。历史候选原文不可恢复，不宣称已证明具体SQL错误。
 - 任务ACTIVE：本项scoped commit后新clean build/full gate/fresh scratch继续；仍不能激活live E17或拼入旧PASS。
 
+**E17 同构建五项基础回归与复杂能力前置（2026-08-31，进行中）**
+
+- `cc9ff33e` force build8/8、single-concurrent full unit15/15、attestation通过；fresh物理scratch55475/cluster
+  `falcon24-e17-cc9ff33e`，baseline `864d636a-7032-5fc7-b7cf-1e887dd9874e`；原数据proof一致，live未变。
+- 同比 `9f17195a-11d5-86ac-be35-2f25f4123abc`、最近订单 `36539d60-a72b-8bdf-bf4e-2bbccbae64db`、
+  语义 `b4e26921-88b7-8755-8090-2940eb540ff3`、ROAS `5546ab5c-0fd7-8340-9f47-2650e66cf3c6`、
+  净ROI `279c33d8-5ef4-83f8-a6e7-52de360f46c1` 全部 business/QA/Trace PASS，分别45/27/21/45/42个节点。
+  audit分别为 `e17-{yoy,orders,semantic,roas,net-roi}-canary-cc9ff33e`。每题一次composer，未改oracle/harness，均非正式证据。
+- 同比12个月/6个受coverage限制的NULL；订单10行源记录一致；两个渠道比例各4行源SUM/rate一致。ROAS一次公式拒绝后
+  原预算内成功，净ROI无候选拒绝，保留REQUEST_DERIVED/NONE且不复用ROAS身份。五个浏览器/vault及owned服务均已关闭，
+  scratch无非终态Run，NAS无运行中analysis Sandbox；全部数据库/volume/audit保留。
+- 正式前发现 production `methodRegistry/createSingleSeriesAnalysisOracle` 仅支持12月/2列/1 Metric；复杂渠道、人群与多指标
+  尚不具备闭包。先精确带窗/月度ratio输入，再受治理分群/多指标Analysis方法，再核对跨Run/Report链；不为评分删题或增预算。
+- [x] 精确RECENT_COMPLETE_PERIODS + AGGREGATE_RATIO的共享SQL/Context证明：Platform308/308、Worker136/136、双方typecheck、
+  Platform build、9个TS文件Biome通过。新增SQL/Context正例先RED再GREEN；缺失coverage负例再次RED后补齐拒绝规则。
+  真实源只读探针48行/12月/4渠道与独立SUM/比例oracle一致；未更改原Context、未调用模型/提交artifact或绕过生产Context gate。
+  该探针不证明新Run接受或完整Workercompile；详情与audit路径见 `research/e17-complex-capability-preflight.md`，随本小项scoped commit。
+- [ ] Analysis注册/契约/oracle按已发布能力及真实输入形态扩展，沿现有Sandbox与原子publisher；focused validation + scoped commit。
+- [ ] 所需能力离线闭合后最终clean build/full unit/fresh scratch，再fresh E17正式15回合从L1。当前ACTIVE，live E16 FAILED。
+
 **F6 READY 轮次恢复边界（2026-08-30，历史）**
 
 > 以下为历史记录；当前 forward recovery 已到 E16 FAILED，下一 fresh epoch 为 E17，见上一节。

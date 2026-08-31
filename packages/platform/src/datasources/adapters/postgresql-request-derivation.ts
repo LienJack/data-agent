@@ -121,6 +121,13 @@ export async function provePostgresqlAggregateRatio(input: {
     readonly denominator_type: string;
   };
   readonly dimensions: readonly { readonly object_id: string; readonly column_name: string }[];
+  readonly time_window?: {
+    readonly dimension_id: string;
+    readonly column_name: string;
+    readonly formatted_type: string;
+    readonly start: string;
+    readonly end: string;
+  } | null;
 }): Promise<{
   group_outputs: string[];
   numerator_outputs: string[];
@@ -129,14 +136,22 @@ export async function provePostgresqlAggregateRatio(input: {
   let diagnostic: keyof typeof POSTGRESQL_AGGREGATE_RATIO_REPAIR_HINTS =
     "TEXT2SQL_RATIO_QUERY_SHAPE_REJECTED";
   try {
-    const { candidate, source } = input;
+    const { candidate, source, time_window: window } = input;
     const ast = record(await parse(candidate.sql));
     const select = node(record(list(ast.stmts, 1)[0]).stmt, "SelectStmt");
-    only(select, ["targetList", "fromClause", "groupClause", "sortClause", "limitOption", "op"]);
+    only(select, [
+      "targetList",
+      "fromClause",
+      "groupClause",
+      "sortClause",
+      "limitOption",
+      "op",
+      ...(window ? ["whereClause"] : []),
+    ]);
     check(
       select.op === "SETOP_NONE" &&
         select.limitOption === "LIMIT_OPTION_DEFAULT" &&
-        candidate.time_window === null,
+        (window ? candidate.time_window !== null : candidate.time_window === null),
     );
     const relation = range(list(select.fromClause, 1)[0]);
     diagnostic = "TEXT2SQL_RATIO_SOURCE_REJECTED";
@@ -148,6 +163,49 @@ export async function provePostgresqlAggregateRatio(input: {
       types.every((type) => ["smallint", "integer"].includes(type) || fractionalSum(type)) &&
         types.some(fractionalSum),
     );
+    const timeColumn = (expression: unknown) => {
+      check(window);
+      if (window.formatted_type === "text") {
+        check(record(expression).TypeCast);
+        expression = cast(expression, ["timestamp"]);
+      }
+      check(column(expression, relation.alias, window.column_name));
+    };
+    if (window) {
+      diagnostic = "TEXT2SQL_RATIO_WINDOW_REJECTED";
+      const declared = candidate.time_window;
+      check(
+        declared &&
+          declared.dimension_id === window.dimension_id &&
+          declared.semantics === "HALF_OPEN",
+      );
+      check(["text", "date", "timestamp without time zone"].includes(window.formatted_type));
+      check(
+        Number.isFinite(Date.parse(window.start)) &&
+          Date.parse(window.start) < Date.parse(window.end),
+      );
+      const where = node(select.whereClause, "BoolExpr");
+      only(where, ["boolop", "args"]);
+      check(where.boolop === "AND_EXPR");
+      const bounds = list(where.args, 2).map((item) => node(item, "A_Expr"));
+      for (const [operator, expected, index] of [
+        [">=", window.start, declared.start_parameter],
+        ["<", window.end, declared.end_parameter],
+      ] as const) {
+        const bound = bounds.filter((item) => primitive(item.name) === operator);
+        check(bound.length === 1);
+        const expression = binary({ A_Expr: bound[0] }, operator);
+        timeColumn(expression.lexpr);
+        const parameterNode = cast(expression.rexpr, ["date", "timestamp"]);
+        check(node(parameterNode, "ParamRef").number === index);
+        const value = parameter(parameterNode, candidate.parameters);
+        check(
+          typeof value === "string" &&
+            /^\d{4}-\d{2}-\d{2}(?:T00:00:00(?:\.000)?Z)?$/u.test(value) &&
+            Date.parse(value) === Date.parse(expected),
+        );
+      }
+    }
     const sum = (expression: unknown, name: string) => {
       const call = node(expression, "FuncCall");
       only(call, ["funcname", "args", "funcformat"]);
@@ -197,7 +255,20 @@ export async function provePostgresqlAggregateRatio(input: {
         );
         const dimension = dimensions[0];
         check(dimensions.length === 1 && dimension && !groupColumns.has(dimension.column_name));
-        check(column(expression, relation.alias, dimension.column_name));
+        if (window && binding.object_id === window.dimension_id) {
+          check(
+            dimension.column_name === window.column_name &&
+              ["DATE", "DATETIME"].includes(output.semantic_type),
+          );
+          const call = node(cast(expression, ["date"]), "FuncCall");
+          only(call, ["funcname", "args", "funcformat"]);
+          const args = list(call.args, 2);
+          check(
+            primitive(call.funcname) === "date_trunc" &&
+              parameter(args[0], candidate.parameters) === "month",
+          );
+          timeColumn(args[1]);
+        } else check(column(expression, relation.alias, dimension.column_name));
         groupColumns.add(dimension.column_name);
         groups.set(output.name, expression);
       } else if (binding.object_kind === "METRIC") {

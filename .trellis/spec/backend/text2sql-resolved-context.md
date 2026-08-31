@@ -69,24 +69,62 @@ Correct：结果列声明 `{ object_kind: "REQUEST_DERIVED", object_id: exactAcc
 
 ## Request-scoped aggregate ratio result binding
 
+### 1. Scope / Trigger
+
+接受 AGGREGATE_RATIO 后查询全量或 exact complete-month 窗口的同源聚合比例；不发布新 Formula。
+
+### 2. Signatures
+
+`provePostgresqlAggregateRatio` 的可选 `time_window` 包含 `dimension_id/column_name/formatted_type/start/end`，
+仅由共享 binding resolver 从原已验证 Context/发布/物理来源构建，不接受模型自行提交该 proof authority。
+Candidate 的原 `time_window` 仍只声明 Dimension 与上下界参数序号。
+
+### 3. Contracts
+
 - `AGGREGATE_RATIO` 继续使用原 REQUEST_ONLY/NONE interpretation 与 `REQUEST_DERIVED`，Provider projection 和 compiler
   allowlist 均包含其 exact id；RECENT_COMPLETE_PERIODS 不是数值结果身份。原 Candidate/QueryEvidence schema 无新增 publisher。
 - `resolvePostgresqlRequestDerivedBindings` 在 compile/admission/acceptance 共用，调用 `provePostgresqlAggregateRatio`。
   与月度同比共享 exact Context/receipt/catalog/snapshot/binding、原 SUM Metric 来源证明和派生 hash builder。
   两个源 Metric 必须已选、内容与发布值相等、同表同 grain、单列 SUM、null_policy=exclude/preserve；附带 Formula 只允许精确 SUM SLOT。
 - 初期支持单个直接 aliased physical SELECT 的全量总计或分类维度分组。每个分组 Dimension 必须已选、groupable、属于两指标
-  allowed_dimension_ids、同物理表，且直接投影与 GROUP BY 一一相等（可用输出 alias），无隐藏分组。时间维度/窗口另需证明，不在本子集。
+  allowed_dimension_ids、同物理表，且直接投影与 GROUP BY 一一相等（可用输出 alias），无隐藏分组。
+- 带窗仅接受原 Context 同时包含 RECENT_COMPLETE_PERIODS：上下界/Dimension/时区精确等于 Host 解析窗口，两个 SUM Metric
+  均使用该同表时间列且覆盖整个窗口；任一 Metric 的发布 min_time/max_time 缺失都不可证明覆盖，拒绝执行。
+  时间 Dimension 同样须已选、已请求、已发布且在双方 allowed dimensions 内。
+  WHERE 仅两项 AND：direct time >= $start 与 direct time < $end，实际参数序号和声明一致；同值不同序号也不能混用。
+  text 时间必须直接 cast 到 timestamp；native date/timestamp 直接使用。timestamptz、非零时刻/非UTC offset 编码暂不在该 SQL 子集。
+  时间 Dimension 可不输出，但仍进入派生物理 lineage；输出时只接受 `date_trunc($month, exact_time)`、month直接参数和可选外层date cast。
+  月桶与分类维度共同参与精确 GROUP BY，不以请求文字或测试case挑选SQL路径。
 - 净 ROI 严格为 `(SUM(numerator)-SUM(denominator))/NULLIF(SUM(denominator),0)`；NONE 为不相减的比例。
   可使用 CASE 分母0 THEN NULL ELSE 原比例；不接受已发布 ROAS 的零值0、逐行比例平均、错分母、比例再减1或百分比倍乘。
   原始值输出可选，但必须证明 exact SUM 与原 Metric 身份；禁止借用 METRIC/FORMULA 标签逃逸 REQUEST_DERIVED 校验。
-- 禁止 CTE/join/WHERE/HAVING/DISTINCT/FILTER/window/cast/LIMIT。Context 有 RECENT_COMPLETE_PERIODS 时拒绝无窗口退化，
+- 禁止 CTE/join/额外WHERE/HAVING/DISTINCT/FILTER/window/数值cast/LIMIT。Context 有 RECENT_COMPLETE_PERIODS 时拒绝无窗口退化，
   不删除用户要求来满足此子集。两个 SUM 输入仅接受确定数值类型，至少一方产生非整数截断除法。
 - 派生列始终 nullable，raw SUM 即使物理列 NOT NULL 也 nullable（空集合）。hash 绑定完整解释/Context/Candidate/物理源/分组证明；
   物理来源同时包含两个指标和实际分组列。Analysis 不因该角色获得新的发布 Metric 方法权限。
-- 固定 `TEXT2SQL_RATIO_{QUERY_SHAPE,SOURCE,PROJECTION,RATE,GROUP,ORDERING}_REJECTED` 经
+### 4. Validation & Error Matrix
+
+- 固定 `TEXT2SQL_RATIO_{QUERY_SHAPE,SOURCE,WINDOW,PROJECTION,RATE,GROUP,ORDERING}_REJECTED` 经
   `POSTGRESQL_REQUEST_DERIVATION_REPAIR_HINTS` 联合有限集合公开；无 SQL、值、AST、cause，原 bounded repair 次数不变。
+- 缺/错 Context 时间身份或源 coverage 缺失 → `QUERY_EVIDENCE_REQUEST_DERIVATION_BINDING_INVALID`；超出任一源 coverage →
+  `QUERY_EVIDENCE_TIME_WINDOW_OUT_OF_RANGE`；时区冲突 → `QUERY_EVIDENCE_TIME_WINDOW_INVALID`；SQL边界偏离 → `TEXT2SQL_RATIO_WINDOW_REJECTED`。
+
+### 5. Good / Base / Bad Cases
+
+Good：两个原SUM、请求净ROI、原授权月维度、exact窗口共同证明。Base：纯SQL/fixture通过尚非已接受的生产请求。
+Bad：向旧全量Run补塞未选择的时间Dimension，或为支持比例而删WHERE/时间要求。
+
+### 6. Tests Required
+
 - 必测：真实 compiler round trip、NULLIF/CASE NULL、NONE 与净 ROI 区分、源/分母/聚合/分组/过滤漂移、类型提升与整数截断、
   exact authority/hash/OID、原对象重标绕过、空集 NULL、不丢时间请求、Worker 双 allowlist 与安全诊断；只读真实数据探针不是 formal PASS。
+- 带窗正例涵盖native date/timestamp/text、月度分类/不输出时间列；负例涵盖错运算符/参数序号/边界/别名、OR/额外条件、错bucket/
+  cast、单侧coverage/时区/时间列/Dimension权限。新增诊断必须通过真实Worker dispatcher离线capture，保持原messages与预算。
+
+### 7. Wrong vs Correct
+
+Wrong：以 `time_window=null` 查询需要时间比较的净ROI，或用旧Context未授予的月份维度重新盖章。
+Correct：当前Run先正常取得含时间Dimension与RECENT_COMPLETE_PERIODS的accepted Context，再由共享resolver证明精确窗口和SQL。
 
 ## Bounded candidate repair messages
 

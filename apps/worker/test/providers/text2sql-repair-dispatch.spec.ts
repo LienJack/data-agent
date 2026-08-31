@@ -32,6 +32,7 @@ describe("Text2SQL repair through the actual Worker dispatch boundary", () => {
     ["TEXT2SQL_COMPARISON_PRIOR_TIME_INPUT_REJECTED", "prior date_trunc input"],
     ["TEXT2SQL_COMPARISON_CURRENT_SUM_INPUT_REJECTED", "current amount must be raw SUM"],
     ["TEXT2SQL_COMPARISON_PRIOR_SUM_INPUT_REJECTED", "prior amount must be raw SUM"],
+    ["TEXT2SQL_RATIO_WINDOW_REJECTED", "declared parameter indices and exact Host bounds"],
   ])(
     "sends bounded %s repair history to the model port without invoking a provider",
     async (code, hint) => {

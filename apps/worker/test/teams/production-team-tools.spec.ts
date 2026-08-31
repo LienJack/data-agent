@@ -1356,6 +1356,7 @@ describe("Production Team governed chart publication", () => {
             "TEXT2SQL_COMPARISON_PRIOR_TIME_INPUT_REJECTED",
             "TEXT2SQL_COMPARISON_CURRENT_SUM_INPUT_REJECTED",
             "TEXT2SQL_COMPARISON_PRIOR_SUM_INPUT_REJECTED",
+            "TEXT2SQL_RATIO_WINDOW_REJECTED",
           ].map((policyCode) => ({ repairOutcome, executionCode, policyCode })),
       ),
     ),

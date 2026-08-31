@@ -642,7 +642,10 @@ export async function resolvePostgresqlRequestDerivedBindings(
         ({ interpretation_id }) => interpretation_id === output.semantic_binding.object_id,
       );
       if (interpretation?.operator.kind === "AGGREGATE_RATIO") {
-        if (output.semantic_type !== "NUMBER" || current !== null)
+        if (
+          output.semantic_type !== "NUMBER" ||
+          Boolean(current) !== Boolean(input.candidate.time_window)
+        )
           reject("QUERY_EVIDENCE_REQUEST_DERIVATION_BINDING_INVALID");
         const operator = interpretation.operator;
         const numerator = requestSumMetric({
@@ -669,6 +672,8 @@ export async function resolvePostgresqlRequestDerivedBindings(
             .filter(({ semantic_binding }) => semantic_binding.object_kind === "DIMENSION")
             .map(({ semantic_binding }) => semantic_binding.object_id),
         );
+        // Filtering time remains part of provenance even when the output is a total.
+        if (current) dimensionIds.add(current.dimension_id);
         const dimensions = [...dimensionIds].map((id) => {
           const dimension = context.dimensions.find(({ dimension_id }) => dimension_id === id);
           const published = input.semantic_catalog.executable.dimensions.filter(
@@ -682,7 +687,18 @@ export async function resolvePostgresqlRequestDerivedBindings(
             canonicalizeJson(dimension) !== canonicalizeJson(published[0]) ||
             dimension.table_id !== numerator.metric.table_id ||
             !dimension.analysis.groupable ||
-            ["date", "timestamp", "timestamptz"].includes(dimension.data_type) ||
+            (id === current?.dimension_id
+              ? !["date", "timestamp"].includes(dimension.data_type) ||
+                dimension.grain.granularity !== "month" ||
+                [numerator.metric, denominator.metric].some(
+                  (metric) =>
+                    !metric.time_domain ||
+                    metric.time_domain.min_time === null ||
+                    metric.time_domain.max_time === null ||
+                    physicalColumnId(metric.table_id, metric.time_column_id ?? "") !==
+                      physicalColumnId(dimension.table_id, dimension.column_id),
+                )
+              : ["date", "timestamp", "timestamptz"].includes(dimension.data_type)) ||
             !numerator.metric.analysis.allowed_dimension_ids.includes(id) ||
             !denominator.metric.analysis.allowed_dimension_ids.includes(id)
           )
@@ -706,6 +722,28 @@ export async function resolvePostgresqlRequestDerivedBindings(
             reject("QUERY_EVIDENCE_REQUEST_DERIVATION_BINDING_INVALID");
           return { dimension, source };
         });
+        const time = current
+          ? dimensions.find(({ dimension }) => dimension.dimension_id === current.dimension_id)
+          : null;
+        if (current) {
+          const window = timeWindow({
+            candidate: input.candidate,
+            metrics: [numerator.metric, denominator.metric],
+            dimensions: dimensions.map(({ dimension }) => dimension),
+            bindings: context.physical_bindings,
+            snapshot: input.physical_snapshot,
+            datasource_id: input.datasource_ref.resource_id,
+          });
+          if (
+            !time ||
+            !window ||
+            window.dimension_id !== current.dimension_id ||
+            window.timezone !== current.timezone ||
+            Date.parse(window.start) !== Date.parse(current.start) ||
+            Date.parse(window.end) !== Date.parse(current.end)
+          )
+            reject("QUERY_EVIDENCE_REQUEST_DERIVATION_BINDING_INVALID");
+        }
         const proof = await provePostgresqlAggregateRatio({
           candidate: input.candidate,
           output_name: output.name,
@@ -725,6 +763,16 @@ export async function resolvePostgresqlRequestDerivedBindings(
             object_id: dimension.dimension_id,
             column_name: source.column_name,
           })),
+          time_window:
+            time && current
+              ? {
+                  dimension_id: current.dimension_id,
+                  column_name: time.source.column_name,
+                  formatted_type: time.source.formatted_type,
+                  start: current.start,
+                  end: current.end,
+                }
+              : null,
         });
         return {
           nullable_metric_outputs: [...proof.numerator_outputs, ...proof.denominator_outputs],
