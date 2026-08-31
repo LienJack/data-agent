@@ -78,3 +78,12 @@ delta补零同时消除，全空序列不发图；Worker及Web完整行/NULL/断
 Contracts36/36、Platform19/19、Worker52/52、Web18/18，四包typecheck及Contracts build通过。先观察8个新行为Contracts失败、
 1个Platform失败和3个Worker失败再修复；旧hash取自修改前实现并固定。无模型调用、数据库写入或正式验收。
 下一项仍为具体生产方法与独立oracle，不因图表可解析就把Analysis/跨Run业务验收记为已通过。
+
+## 第五个小项：月度多结果方法的输入/输出契约
+
+限定为一个MONTH维度、2–4个NUMBER结果列、12个连续完整月。保留同Metric的本期/同期及比例角色；原Metric必须具备
+CHART_DATASET并通过原applicability，不调整任何方法预算。输出逐measure描述性字段及DIRECT原始表图，Host提供字段Schema/
+计算规则而非预计算答案；明确缺失值、原始端点和相邻月边界，不作统计显著性或因果声明。
+
+23个新测试覆盖角色/NULL/精确映射、列序/别名/行序/DATETIME、来源与发布能力漂移和非法形态；连同原编译/投影/发布回归83/83，
+Worker typecheck/build通过。本次仅新增编译叶子，没有production注册或真实模型Run；独立oracle和现有生产composition接线紧接着执行。

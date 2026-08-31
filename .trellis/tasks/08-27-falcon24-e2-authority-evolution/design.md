@@ -1654,3 +1654,14 @@ REQUEST_DERIVED的解释依赖必须包含在当前节点原指标/维度选择�
 Platform趋势points逐点投影，保留缺失月份与absolute_delta=NULL；全空序列不发图。Worker保存原直接投影全部行，
 Web继续各measure分图与invalidType=break。NULL/行顺序/值进入同一dataset hash；补零、删行或换序不能沿用旧凭据。
 先RED回归后focused验证；本项不新增方法、不调用模型、不激活live E17，业务能力与四层正式门禁仍待后续闭合。
+
+### 25.24 月度多结果的描述性比较方法
+
+第一切片只接受原12月、一个MONTH维度、2–4个NUMBER结果列；原Metric≤3且必须通过原CHART_DATASET和applicability门禁。
+ResultContract保留每列精确source/role/ID/NULL，observations直接投影全部月度行；结果字段分别容纳各measure的缺失数、
+极值、最低/最高3点、原窗口首尾变化与最大相邻月下降。NULL端点/零分母保留NULL，不跨缺口、不求比例平均、不做显著性或因果推断。
+Host只向模型提供Schema与计算规则，不提供已算答案；独立oracle须从原QueryEvidence/Arrow重新验算，再走现有atomic publisher。
+新方法不是旧单指标统计趋势的fallback；输入形态/发布能力驱动可用项，不能按问题关键词或case选路。
+
+当前先闭合输入/ResultContract/执行说明与23个离线测试。独立oracle与production接线为紧接着的小项；在其通过前不注册新生产入口。
+全量时间范围、渠道×人群、多输入与跨Run报告仍保持待完成，不能用此一维方法冒充全部复杂Analysis已支持。

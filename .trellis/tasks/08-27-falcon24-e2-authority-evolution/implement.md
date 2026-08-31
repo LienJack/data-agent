@@ -1714,6 +1714,9 @@ Diagnostic/Q1/C1任一正式首次失败必须写既有 authority支持的 immut
     Platform趋势不删行、不把未知delta填0，Worker三role staged chart及Web各measure断点回归通过。
     新Contracts预期行为8项、Platform1项、Worker3项先RED；修复后Contracts36/36、Platform19/19、Worker52/52、Web18/18，
     四包typecheck、Contracts build通过；本项不新增方法、模型Run、live写入或正式PASS。
+  - [x] 月度多结果方法的输入/输出契约：exact12月、单MONTH维度、2–4个NUMBER结果，各列保留source/role/NULL；
+    只授权原Metric的CHART_DATASET，Host规则声明描述性比较，不注入预计算答案。新23项及原编译/投影/发布回归共83/83，
+    Worker typecheck/build通过。尚未切换production注册；接续独立oracle和唯一生产composition，再验证真实执行链。
 - [ ] 所需能力离线闭合后最终clean build/full unit/fresh scratch，再fresh E17正式15回合从L1。当前ACTIVE，live E16 FAILED。
 
 **F6 READY 轮次恢复边界（2026-08-30，历史）**

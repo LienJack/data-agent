@@ -276,3 +276,48 @@ Release revision/Schema hash、Context hash、source列/role、解释依赖与ID
 
 Wrong：`metric_ids.push(requestDerivedId)`。
 Correct：`metric_ids`仍选原发布指标，Host仅把exact来源证明得到的比例ID放入结果lineage允许集合。
+
+## Scenario: 有界月度多结果的描述性方法契约
+
+### 1. Scope / Trigger
+
+接受的QueryEvidence含一个MONTH Dimension和2–4个NUMBER结果列，恰好12个完整连续月；允许同Metric的本期/同期与已证明比例。
+此契约仅定义新方法的输入、输出与计算规则；生产启用仍须独立oracle与原Sandbox/publication接线，不得将编译成功视为业务PASS。
+
+### 2. Signatures
+
+`compileMonthlyComparisonPlan({context,query_evidence_ref,query_evidence_document})` →
+`{result_contract,required_operator_obligations:[],shape,execution_contract}`；
+method ID为`published-monthly-multi-measure-comparison@1`，ResultContract为`monthly-multi-measure-comparison.result`。
+
+### 3. Contracts
+
+- 原Metric最多3个，均须原发布`CHART_DATASET`、合法同月维度/时区/公式及原applicability；不改Skill限制。
+- 原文档/ref/hash、Context四字段、Scope/Run、Release/Schema id/revision/hash必须一致；比例复用来源权威校验，不成为Metric。
+- 严格3–5列、12行、唯一连续月份，DATE保留日历值、DATETIME按显式时区转日历月。未知role、多维、缺月份和全空measure不接受。
+- observations为原DIRECT集合，各列显式source；保留原值和NULL，仅按月份排序。一个图的所有y通过现有Web分图展示。
+- 每个measure独立JSON字段：观测/缺失数、极值、最低/最高3点、完整窗口首尾值/变化、最多3个相邻月下降；值与序数不得跨measure混算。
+- 缺失或零分母导致undefined时保留NULL；不可移动窗口端点或跨缺口相减。排序同值按月份升序。`claim_strength=DESCRIPTIVE`。
+- execution_contract只含Host规则、JSON Schema和source列名，不含行或预计算答案。无显著性检验、因果结论、自由文本事实或未声明结果字段。
+
+### 4. Validation & Error Matrix
+
+来源/发布能力/公式/维度/时区漂移 → `MONTHLY_COMPARISON_AUTHORITY_INVALID`；
+列/role/行数或值/月份不符 → `MONTHLY_COMPARISON_{SHAPE|VALUE|WINDOW}_INVALID`或原QueryEvidence拒绝码；
+比例来源依赖缺失 → `ANALYSIS_PROGRAM_RESULT_SOURCE_AUTHORITY_INVALID`。拒绝后不得退回单序列方法或自动丢列/丢行。
+
+### 5. Good / Base / Bad Cases
+
+Good：12月收入、本期/同期同Metric及6个NULL的同比结果，各自按来源比较。
+Base：单指标2列表继续原统计趋势方法，不改变其Mann-Kendall/Theil-Sen义务。
+Bad：拼接不同窗口、把先后两个非空月假装相邻月、把ROI均值当合计ROI，或因字段叫ratio就猜身份。
+
+### 6. Tests Required
+
+角色/NULL/显式映射/不扩大Metric；行序、列序、别名、DATETIME；Context/Release/Schema/Scope/能力/公式/维度/时区漂移；
+缺月、重复月、空时间、全空measure、非法值、单measure、多维和未选择比例依赖。后续oracle须逐数值、表/图和hash闭包反例。
+
+### 7. Wrong vs Correct
+
+Wrong：`first_value = series.dropna().iloc[0]`。
+Correct：`first_value = original_monthly_series.iloc[0]`，缺失端点保持NULL，变化只能来自原窗口端点。
