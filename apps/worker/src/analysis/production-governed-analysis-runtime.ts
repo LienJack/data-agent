@@ -8,6 +8,7 @@ import { sha256ContentHash } from "@data-agent/contracts/common";
 import type { AnalysisContext } from "@data-agent/contracts/context";
 import type { ResearchArtifactAuthorityPort } from "@data-agent/contracts/ports";
 import type { RunWorkLease } from "@data-agent/contracts/runs";
+import { z } from "zod";
 import { createEnvironmentOpenSandboxAnalysisRuntime } from "../runs/opensandbox-analysis-runtime.js";
 import type { ResearchAuthorityCapabilityResolver } from "../runs/research-authority-capabilities.js";
 import type { FrozenSemanticReleaseReadPort } from "../semantic/semantic-release-read-port.js";
@@ -15,9 +16,14 @@ import {
   type AnalysisLifecyclePersistenceAuthority,
   createResearchAnalysisLifecycleAuthorityPort,
 } from "./analysis-lifecycle-authority.js";
+import type { AnalysisMethodRegistryEntry } from "./analysis-program-compiler.js";
 import { createRunBoundDeepSeekAnalysisAgentModel } from "./deepseek-analysis-agent.js";
 import { deterministicAnalysisUuid } from "./deterministic-id.js";
-import { type AnalysisArtifactCommitPort, createAnalysisProgramExecutor } from "./executor.js";
+import {
+  type AnalysisArtifactCommitPort,
+  type AnalysisOraclePort,
+  createAnalysisProgramExecutor,
+} from "./executor.js";
 import type { GovernedAgentAnalysisPort } from "./governed-agent-analysis-port.js";
 import {
   createGovernedAnalysisRuntime,
@@ -28,6 +34,11 @@ import {
   createAnalysisInputMaterializer,
   resolveAnalysisInputEncryption,
 } from "./input-materializer.js";
+import { createMonthlyComparisonOracle } from "./monthly-comparison-oracle.js";
+import {
+  compileMonthlyComparisonPlan,
+  MONTHLY_COMPARISON_METHOD_ID,
+} from "./monthly-comparison-planning.js";
 import {
   createProductTeamGovernedAnalysisQueryPort,
   type ProductTeamAnalysisArtifactAuthority,
@@ -139,6 +150,22 @@ async function questionFrameRef(input: {
 function methodRegistry(): GovernedAnalysisMethodRegistryPort {
   return Object.freeze({
     async resolve(methodInput: Parameters<GovernedAnalysisMethodRegistryPort["resolve"]>[0]) {
+      if (methodInput.query_evidence_binding.columns.length !== 2) {
+        const plan = await compileMonthlyComparisonPlan({
+          context: methodInput.context,
+          query_evidence_ref: methodInput.query_evidence_ref,
+          query_evidence_document: methodInput.query_evidence_document,
+        });
+        return Object.freeze([
+          Object.freeze({
+            method_id: MONTHLY_COMPARISON_METHOD_ID,
+            skill_id: "open-python-analysis@1" as const,
+            result_contract: plan.result_contract,
+            required_operator_obligations: plan.required_operator_obligations,
+            execution_contract: plan.execution_contract,
+          }),
+        ]);
+      }
       const plan = await compileSingleSeriesAnalysisPlan({
         question: methodInput.question,
         question_frame_ref: await questionFrameRef({
@@ -162,6 +189,41 @@ function methodRegistry(): GovernedAnalysisMethodRegistryPort {
   });
 }
 
+function registeredMethod(
+  node: AnalysisProgramPayload["nodes"][number],
+  methods: readonly AnalysisMethodRegistryEntry[],
+) {
+  const ids = node.method_registry_entry_ids;
+  const matches = methods.filter((method) => ids?.includes(method.method_id));
+  const selected = matches[0];
+  if (
+    ids?.length !== 1 ||
+    matches.length !== 1 ||
+    !selected ||
+    selected.skill_id !== node.skill_id ||
+    selected.result_contract.contract_hash !== node.result_contract.contract_hash
+  )
+    throw new TypeError("PRODUCTION_ANALYSIS_METHOD_BINDING_INVALID");
+  return selected;
+}
+
+function oracleForMethods(
+  context: AnalysisContext,
+  methods: readonly AnalysisMethodRegistryEntry[],
+): AnalysisOraclePort {
+  const single = createSingleSeriesAnalysisOracle();
+  const comparison = createMonthlyComparisonOracle(context);
+  return Object.freeze({
+    async evaluate(input: Parameters<AnalysisOraclePort["evaluate"]>[0]) {
+      const selected = registeredMethod(input.node, methods);
+      if (selected.method_id === FALCON24_SINGLE_SERIES_TREND_METHOD_ID)
+        return single.evaluate(input);
+      if (selected.method_id === MONTHLY_COMPARISON_METHOD_ID) return comparison.evaluate(input);
+      throw new TypeError("PRODUCTION_ANALYSIS_ORACLE_NOT_REGISTERED");
+    },
+  });
+}
+
 function analysisContextPort(input: {
   readonly question: string;
   readonly semantic_context_package: Parameters<
@@ -169,9 +231,16 @@ function analysisContextPort(input: {
   >[0]["semantic_context"]["package"];
   readonly context: AnalysisContext;
   readonly binding: QueryEvidenceSemanticBinding;
+  readonly methods: readonly AnalysisMethodRegistryEntry[];
 }) {
   return Object.freeze({
     async load(command: { readonly node: AnalysisProgramPayload["nodes"][number] }) {
+      const method = registeredMethod(command.node, input.methods);
+      if (
+        method.method_id === MONTHLY_COMPARISON_METHOD_ID &&
+        method.execution_contract === undefined
+      )
+        throw new TypeError("PRODUCTION_ANALYSIS_EXECUTION_CONTRACT_REQUIRED");
       return {
         semantic_context_package: input.semantic_context_package,
         analysis_contract: {
@@ -184,6 +253,9 @@ function analysisContextPort(input: {
             ),
           ],
           semantic_contract: {
+            ...(method.execution_contract === undefined
+              ? {}
+              : { method_execution_contracts: [z.json().parse(method.execution_contract)] }),
             context_hash: input.context.context_hash,
             semantic_context_package_hash: input.context.semantic_context_binding.package_hash,
             metric_refs: command.node.metric_refs,
@@ -305,9 +377,10 @@ export function createProductionGovernedAnalysisRuntime(input: {
           semantic_context_package: runtime.command.semantic_context.package,
           context: runtime.analysis_context,
           binding: runtime.query_evidence_binding,
+          methods: runtime.method_registry,
         }),
         model: createRunBoundDeepSeekAnalysisAgentModel(runtime.command.provider_dispatch),
-        oracle: createSingleSeriesAnalysisOracle(),
+        oracle: oracleForMethods(runtime.analysis_context, runtime.method_registry),
         sandbox,
         fence_guard: runtime.command.fence_guard,
         references: referenceFactory(),
@@ -333,6 +406,7 @@ export const productionGovernedAnalysisRuntimeInternals = Object.freeze({
   analysisContextPort,
   inputFieldType,
   methodRegistry,
+  oracleForMethods,
   questionFrameRef,
   referenceFactory,
 });

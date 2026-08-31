@@ -142,6 +142,8 @@ export interface AnalysisMethodRegistryEntry {
   readonly skill_id: AnalysisProgramPayload["nodes"][number]["skill_id"];
   readonly result_contract: AnalysisResultContract;
   readonly required_operator_obligations: unknown;
+  /** Host-owned execution rules, included in the registry hash; never a candidate-supplied field. */
+  readonly execution_contract?: unknown;
 }
 
 const PROGRAM_COMPILER_VERSION = "analysis-program-host-compiler@2.0.0" as const;

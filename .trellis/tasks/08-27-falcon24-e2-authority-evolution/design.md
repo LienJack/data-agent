@@ -1670,3 +1670,8 @@ Host只向模型提供Schema与计算规则，不提供已算答案；独立orac
 即使错误输出重新封hash也不能通过。拒绝额外自由文本结论和因果声明，FULL只覆盖固定描述性合同；不产生material-change阈值结论。
 实现hash绑定oracle模块内容和执行规则，原Brief与oracle共用未改变的时间窗归一化。32项oracle回归连同原路径共117项通过；
 仍没有production方法注册或真实模型Run，下一步在唯一composition接线并验证，不能直接记为业务通过。
+
+生产composition接线随后完成：原两列single-series保留原编译器及两个算子；多列须通过完整月度比较输入门禁。
+Host-only execution_contract随既有registry hash进入上下文，只传给exact匹配节点；oracle选择器同时核对method/skill/contract，
+原方法不退化为新描述性方法。10个focused文件132项通过，包含生产选择器、原算子拒绝与后续叙述数值保留；无预算变化。
+这里只证明离线生产组件接线，不是Sandbox服务、真实模型问答或正式门禁证据；全量范围、多维/多输入与跨Run闭包继续处理。

@@ -2,6 +2,7 @@ import { createHash } from "node:crypto";
 import { STATISTICAL_OPERATOR_REGISTRY_DIGEST } from "@data-agent/contracts/statistical-operators";
 import { describe, expect, it } from "vitest";
 import type { AnalysisBoundOutput, AnalysisOraclePort } from "../../src/analysis/executor.js";
+import { buildAnalysisNarrativeProjection } from "../../src/analysis/executor.js";
 import {
   createMonthlyComparisonOracle,
   monthlyComparisonOracleInternals,
@@ -11,6 +12,7 @@ import {
   MONTHLY_COMPARISON_METHOD_ID,
 } from "../../src/analysis/monthly-comparison-planning.js";
 import { productTeamGovernedQueryInternals } from "../../src/analysis/product-team-query-port.js";
+import { productionGovernedAnalysisRuntimeInternals } from "../../src/analysis/production-governed-analysis-runtime.js";
 import {
   comparisonHash,
   comparisonRef,
@@ -217,6 +219,44 @@ async function fixture() {
 }
 
 describe("independent monthly comparison oracle", () => {
+  it("reaches the independent oracle through the production registry and retains bounded narrative facts", async () => {
+    const test = await fixture();
+    const methods = [
+      {
+        method_id: MONTHLY_COMPARISON_METHOD_ID,
+        skill_id: "open-python-analysis@1" as const,
+        result_contract: test.plan.result_contract,
+        required_operator_obligations: [],
+        execution_contract: test.plan.execution_contract,
+      },
+    ];
+    const oracle = productionGovernedAnalysisRuntimeInternals.oracleForMethods(
+      test.source.context,
+      methods,
+    );
+    await expect(oracle.evaluate(test.input)).resolves.toMatchObject({
+      implementation_id: "monthly-multi-measure-comparison-oracle@1.0.0",
+    });
+    const summary = buildAnalysisNarrativeProjection(test.result);
+    expect(summary.fields).toEqual({
+      claim_strength: "DESCRIPTIVE",
+      measure_1: test.result.data.measure_1,
+      measure_2: test.result.data.measure_2,
+      measure_3: test.result.data.measure_3,
+    });
+    expect(summary.collection_counts).toEqual({ observations: 12 });
+    await expect(
+      productionGovernedAnalysisRuntimeInternals
+        .oracleForMethods(test.source.context, [])
+        .evaluate(test.input),
+    ).rejects.toThrow("PRODUCTION_ANALYSIS_METHOD_BINDING_INVALID");
+    await expect(
+      productionGovernedAnalysisRuntimeInternals
+        .oracleForMethods(test.source.context, methods)
+        .evaluate({ ...test.input, node: { ...test.input.node, skill_id: "trend-change@1" } }),
+    ).rejects.toThrow("PRODUCTION_ANALYSIS_METHOD_BINDING_INVALID");
+  });
+
   it("keeps an original zero endpoint and undefined relative change", async () => {
     const test = await fixture();
     const changed = {

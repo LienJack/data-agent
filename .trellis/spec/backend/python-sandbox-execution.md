@@ -291,6 +291,8 @@ Correct：`metric_ids`仍选原发布指标，Host仅把exact来源证明得到�
 method ID为`published-monthly-multi-measure-comparison@1`，ResultContract为`monthly-multi-measure-comparison.result`。
 `createMonthlyComparisonOracle(context).evaluate({node,governed_inputs,sandbox_outputs,sandbox_receipt})`独立验算；
 `resolveAnalysisEvidenceTimeWindow(binding,context)`是原Brief与oracle共用的时间窗归一化，不改变原规则。
+`AnalysisMethodRegistryEntry.execution_contract?`为Host-only执行规则，随原registry hash封存；不在模型candidate schema中。
+生产`analysisContextPort`仅把当前节点匹配的规则放入`semantic_contract.method_execution_contracts`。
 
 ### 3. Contracts
 
@@ -305,6 +307,9 @@ method ID为`published-monthly-multi-measure-comparison@1`，ResultContract为`m
   完整RESULT/TABLE/CHART内容分别与期望相等；scope/run、内容bytes/hash/ref、method/Metric/窗口、无算子义务必须同时闭合。
 - `GENERATED_ANALYSIS.oracle_scope=FULL`只覆盖这里声明的描述性字段和原始表图，不覆盖因果或统计推断；`material_change=false`，
   不凭描述性差值启用需要阈值的分支。缺失/零分母保留undefined限制。implementation hash绑定实际oracle模块内容摘要与执行规则。
+- 唯一production composition按接受输入形态注册：两列仍走原single-series编译器；多列必须通过完整月度比较编译器。
+  不捕获失败后降级、不丢列、不按问题文字/题号路由。Context与oracle均要求exact单一method ID、skill和ResultContract hash。
+  新方法缺执行规则即拒绝；原方法的Mann-Kendall/Theil-Sen义务、预算、Root动态编排与原子publisher均不变。
 
 ### 4. Validation & Error Matrix
 
@@ -313,6 +318,8 @@ method ID为`published-monthly-multi-measure-comparison@1`，ResultContract为`m
 比例来源依赖缺失 → `ANALYSIS_PROGRAM_RESULT_SOURCE_AUTHORITY_INVALID`。拒绝后不得退回单序列方法或自动丢列/丢行。
 Oracle的scope/contract/output/input漂移 → `MONTHLY_COMPARISON_ORACLE_*_INVALID`；RESULT/TABLE/CHART与源期望不同 →
 `MONTHLY_COMPARISON_ORACLE_{RESULT|TABLE|CHART}_MISMATCH`；有限输入运算溢出 → `MONTHLY_COMPARISON_ORACLE_NUMERIC_RANGE_INVALID`。
+生产节点方法/skill/contract不匹配 → `PRODUCTION_ANALYSIS_METHOD_BINDING_INVALID`；新方法缺规则 →
+`PRODUCTION_ANALYSIS_EXECUTION_CONTRACT_REQUIRED`；无匹配oracle → `PRODUCTION_ANALYSIS_ORACLE_NOT_REGISTERED`。
 
 ### 5. Good / Base / Bad Cases
 
@@ -326,6 +333,8 @@ Bad：拼接不同窗口、把先后两个非空月假装相邻月、把ROI均�
 缺月、重复月、空时间、全空measure、非法值、单measure、多维和未选择比例依赖。后续oracle须逐数值、表/图和hash闭包反例。
 Oracle测试必须用手写已知值作为正例，不调用oracle算法生成自己的测试期望；覆盖重新封hash后的错误数值/计数/同值排序/
 换列/补零/跨缺口/额外总结/因果声明，真实Arrow的类型正确但数值漂移，以及零端点、中间缺失和溢出。
+生产注册正例必须更换问题文字仍选相同输入方法；两列输入保留原算子与oracle，删算子仍拒绝。
+匹配执行规则不含行/预计算值，未注册方法/缺规则拒绝；新方法通过production oracle选择器，叙述投影保留逐measure受验数值。
 
 ### 7. Wrong vs Correct
 

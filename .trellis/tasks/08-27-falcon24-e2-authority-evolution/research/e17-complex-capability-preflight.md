@@ -96,3 +96,10 @@ FULL严格限于固定描述性合同，不授予统计/因果或material-change
 
 新32项加原编译/投影/发布/叙述回归共117/117，Worker typecheck/build、4文件Biome通过。只把原时间窗函数抽出供Brief与oracle复用，
 旧单指标方法与规则未改。没有生产注册、模型调用或数据库写入；继续接唯一production composition，然后再证明真实执行链。
+
+## 第七个小项：唯一生产composition接线
+
+原两列单指标继续统计趋势方法；多列输入须完整通过月度比较编译器，问题文字不参与选择。新增Host-only execution_contract
+随原registry hash封存，只进入匹配节点的执行上下文；新/旧oracle均按exact method/skill/contract绑定，无兜底或预算扩大。
+4个生产接线回归先因旧单序列形态限制失败；修复后10文件132/132，Worker typecheck/build通过。新方法关键数值经过叙述投影保留，
+原方法删算子仍失败，错方法与缺规则拒绝。本项不含真实Sandbox/模型/浏览器运行或正式PASS，live仍E16 FAILED。

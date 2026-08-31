@@ -1721,6 +1721,10 @@ Diagnostic/Q1/C1任一正式首次失败必须写既有 authority支持的 immut
     重封hash后的错误数值/排序/补零/换列/额外总结/因果声明拒绝；零端点、不能跨缺口、有限输入运算溢出闭合。
     新32项oracle回归与原路径共117/117，Worker typecheck/build和4文件Biome通过。时间窗函数只抽取复用，规则未改。
     仍未注册production方法，未创建Run或触碰live；下一小项为现有唯一composition接线。
+  - [x] 唯一production composition接入月度多结果方法/独立oracle，原两列趋势与两项统计义务保持；Host规则随registry hash，
+    只给exact method/skill/contract节点。初始4个生产接线回归因旧single-series形态限制失败，修复后10文件132/132，
+    Worker typecheck/build通过；新叙述投影保留已验数值，缺规则/错方法与删旧算子均拒绝。
+    未改预算/Root路由/发布器，未创建模型Run或live写入；后续全量范围、多维/多输入及跨Run闭包仍待完成。
 - [ ] 所需能力离线闭合后最终clean build/full unit/fresh scratch，再fresh E17正式15回合从L1。当前ACTIVE，live E16 FAILED。
 
 **F6 READY 轮次恢复边界（2026-08-30，历史）**

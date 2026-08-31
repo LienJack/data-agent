@@ -1,5 +1,6 @@
 import { createHash } from "node:crypto";
 import {
+  type AnalysisProgramPayload,
   type ArtifactReference,
   buildAnalysisResultContract,
   buildProductTeamArtifactDocument,
@@ -11,6 +12,10 @@ import { STATISTICAL_OPERATOR_REGISTRY_DIGEST } from "@data-agent/contracts/stat
 import { describe, expect, it } from "vitest";
 import { buildGovernedResultProjections } from "../../src/analysis/governed-result-projection.js";
 import { productTeamGovernedQueryInternals } from "../../src/analysis/product-team-query-port.js";
+import {
+  FALCON24_SINGLE_SERIES_TREND_METHOD_ID,
+  productionGovernedAnalysisRuntimeInternals,
+} from "../../src/analysis/production-governed-analysis-runtime.js";
 import { createSingleSeriesAnalysisOracle } from "../../src/analysis/single-series-analysis-oracle.js";
 import { compileSingleSeriesAnalysisPlan } from "../../src/analysis/single-series-analysis-planning.js";
 import { buildTestQueryEvidenceSemanticBinding } from "./support/query-evidence-semantic-binding.js";
@@ -738,6 +743,57 @@ async function oracleFixture() {
 }
 
 describe("generic single-series analysis Oracle", () => {
+  it("keeps the original statistical oracle behind production method binding", async () => {
+    const fixed = await oracleFixture();
+    const plan = await compileSingleSeriesAnalysisPlan(await planInput(await queryEvidence()));
+    const context = await analysisContext();
+    const node: AnalysisProgramPayload["nodes"][number] = {
+      node_id: "single-series-trend",
+      result_contract: plan.result_contract,
+      skill_id: "trend-change@1",
+      method_registry_entry_ids: [FALCON24_SINGLE_SERIES_TREND_METHOD_ID],
+      metric_refs: context.metrics.map((metric) => metric.metric_ref),
+      dimension_refs: ["dimension.order_month"],
+      time_window: {
+        start: "2025-08-01T00:00:00.000Z",
+        end: "2026-08-01T00:00:00.000Z",
+        timezone: "Asia/Shanghai",
+        semantics: "HALF_OPEN",
+      },
+      comparison_window: null,
+      parameters: {},
+      execution_mode: "MODEL_GENERATED",
+      generated_source_policy: "GOVERNED_OPERATOR_ORCHESTRATION",
+      operator_obligations: [...plan.required_operator_obligations],
+      dependency_node_ids: [],
+      activation_rule: { kind: "ALWAYS" },
+      criticality: "CRITICAL",
+    };
+    const methods = [
+      {
+        method_id: FALCON24_SINGLE_SERIES_TREND_METHOD_ID,
+        skill_id: "trend-change@1" as const,
+        result_contract: node.result_contract,
+        required_operator_obligations: plan.required_operator_obligations,
+      },
+    ];
+    const oracle = productionGovernedAnalysisRuntimeInternals.oracleForMethods(context, methods);
+    await expect(
+      oracle.evaluate({
+        ...fixed.input,
+        node,
+      }),
+    ).resolves.toMatchObject({
+      result: { result_kind: "TREND_CHANGE" },
+      oracle_receipt: { schema_version: "single-series-trend-oracle@1.0.0" },
+    });
+    const missingOperator = structuredClone({ ...fixed.input, node });
+    Object.assign(missingOperator.sandbox_receipt, { operator_receipts: [] });
+    await expect(oracle.evaluate(missingOperator)).rejects.toThrow(
+      "SINGLE_SERIES_ORACLE_OPERATOR_CLOSURE_INVALID",
+    );
+  });
+
   it("accepts only the exact 12-month QueryEvidence, governed operators and chart closure", async () => {
     const fixture = await oracleFixture();
     const verdict = await createSingleSeriesAnalysisOracle().evaluate(fixture.input);
