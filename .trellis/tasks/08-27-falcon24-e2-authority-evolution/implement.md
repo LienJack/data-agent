@@ -1804,6 +1804,10 @@ Diagnostic/Q1/C1任一正式首次失败必须写既有 authority支持的 immut
   816d6a0e新scratch A1独立业务与QA/Trace73节点通过；A2首Root调用协议失败/5events，未进入Semantic。
   frozen历史3条存在，但不能记为检索修复的端到端证明。已补raw-free adapter阶段诊断，不放宽schema或重试；
   live348表不变，临时服务/browser/auth/capability清理、scratch停机保留，见 [协议断点](research/complex-816d6a0e-root-protocol.md)。
+- [x] 201ef834新scratch A1业务及QA/Trace76节点通过；A2检索历史绑定已真实通过，但接受的SemanticContext遗失12月窗口，
+  Text2SQL无accepted evidence且Run FAILED。补齐Semantic Specialist的原冻结Task用户意图投影与请求hash绑定；
+  不复制旧答案、不扩大历史窗口或重试。分组同比AST能力仍需单独闭合后才启动下一新构建。
+  live348表不变，本轮临时资源精确清理、scratch停机保留；详见 [A2窗口断点](research/complex-201ef834-semantic-window.md)。
   再继续上述 F5 / F7；不另跑 child 历史六问，也不复用 core4 PASS。
 
 **F6 READY 轮次恢复边界（2026-08-30，历史）**
