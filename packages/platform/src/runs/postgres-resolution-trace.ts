@@ -6,6 +6,7 @@ import {
   type ArtifactReference,
   type ArtifactWorkspaceChartDocumentV2,
   type ArtifactWorkspaceChartDocumentV3,
+  analysisChartFacetFieldSchema,
   analysisPublicationV2ReceiptSchema,
   analysisResultChartIntentSchema,
   analysisResultChartTemplateIdSchema,
@@ -41,6 +42,7 @@ import {
   type ResolutionTraceNode,
   type RunRuntimeEvent,
   redactPublicDisplayText,
+  refineAnalysisPublishedChartFacet,
   type SandboxResult,
   type SchemaSnapshotDocument,
   type SqlHistoryEntry,
@@ -189,21 +191,24 @@ const analysisPublishedResultSchema = z.strictObject({
 const analysisPublishedTableSchema = analysisPublishedTableBodySchema.safeExtend({
   schema_version: z.literal("analysis-published-table@1.0.0"),
 });
-const analysisPublishedChartSchema = z.strictObject({
-  schema_version: z.literal("analysis-published-chart@1.0.0"),
-  chart_id: analysisIdentifierSchema,
-  title_zh: z.string().trim().min(1).max(160),
-  intent: analysisResultChartIntentSchema,
-  template_id: analysisResultChartTemplateIdSchema,
-  bindings: z.strictObject({
-    x_field: analysisFieldSchema,
-    y_fields: z.array(analysisFieldSchema).min(1).max(128),
-    series_field: analysisFieldSchema.nullable(),
-    lower_bound_field: analysisFieldSchema.nullable(),
-    upper_bound_field: analysisFieldSchema.nullable(),
-  }),
-  dataset: analysisPublishedChartDatasetSchema,
-});
+const analysisPublishedChartSchema = z
+  .strictObject({
+    schema_version: z.enum(["analysis-published-chart@1.0.0", "analysis-published-chart@1.1.0"]),
+    chart_id: analysisIdentifierSchema,
+    title_zh: z.string().trim().min(1).max(160),
+    intent: analysisResultChartIntentSchema,
+    template_id: analysisResultChartTemplateIdSchema,
+    bindings: z.strictObject({
+      x_field: analysisFieldSchema,
+      y_fields: z.array(analysisFieldSchema).min(1).max(128),
+      series_field: analysisFieldSchema.nullable(),
+      facet_field: analysisChartFacetFieldSchema,
+      lower_bound_field: analysisFieldSchema.nullable(),
+      upper_bound_field: analysisFieldSchema.nullable(),
+    }),
+    dataset: analysisPublishedChartDatasetSchema,
+  })
+  .superRefine(refineAnalysisPublishedChartFacet);
 const analysisPublishedDocumentSchema = z.discriminatedUnion("schema_version", [
   analysisPublishedResultSchema,
   analysisPublishedTableSchema,
@@ -796,14 +801,14 @@ async function verifyAnalysisSystemArtifactDocument(
     }
     const decoded = new TextDecoder("utf-8", { fatal: true }).decode(row.content_bytes);
     const document = analysisPublishedDocumentSchema.parse(JSON.parse(decoded));
-    const expectedSchema = {
-      RESULT: "analysis-published-result@1.0.0",
-      TABLE: "analysis-published-table@1.0.0",
-      CHART: "analysis-published-chart@1.0.0",
+    const expectedSchemas: readonly string[] = {
+      RESULT: ["analysis-published-result@1.0.0"],
+      TABLE: ["analysis-published-table@1.0.0"],
+      CHART: ["analysis-published-chart@1.0.0", "analysis-published-chart@1.1.0"],
     }[metadata.artifact.artifact_kind];
     const canonicalBytes = new TextEncoder().encode(canonicalizeJson(document));
     if (
-      document.schema_version !== expectedSchema ||
+      !expectedSchemas.includes(document.schema_version) ||
       !exactBytes(canonicalBytes, row.content_bytes)
     ) {
       throw new TypeError("RESOLUTION_TRACE_ANALYSIS_RESULT_CANONICAL_MISMATCH");

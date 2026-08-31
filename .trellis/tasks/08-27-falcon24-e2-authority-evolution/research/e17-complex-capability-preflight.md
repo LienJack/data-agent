@@ -150,3 +150,12 @@ exact method/skill/contract与Host规则必须匹配；原single-series统计与
 不改变统计/来源授权。Web按原分类再按measure分区显示，原series/NULL/顺序保持，最多16分面且原全表限制不增加。
 初始6项新版本行为RED，随后Contracts53/53、Web26/26、四包typecheck、Contracts build通过；旧非空golden hash不变。
 这只是读取/显示契约和静态组件证据；尚无producer/Trace接线、新方法、真实浏览器/模型或数据库写入。下一小项沿原publisher补齐。
+
+## 原publisher/Trace的显式分面闭包
+
+模型facet声明经Host选publish1.1，publisher只引用原STRING/DIMENSION表列，Chart1.1由Worker映射到V3 transform1.2；无facet保留原格式。
+真实Arrow源行/NULL经既有暂存publisher完整保留，显示变化不改RESULT/TABLE字节；各层hash包含facet。原方法仍由原独立oracle拒绝新增图字段。
+初始Contracts版本正例和模型绑定正例各RED；中间发现精确optional类型需包含undefined后修正，无类型断言绕过。
+Trace两个重新封hash的缺列/非DIMENSION反例先实际返回ok:true，补共用source校验后拒绝；原canonical/metadata/Scope/Run边界不变。
+最终Contracts53/53、Worker8文件145/145、Platform40/40，四包typecheck及三包build通过。新publisher测试中的空measure JSON仅用于暂存边界，
+不是独立oracle或完整Sandbox证明。未调用模型、写数据库或启动正式E17；下一步完成月度分群方法，不把该显示能力当业务验收。

@@ -40,7 +40,7 @@ This directory contains guidelines for backend development. Fill in each file wi
 | [Resolution Trace 与 SQL History](./resolution-trace.md) | Event/Artifact 重验、公开轨迹、SQL 哈希索引与原会话深链 | 已建立 |
 | [本地开发与 Docker 运行模式](./local-runtime-modes.md) | 数据库容器、本地 watch、完整部署与迁移门禁 | 已建立 |
 | [Python Sandbox 执行](./python-sandbox-execution.md) | 模型 Python 源码、隔离运行、统计算子 Registry、资源预算、Receipt 与失败关闭 | 算子运行链已实现，Agent/E2E HOLD |
-| [受治理分析图表](./governed-analysis-charts.md) | 版本化原始分类分面、完整源表/hash、确定性分图 | 读取合同与组件已验证，生产接线待完成 |
+| [受治理分析图表](./governed-analysis-charts.md) | 版本化原始分类分面、原publisher/Trace、完整源表/hash、确定性分图 | 组件闭包已验证，具体分群方法待完成 |
 | [质量规范](./quality-guidelines.md) | 类型、测试、边界与审查门禁 | 已建立 |
 | [日志、审计与脱敏](./logging-guidelines.md) | Structured Log、Audit 与 Secret Boundary | 已建立 |
 | [Run 公开事件流](./run-event-streaming.md) | Durable SSE、公开事件 DTO、对话轨迹与前端装配 | 已建立 |

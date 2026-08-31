@@ -7,6 +7,7 @@ import {
 import { canonicalizeJson, deepFreeze, sha256ContentHash } from "@data-agent/contracts/common";
 import type { GovernedOperatorResultRef } from "@data-agent/contracts/ports";
 import {
+  ANALYSIS_CHART_FACET_TEMPLATE_IDS,
   type AnalysisOperatorFinalizationResult,
   type AnalysisResultPublishObservation,
   type AnalysisResultPublishToolArguments,
@@ -809,6 +810,10 @@ export async function prepareAnalysisResult(input: {
       !columns.has(binding.x_field) ||
       binding.y_fields.some((field) => !numeric(field)) ||
       (binding.series_field !== "" && !columns.has(binding.series_field)) ||
+      (binding.facet_field !== undefined &&
+        (columns.get(binding.facet_field)?.data_type !== "STRING" ||
+          columns.get(binding.facet_field)?.semantic_role !== "DIMENSION" ||
+          !ANALYSIS_CHART_FACET_TEMPLATE_IDS.includes(binding.template_id))) ||
       (binding.lower_bound_field !== "" && !numeric(binding.lower_bound_field)) ||
       (binding.upper_bound_field !== "" && !numeric(binding.upper_bound_field))
     ) {
@@ -819,7 +824,10 @@ export async function prepareAnalysisResult(input: {
         artifact_name: `chart:${chart.chart_id}`,
         artifact_kind: "CHART",
         document: {
-          schema_version: "analysis-published-chart@1.0.0",
+          schema_version:
+            binding.facet_field === undefined
+              ? "analysis-published-chart@1.0.0"
+              : "analysis-published-chart@1.1.0",
           chart_id: chart.chart_id,
           title_zh: chart.title_zh,
           intent: binding.intent,
@@ -828,6 +836,7 @@ export async function prepareAnalysisResult(input: {
             x_field: binding.x_field,
             y_fields: binding.y_fields,
             series_field: binding.series_field || null,
+            ...(binding.facet_field !== undefined ? { facet_field: binding.facet_field } : {}),
             lower_bound_field: binding.lower_bound_field || null,
             upper_bound_field: binding.upper_bound_field || null,
           },

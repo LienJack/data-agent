@@ -156,7 +156,9 @@ function validateToolCandidate(
         });
       }
       argumentsWithServerIdentity = {
-        schema_version: "analysis-result-publish-tool@1.0.0",
+        schema_version: chartBindings.some((binding) => binding.facet_field !== undefined)
+          ? "analysis-result-publish-tool@1.1.0"
+          : "analysis-result-publish-tool@1.0.0",
         ...modelArguments,
         chart_bindings: chartBindings,
       };

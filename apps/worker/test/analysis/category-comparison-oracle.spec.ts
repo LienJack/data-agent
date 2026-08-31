@@ -377,6 +377,7 @@ describe("independent category comparison oracle", () => {
     "table-value",
     "table-role",
     "chart-series",
+    "chart-facet",
     "chart-value",
     "chart-y",
     "chart-title",
@@ -394,6 +395,10 @@ describe("independent category comparison oracle", () => {
       if (column) column.semantic_role = "METRIC";
     }
     if (kind === "chart-series") chart.bindings.series_field = null;
+    if (kind === "chart-facet") {
+      chart.schema_version = "analysis-published-chart@1.1.0";
+      Object.assign(chart.bindings, { series_field: null, facet_field: "audience" });
+    }
     if (kind === "chart-value") {
       const row = chart.dataset.rows[0];
       if (row) row.spend = 999;

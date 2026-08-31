@@ -44,6 +44,8 @@ GET /api/workspaces/{workspaceId}/sql-history?run_id=&conversation_id=&occurred_
   `product-team-artifact@1.0.0`；两者都必须与 relational exact identity 一致，禁止因 schema variant 跳过校验。
 - Trace 只保存 bounded summary、status、duration、时间和 typed refs。禁止 Prompt、私有推理、raw Context、
   raw SQL、参数值、Result rows、credential 与 Provider body。
+- 暂存分析Chart读取1.0/显式facet的1.1，继续canonical bytes/raw hash/metadata重验；分面须原表STRING/DIMENSION且版本匹配，
+  与Worker共用字段校验。详见[受治理分析图表](./governed-analysis-charts.md)，不增加Trace写权威或向公共DTO透传原行。
 - `resolution-trace-detail@3.0.0` 是按 `run_id + expected_trace_hash + node_id` 懒加载的唯一严格公共投影，
   并为所有节点携带 content-first `run_context`、父 `trace_hash` 与自身 `detail_hash`。服务端必须在同一个
   `REPEATABLE READ` transaction 中重建 Trace；若其 hash 与调用方绑定值不同，返回

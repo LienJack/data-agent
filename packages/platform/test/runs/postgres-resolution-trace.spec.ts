@@ -759,7 +759,12 @@ function referenceFromFixtureRow<const T extends ArtifactReference["artifact_typ
 
 async function falcon24DerivedAuthorityRows(
   evidence: Awaited<ReturnType<typeof productTeamQueryEvidenceRow>>,
-  options: { readonly input_ref?: ArtifactReference } = {},
+  options: {
+    readonly input_ref?: ArtifactReference;
+    readonly facet?: boolean;
+    readonly facet_field?: string;
+    readonly facet_role?: string;
+  } = {},
 ) {
   const stageId = id(50);
   const resultRow = await analysisSystemPublishedRow({
@@ -815,7 +820,9 @@ async function falcon24DerivedAuthorityRows(
     artifactName: "chart:trend",
     artifactKind: "CHART",
     document: {
-      schema_version: "analysis-published-chart@1.0.0",
+      schema_version: options.facet
+        ? "analysis-published-chart@1.1.0"
+        : "analysis-published-chart@1.0.0",
       chart_id: "trend_chart",
       title_zh: "收入趋势",
       intent: "TREND",
@@ -824,12 +831,25 @@ async function falcon24DerivedAuthorityRows(
         x_field: "month",
         y_fields: ["revenue"],
         series_field: null,
+        ...(options.facet ? { facet_field: options.facet_field ?? "audience" } : {}),
         lower_bound_field: null,
         upper_bound_field: null,
       },
       dataset: {
         table_id: "trend_chart_dataset",
         columns: [
+          ...(options.facet
+            ? [
+                {
+                  key: "audience",
+                  label_zh: "客群",
+                  data_type: "STRING",
+                  nullable: false,
+                  semantic_object_id: "dimension.audience",
+                  semantic_role: options.facet_role ?? "DIMENSION",
+                },
+              ]
+            : []),
           {
             key: "month",
             label_zh: "月份",
@@ -847,7 +867,7 @@ async function falcon24DerivedAuthorityRows(
             semantic_role: "METRIC",
           },
         ],
-        rows: [{ month: "2026-08", revenue: 110 }],
+        rows: [{ month: "2026-08", revenue: 110, ...(options.facet ? { audience: "新客" } : {}) }],
         total_rows: 1,
       },
     },
@@ -2074,85 +2094,129 @@ describe("PostgreSQL Resolution Trace projector", () => {
     });
   });
 
-  it("projects the Falcon24 V3 QueryEvidence to Chart to AnalysisReport authority chain", async () => {
-    const row = await eventRow();
-    const sql = await productTeamSqlArtifactRow();
-    const evidence = await productTeamQueryEvidenceRow(sql);
-    const analysis = await falcon24DerivedAuthorityRows(evidence);
-    const chart = await falcon24AnalysisChartRow(evidence, analysis.derivedRef);
-    const report = await falcon24AnalysisReportRow(chart, analysis.derivedRef);
-    const { capability, authorizer } = issueCapability();
-    const { pool } = scriptedPool((text) => {
-      if (text.includes("from runs as run")) return { rows: [authorityRow()], rowCount: 1 };
-      if (text.includes("from run_events")) return { rows: [row], rowCount: 1 };
-      if (text.includes("select 1") && text.includes("from artifacts")) {
-        return { rows: [{}], rowCount: 1 };
-      }
-      if (text.includes("from artifacts")) {
-        const rows = [
-          sql,
-          evidence,
-          analysis.derivedRow,
-          chart,
-          report,
-          analysis.receiptRow,
-          ...analysis.resultRows,
-          ...analysis.supportRows,
-        ];
-        return { rows, rowCount: rows.length };
-      }
-      return undefined;
-    });
-    const projector = createPostgresResolutionTraceProjector({ pool, authorizer });
-    const trace = await projector.loadTrace(capability, { scope, run_id: ids.run });
-    if (!trace.ok) throw new Error(trace.error.code);
-    const sqlNodeId = `artifact:${sql.artifact_id}:${sql.revision}`;
-    const evidenceNodeId = `artifact:${evidence.artifact_id}:${evidence.revision}`;
-    const chartNodeId = `artifact:${chart.artifact_id}:${chart.revision}`;
-    const reportNodeId = `artifact:${report.artifact_id}:${report.revision}`;
-    expect(trace.ok && trace.value?.edges).toEqual(
-      expect.arrayContaining([
-        { from_node_id: sqlNodeId, to_node_id: evidenceNodeId, kind: "EVIDENCE" },
-        { from_node_id: evidenceNodeId, to_node_id: chartNodeId, kind: "EVIDENCE" },
-        { from_node_id: chartNodeId, to_node_id: reportNodeId, kind: "EVIDENCE" },
-      ]),
-    );
-    expect(trace.ok && trace.value?.nodes).toEqual(
-      expect.arrayContaining([
-        expect.objectContaining({
-          title: "SandboxExecutionReceipt",
-          status: "AVAILABLE",
+  it.each([false, true])(
+    "projects the Falcon24 V3 QueryEvidence to Chart to AnalysisReport authority chain (facet=%s)",
+    async (facet) => {
+      const row = await eventRow();
+      const sql = await productTeamSqlArtifactRow();
+      const evidence = await productTeamQueryEvidenceRow(sql);
+      const analysis = await falcon24DerivedAuthorityRows(evidence, { facet });
+      const chart = await falcon24AnalysisChartRow(evidence, analysis.derivedRef);
+      const report = await falcon24AnalysisReportRow(chart, analysis.derivedRef);
+      const { capability, authorizer } = issueCapability();
+      const { pool } = scriptedPool((text) => {
+        if (text.includes("from runs as run")) return { rows: [authorityRow()], rowCount: 1 };
+        if (text.includes("from run_events")) return { rows: [row], rowCount: 1 };
+        if (text.includes("select 1") && text.includes("from artifacts")) {
+          return { rows: [{}], rowCount: 1 };
+        }
+        if (text.includes("from artifacts")) {
+          const rows = [
+            sql,
+            evidence,
+            analysis.derivedRow,
+            chart,
+            report,
+            analysis.receiptRow,
+            ...analysis.resultRows,
+            ...analysis.supportRows,
+          ];
+          return { rows, rowCount: rows.length };
+        }
+        return undefined;
+      });
+      const projector = createPostgresResolutionTraceProjector({ pool, authorizer });
+      const trace = await projector.loadTrace(capability, { scope, run_id: ids.run });
+      if (!trace.ok) throw new Error(trace.error.code);
+      const sqlNodeId = `artifact:${sql.artifact_id}:${sql.revision}`;
+      const evidenceNodeId = `artifact:${evidence.artifact_id}:${evidence.revision}`;
+      const chartNodeId = `artifact:${chart.artifact_id}:${chart.revision}`;
+      const reportNodeId = `artifact:${report.artifact_id}:${report.revision}`;
+      expect(trace.ok && trace.value?.edges).toEqual(
+        expect.arrayContaining([
+          { from_node_id: sqlNodeId, to_node_id: evidenceNodeId, kind: "EVIDENCE" },
+          { from_node_id: evidenceNodeId, to_node_id: chartNodeId, kind: "EVIDENCE" },
+          { from_node_id: chartNodeId, to_node_id: reportNodeId, kind: "EVIDENCE" },
+        ]),
+      );
+      expect(trace.ok && trace.value?.nodes).toEqual(
+        expect.arrayContaining([
+          expect.objectContaining({
+            title: "SandboxExecutionReceipt",
+            status: "AVAILABLE",
+          }),
+          expect.objectContaining({
+            title: expect.stringContaining("SandboxResult"),
+            status: "AVAILABLE",
+          }),
+        ]),
+      );
+      if (!trace.ok || !trace.value) throw new Error("trace fixture missing");
+      const chartDetail = await projector.loadDetail(capability, {
+        scope,
+        run_id: ids.run,
+        node_id: chartNodeId,
+        expected_trace_hash: trace.value.trace_hash,
+      });
+      const reportDetail = await projector.loadDetail(capability, {
+        scope,
+        run_id: ids.run,
+        node_id: reportNodeId,
+        expected_trace_hash: trace.value.trace_hash,
+      });
+      expect(chartDetail.ok && chartDetail.value?.schema).toMatchObject({
+        state: "AVAILABLE",
+        schema_name: "artifact-workspace-chart-document",
+        schema_version: "artifact-workspace-chart-document@3.0.0",
+      });
+      expect(reportDetail.ok && reportDetail.value?.schema).toMatchObject({
+        state: "AVAILABLE",
+        schema_name: "product-team-artifact",
+        schema_version: "product-team-artifact@2.0.0",
+      });
+    },
+  );
+
+  it.each(["missing-source", "non-dimension"])(
+    "rejects a rehashed published facet without categorical authority: %s",
+    async (kind) => {
+      const row = await eventRow();
+      const sql = await productTeamSqlArtifactRow();
+      const evidence = await productTeamQueryEvidenceRow(sql);
+      const analysis = await falcon24DerivedAuthorityRows(evidence, {
+        facet: true,
+        ...(kind === "missing-source" ? { facet_field: "unknown" } : { facet_role: "DERIVED" }),
+      });
+      const { capability, authorizer } = issueCapability();
+      const { pool } = scriptedPool((text) => {
+        if (text.includes("from runs as run")) return { rows: [authorityRow()], rowCount: 1 };
+        if (text.includes("from run_events")) return { rows: [row], rowCount: 1 };
+        if (text.includes("select 1") && text.includes("from artifacts"))
+          return { rows: [{}], rowCount: 1 };
+        if (text.includes("from artifacts")) {
+          const rows = [
+            sql,
+            evidence,
+            analysis.derivedRow,
+            analysis.receiptRow,
+            ...analysis.resultRows,
+            ...analysis.supportRows,
+          ];
+          return { rows, rowCount: rows.length };
+        }
+        return undefined;
+      });
+      await expect(
+        createPostgresResolutionTraceProjector({ pool, authorizer }).loadTrace(capability, {
+          scope,
+          run_id: ids.run,
         }),
-        expect.objectContaining({
-          title: expect.stringContaining("SandboxResult"),
-          status: "AVAILABLE",
-        }),
-      ]),
-    );
-    if (!trace.ok || !trace.value) throw new Error("trace fixture missing");
-    const chartDetail = await projector.loadDetail(capability, {
-      scope,
-      run_id: ids.run,
-      node_id: chartNodeId,
-      expected_trace_hash: trace.value.trace_hash,
-    });
-    const reportDetail = await projector.loadDetail(capability, {
-      scope,
-      run_id: ids.run,
-      node_id: reportNodeId,
-      expected_trace_hash: trace.value.trace_hash,
-    });
-    expect(chartDetail.ok && chartDetail.value?.schema).toMatchObject({
-      state: "AVAILABLE",
-      schema_name: "artifact-workspace-chart-document",
-      schema_version: "artifact-workspace-chart-document@3.0.0",
-    });
-    expect(reportDetail.ok && reportDetail.value?.schema).toMatchObject({
-      state: "AVAILABLE",
-      schema_name: "product-team-artifact",
-      schema_version: "product-team-artifact@2.0.0",
-    });
-  });
+      ).resolves.toMatchObject({
+        ok: false,
+        error: { code: "RESOLUTION_TRACE_ARTIFACT_CORRUPT" },
+      });
+    },
+  );
 
   it("accepts an AnalysisProgram semantic release identity without a run-local mirror", async () => {
     const row = await eventRow();

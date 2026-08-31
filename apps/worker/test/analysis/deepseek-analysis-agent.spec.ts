@@ -84,74 +84,83 @@ describe("run-bound DeepSeek analysis Agent model", () => {
     });
   });
 
-  it("binds chart identity and its table symbol from the server-owned result contract", async () => {
-    const invoke = vi.fn(async (input: Parameters<RunProviderDispatchCapability["invoke"]>[0]) => ({
-      ok: true as const,
-      value: {
-        output_text: "",
-        tool_calls: [
-          {
-            tool_call_id: "tool-publish",
-            tool_name: "publish_analysis_result",
-            arguments: {
-              publish_id: "result-1",
-              result_symbol: "result_document",
-              table_bindings: [{ table_id: "trend", data_symbol: "trend_table" }],
-              chart_bindings: [
-                {
-                  chart_id: "trend_chart",
-                  x_field: "month",
-                  y_fields: ["revenue"],
-                  series_field: "",
-                  lower_bound_field: "",
-                  upper_bound_field: "",
+  it.each([false, true])(
+    "binds chart identity and its table symbol from the server-owned result contract (facet=%s)",
+    async (facet) => {
+      const invoke = vi.fn(
+        async (input: Parameters<RunProviderDispatchCapability["invoke"]>[0]) => ({
+          ok: true as const,
+          value: {
+            output_text: "",
+            tool_calls: [
+              {
+                tool_call_id: "tool-publish",
+                tool_name: "publish_analysis_result",
+                arguments: {
+                  publish_id: "result-1",
+                  result_symbol: "result_document",
+                  table_bindings: [{ table_id: "trend", data_symbol: "trend_table" }],
+                  chart_bindings: [
+                    {
+                      chart_id: "trend_chart",
+                      x_field: "month",
+                      y_fields: ["revenue"],
+                      series_field: "",
+                      ...(facet ? { facet_field: "audience" } : {}),
+                      lower_bound_field: "",
+                      upper_bound_field: "",
+                    },
+                  ],
+                  operator_bindings: [],
                 },
-              ],
-              operator_bindings: [],
+              },
+            ],
+            projection: {
+              invocation_id: input.logical_call_id,
+              status: "COMPLETED" as const,
+              provider: "deepseek",
+              model_id: "deepseek-v4-flash",
             },
           },
-        ],
-        projection: {
-          invocation_id: input.logical_call_id,
-          status: "COMPLETED" as const,
-          provider: "deepseek",
-          model_id: "deepseek-v4-flash",
-        },
-      },
-    }));
-    const model = createRunBoundDeepSeekAnalysisAgentModel({ invoke });
-    const toolRequest = {
-      ...request("TOOL"),
-      allowed_tool_names: ["publish_analysis_result"] as const,
-      result_contract: {
-        charts: [
-          {
-            chart_id: "trend_chart",
-            table_id: "trend",
-            intent: "TREND",
-            allowed_template_ids: ["line.multi-series@1"],
-          },
-        ],
-      } as unknown as AnalysisResultContract,
-    };
-
-    await expect(model.turn(toolRequest)).resolves.toMatchObject({
-      phase: "TOOL",
-      tool_call: {
-        arguments: {
-          schema_version: "analysis-result-publish-tool@1.0.0",
-          chart_bindings: [
+        }),
+      );
+      const model = createRunBoundDeepSeekAnalysisAgentModel({ invoke });
+      const toolRequest = {
+        ...request("TOOL"),
+        allowed_tool_names: ["publish_analysis_result"] as const,
+        result_contract: {
+          charts: [
             {
               chart_id: "trend_chart",
+              table_id: "trend",
               intent: "TREND",
-              template_id: "line.multi-series@1",
-              data_symbol: "trend_table",
+              allowed_template_ids: ["line.multi-series@1"],
             },
           ],
+        } as unknown as AnalysisResultContract,
+      };
+
+      await expect(model.turn(toolRequest)).resolves.toMatchObject({
+        phase: "TOOL",
+        tool_call: {
+          arguments: {
+            schema_version: facet
+              ? "analysis-result-publish-tool@1.1.0"
+              : "analysis-result-publish-tool@1.0.0",
+            chart_bindings: [
+              {
+                chart_id: "trend_chart",
+                intent: "TREND",
+                template_id: "line.multi-series@1",
+                data_symbol: "trend_table",
+                ...(facet ? { facet_field: "audience" } : {}),
+              },
+            ],
+          },
         },
-      },
-    });
-  });
+      });
+    },
+  );
 
   it("binds exact operator argument symbols on the server", async () => {
     const invoke = vi.fn(async (input: Parameters<RunProviderDispatchCapability["invoke"]>[0]) => ({

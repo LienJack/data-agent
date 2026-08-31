@@ -1710,3 +1710,9 @@ production按原分类形态运行完整编译器，exact method/skill/contract�
 UI仅按原分类值分区再按measure分图，series/NULL/顺序不变；最多16分面，原全表行/字节限制不增加，无观测分面不伪造曲线。
 当前完成Contracts读取与Web确定性映射，53项Contracts/26项Web及四包typecheck通过；最初6个新版本行为RED。
 没有真实浏览器/模型/数据库写入。接续现有publisher/Trace producer-consumer闭包，然后月度分群方法与oracle；此项不是业务门禁PASS。
+
+原publisher与Trace接线现已完成：model只声明可选facet_field，Host选择publish1.1并保留合同拥有的intent/template/table；
+Chart1.1与V3 transform1.2显式封分面。无facet仍原1.0字节结构；完整原表、RESULT/TABLE不因显示分区而改变。
+Trace两个重封hash反例先RED（缺source、非DIMENSION），补共享字段/schema版本重验后通过；原canonical/raw hash/Scope/Run边界不变。
+Contracts53/53、Worker8文件145/145、Platform40/40及四包typecheck、Contracts/Worker/Platform build通过。原分类oracle擅加facet仍拒绝。
+仅离线publisher暂存/Trace组件验证，无真实Sandbox/模型/数据库写入；实际月度分群方法和后续业务链仍待完成。

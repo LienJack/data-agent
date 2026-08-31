@@ -36,6 +36,59 @@ function manifest() {
 }
 
 describe("publish_analysis_result manifest", () => {
+  it("uses a new explicit publish version for a source facet", () => {
+    const source = manifest();
+    const candidate = {
+      ...source,
+      schema_version: "analysis-result-publish-tool@1.1.0",
+      chart_bindings: source.chart_bindings.map((binding) => ({
+        ...binding,
+        series_field: "channel",
+        facet_field: "audience",
+      })),
+    };
+    expect(analysisResultPublishToolArgumentsSchema.parse(candidate)).toEqual(candidate);
+    const { schema_version: _version, ...model } = candidate;
+    const input = {
+      ...model,
+      chart_bindings: model.chart_bindings.map(
+        ({ intent: _i, template_id: _t, data_symbol: _d, ...binding }) => binding,
+      ),
+    };
+    expect(analysisResultPublishModelArgumentsSchema.parse(input)).toEqual(input);
+  });
+
+  it.each(["old-version", "empty-new", "axis", "measure", "series", "empty-field"])(
+    "rejects invalid publish facet: %s",
+    (kind) => {
+      const source = manifest();
+      const candidate = {
+        ...source,
+        schema_version:
+          kind === "old-version" ? source.schema_version : "analysis-result-publish-tool@1.1.0",
+        chart_bindings: source.chart_bindings.map((binding) => ({
+          ...binding,
+          series_field: "channel",
+          ...(kind === "empty-new"
+            ? {}
+            : {
+                facet_field:
+                  kind === "axis"
+                    ? "month"
+                    : kind === "measure"
+                      ? "revenue"
+                      : kind === "series"
+                        ? "channel"
+                        : kind === "empty-field"
+                          ? ""
+                          : "audience",
+              }),
+        })),
+      };
+      expect(analysisResultPublishToolArgumentsSchema.safeParse(candidate).success).toBe(false);
+    },
+  );
+
   it("keeps one authoritative input schema on the publish manifest", () => {
     expect(analysisResultPublishToolArgumentsSchema.parse(manifest())).toEqual(manifest());
     expect(ANALYSIS_RESULT_PUBLISH_TOOL_MANIFEST.input_schema).toBe(

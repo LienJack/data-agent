@@ -1746,6 +1746,10 @@ Diagnostic/Q1/C1任一正式首次失败必须写既有 authority支持的 immut
     Web按原分类再按measure分图，series/NULL/源行不变，不造复合源列；标签/独立轴/PENDING有静态回归。
     初始6项新版本行为RED；Contracts53/53、Web26/26，Contracts/Web/Worker/Platform typecheck及Contracts build通过。
     仅读取与映射，生产publisher/Trace接线仍待完成；没有浏览器E2E、模型或库写入，live E17未激活。
+  - [x] 原publisher/Trace的facet producer-consumer：Host选publish1.1、Chart1.1、V3 transform1.2；旧输入与RESULT/TABLE字节不变。
+    原始STRING/DIMENSION字段、版本与template逐层闭合；Trace缺source/非DIMENSION两个重封hash反例先RED后GREEN，公共DTO不透传数据。
+    Contracts53/53、Worker145/145、Platform40/40及四包typecheck、三包build通过；含原模型工具循环/统计路径与擅改旧oracle图合同拒绝。
+    unit暂存中的空JSON measure不是oracle PASS；未调用模型、写库或创建E17正式Run。继续月度分群及其他未闭合能力。
 - [ ] 所需能力离线闭合后最终clean build/full unit/fresh scratch，再fresh E17正式15回合从L1。当前ACTIVE，live E16 FAILED。
 
 **F6 READY 轮次恢复边界（2026-08-30，历史）**

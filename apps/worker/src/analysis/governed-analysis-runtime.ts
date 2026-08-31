@@ -9,6 +9,7 @@ import {
   buildArtifactWorkspaceChartDocumentV3,
   buildProductTeamArtifactDocument,
   computeArtifactWorkspaceChartDatasetV3Hash,
+  DERIVED_ANALYSIS_CHART_FACET_TRANSFORM_VERSION,
   DERIVED_ANALYSIS_CHART_NULLABLE_TRANSFORM_VERSION,
   type ProductTeamArtifactDocument,
   type QueryEvidenceSemanticBinding,
@@ -23,7 +24,9 @@ import {
   type AnalysisAuthorityCommit,
   type AnalysisContextJournalAppendCommand,
   type AnalysisOracleReceipt,
+  analysisChartFacetFieldSchema,
   buildAnalysisPublicationV2Command,
+  refineAnalysisPublishedChartFacet,
 } from "@data-agent/contracts/ports";
 import type { Falcon24AuthorityBindingV2, RunWorkLease } from "@data-agent/contracts/runs";
 import { STATISTICAL_OPERATOR_REGISTRY_DIGEST } from "@data-agent/contracts/statistical-operators";
@@ -468,55 +471,58 @@ export function createGovernedAnalysisRuntime(input: {
   });
 }
 
-const publishedChartSchema = z.strictObject({
-  schema_version: z.literal("analysis-published-chart@1.0.0"),
-  chart_id: z.string().min(1).max(256),
-  title_zh: z.string().min(1).max(160),
-  intent: z.enum([
-    "TREND",
-    "COMPARISON",
-    "CONTRIBUTION",
-    "DISTRIBUTION",
-    "RELATIONSHIP",
-    "PRIORITY",
-    "RETENTION",
-  ]),
-  template_id: z.string().min(1).max(128),
-  bindings: z.strictObject({
-    x_field: z.string().min(1).max(128),
-    y_fields: z.array(z.string().min(1).max(128)).min(1).max(4),
-    series_field: z.string().min(1).max(128).nullable(),
-    lower_bound_field: z.string().min(1).max(128).nullable(),
-    upper_bound_field: z.string().min(1).max(128).nullable(),
-  }),
-  dataset: z.strictObject({
-    table_id: z.string().min(1).max(256),
-    columns: z
-      .array(
-        z.strictObject({
-          key: z.string().min(1).max(128),
-          label_zh: z.string().min(1).max(160),
-          data_type: z.enum([
-            "BOOLEAN",
-            "DATE",
-            "DECIMAL",
-            "INTEGER",
-            "JSON",
-            "NUMBER",
-            "STRING",
-            "TIMESTAMP",
-          ]),
-          nullable: z.boolean(),
-          semantic_object_id: z.string().regex(/^[A-Za-z][A-Za-z0-9._:-]{0,255}$/u),
-          semantic_role: analysisResultTableSemanticRoleSchema,
-        }),
-      )
-      .min(1)
-      .max(128),
-    rows: z.array(z.record(z.string(), z.unknown())).min(1).max(5_000),
-    total_rows: z.number().int().positive().max(5_000),
-  }),
-});
+const publishedChartSchema = z
+  .strictObject({
+    schema_version: z.enum(["analysis-published-chart@1.0.0", "analysis-published-chart@1.1.0"]),
+    chart_id: z.string().min(1).max(256),
+    title_zh: z.string().min(1).max(160),
+    intent: z.enum([
+      "TREND",
+      "COMPARISON",
+      "CONTRIBUTION",
+      "DISTRIBUTION",
+      "RELATIONSHIP",
+      "PRIORITY",
+      "RETENTION",
+    ]),
+    template_id: z.string().min(1).max(128),
+    bindings: z.strictObject({
+      x_field: z.string().min(1).max(128),
+      y_fields: z.array(z.string().min(1).max(128)).min(1).max(4),
+      series_field: z.string().min(1).max(128).nullable(),
+      facet_field: analysisChartFacetFieldSchema,
+      lower_bound_field: z.string().min(1).max(128).nullable(),
+      upper_bound_field: z.string().min(1).max(128).nullable(),
+    }),
+    dataset: z.strictObject({
+      table_id: z.string().min(1).max(256),
+      columns: z
+        .array(
+          z.strictObject({
+            key: z.string().min(1).max(128),
+            label_zh: z.string().min(1).max(160),
+            data_type: z.enum([
+              "BOOLEAN",
+              "DATE",
+              "DECIMAL",
+              "INTEGER",
+              "JSON",
+              "NUMBER",
+              "STRING",
+              "TIMESTAMP",
+            ]),
+            nullable: z.boolean(),
+            semantic_object_id: z.string().regex(/^[A-Za-z][A-Za-z0-9._:-]{0,255}$/u),
+            semantic_role: analysisResultTableSemanticRoleSchema,
+          }),
+        )
+        .min(1)
+        .max(128),
+      rows: z.array(z.record(z.string(), z.unknown())).min(1).max(5_000),
+      total_rows: z.number().int().positive().max(5_000),
+    }),
+  })
+  .superRefine(refineAnalysisPublishedChartFacet);
 
 function chartType(
   chart: z.infer<typeof publishedChartSchema>,
@@ -551,6 +557,7 @@ export function projectStagedAnalysisChart(input: AnalysisResultClosureArtifact)
     lower_bound_key: chart.bindings.lower_bound_field,
     upper_bound_key: chart.bindings.upper_bound_field,
     series_key: chart.bindings.series_field,
+    ...(chart.bindings.facet_field !== undefined ? { facet_key: chart.bindings.facet_field } : {}),
     legend: { visible: chart.bindings.series_field !== null || chart.bindings.y_fields.length > 1 },
     evidence_level: "L2_OBSERVATION",
     table: {
@@ -633,7 +640,10 @@ export async function assembleAnalysisPublication(input: {
           derived_evidence_ref: node.evidence.reference,
         },
         provenance: {
-          transform_version: DERIVED_ANALYSIS_CHART_NULLABLE_TRANSFORM_VERSION,
+          transform_version:
+            chart.projection.facet_key === undefined
+              ? DERIVED_ANALYSIS_CHART_NULLABLE_TRANSFORM_VERSION
+              : DERIVED_ANALYSIS_CHART_FACET_TRANSFORM_VERSION,
           dataset_hash: `sha256:${"0".repeat(64)}`,
           semantic_context: input.context.semantic_context_binding,
           algorithm_version: node.runtime.algorithm_version,

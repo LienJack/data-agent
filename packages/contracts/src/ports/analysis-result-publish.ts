@@ -12,6 +12,77 @@ const stableIdSchema = z.string().regex(/^[A-Za-z0-9][A-Za-z0-9._:-]{0,127}$/u);
 export const analysisPythonSymbolSchema = z.string().regex(/^[A-Za-z_][A-Za-z0-9_]{0,127}$/u);
 const fieldNameSchema = z.string().regex(/^[A-Za-z_][A-Za-z0-9_]{0,127}$/u);
 const optionalFieldNameSchema = z.string().regex(/^(?:|[A-Za-z_][A-Za-z0-9_]{0,127})$/u);
+export const analysisChartFacetFieldSchema = fieldNameSchema.optional();
+export const ANALYSIS_CHART_FACET_TEMPLATE_IDS: readonly string[] = Object.freeze([
+  "line.multi-series@1",
+  "bar.grouped@1",
+  "bar.stacked@1",
+]);
+
+export function refineAnalysisChartFacetBinding(
+  binding: {
+    readonly x_field: string;
+    readonly y_fields: readonly string[];
+    readonly series_field: string | null;
+    readonly facet_field?: string | undefined;
+  },
+  context: z.RefinementCtx,
+) {
+  if (
+    binding.facet_field !== undefined &&
+    [binding.x_field, binding.series_field, ...binding.y_fields].includes(binding.facet_field)
+  )
+    context.addIssue({
+      code: "custom",
+      path: ["facet_field"],
+      message: "ANALYSIS_CHART_FACET_BINDING_INVALID",
+    });
+}
+
+/** Shared by the publisher's read-back and Trace; old chart bytes keep their original version. */
+export function refineAnalysisPublishedChartFacet(
+  document: {
+    readonly schema_version: string;
+    readonly bindings: Parameters<typeof refineAnalysisChartFacetBinding>[0];
+    readonly template_id: string;
+    readonly dataset: {
+      readonly columns: readonly {
+        readonly key: string;
+        readonly data_type: string;
+        readonly semantic_role: string;
+      }[];
+    };
+  },
+  context: z.RefinementCtx,
+) {
+  refineAnalysisChartFacetBinding(document.bindings, context);
+  const expected =
+    document.bindings.facet_field === undefined
+      ? "analysis-published-chart@1.0.0"
+      : "analysis-published-chart@1.1.0";
+  if (document.schema_version !== expected)
+    context.addIssue({
+      code: "custom",
+      path: ["schema_version"],
+      message: "ANALYSIS_CHART_FACET_VERSION_INVALID",
+    });
+  const facet = document.bindings.facet_field;
+  if (
+    facet !== undefined &&
+    (!ANALYSIS_CHART_FACET_TEMPLATE_IDS.includes(document.template_id) ||
+      !document.dataset.columns.some(
+        (column) =>
+          column.key === facet &&
+          column.data_type === "STRING" &&
+          column.semantic_role === "DIMENSION",
+      ))
+  )
+    context.addIssue({
+      code: "custom",
+      path: ["bindings", "facet_field"],
+      message: "ANALYSIS_CHART_FACET_SOURCE_INVALID",
+    });
+}
 
 const tableBindingSchema = z.strictObject({
   table_id: stableIdSchema,
@@ -26,18 +97,23 @@ const chartBindingFields = {
   x_field: fieldNameSchema,
   y_fields: z.array(fieldNameSchema).min(1).max(8),
   series_field: optionalFieldNameSchema,
+  facet_field: analysisChartFacetFieldSchema,
   lower_bound_field: optionalFieldNameSchema,
   upper_bound_field: optionalFieldNameSchema,
 } as const;
 
 const refineChartBinding = (
   binding: {
+    readonly x_field: string;
+    readonly series_field: string;
+    readonly facet_field?: string | undefined;
     readonly y_fields: readonly string[];
     readonly lower_bound_field: string;
     readonly upper_bound_field: string;
   },
   context: z.RefinementCtx,
 ) => {
+  refineAnalysisChartFacetBinding(binding, context);
   if (new Set(binding.y_fields).size !== binding.y_fields.length) {
     context.addIssue({
       code: "custom",
@@ -64,6 +140,7 @@ const modelChartBindingSchema = z
     x_field: chartBindingFields.x_field,
     y_fields: chartBindingFields.y_fields,
     series_field: chartBindingFields.series_field,
+    facet_field: chartBindingFields.facet_field,
     lower_bound_field: chartBindingFields.lower_bound_field,
     upper_bound_field: chartBindingFields.upper_bound_field,
   })
@@ -136,13 +213,25 @@ export const analysisResultPublishModelArgumentsSchema = z
 
 export const analysisResultPublishToolArgumentsSchema = z
   .strictObject({
-    schema_version: z.literal("analysis-result-publish-tool@1.0.0"),
+    schema_version: z.enum([
+      "analysis-result-publish-tool@1.0.0",
+      "analysis-result-publish-tool@1.1.0",
+    ]),
     ...analysisResultPublishToolArgumentFields,
   })
-  .superRefine(refineAnalysisResultPublishManifest);
+  .superRefine((manifest, context) => {
+    refineAnalysisResultPublishManifest(manifest, context);
+    const faceted = manifest.chart_bindings.some((binding) => binding.facet_field !== undefined);
+    if (faceted !== (manifest.schema_version === "analysis-result-publish-tool@1.1.0"))
+      context.addIssue({
+        code: "custom",
+        path: ["schema_version"],
+        message: "ANALYSIS_RESULT_PUBLISH_FACET_VERSION_INVALID",
+      });
+  });
 
 export const ANALYSIS_RESULT_PUBLISH_TOOL_MANIFEST = Object.freeze({
-  manifest_version: "analysis-result-publish-tool-manifest@1.0.0" as const,
+  manifest_version: "analysis-result-publish-tool-manifest@1.1.0" as const,
   tool_name: ANALYSIS_RESULT_PUBLISH_TOOL_NAME,
   description:
     "Publish one governed analysis result by referencing allowlisted Python symbols and binding declared table/chart/operator identities. The server extracts, validates, renders, hashes, and stages the complete result closure; this tool accepts no file paths or serialized artifacts.",
