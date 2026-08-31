@@ -44,6 +44,8 @@ OpenSandbox health  # 独立管理；按 python-sandbox-execution.md 验证 endp
 - OpenSandbox 是唯一 Python 执行层并独立于本 Compose 栈部署；启用分析能力时必须按
   `python-sandbox-execution.md` 配置 endpoint、API key、固定镜像与 attestation。它不是数据库权威，
   不得获得 PostgreSQL、Datasource、对象存储或 Provider 凭据。
+- NAS Docker 使用 OpenSandbox 时另读 [控制面与端口预检](./opensandbox-nas-runtime.md)：
+  端口探测和 Docker 必须同主机，真实双沙箱无模型验证不能由单独 health 代替。
 - 本地 Web 使用 Next/Turbopack，Worker 和 Indexer 使用 `tsx watch`。Worker 的
   watch 与 Docker CMD 必须执行同一个 `run-worker-cli` 组合入口。
 - 所有公开 dev 入口必须先经过根级 freshness coordinator。Coordinator 以 Turbo task hash 作为 input

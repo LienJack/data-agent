@@ -1887,6 +1887,11 @@ Diagnostic/Q1/C1任一正式首次失败必须写既有 authority支持的 immut
     Root补齐coverage≠请求窗口规则，并在历史/观察之后重申原响应协议；不改SQL、权限、Provider失败处理或预算。
     95项聚焦测试与两包typecheck通过；源348表不变，服务/两浏览器关闭、scratch卷保留。
     见 [Root交接复盘](research/complex-5d1cf6f0-root-handoff.md)；后续需新clean build验证真实效果。
+  - 8cc4d933新scratch A1来源12行/同比Oracle通过，但Operator沙箱NAS端口冲突，分析未执行便失败；
+    后续Root仍为AUTO_RESPONSE_INVALID_JSON。原Run保留FAILED，A2/A3及独立B组未提交，formal15未开始。
+    OpenSandbox同版本117源码文件迁至NAS同机控制面，强制占用端口探针及原双沙箱/算子/零残留探针通过，均无模型。
+    源348表不变，旧本机服务/两浏览器关闭、scratch卷保留；不改模型预算、Oracle或production isolation HOLD。
+    见 [NAS控制面复盘](research/complex-8cc4d933-sandbox-colocation.md)，后续从新clean build/fresh scratch继续。
 
 **F6 READY 轮次恢复边界（2026-08-30，历史）**
 
