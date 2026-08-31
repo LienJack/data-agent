@@ -152,7 +152,12 @@ The only model output contract is `text2sql-query-candidate@1.0.0`:
   provider 错误码不能替代原始响应证据，不得把可复现的合同缺口宣称为某个历史 provider failure 的唯一已证根因。
 - Host validates every selected ID against the frozen retrieval/inference closure, expands required formula/time/dimension-parent/relationship and physical-binding context, then commits `semantic-query-context@1.0.0` with exact Scope/Run, release/generation/digest, schema snapshot, datasource, retrieval/inference receipts and `context_hash`。
 - `SemanticQueryContext` returns to Root as a structured safe Tool Result. Root may answer a semantic-only question from allowlisted exact fields, or a later Root turn may pass the accepted Artifact through ordinary `input_artifact_refs`; Host does not schedule that later call。
-- Report can run only after accepted `QueryEvidence` is available and must bind source refs exactly。
+- Report r5 consumes only ordinary admitted **current-Run** `QueryEvidence` / `AnalysisReport` references; discovery and execution agree.
+  The single-QueryEvidence context is unchanged. Multiple inputs use the exact delegation receipt, not an arbitrary first query or conversation prose.
+  Before provider I/O, verify every input hash/identity/Scope/Run, retained section refs, existing 16-source/100-section bounds and task context-byte budget.
+  Host appends original analysis sections/charts unchanged; the new summary cites all admitted inputs. Completion independently resolves the same inputs,
+  requires the exact union of input refs and their accepted report sources, and rejects dropped/rewritten sections or uncommitted sources.
+  Report cannot execute SQL, invent calculations, elevate historical evidence, or weaken Analysis's single-query contract. Product revision advances; old revisions are immutable.
 - Analysis 最终说明须同时接收当前 node 引用指标的已发布 `metric_ref + unit`，不得只给统计摘要后让模型猜单位。
   通用 `currency` 不等于 CNY/INR/USD；缺具体币种须披露“沿用数据源币种，具体币种未指定”，`unit=null` 须披露单位未指定。
   中文回答或数据源名称不能授权换币种、缩放或补单位；显式已发布单位原样沿用。Prompt 回归只证明上下文边界，不代替真实答案验收。

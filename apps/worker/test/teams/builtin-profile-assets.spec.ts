@@ -54,7 +54,15 @@ describe("built-in Team product assets", () => {
         .map(({ revision }) => revision),
     ).toEqual([3, 3, 3]);
     expect(materialized.profile_revisions.map(({ profile_id }) => profile_id)).toEqual(profiles);
-    expect(materialized.profile_revisions.map(({ revision }) => revision)).toEqual([4, 5, 4, 6]);
+    expect(materialized.profile_revisions.map(({ revision }) => revision)).toEqual([4, 5, 5, 6]);
+    expect(
+      materialized.profile_revisions.find(
+        ({ profile_id }) => profile_id === "report-writing-agent",
+      ),
+    ).toMatchObject({
+      revision: 5,
+      discovery: { accepted_input_artifact_types: ["AnalysisReport", "QueryEvidence"] },
+    });
     expect(
       materialized.profile_revisions.find(
         ({ profile_id: profileId }) => profileId === "governed-analysis-agent",

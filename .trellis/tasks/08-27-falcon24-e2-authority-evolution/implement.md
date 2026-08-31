@@ -1771,6 +1771,11 @@ Diagnostic/Q1/C1任一正式首次失败必须写既有 authority支持的 immut
   摘要消费4项先RED，改新结果为受界JSON对象后GREEN，未改原始行隐藏或预算。Worker Analysis/Teams49文件578/578，
   focused10文件213/213、Worker typecheck/build和7文件Biome通过；仅离线验证，无模型Run/live写入。
 - [ ] 核对复杂多输入及 L4 当前 Run 事实重验、指代、口径纠正、报告/图表组合；有缺口先做 focused 修复与 scoped commit。
+  - [x] Report 输入契约补齐：r5 接收原 admission 的当前 Run QueryEvidence/AnalysisReport，可组合多份证据；
+    Host 保留原分析章节/图引用，完成阶段重验全部来源与章节，不增加 Root 回合、路由或发布权限。
+    先观察缺模块/旧Profile RED，后补输入/生产Tool/真实admission与完成校验；旧占位哈希夹具改为真实已提交引用。
+    最终 Worker Analysis/Teams/dispatcher、admission和依赖边界54文件643/643，Worker typecheck/build、9文件Biome、
+    Trellis validate/diff check通过；没有调用外部模型或写库，复杂四层业务仍待fresh scratch/正式15回合。
 - [ ] 全部组件闭合后进入上述 fresh scratch / F5 / F7；不另跑 child 历史六问，也不复用 core4 PASS。
 
 **F6 READY 轮次恢复边界（2026-08-30，历史）**

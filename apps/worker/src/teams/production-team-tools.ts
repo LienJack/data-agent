@@ -41,8 +41,9 @@ import {
   type ProductionTeamToolFactoryInput,
   productionTeamRuntimeInternals,
 } from "./production-team-runtime.js";
+import { resolveReportEvidence } from "./report-evidence.js";
 
-const reportAnswerSchema = z.strictObject({ answer: z.string().trim().min(1).max(32_000) });
+const reportAnswerSchema = z.strictObject({ answer: z.string().trim().min(1).max(20_000) });
 
 export interface ProductionTeamArtifactPort {
   commit(
@@ -1300,29 +1301,27 @@ export function createProductionTeamTools(
       }
 
       if (input.task.profile_id === "report-writing-agent") {
-        const evidenceRef = factoryInput.accepted_evidence_ref;
-        if (evidenceRef?.artifact_type !== "QueryEvidence") {
-          throw new ProductionTeamToolError("TEAM_ACCEPTED_QUERY_EVIDENCE_REQUIRED");
-        }
-        if (input.tool_id === "evidence.read") return toolResult(evidenceRef);
+        const references = factoryInput.delegation?.receipt.input_artifact_refs;
+        if (!references) throw new ProductionTeamToolError("ROOT_AGENT_DELEGATION_REQUIRED");
+        const evidence = await resolveReportEvidence({
+          references,
+          scope: factoryInput.lease.scope,
+          run_id: factoryInput.lease.run_id,
+          resolve: async (reference) =>
+            portValue(
+              await dependencies.artifacts.resolveCommitted(dependencies.capability, reference),
+            ),
+        });
+        if (Buffer.byteLength(evidence.context_text, "utf8") > input.task.bounds.max_context_bytes)
+          throw new ProductionTeamToolError("TEAM_REPORT_CONTEXT_BUDGET_EXCEEDED");
+        if (input.tool_id === "evidence.read") return toolResult(references[0] ?? null, references);
         if (input.tool_id === "report.project") {
-          const evidence = portValue(
-            await dependencies.artifacts.resolveCommitted(dependencies.capability, evidenceRef),
-          );
-          if (evidence?.projection.kind !== "TABLE") {
-            throw new ProductionTeamToolError("TEAM_QUERY_EVIDENCE_NOT_COMMITTED");
-          }
           const parsed = reportAnswerSchema.safeParse(
             await specialistProviderJson({
               factory: factoryInput,
               task_id: input.task.task_id,
               stage: "REPORT",
-              context_text: canonicalizeJson({
-                evidence_ref: evidence.artifact_ref,
-                columns: evidence.projection.columns,
-                rows: evidence.projection.rows,
-                total_rows: evidence.projection.total_rows,
-              }),
+              context_text: evidence.context_text,
             }),
           );
           if (!parsed.success) {
@@ -1332,7 +1331,7 @@ export function createProductionTeamTools(
             artifact_type: "AnalysisReport",
             profile_id: "report-writing-agent",
             task_id: input.task.task_id,
-            source_refs: [evidenceRef],
+            source_refs: evidence.source_refs,
             provenance: null,
             projection: {
               kind: "REPORT",
@@ -1341,8 +1340,9 @@ export function createProductionTeamTools(
                 {
                   heading: "结论",
                   body_text: parsed.data.answer,
-                  source_refs: [evidenceRef],
+                  source_refs: [...references],
                 },
+                ...evidence.retained_sections,
               ],
             },
           });

@@ -1765,3 +1765,10 @@ Oracle/生产接线现已闭合：原 Arrow/source 重新验证，按组独立�
 不改摘要8KiB/field与24KiB预算，不额外传原始 observations。新方法此前未注册/执行，旧方法格式/hash保持。
 37项 Oracle 测试包含真实 Arrow、重新封hash后的错误输出、NULL/零/负端点、溢出、原图表分面和摘要；生产选择6项新增行为先RED后GREEN。
 Worker Analysis/Teams 49文件578项、typecheck/build/Biome通过。此为组件验证，所有 Sandbox receipt 为明确 unit fixture；仍无模型/数据库写入。
+
+Report 交接修复：旧 discovery 说可消费 analysis Artifacts，但卡片/Tool/完成校验实际只容许单 QueryEvidence。
+使用原 admission 的当前 Run `input_artifact_refs` 接收 QueryEvidence/AnalysisReport，产品修订 r4→r5，不新增路由、权威或回合。
+每份输入及原章节引用先重验 exact hash/Scope/Run；原分析章节与图引用由 Host 保留，模型仅生成新摘要（≤原章节20,000字符）。
+来源取所有输入与所引用报告的 source_refs 并集；沿用16来源/100章节/任务上下文字节预算，超界明确失败，不静默裁掉证据。
+完成校验独立重读输入，比较全部来源与保留章节；单QE上下文保持。跨Run、未验收/篡改引用、错输出闭包均拒绝。
+此为多能力结果组合，不把历史答案变为事实，不允许 Report 计算新指标，不改变 Analysis 单输入限制或混单位方法适用性。

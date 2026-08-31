@@ -90,6 +90,7 @@ async function admittedDelegations(
   options: {
     readonly root_turn_index?: number;
     readonly input_artifact_refs?: ReadonlyMap<string, readonly ArtifactReference[]>;
+    readonly artifact_is_accepted?: boolean;
   } = {},
 ): Promise<readonly AdmittedSubagentDelegation[]> {
   const catalog = await buildSubagentCapabilityCatalogSnapshot({
@@ -151,7 +152,7 @@ async function admittedDelegations(
       max_tool_calls: profile.revision.direct_tool_allowlist.length,
       max_context_bytes: 16_384,
     }),
-    artifact_is_accepted: async () => true,
+    artifact_is_accepted: async () => options.artifact_is_accepted ?? true,
     delegation_identity_namespace: `delegation:${id(50)}:${options.root_turn_index ?? 0}`,
   });
   return admitted;
@@ -438,12 +439,18 @@ describe("Production Team runtime", () => {
               artifact_ref: output,
               profile_id: "report-writing-agent",
               task_id: task.task_id,
-              source_refs: [reference("QueryEvidence", id(82))],
+              source_refs: [...task.artifact_refs],
               provenance: null,
               projection: {
                 kind: "REPORT",
                 title: "E-commerce 数据库表数量",
-                sections: [{ heading: "结论", body_text: "共有 14 张表。", source_refs: [] }],
+                sections: [
+                  {
+                    heading: "结论",
+                    body_text: "共有 14 张表。",
+                    source_refs: [...task.artifact_refs],
+                  },
+                ],
               },
               committed_at: "2026-08-18T12:00:00.000Z",
             });
@@ -757,116 +764,209 @@ describe("Production Team runtime", () => {
     );
   });
 
-  it("runs a Report from ordinary accepted input_artifact_refs", async () => {
-    const profileMap = await profiles();
-    const report = profileMap.get("report-writing-agent");
-    if (!report) throw new TypeError("missing adaptive Report fixtures");
-    const acceptedInput = reference("QueryEvidence", id(93));
-    const delegations = await admittedDelegations([report], {
-      root_turn_index: 1,
-      input_artifact_refs: new Map([["report-writing-agent", [acceptedInput]]]),
-    });
-    const calls: Array<{ operation: string; document: unknown }> = [];
-    const events: unknown[] = [];
-    const documents = new Map<string, ProductTeamArtifactDocument>();
-    const runtime = createProductionTeamRuntime({
-      store: store(calls),
-      capability: {},
-      tools: {
-        async invoke({ task, tool_id }) {
-          if (tool_id === "sql.compiler.compile") return reference("SqlArtifact", id(91));
-          if (tool_id === "sql.sandbox.execute") {
-            const output = reference("QueryEvidence", id(93));
-            const document = await buildProductTeamArtifactDocument({
-              schema_version: "product-team-artifact@2.0.0",
-              artifact_ref: output,
-              profile_id: "governed-text2sql-agent",
-              task_id: task.task_id,
-              source_refs: [reference("SqlArtifact", id(91))],
-              provenance: await queryProvenance("value"),
-              projection: {
-                kind: "TABLE",
-                columns: [{ key: "value", label: "value", data_type: "NUMBER" }],
-                rows: [{ value: 1 }],
-                total_rows: 1,
-              },
-              committed_at: "2026-08-18T12:00:00.000Z",
-            });
-            documents.set(output.artifact_id, document);
-            return document.artifact_ref;
-          }
-          if (tool_id === "evidence.read") return reference("QueryEvidence", id(93));
-          if (tool_id === "report.project") {
-            const output = reference("AnalysisReport", id(94));
-            const document = await buildProductTeamArtifactDocument({
-              schema_version: "product-team-artifact@2.0.0",
-              artifact_ref: output,
-              profile_id: "report-writing-agent",
-              task_id: task.task_id,
-              source_refs: [reference("QueryEvidence", id(93))],
-              provenance: null,
-              projection: {
-                kind: "REPORT",
-                title: "Adaptive Report",
-                sections: [{ heading: "结论", body_text: "已验收。", source_refs: [] }],
-              },
-              committed_at: "2026-08-18T12:00:00.000Z",
-            });
-            documents.set(output.artifact_id, document);
-            return document.artifact_ref;
-          }
-          return null;
+  it.each(["query", "analysis", "two_queries", "mixed", "omit_source", "alter_chart"])(
+    "runs/verifies a Report from admitted %s inputs",
+    async (mode) => {
+      const profileMap = await profiles();
+      const report = profileMap.get("report-writing-agent");
+      if (!report) throw new TypeError("missing adaptive Report fixtures");
+      const query = await buildProductTeamArtifactDocument({
+        schema_version: "product-team-artifact@2.0.0",
+        artifact_ref: reference("QueryEvidence", id(93)),
+        profile_id: "governed-text2sql-agent",
+        task_id: id(90),
+        source_refs: [reference("SqlArtifact", id(91))],
+        provenance: await queryProvenance("value"),
+        projection: {
+          kind: "TABLE",
+          columns: [{ key: "value", label: "value", data_type: "NUMBER" }],
+          rows: [{ value: 1 }],
+          total_rows: 1,
         },
-      },
-      artifacts: {
-        verifyCommitted: async () => ({ ok: true, value: true }),
-        resolveCommitted: async (artifactReference) => ({
-          ok: true,
-          value: documents.get(artifactReference.artifact_id) ?? null,
-        }),
-      },
-      now: () => new Date("2026-08-18T12:00:01.000Z"),
-    });
-
-    await expect(
-      runtime.execute({
-        lease: await lease(),
+        committed_at: "2026-08-18T12:00:00.000Z",
+      });
+      const analysis = await buildProductTeamArtifactDocument({
+        schema_version: "product-team-artifact@2.0.0",
+        artifact_ref: reference("AnalysisReport", id(95)),
+        profile_id: "governed-analysis-agent",
+        task_id: id(92),
+        source_refs: [query.artifact_ref],
+        provenance: null,
+        projection: {
+          kind: "REPORT",
+          title: "原分析",
+          sections: [
+            { heading: "趋势", body_text: "原始受治理分析", source_refs: [query.artifact_ref] },
+          ],
+        },
+        committed_at: "2026-08-18T12:00:00.000Z",
+      });
+      const query2 = await buildProductTeamArtifactDocument({
+        ...query,
+        artifact_ref: reference("QueryEvidence", id(96)),
+      });
+      const acceptedInputs =
+        mode === "query"
+          ? [query.artifact_ref]
+          : mode === "two_queries"
+            ? [query.artifact_ref, query2.artifact_ref]
+            : mode === "mixed"
+              ? [query.artifact_ref, analysis.artifact_ref]
+              : [analysis.artifact_ref];
+      const delegations = await admittedDelegations([report], {
         root_turn_index: 1,
-        authority,
-        profiles: new Map([["report-writing-agent", report]]),
-        admitted_delegations: delegations,
-        semantic_context_package: {} as never,
-        semantic_context: {} as never,
-        semantic_context_ref: {
-          package_id: id(60),
-          package_hash: hash("p"),
-          receipt_id: id(61),
-          receipt_hash: hash("r"),
-          semantic_domain: "commerce",
-          semantic_release_id: id(41),
-          semantic_release_hash: hash("s"),
-        },
-        restored_snapshot: null,
-        execution_context: executionContext(events),
-        signal: new AbortController().signal,
-        deadline_at: "2026-08-18T12:01:00.000Z",
-      }),
-    ).resolves.toMatchObject({
-      status: "COMPLETED",
-      reason_code: "TEAM_ACCEPTED",
-      observations: [{ tool_call_id: "specialist-1", status: "COMPLETED" }],
-    });
-    expect(calls.filter(({ operation }) => operation === "PREPARE_HANDOFF")).toHaveLength(1);
-    const delegatedProfileIds = calls
-      .filter(({ operation }) => operation === "PREPARE_HANDOFF")
-      .map(
-        ({ document }) =>
-          (document as { child_task?: { profile_id?: string } }).child_task?.profile_id,
+        input_artifact_refs: new Map([["report-writing-agent", acceptedInputs]]),
+      });
+      const calls: Array<{ operation: string; document: unknown }> = [];
+      const events: unknown[] = [];
+      const documents = new Map<string, ProductTeamArtifactDocument>(
+        [query, analysis, query2].map((doc) => [doc.artifact_ref.artifact_id, doc]),
       );
-    expect(delegatedProfileIds).toEqual(["report-writing-agent"]);
-    expect(JSON.stringify(events)).not.toContain("semantic-management-agent");
-    expect(events).not.toContainEqual(expect.objectContaining({ status: "SKIPPED" }));
-  });
+      const runtime = createProductionTeamRuntime({
+        store: store(calls),
+        capability: {},
+        tools: {
+          async invoke({ task, tool_id }) {
+            if (tool_id === "sql.compiler.compile") return reference("SqlArtifact", id(91));
+            if (tool_id === "sql.sandbox.execute") {
+              const output = reference("QueryEvidence", id(93));
+              const document = await buildProductTeamArtifactDocument({
+                schema_version: "product-team-artifact@2.0.0",
+                artifact_ref: output,
+                profile_id: "governed-text2sql-agent",
+                task_id: task.task_id,
+                source_refs: [reference("SqlArtifact", id(91))],
+                provenance: await queryProvenance("value"),
+                projection: {
+                  kind: "TABLE",
+                  columns: [{ key: "value", label: "value", data_type: "NUMBER" }],
+                  rows: [{ value: 1 }],
+                  total_rows: 1,
+                },
+                committed_at: "2026-08-18T12:00:00.000Z",
+              });
+              documents.set(output.artifact_id, document);
+              return document.artifact_ref;
+            }
+            if (tool_id === "evidence.read") return reference("QueryEvidence", id(93));
+            if (tool_id === "report.project") {
+              const output = reference("AnalysisReport", id(94));
+              const document = await buildProductTeamArtifactDocument({
+                schema_version: "product-team-artifact@2.0.0",
+                artifact_ref: output,
+                profile_id: "report-writing-agent",
+                task_id: task.task_id,
+                source_refs:
+                  mode === "omit_source"
+                    ? [query.artifact_ref]
+                    : [
+                        ...new Map(
+                          [
+                            ...acceptedInputs,
+                            ...(acceptedInputs.includes(analysis.artifact_ref)
+                              ? [query.artifact_ref]
+                              : []),
+                          ].map((ref) => [ref.artifact_id, ref]),
+                        ).values(),
+                      ],
+                provenance: null,
+                projection: {
+                  kind: "REPORT",
+                  title: "Adaptive Report",
+                  sections: [
+                    { heading: "结论", body_text: "已验收。", source_refs: acceptedInputs },
+                    ...(acceptedInputs.includes(analysis.artifact_ref) &&
+                    analysis.projection.kind === "REPORT"
+                      ? analysis.projection.sections.map((section) =>
+                          mode === "alter_chart"
+                            ? { ...section, body_text: "擅自改写原分析" }
+                            : section,
+                        )
+                      : []),
+                  ],
+                },
+                committed_at: "2026-08-18T12:00:00.000Z",
+              });
+              documents.set(output.artifact_id, document);
+              return document.artifact_ref;
+            }
+            return null;
+          },
+        },
+        artifacts: {
+          verifyCommitted: async () => ({ ok: true, value: true }),
+          resolveCommitted: async (artifactReference) => ({
+            ok: true,
+            value: documents.get(artifactReference.artifact_id) ?? null,
+          }),
+        },
+        now: () => new Date("2026-08-18T12:00:01.000Z"),
+      });
+
+      await expect(
+        runtime.execute({
+          lease: await lease(),
+          root_turn_index: 1,
+          authority,
+          profiles: new Map([["report-writing-agent", report]]),
+          admitted_delegations: delegations,
+          semantic_context_package: {} as never,
+          semantic_context: {} as never,
+          semantic_context_ref: {
+            package_id: id(60),
+            package_hash: hash("p"),
+            receipt_id: id(61),
+            receipt_hash: hash("r"),
+            semantic_domain: "commerce",
+            semantic_release_id: id(41),
+            semantic_release_hash: hash("s"),
+          },
+          restored_snapshot: null,
+          execution_context: executionContext(events),
+          signal: new AbortController().signal,
+          deadline_at: "2026-08-18T12:01:00.000Z",
+        }),
+      ).resolves.toMatchObject(
+        mode === "omit_source" || mode === "alter_chart"
+          ? {
+              status: "FAILED",
+              reason_code: "TEAM_REPORT_OUTPUT_SOURCE_CLOSURE_INVALID",
+            }
+          : {
+              status: "COMPLETED",
+              reason_code: "TEAM_ACCEPTED",
+              observations: [{ tool_call_id: "specialist-1", status: "COMPLETED" }],
+            },
+      );
+      expect(calls.filter(({ operation }) => operation === "PREPARE_HANDOFF")).toHaveLength(1);
+      expect(calls.filter(({ operation }) => operation === "COMMIT_ACCEPTANCE")).toHaveLength(
+        mode === "omit_source" || mode === "alter_chart" ? 0 : 1,
+      );
+      const delegatedProfileIds = calls
+        .filter(({ operation }) => operation === "PREPARE_HANDOFF")
+        .map(
+          ({ document }) =>
+            (document as { child_task?: { profile_id?: string } }).child_task?.profile_id,
+        );
+      expect(delegatedProfileIds).toEqual(["report-writing-agent"]);
+      expect(JSON.stringify(events)).not.toContain("semantic-management-agent");
+      expect(events).not.toContainEqual(expect.objectContaining({ status: "SKIPPED" }));
+    },
+  );
+
+  it.each(["QueryEvidence", "AnalysisReport"] as const)(
+    "rejects unaccepted %s before Report dispatch",
+    async (type) => {
+      const report = (await profiles()).get("report-writing-agent");
+      if (!report) throw new Error("TEST_REPORT_PROFILE_REQUIRED");
+      await expect(
+        admittedDelegations([report], {
+          artifact_is_accepted: false,
+          input_artifact_refs: new Map([["report-writing-agent", [reference(type, id(97))]]]),
+        }),
+      ).rejects.toThrow("SUBAGENT_INPUT_ARTIFACT_NOT_ACCEPTED");
+    },
+  );
 
   it("passes an accepted SemanticQueryContext to a later Text2SQL tool invocation", async () => {
     const profileMap = await profiles();

@@ -40,6 +40,7 @@ import {
   createMastraProfileComposition,
   type ProductProfileToolPort,
 } from "./mastra-profile-composition.js";
+import { resolveReportEvidence } from "./report-evidence.js";
 import { deriveTeamRuntimeTaskBounds } from "./team-runtime-bounds.js";
 
 type TeamStoreMethod = (capability: unknown, command: unknown) => Promise<PortResult<unknown>>;
@@ -399,12 +400,36 @@ async function commitAcceptedCompletion(input: {
         document.projection.kind !== "TABLE")) ||
     (input.task.profile_id === "report-writing-agent" &&
       (document.artifact_ref.artifact_type !== "AnalysisReport" ||
-        document.projection.kind !== "REPORT" ||
-        !document.source_refs.some(
-          ({ artifact_type: artifactType }) => artifactType === "QueryEvidence",
-        )))
+        document.projection.kind !== "REPORT"))
   ) {
     throw new ProductionTeamRuntimeError("TEAM_OUTPUT_VERIFIER_CONTRACT_FAILED");
+  }
+  if (input.task.profile_id === "report-writing-agent") {
+    const expected = await resolveReportEvidence({
+      references: input.task.artifact_refs,
+      scope: input.task.scope,
+      run_id: input.task.run_id,
+      resolve: async (reference) => {
+        if (!portValue(await input.artifacts.verifyCommitted(reference)))
+          throw new ProductionTeamRuntimeError("TEAM_SOURCE_ARTIFACT_NOT_COMMITTED");
+        return verifyProductTeamArtifactDocument(
+          portValue(await input.artifacts.resolveCommitted(reference)),
+        );
+      },
+    });
+    const actualSources = document.source_refs.map(artifactReferenceIdentity).sort();
+    if (
+      canonicalizeJson(actualSources) !==
+        canonicalizeJson(expected.source_refs.map(artifactReferenceIdentity).sort()) ||
+      document.projection.kind !== "REPORT" ||
+      !document.projection.sections[0]?.body_text.trim() ||
+      canonicalizeJson(
+        document.projection.sections[0].source_refs.map(artifactReferenceIdentity).sort(),
+      ) !== canonicalizeJson(input.task.artifact_refs.map(artifactReferenceIdentity).sort()) ||
+      canonicalizeJson(document.projection.sections.slice(1)) !==
+        canonicalizeJson(expected.retained_sections)
+    )
+      throw new ProductionTeamRuntimeError("TEAM_REPORT_OUTPUT_SOURCE_CLOSURE_INVALID");
   }
   for (const sourceRef of document.source_refs) {
     if (!portValue(await input.artifacts.verifyCommitted(sourceRef))) {
@@ -609,10 +634,10 @@ function acceptedEvidenceInput(delegation: AdmittedSubagentDelegation): Artifact
   const candidates = delegation.receipt.input_artifact_refs.filter(
     ({ artifact_type: artifactType }) => artifactType === "QueryEvidence",
   );
-  if (candidates.length > 1) {
+  if (candidates.length > 1 && delegation.profile.revision.profile_id !== "report-writing-agent") {
     throw new ProductionTeamRuntimeError("TEAM_ACCEPTED_EVIDENCE_INPUT_AMBIGUOUS");
   }
-  return candidates[0] ?? null;
+  return candidates.length === 1 ? (candidates[0] ?? null) : null;
 }
 
 function acceptedSemanticQueryContextInput(
