@@ -251,6 +251,10 @@ Host调用 `compileAnalysisProgramCandidate({... , query_evidence:{reference,doc
 ### 3. Contracts
 
 - 两种role仅允许NUMBER、DIRECT RESULT_COLLECTION、显式source、语义/物理lineage；该ID不得出现在metric_bindings。
+- 规划输入逐方法投影原ResultContract的`required_metric_ids/required_dimension_ids`，后者以原grain顺序含时间与全部分类；
+  仅元数据，不带来源行/答案。模型必须包含全部必需对象，time_window不隐式补选时间维度，不把比例列提升为Metric。
+  编译器先检查原contract/context及Metric/Dimension选择，再验数据来源；缺合同维度属于
+  `ANALYSIS_PROGRAM_RESULT_CONTRACT_AUTHORITY_MISMATCH`，不得误报已接受QueryEvidence无效。所有原来源校验保留。
 - `resolveAnalysisResultSourceObjects` 重验contract/context/QueryEvidence，比较Run/Scope、Context四字段、Release和Schema的id/revision/hash。
 - 每个新role表列必须exact匹配`query_evidence.output_name`、原role/ID/NUMBER以及NULL约束；REQUEST_DERIVED的解释依赖必须是节点已选的原Metric/Dimension。
 - 只有经此证明的表列ID可进入结果lineage。指标选择、dimension权限、Skill capability与预算完全沿原Published AnalysisContext，不把新ID加入这些集合。

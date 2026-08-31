@@ -406,6 +406,7 @@ async function harness(input?: {
   readonly inputRole?: "FORMULA" | "REQUEST_DERIVED";
   readonly omitAcceptedRole?: boolean;
   readonly promoteRole?: boolean;
+  readonly omitTimeDimension?: boolean;
 }) {
   const base = await fixture();
   const withRole = input?.inputRole ? await withInputResultRole(base, input.inputRole) : base;
@@ -535,7 +536,7 @@ async function harness(input?: {
                   metric_ids: input?.promoteRole
                     ? [input.inputRole === "FORMULA" ? "formula.return" : "request-scoped.return"]
                     : ["metric.revenue"],
-                  dimension_ids: ["dimension.month"],
+                  dimension_ids: input?.omitTimeDimension ? [] : ["dimension.month"],
                   time_window: {
                     start: "2024-01-01T00:00:00.000+08:00",
                     end: "2025-01-01T00:00:00.000+08:00",
@@ -568,6 +569,13 @@ async function harness(input?: {
 }
 
 describe("generic governed analysis runtime", () => {
+  it("identifies an omitted result dimension as a plan mismatch, not invalid source evidence", async () => {
+    const test = await harness({ inputRole: "REQUEST_DERIVED", omitTimeDimension: true });
+    await expect(test.runtime.analyze(test.command)).rejects.toThrow(
+      "ANALYSIS_PROGRAM_RESULT_CONTRACT_AUTHORITY_MISMATCH",
+    );
+    expect(test.execute).not.toHaveBeenCalled();
+  });
   it.each(["FORMULA", "REQUEST_DERIVED"] as const)(
     "projects %s through verified Arrow without relabeling or filling NULL",
     async (role) => {
@@ -889,6 +897,8 @@ describe("generic governed analysis runtime", () => {
     };
     expect(planningAuthority.method_registry.entries[0]).toMatchObject({
       method_id: "published-monthly-revenue@1",
+      required_metric_ids: ["metric.revenue"],
+      required_dimension_ids: ["dimension.month"],
       parameter_schema: {
         type: "object",
         additionalProperties: false,

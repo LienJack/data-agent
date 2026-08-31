@@ -290,13 +290,8 @@ export async function compileAnalysisProgramCandidate(input: {
         ...selectedDimensionIds,
         ...context.relationships.map(({ relationship_id: relationshipId }) => relationshipId),
       ]);
-      const sourceObjectIds = await resolveAnalysisResultSourceObjects({
-        result_contract: resultContract,
-        context,
-        run_id: input.brief.question_frame_ref.run_id,
-        selected_object_ids: selectedSemanticObjectIds,
-        ...(input.query_evidence ? { query_evidence: input.query_evidence } : {}),
-      });
+      // Reject an incomplete candidate before checking the accepted data's lineage.
+      // Missing plan dimensions must not be misreported as invalid source evidence.
       if (
         resultContract.semantic_context_hash !== context.semantic_context_binding.package_hash ||
         resultContract.metric_bindings.some(
@@ -309,7 +304,18 @@ export async function compileAnalysisProgramCandidate(input: {
           (dimensionId) => !selectedDimensionIds.has(dimensionId),
         ) ||
         (resultContract.grain.time_dimension_id !== null &&
-          !selectedDimensionIds.has(resultContract.grain.time_dimension_id)) ||
+          !selectedDimensionIds.has(resultContract.grain.time_dimension_id))
+      ) {
+        throw new TypeError("ANALYSIS_PROGRAM_RESULT_CONTRACT_AUTHORITY_MISMATCH");
+      }
+      const sourceObjectIds = await resolveAnalysisResultSourceObjects({
+        result_contract: resultContract,
+        context,
+        run_id: input.brief.question_frame_ref.run_id,
+        selected_object_ids: selectedSemanticObjectIds,
+        ...(input.query_evidence ? { query_evidence: input.query_evidence } : {}),
+      });
+      if (
         resultContract.lineage.some(({ source_semantic_object_ids: objectIds }) =>
           objectIds.some(
             (objectId) =>

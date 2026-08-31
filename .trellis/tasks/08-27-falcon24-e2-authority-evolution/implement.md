@@ -1857,6 +1857,11 @@ Diagnostic/Q1/C1任一正式首次失败必须写既有 authority支持的 immut
     仍实际调用模型且拒绝不匹配文本；记录前/恢复时重验，不替换旧答案、不改值/表/图/SQL proof、原调用预算不变。
     37文件432项相关测试、Worker typecheck、Biome/Trellis/diff通过；不以单测代替下一真实Run。
     见 [事实摘要边界](research/complex-a7438392-factual-summary.md)；新clean build后从A1继续复杂链路，未签formal15 PASS。
+  - [x] 40a04db9新scratch A1受限事实展示及同Run UI/Trace通过（73节点/5产物），原stage0差异。
+    A2已具备同比+12月语义，48行分群来源和整体重组独立PASS，但计划SOURCE_AUTHORITY拒绝后，原Run内第二次Analysis又两次KeyError month_str，整轮FAILED。
+    先修规划输入缺必需Metric/Dimension投影、缺时间维度误报来源无效；原数据权限/Oracle不变，不补齐候选。
+    两项RED转PASS；Python准备错误仍待修。见 [计划权限边界](research/complex-40a04db9-plan-authority.md)。
+    源348表不变，本轮临时服务精确关闭，scratch和volume保留；未提交A3/B或formal15，下一步继续修复而非重复失败Run。
   再继续上述 F5 / F7；不另跑 child 历史六问，也不复用 core4 PASS。
 
 **F6 READY 轮次恢复边界（2026-08-30，历史）**

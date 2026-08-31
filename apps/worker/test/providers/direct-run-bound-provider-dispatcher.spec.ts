@@ -353,6 +353,8 @@ describe("direct run-bound provider retry policy", () => {
     expect(prompt).toContain("Use {} when the selected method needs no parameters");
     expect(prompt).toContain("analysis-program-candidate@2.1.0");
     expect(prompt).toContain("Copy Host approved_time_window exactly");
+    expect(prompt).toContain("required_metric_ids and required_dimension_ids");
+    expect(prompt).toContain("does not implicitly add its time dimension");
     expect(prompt).toContain("set both time_window and comparison_window to null");
     expect(prompt).toContain("Never infer dates from metric coverage");
   });

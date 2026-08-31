@@ -383,6 +383,24 @@ export function createGovernedAnalysisRuntime(input: {
                       method.skill_id,
                     ),
                     result_contract_hash: method.result_contract.contract_hash,
+                    required_metric_ids: [
+                      ...new Set(
+                        method.result_contract.metric_bindings.map(
+                          (binding) => binding.semantic_metric_id,
+                        ),
+                      ),
+                    ],
+                    required_dimension_ids: [
+                      ...new Set([
+                        ...method.result_contract.grain.dimension_ids,
+                        ...(method.result_contract.grain.time_dimension_id === null
+                          ? []
+                          : [method.result_contract.grain.time_dimension_id]),
+                        ...method.result_contract.dimension_bindings.map(
+                          (binding) => binding.semantic_dimension_id,
+                        ),
+                      ]),
+                    ],
                     required_operator_obligations: method.required_operator_obligations,
                   })),
                 },
