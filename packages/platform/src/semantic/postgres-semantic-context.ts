@@ -1,3 +1,4 @@
+import { sha256ContentHash } from "@data-agent/contracts/common";
 import {
   type SemanticContextAuthoritySnapshot,
   type SemanticContextCommitCommand,
@@ -108,6 +109,14 @@ export function createPostgresSemanticContextRegistry(
             const snapshot = await verifySemanticContextAuthoritySnapshot(parsed.data);
             if ("question" in request && snapshot.question !== request.question) {
               throw new TypeError("question");
+            }
+            const requestedTask =
+              request.basis.consumer === "RUN" ? request.basis.provider_task_ref : undefined;
+            if (
+              (await sha256ContentHash(requestedTask ?? null)) !==
+              (await sha256ContentHash(snapshot.conversation_intent?.task_ref ?? null))
+            ) {
+              throw new TypeError("conversation intent");
             }
             return snapshot;
           } catch {

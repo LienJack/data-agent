@@ -34,6 +34,7 @@ This directory contains guidelines for backend development. Fill in each file wi
 | [Knowledge Base Authority](./knowledge-base.md) | U6 File 到 U10 索引、Neo4j 投影、检索证据与 U2 冻结 | 已建立 |
 | [Semantic Induction Maintenance](./semantic-induction-maintenance.md) | U10 Job 到 U5 review-only Candidate 的稳定归纳、漂移影响与 Metric dry-run | 已建立 |
 | [Resolved Context Authority](./resolved-context-authority.md) | Request/Snapshot/Package/Receipt 身份闭包、能力路由与 Preview/Worker 共用解析 | 已建立 |
+| [多轮语义检索意图](./semantic-conversation-intent.md) | 当前Run冻结用户历史、发布范围内重检索、候选预算和hash闭包 | focused与NAS通过，真实L4待验收 |
 | [Resolved Context Text2SQL Authority](./text2sql-resolved-context.md) | Context/Mapping/Compiler/Graph/SQL Firewall 的执行闭包 | 已建立 |
 | [MCP / Skill Extension Authority](./extension-runtime.md) | Registry、Effective Config、Tool Effect、SSRF Transport 与 Semantic MCP | 已建立 |
 | [Session Recovery Authority](./session-recovery.md) | Interruption、原子 Reply+Resume 与引用式 Session Branch | 已建立 |

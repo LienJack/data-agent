@@ -7,6 +7,7 @@
 {"file":".trellis/spec/backend/provider-invocation-authority.md","reason":"Defines credential-safe provider invocation, outcome, receipt, and retry semantics."}
 {"file":".trellis/spec/backend/python-sandbox-execution.md","reason":"Defines governed analysis sandbox, binding, publisher, reclamation, and production isolation evidence."}
 {"file":".trellis/spec/backend/analysis-agent-feedback.md","reason":"Date dtype, safe Cell repair feedback, final objective propagation and pointwise NULL interpretation."}
+{"file":".trellis/spec/backend/semantic-conversation-intent.md","reason":"Frozen current-Run user intent, exact task reference, bounded multi-turn retrieval and PostgreSQL hash closure."}
 {"file":".trellis/spec/backend/governed-analysis-charts.md","reason":"Defines versioned source facets, complete chart dataset hashes, and deterministic multi-measure panels."}
 {"file":".trellis/spec/backend/governed-monthly-panels.md","reason":"Monthly group source shape, independent Oracle, original publisher and production method closure."}
 {"file":".trellis/spec/frontend/agent-public-events.md","reason":"Defines safe browser event, trace, inspector, artifact preview, and replay behavior."}

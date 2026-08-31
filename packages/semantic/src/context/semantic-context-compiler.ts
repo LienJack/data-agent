@@ -7,6 +7,7 @@ import {
   type SemanticContextPackage,
   type SemanticRetrievalHit,
 } from "@data-agent/contracts/context";
+import { resolvePublishedLexicon } from "./lexical-matcher.js";
 import { compileSemanticContextCore } from "./semantic-context-core.js";
 import {
   compileSemanticInference,
@@ -17,7 +18,7 @@ const RRF_K = 60 as const;
 const MAX_HOPS = 3;
 const MAX_NODES = 80;
 const MAX_EDGES = 160;
-const MAX_OPTIONAL_NODES = 12;
+const OPTIONAL_NODES_PER_QUESTION = 12;
 
 type SearchDocument = Readonly<{
   object_id: string;
@@ -218,18 +219,35 @@ export async function compileSemanticContextPackage(
     knowledge_refs: snapshot.knowledge_refs.filter(({ resource_id }) => allowed(resource_id)),
   };
   const core = await compileSemanticContextCore(filteredSnapshot);
+  // User history is a retrieval hint, not a prior answer, result or routing decision.
+  // Re-resolve each phrase against this run's already filtered published release.
+  const priorIntentMatches = (
+    await Promise.all(
+      (snapshot.conversation_intent?.prior_user_questions ?? []).map(({ content }) =>
+        resolvePublishedLexicon({ ...filteredSnapshot, question: content }),
+      ),
+    )
+  ).flatMap(({ matches }) => matches);
+  const priorIntentObjectIds = [...new Set(priorIntentMatches.map(({ target_id }) => target_id))];
+  const retrievalQuestion = [
+    ...(snapshot.conversation_intent?.prior_user_questions ?? []).map(({ content }) => content),
+    snapshot.question,
+  ].join("\n");
+  const retrievalQueryHash = await sha256ContentHash(retrievalQuestion);
   const corpus = documents(filteredSnapshot);
   const corpusById = new Map(corpus.map((document) => [document.object_id, document]));
-  const normalizedQuestion = normalize(snapshot.question);
-  const questionTokens = tokens(snapshot.question);
+  const normalizedQuestion = normalize(retrievalQuestion);
+  const questionTokens = tokens(retrievalQuestion);
 
   const lexicalHits = rankedRoute(
     "LEXICON",
     corpus.flatMap((document) => {
       const phrases = [document.name, ...document.aliases].map(normalize).filter(Boolean);
-      const exact = phrases.some(
-        (phrase) => normalizedQuestion.includes(phrase) || phrase.includes(normalizedQuestion),
-      );
+      const exact =
+        priorIntentObjectIds.includes(document.object_id) ||
+        phrases.some(
+          (phrase) => normalizedQuestion.includes(phrase) || phrase.includes(normalizedQuestion),
+        );
       return exact ? [{ document, score: 1 }] : [];
     }),
   );
@@ -247,8 +265,8 @@ export async function compileSemanticContextPackage(
   if (options.vector) {
     try {
       const vector = await options.vector.search({
-        question: snapshot.question,
-        question_hash: snapshot.question_hash,
+        question: retrievalQuestion,
+        question_hash: retrievalQueryHash,
         release_hash: snapshot.semantic_release.resource_hash,
         allowed_object_ids: corpus.map(({ object_id }) => object_id),
         limit: 128,
@@ -292,6 +310,7 @@ export async function compileSemanticContextPackage(
   const routedSeeds = [
     ...(core.route_decision.selected_metric_id ? [core.route_decision.selected_metric_id] : []),
     ...core.route_decision.selected_ontology_ids,
+    ...priorIntentObjectIds,
   ].filter((objectId, index, values) => values.indexOf(objectId) === index);
   const seeds = routedSeeds.length > 0 ? routedSeeds : rankedObjectIds.slice(0, 4);
   const visited = new Map(seeds.map((seed) => [seed, 0]));
@@ -362,7 +381,16 @@ export async function compileSemanticContextPackage(
   }
   const selectedObjects = new Set([...mandatoryObjects]);
   const optionalLimit = Math.min(
-    options.max_optional_nodes ?? MAX_OPTIONAL_NODES,
+    options.max_optional_nodes ??
+      OPTIONAL_NODES_PER_QUESTION *
+        new Set(
+          [
+            snapshot.question,
+            ...(snapshot.conversation_intent?.prior_user_questions ?? []).map(
+              ({ content }) => content,
+            ),
+          ].map(normalize),
+        ).size,
     maxNodes - mandatoryObjects.size,
   );
   let optionalCount = 0;
@@ -393,6 +421,12 @@ export async function compileSemanticContextPackage(
     authority_snapshot_hash: snapshot.snapshot_hash,
     release_hash: snapshot.semantic_release.resource_hash,
     query_hash: snapshot.question_hash,
+    ...(snapshot.conversation_intent
+      ? {
+          intent_context_hash: await sha256ContentHash(snapshot.conversation_intent),
+          retrieval_query_hash: retrievalQueryHash,
+        }
+      : {}),
     rrf_k: RRF_K,
     hard_filter: {
       scope_hash: await sha256ContentHash(snapshot.scope),

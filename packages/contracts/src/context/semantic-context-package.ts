@@ -94,6 +94,7 @@ const runContextBasisSchema = z.strictObject({
     receipt_id: canonicalImmutableIdSchema,
     receipt_hash: contentHashSchema,
   }),
+  provider_task_ref: artifactReferenceFor("ProviderTaskArtifact").optional(),
 });
 
 const semanticContextRequestDraftSchema = z.union([
@@ -126,6 +127,17 @@ export async function computeSemanticContextRequestHash(input: unknown) {
         ),
       )
     : semanticContextRequestDraftSchema.parse(input);
+  const task = draft.basis.consumer === "RUN" ? draft.basis.provider_task_ref : undefined;
+  if (
+    task &&
+    (draft.basis.consumer !== "RUN" ||
+      task.run_id !== draft.basis.run_id ||
+      task.app_id !== draft.scope.app_id ||
+      task.tenant_id !== draft.scope.tenant_id ||
+      task.environment !== draft.scope.environment)
+  ) {
+    throw new TypeError("SEMANTIC_CONTEXT_TASK_REFERENCE_MISMATCH");
+  }
   return sha256ContentHash(draft);
 }
 
@@ -203,12 +215,31 @@ const canonicalVersionedResourceRefsSchema = z
     });
   });
 
+const semanticConversationIntentSchema = z.strictObject({
+  task_ref: artifactReferenceFor("ProviderTaskArtifact"),
+  context_selection_hash: contentHashSchema,
+  prior_user_questions: z
+    .array(
+      z.strictObject({
+        message_id: canonicalImmutableIdSchema,
+        content: z.string().trim().min(1).max(4_000),
+      }),
+    )
+    .max(8)
+    .superRefine((messages, ctx) => {
+      if (new Set(messages.map(({ message_id }) => message_id)).size !== messages.length) {
+        ctx.addIssue({ code: "custom", message: "Prior user intent message IDs must be unique." });
+      }
+    }),
+});
+
 const semanticContextAuthoritySnapshotDraftSchema = z.strictObject({
   schema_version: z.literal("semantic-context-authority-snapshot@1.0.0"),
   scope: appScopeSchema,
   semantic_domain: z.string().regex(/^[A-Za-z_][A-Za-z0-9_]{0,63}$/),
   question: z.string().trim().min(1).max(4_000),
   question_hash: contentHashSchema,
+  conversation_intent: semanticConversationIntentSchema.optional(),
   defaults_ref: workspaceDefaultsReferenceSchema,
   semantic_release: effectiveSemanticReleaseSchema,
   schema_snapshot: effectiveSchemaSnapshotSchema,
@@ -254,6 +285,19 @@ const semanticContextAuthoritySnapshotCanonicalDraftSchema =
       published_lexicon: canonicalSemanticLexicalEntriesSchema,
     })
     .superRefine((snapshot, ctx) => {
+      const task = snapshot.conversation_intent?.task_ref;
+      if (
+        task &&
+        (task.app_id !== snapshot.scope.app_id ||
+          task.tenant_id !== snapshot.scope.tenant_id ||
+          task.environment !== snapshot.scope.environment)
+      ) {
+        ctx.addIssue({
+          code: "custom",
+          message: "Conversation intent must bind the same scope.",
+          path: ["conversation_intent", "task_ref"],
+        });
+      }
       if (
         snapshot.semantic_release.datasource_id !== snapshot.schema_snapshot.datasource_id ||
         snapshot.semantic_release.resource_id !== snapshot.schema_snapshot.semantic_release_id ||
@@ -946,7 +990,11 @@ export async function verifySemanticContextCommitCommand(input: unknown) {
     verifySemanticContextReceipt(command.receipt),
   ]);
   const runId = request.basis.consumer === "RUN" ? request.basis.run_id : null;
+  const hasIntent =
+    request.basis.consumer === "RUN" && request.basis.provider_task_ref !== undefined;
   if (
+    (packageDocument.retrieval_receipt.intent_context_hash !== undefined) !== hasIntent ||
+    (packageDocument.retrieval_receipt.retrieval_query_hash !== undefined) !== hasIntent ||
     packageDocument.scope.app_id !== request.scope.app_id ||
     packageDocument.scope.tenant_id !== request.scope.tenant_id ||
     packageDocument.scope.environment !== request.scope.environment ||

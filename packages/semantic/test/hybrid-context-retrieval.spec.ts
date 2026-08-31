@@ -1,5 +1,7 @@
 import {
   buildSemanticContextAuthoritySnapshot,
+  sha256ContentHash,
+  verifySemanticContextAuthoritySnapshot,
   verifySemanticContextPackage,
 } from "@data-agent/contracts";
 import { describe, expect, it } from "vitest";
@@ -101,6 +103,148 @@ async function snapshot() {
 }
 
 describe("hybrid semantic retrieval", () => {
+  it("budgets optional recall for distinct frozen questions while preserving explicit and total caps", async () => {
+    const { snapshot_hash: _hash, question_hash: _questionHash, ...base } = await snapshot();
+    const noises = Array.from({ length: 17 }, (_, i) => ({
+      object_id: `noise_${i}`,
+      object_kind: "DIMENSION",
+      name: `noise_${i}`,
+      aliases: [],
+      queryable: true,
+      mapping_refs: [`orders.noise_${i}`],
+      object_hash: hash("b"),
+    }));
+    const authority = await buildSemanticContextAuthoritySnapshot({
+      ...base,
+      question: "继续细分",
+      published_ontology: [
+        ...base.published_ontology,
+        ...noises,
+        {
+          object_id: "month_dimension",
+          object_kind: "DIMENSION",
+          name: "month_dimension",
+          aliases: [],
+          queryable: true,
+          mapping_refs: ["orders.created_at"],
+          object_hash: hash("c"),
+        },
+      ].sort((a, b) => a.object_id.localeCompare(b.object_id)),
+      conversation_intent: {
+        task_ref: {
+          artifact_type: "ProviderTaskArtifact",
+          artifact_id: id(20),
+          revision: 1,
+          ...base.scope,
+          run_id: id(21),
+          content_hash: hash("f"),
+        },
+        context_selection_hash: hash("a"),
+        prior_user_questions: [{ message_id: id(22), content: "订单收入按月展示" }],
+      },
+    });
+    const vector = {
+      async search(input: { question: string; question_hash: string }) {
+        expect(input.question).toBe("订单收入按月展示\n继续细分");
+        expect(input.question_hash).toBe(await sha256ContentHash(input.question));
+        return [
+          ...noises.map((o, i) => ({ object_id: o.object_id, score: 0.9 - i * 0.01 })),
+          { object_id: "month_dimension", score: 0.2 },
+        ];
+      },
+    };
+    const sufficient = await compileSemanticContextPackage(authority, { vector });
+    expect(sufficient.retrieval_receipt.selected_object_ids).toContain("month_dimension");
+    expect(sufficient.retrieval_receipt.retrieval_query_hash).toBe(
+      await sha256ContentHash("订单收入按月展示\n继续细分"),
+    );
+    const limited = await compileSemanticContextPackage(authority, {
+      vector,
+      max_optional_nodes: 12,
+    });
+    expect(limited.retrieval_receipt.selected_object_ids).not.toContain("month_dimension");
+    const capped = await compileSemanticContextPackage(authority, { vector, max_nodes: 10 });
+    expect(capped.retrieval_receipt.selected_object_ids.length).toBeLessThanOrEqual(10);
+  });
+
+  it("binds prior user intent without replacing the current question or authority", async () => {
+    const { snapshot_hash: _hash, question_hash: _questionHash, ...base } = await snapshot();
+    const conversationIntent = {
+      task_ref: {
+        artifact_type: "ProviderTaskArtifact",
+        artifact_id: id(20),
+        revision: 1,
+        ...base.scope,
+        run_id: id(21),
+        content_hash: hash("f"),
+      },
+      context_selection_hash: hash("a"),
+      prior_user_questions: [{ message_id: id(22), content: "分析订单收入和客单价" }],
+    };
+    const authority = await buildSemanticContextAuthoritySnapshot({
+      ...base,
+      question: "其中下降最多的几个，继续拆开看看",
+      conversation_intent: conversationIntent,
+    });
+    const document = await compileSemanticContextPackage(authority, { max_optional_nodes: 0 });
+    expect(document.question_hash).toBe(await sha256ContentHash(authority.question));
+    expect(document.retrieval_receipt).toMatchObject({
+      intent_context_hash: await sha256ContentHash(conversationIntent),
+    });
+    expect(document.mandatory_closure.object_ids).toEqual(
+      expect.arrayContaining(["average_order_value", "order_revenue", "orders_count"]),
+    );
+    await expect(verifySemanticContextPackage(document)).resolves.toEqual(document);
+    await expect(
+      verifySemanticContextAuthoritySnapshot({
+        ...authority,
+        conversation_intent: {
+          ...conversationIntent,
+          prior_user_questions: [{ message_id: id(22), content: "changed" }],
+        },
+      }),
+    ).rejects.toThrow("SEMANTIC_CONTEXT_SNAPSHOT_HASH_MISMATCH");
+    const denied = await compileSemanticContextPackage(authority, {
+      excluded_objects: [{ object_id: "order_revenue", reason_code: "RBAC_DENIED" }],
+    });
+    expect(denied.retrieval_receipt.selected_object_ids).not.toContain("order_revenue");
+  });
+
+  it("rejects assistant material, cross-scope intent and unbounded or duplicate history", async () => {
+    const { snapshot_hash: _hash, question_hash: _questionHash, ...base } = await snapshot();
+    const context = {
+      task_ref: {
+        artifact_type: "ProviderTaskArtifact",
+        artifact_id: id(20),
+        revision: 1,
+        ...base.scope,
+        run_id: id(21),
+        content_hash: hash("f"),
+      },
+      context_selection_hash: hash("a"),
+      prior_user_questions: [{ message_id: id(22), content: "订单收入" }],
+    };
+    for (const intent of [
+      { ...context, assistant_answer: "999" },
+      { ...context, task_ref: { ...context.task_ref, tenant_id: id(99) } },
+      {
+        ...context,
+        prior_user_questions: Array.from({ length: 9 }, (_, i) => ({
+          message_id: id(30 + i),
+          content: "x",
+        })),
+      },
+      {
+        ...context,
+        prior_user_questions: [...context.prior_user_questions, ...context.prior_user_questions],
+      },
+    ]) {
+      await expect(
+        buildSemanticContextAuthoritySnapshot({ ...base, conversation_intent: intent }),
+      ).rejects.toThrow();
+    }
+  });
+
   it("recalls a governed object from a fuzzy Chinese phrase without an embedding provider", async () => {
     const authority = await snapshot();
     const hits = await createDeterministicSemanticVectorSearch(authority).search({

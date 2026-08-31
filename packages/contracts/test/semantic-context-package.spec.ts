@@ -84,7 +84,12 @@ async function fixture() {
       included_object_ids: ["gross_revenue"],
       excluded_objects: [],
     },
-    route_states: { LEXICON: "READY", SPARSE: "READY", VECTOR: "UNAVAILABLE", GRAPH: "UNAVAILABLE" },
+    route_states: {
+      LEXICON: "READY",
+      SPARSE: "READY",
+      VECTOR: "UNAVAILABLE",
+      GRAPH: "UNAVAILABLE",
+    },
     hits: [],
     expansions: [],
     selected_object_ids: ["gross_revenue"],
@@ -169,6 +174,92 @@ async function fixture() {
 }
 
 describe("semantic context package contracts", () => {
+  it.each([
+    [false, false, false, true],
+    [true, false, false, false],
+    [true, true, false, false],
+    [true, false, true, false],
+    [true, true, true, true],
+    [false, true, true, false],
+  ])(
+    "requires paired intent metadata exactly when the RUN binds a Task (%s/%s/%s)",
+    async (taskBound, intentHash, queryHash, accepted) => {
+      const { snapshot, packageDocument: original } = await fixture();
+      const { receipt_hash: _retrievalHash, ...retrieval } = original.retrieval_receipt;
+      const retrievalReceipt = await buildSemanticRetrievalReceipt({
+        ...retrieval,
+        ...(intentHash ? { intent_context_hash: hash("a") } : {}),
+        ...(queryHash ? { retrieval_query_hash: hash("b") } : {}),
+      });
+      const { receipt_hash: _inferenceHash, ...inference } = original.inference_receipt;
+      const inferenceReceipt = await buildSemanticInferenceReceipt({
+        ...inference,
+        retrieval_receipt_hash: retrievalReceipt.receipt_hash,
+      });
+      const {
+        package_id: _id,
+        package_hash: _hash,
+        package_key_hash: _key,
+        ...material
+      } = original;
+      const packageDocument = await buildSemanticContextPackage({
+        ...material,
+        retrieval_receipt: retrievalReceipt,
+        inference_receipt: inferenceReceipt,
+      });
+      const request = await buildSemanticContextRequest({
+        schema_version: "semantic-context-request@1.0.0",
+        request_id: id(30),
+        scope,
+        basis: {
+          consumer: "RUN",
+          run_id: id(31),
+          config_ref: { config_id: id(32), config_revision: 1, config_hash: hash("c") },
+          context_receipt_ref: { receipt_id: id(33), receipt_hash: hash("d") },
+          ...(taskBound
+            ? {
+                provider_task_ref: {
+                  ...scope,
+                  artifact_id: id(34),
+                  artifact_type: "ProviderTaskArtifact",
+                  run_id: id(31),
+                  revision: 1,
+                  content_hash: hash("e"),
+                },
+              }
+            : {}),
+        },
+      });
+      const receipt = await buildSemanticContextReceipt({
+        schema_version: "semantic-context-receipt@1.0.0",
+        receipt_id: id(30),
+        scope,
+        consumer: "RUN",
+        run_id: id(31),
+        request_id: request.request_id,
+        request_hash: request.request_hash,
+        package_ref: {
+          package_id: packageDocument.package_id,
+          package_revision: 1,
+          package_hash: packageDocument.package_hash,
+        },
+        state: packageDocument.route_decision.state,
+        route: packageDocument.route_decision.route,
+        authority_snapshot_hash: snapshot.snapshot_hash,
+        resolved_at: "2026-08-17T00:00:00.000Z",
+      });
+      const verified = verifySemanticContextCommitCommand({
+        schema_version: "semantic-context-commit@1.0.0",
+        request,
+        authority_snapshot_hash: snapshot.snapshot_hash,
+        package: packageDocument,
+        receipt,
+      });
+      if (accepted) await expect(verified).resolves.toMatchObject({ request });
+      else await expect(verified).rejects.toThrow("SEMANTIC_CONTEXT_COMMIT_CLOSURE_MISMATCH");
+    },
+  );
+
   it("builds the same package identity for preview and run consumers", async () => {
     const { snapshot, packageDocument } = await fixture();
     const {

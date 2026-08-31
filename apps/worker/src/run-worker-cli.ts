@@ -524,6 +524,10 @@ export async function runWorkerProcess(
         });
         const semanticContext = createRunBoundSemanticContextResolver({
           capability,
+          task_artifacts: createPostgresProviderTaskArtifactAuthority({
+            store: providerInvocationStore,
+            capability,
+          }),
           service: createSemanticContextService({
             authority: createPostgresSemanticContextRegistry({
               pool: sqlPool,

@@ -1794,7 +1794,14 @@ Diagnostic/Q1/C1任一正式首次失败必须写既有 authority支持的 immut
   业务复核发现解释两次把单边NULL写成两端缺失，故独立business FAIL，未继续A2/UI；原成功Run与报告未覆盖。
   FINAL补当前objective与逐字段NULL/0说明，2项RED→GREEN；live348表不变、临时服务/转发/capability清理，
   见 [解释边界记录](research/complex-1ff782a6-narrative.md)。
-- [ ] 新clean build/scratch验证完整L4A1及后续多轮，再继续上述 F5 / F7；不另跑 child 历史六问，也不复用 core4 PASS。
+- [x] 1d3f2ec1 fresh scratch A1业务数值/来源及同Run QA/Trace/刷新通过（保留editorial与formal profile差异警告）；
+  A2 FAILED/55events，无SQL：Root理解到前题的收入同比，但Semantic只冻结当前客户类型，出现两次范围外选择。
+  同Run冻结历史user intent接入、当前release重检索与多句有界候选预算修复中；不扩大总80节点或绕过选择校验。
+  无模型离线重放已恢复月份/收入/客户与join，见 [多轮断点](research/complex-1d3f2ec1-conversation-intent.md)。
+- [x] 10816最终稿NAS clean/populated、347业务表不变与rollback安全验证通过，附加intent/query hash由commit RPC重算；
+  Contracts10、Semantic185、Worker629、Platform8、migration12项及4包typecheck通过。live未迁移，测试资源停机保留。
+- [ ] 新clean build/scratch验证完整L4A/B及后续正式15回合，
+  再继续上述 F5 / F7；不另跑 child 历史六问，也不复用 core4 PASS。
 
 **F6 READY 轮次恢复边界（2026-08-30，历史）**
 

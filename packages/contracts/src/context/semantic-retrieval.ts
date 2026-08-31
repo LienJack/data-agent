@@ -38,6 +38,8 @@ const semanticRetrievalReceiptMaterialSchema = z.strictObject({
   authority_snapshot_hash: contentHashSchema,
   release_hash: contentHashSchema,
   query_hash: contentHashSchema,
+  intent_context_hash: contentHashSchema.optional(),
+  retrieval_query_hash: contentHashSchema.optional(),
   rrf_k: z.literal(60),
   hard_filter: z.strictObject({
     scope_hash: contentHashSchema,

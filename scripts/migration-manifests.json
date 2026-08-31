@@ -2959,6 +2959,15 @@
       "placeholder": "__FALCON24_RECOVERY_CERTIFICATION_LOCK_MIGRATION_CHECKSUM__",
       "checksum_header": "falcon24_recovery_certification_lock_migration_checksum",
       "postcondition": { "checksum_occurrences": 2 }
+    },
+    {
+      "id": "10816",
+      "migration_name": "20260725010816_app_data_agent_semantic_conversation_intent.sql",
+      "source_directory": "infra/supabase/apps/data-agent/migration-sources/10816",
+      "segments": ["00-preflight.sql.inc", "20-conversation-intent.sql.inc", "90-postconditions.sql.inc"],
+      "placeholder": "__SEMANTIC_CONVERSATION_INTENT_MIGRATION_CHECKSUM__",
+      "checksum_header": "semantic_conversation_intent_migration_checksum",
+      "postcondition": { "checksum_occurrences": 2 }
     }
   ],
   "exceptions": [
