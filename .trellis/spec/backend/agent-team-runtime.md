@@ -142,6 +142,9 @@ The only model output contract is `text2sql-query-candidate@1.0.0`:
 - Host validates every selected ID against the frozen retrieval/inference closure, expands required formula/time/dimension-parent/relationship and physical-binding context, then commits `semantic-query-context@1.0.0` with exact Scope/Run, release/generation/digest, schema snapshot, datasource, retrieval/inference receipts and `context_hash`。
 - `SemanticQueryContext` returns to Root as a structured safe Tool Result. Root may answer a semantic-only question from allowlisted exact fields, or a later Root turn may pass the accepted Artifact through ordinary `input_artifact_refs`; Host does not schedule that later call。
 - Report can run only after accepted `QueryEvidence` is available and must bind source refs exactly。
+- Analysis 最终说明须同时接收当前 node 引用指标的已发布 `metric_ref + unit`，不得只给统计摘要后让模型猜单位。
+  通用 `currency` 不等于 CNY/INR/USD；缺具体币种须披露“沿用数据源币种，具体币种未指定”，`unit=null` 须披露单位未指定。
+  中文回答或数据源名称不能授权换币种、缩放或补单位；显式已发布单位原样沿用。Prompt 回归只证明上下文边界，不代替真实答案验收。
 
 ## 7. Tables and Charts
 

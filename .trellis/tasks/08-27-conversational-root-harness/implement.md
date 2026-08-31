@@ -169,3 +169,10 @@ Commit: `test(agent-runtime): prove conversational root harness`
 - 当前先汇总 C0-C6 与 C7 动态 Loop 证据，确认 git status 只剩父任务原有 dirty files 和服务生成文件。
 - 保持本任务 `in_progress`，恢复 `08-27-falcon24-e2-authority-evolution`，从父任务 W2/10783 当前现场继续；不重建或丢弃既有工作。
 - generation 2 原子激活后返回本任务完成固定五轮、Conversation isolation、exact Trace UI 与全量聚焦验证，届时才把 C7 和本任务标记 completed。
+# 2026-08-31 当前续跑检查点
+
+旧 generation 1 阻塞保留为历史，不代表当前现场。generation 2 的 C7 首轮已完成一次真实
+Semantic → Text2SQL → Analysis，源表/12 行/图表/Context 引用核对通过，但报告币种与任务标签
+审核发现缺口；未运行后续浏览器门禁，未提交后续追问，C7 不得勾选完成。
+详见 [本轮证据与单位上下文修复](research/c7-ad556015-observation.md)。
+先修复已定位的报告边界，focused validation + scoped commit；再继续未完成的同会话协作验收。
