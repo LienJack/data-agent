@@ -1,7 +1,7 @@
 # Falcon24 Semantic Generation 2、E4 原子恢复与 E5 前向构建权威 — Design
 
-> 最新设计权威（2026-08-29）：以本文第 25 节“四层业务门禁与持续执行技术设计”为准。前文保留历史设计与证据；
-> 与第 25 节冲突的 16+30、零修复预算或内部首败终止条款已被覆盖。
+> 最新设计权威（2026-08-31）：当前核心协作切片以第 26 节为准。第 25 节及此前正式四层设计/失败证据保留；
+> 不因核心验收简化而修改其合同或历史状态。
 
 > W1-W7 已于 2026-08-28 实施并全量验证，用户已批准 exact review packet 与 W8。10795 已应用，`e430` 已封存为 HOLD；clean build
 > 上唯一一次 `e431` Finalizer 因旧 smoke 幂等键未绑定 Worker build 而失败关闭，current 仍为 E3/gen1，且没有 `e431`/E4 污染。
@@ -1723,3 +1723,23 @@ Contracts53/53、Worker8文件145/145、Platform40/40及四包typecheck、Contra
 月度分群前抽出已有月度/分类的固定ResultContract编码，调用者仍保留原source proof/方法适用性/发布权限和独立oracle。
 在clean `23dcc9ad`实现上先固定5个合同hash，重构前后都通过，8文件140/140及Worker typecheck/build通过；
 公共函数不包含方法选择或业务算术，不改变合同/执行规则/输出或历史hash。新月度分群随后复用这一源列编码。
+
+## 26. 核心协作切片：简化问题，不弱化来源证明
+
+不新增 publisher、数据库 gate authority 或可变四层题库。使用现有专用 scratch recovery/Finalizer 与正常 UI 提问路径，
+将四个问题及其检查固定为任务级 `falcon24-core-collaboration@1.0.0` 证据配置。其报告是核心协作验收，不是 FL1 receipt。
+原 `falcon24-four-layer-gate-manifest@1.0.0` 的 5/2/2/6、15 回合及所有历史 hash 完全保留。
+
+1. 冻结新 clean commit/attestation，创建 NAS 专用物理克隆；显式验证 cluster/system id/port/Release/Profile/Datasource。
+2. 同一克隆经原 recovery certification 和 Finalizer 激活 scratch baseline，禁止脚本分支写 live。
+3. 四题按固定顺序运行，各一个新 Conversation、一次正常 composer 提交；Root 仍自主决定调用，不注入固定 DAG/答案。
+4. 独立只读复核 Semantic Context、SQL/QueryEvidence、真实源行；通过后再读同 Run 答案页与完整 Trace，不重复调用模型。
+5. 汇总 build/baseline/binding 和四题证据，检查无跨 Run/build 拼接；核心报告与原四层/production isolation 状态分别输出。
+
+ROAS 使用实际已发布 Formula 的聚合与零分母规则，不用旧文案覆盖发布值；净 ROI 明确为
+`(SUM(营销收入)-SUM(投入))/NULLIF(SUM(投入),0)`，由请求级 Semantic Interpretation 绑定两个已发布 Metric，publication effect 必须 NONE。
+语义题不执行 SQL，最近订单题可直接走原受治理 Text2SQL；两道渠道题必须有真实 Semantic 在先、Text2SQL 在后。
+不要求固定一次内部修复或精确 Specialist 调用次数；同一 Run 的合法候选修复可被完整记录，最终必须取得 accepted evidence。
+
+月度分群草稿仅两份未实现测试，移至 `research/deferred-monthly-panel/*.ts.txt` 保留。它们不是已通过测试或生产代码，
+已观察到的 RED 原因为目标模块尚未实现。恢复该增强项前须重新确认范围、实现与验证，不能让草稿阻塞当前全量回归。

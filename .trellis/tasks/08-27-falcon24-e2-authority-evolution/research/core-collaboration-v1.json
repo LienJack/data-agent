@@ -1,0 +1,45 @@
+{
+  "schema_version": "falcon24-core-collaboration@1.0.0",
+  "authority_kind": "TASK_ACCEPTANCE_ONLY",
+  "formal_four_layer_pass": false,
+  "live_activation_required": false,
+  "same_clean_build_and_scratch_baseline_required": true,
+  "submission_limit_per_case": 1,
+  "validation_order": ["business_oracle", "same_run_qa", "answer_entry_exact_trace", "refresh_return"],
+  "cases": [
+    {
+      "id": "C1",
+      "mode": "semantic",
+      "question": "我想看订单收入的同比增长，系统里应该怎么算？需要使用哪些收入和时间口径？",
+      "required_agents": ["semantic-management-agent"],
+      "table_required": false,
+      "checks": ["published_order_revenue", "published_time_binding", "request_only_yoy_definition", "no_sql_or_data_artifacts"]
+    },
+    {
+      "id": "C2",
+      "mode": "orders",
+      "question": "列出最近10笔订单的订单编号、下单日期和订单金额。",
+      "required_agents": ["governed-text2sql-agent"],
+      "table_required": true,
+      "checks": ["accepted_query_evidence", "source_rows_match", "latest_ten_descending_dates", "required_order_columns"]
+    },
+    {
+      "id": "C3",
+      "mode": "roas",
+      "question": "各营销渠道投入产出表现如何？按正式口径给出总投入、营销收入和ROAS渠道对比表。",
+      "required_agents": ["semantic-management-agent", "governed-text2sql-agent"],
+      "table_required": true,
+      "checks": ["semantic_before_text2sql", "accepted_same_run_context_sql_query_evidence", "source_channel_sums", "published_roas_formula_and_zero_denominator"]
+    },
+    {
+      "id": "C4",
+      "mode": "net-roi",
+      "question": "按营销渠道列出总投入、营销收入和净ROI。净ROI定义为（营销收入合计－投入合计）÷投入合计，投入为零时记为空值；按全部数据汇总，给出对比表即可。",
+      "required_agents": ["semantic-management-agent", "governed-text2sql-agent"],
+      "table_required": true,
+      "checks": ["semantic_before_text2sql", "accepted_same_run_context_sql_query_evidence", "source_channel_sums", "request_only_net_roi_formula", "zero_denominator_null"]
+    }
+  ],
+  "deferred": ["complex_analysis", "monthly_panel", "multi_input_analysis", "cross_run_report", "four_layer_15_turn_acceptance"],
+  "unchanged_boundaries": ["published_semantic_authority", "human_review_for_global_publication", "database_isolation", "source_truth", "append_only_history", "no_cross_build_pass_stitching"]
+}

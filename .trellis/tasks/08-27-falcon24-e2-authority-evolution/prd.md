@@ -1,7 +1,7 @@
 # Falcon24 Semantic Generation 2、E4 原子恢复与 E5 前向构建权威
 
-> 最新需求权威（2026-08-29）：以本文第 20 节“四层业务门禁与无人值班闭环”为准。前文 Epoch、16+30 门禁与失败记录
-> 作为不可变历史保留；与第 20 节冲突的未完成要求不再执行。
+> 最新需求权威（2026-08-31）：用户允许简化反复失败的门禁，优先证明 Semantic + Text2SQL 协作。
+> 当前收敛到第 21 节核心协作验收；第 20 节原四层 15 回合及旧 Epoch 记录保留，不改判 PASS。
 
 > 执行状态（2026-08-29）：W1-W8-R4 已完成。10797 已应用，`e432` 已经既有 capability authority 封存为 `HOLD`；clean build 上
 > 唯一一次 `e433` Finalizer 已把 generation 2 与 E4 在同一事务中激活并通过 production-port readback。当前 exact authority 为 E4，
@@ -696,3 +696,28 @@ Provider、SQL、Sandbox 或 Artifact side effect。
   不因“需要真人审批”或 credential 暂不可用结束任务。
 - [ ] **AC-FINAL-01** PostgreSQL authority、protected history、credential、安全边界、sandbox residual、服务/浏览器/scratch 清理、
   focused/full checks、scoped commits 与 clean worktree 全部闭合；production isolation 仍按真实证据单独声明。
+
+## 21. 核心协作验收（2026-08-31 用户范围调整）
+
+用户允许在门禁反复失败时降低题目难度，并在语义层定义所需公式或术语；核心结果是 Semantic 与 Text2SQL 能真实协作。
+本节覆盖第 20 节尚未完成的复杂 Analysis、分群趋势、多输入、跨 Run 报告和 15 回合全过的当前前置要求。
+已提交能力保留；暂停继续扩建月度分群方法。原四层合同、旧失败记录和既有安全边界不变。
+
+当前验收版本为 `falcon24-core-collaboration@1.0.0`，固定题目见 `research/core-collaboration-v1.json`。
+四个独立问题覆盖：语义同比口径说明、最近十笔订单、正式 ROAS 渠道汇总、显式净 ROI 渠道汇总。
+其中两道汇总题必须证明 Root 依据真实 Semantic 工具结果再调用 Text2SQL；只出现 Agent 名称或流畅答案不算协作证据。
+不要求额外 Analysis/Report 调用或生成图表；如果答案实际提供图表，其数据与页面仍须验证。不能给模型提供 gold SQL 或已算结果。
+
+语义定义优先复用当前已发布 Metric/Formula/Dimension。请求级公式由现有 Semantic Context 承载，明确口径且不冒称全局已发布。
+如确实需要新增可复用术语/公式，用户允许走现有 Candidate/ChangeSet/review/publish 流程；不得用聊天授权伪造 exact 治理批准。
+本版已有收入、投入、ROAS 和 request-scoped ratio 原语，先不创建非必要的全局对象。
+
+- [ ] **AC-CORE-01** 同一 clean build、专用物理 scratch、baseline/release/datasource/profile 下四题均通过独立业务复核；不拼接历史 PASS。
+- [ ] **AC-CORE-02** 两道协作题有同 Run 的 Semantic Context → accepted SQL → QueryEvidence，来源列、聚合公式、NULL/零分母与源数据一致。
+- [ ] **AC-CORE-03** 每题真实 composer 只提交一次；业务通过后复用同 Run 验证答案、表格、实际 Agent、答案入口 Trace、Artifact 和刷新恢复。
+- [ ] **AC-CORE-04** 保存四题 question/Conversation/Run、build/binding、答案/证据 hash、原始失败与当前验证记录；不将 scratch 证明写成原四层正式 PASS。
+- [ ] **AC-CORE-05** 相关回归/clean build、受保护历史、服务清理和 scoped commits 闭合。最终单独报告核心协作结果、原四层状态和 production isolation。
+
+核心任务交付可在上述五项完成后结束；旧 E16 失败与 E17 正式激活/四层验收不会因本版核心证明自动改变。
+恢复完整四层或生产发布时仍需对应门禁，不得将 `CORE_COLLABORATION_VERIFIED` 当成生产发布凭据。
+内部错误继续最小修复与新构建验证；外部依赖按既有 checkpoint/无模型复查边界处理。
