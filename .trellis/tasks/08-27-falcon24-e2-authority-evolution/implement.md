@@ -1,9 +1,9 @@
 # Falcon24 Semantic Generation 2、E4 原子恢复与 E5 前向构建权威 — Implementation Plan
 
-> 最新执行状态（2026-08-31）：按用户简化门禁的授权，第 26 节 C0-C3 核心协作切片已完成，四题 4/4。
-> 第 25 节原四层记录保留，未完成复杂能力暂缓；不能修改历史 PASS/FAIL 或绕过发布安全边界。
-> 后续修复已 scoped commit，核心 62 份证据只读重验、最新 live 348 表零漂移与资源回收通过；
-> [最终范围与现场复核](research/core-scope-final-recheck-2026-08-31.md) 明确当前交付结束，不自动恢复延期 child。
+> 最新执行状态（2026-08-31 用户明确续执行）：PRD §22 恢复复杂四层；第 26 节核心四题 4/4 保持历史完成。
+> 从第 25 节 F6 复杂能力预检继续：月度分群方法/独立 Oracle/唯一生产接线，然后核对多输入与 L4 证据闭包。
+> 能力离线闭合后才做新 clean build、fresh scratch、原流程 E17 激活和同构建 15 回合；live 仍 E16 FAILED。
+> [此前核心交付复核](research/core-scope-final-recheck-2026-08-31.md) 是历史检查点，其延期停止条件已被本次明确续执行覆盖。
 
 > W1-W7 已于 2026-08-28 实施并全量验证。用户已批准 exact review packet 与 W8；10795 已应用，旧 `e430` 已封存为 HOLD。
 > clean build 上唯一一次 `e431` Finalizer 因 smoke 幂等键未绑定 Worker build 而失败关闭，current 仍为 E3/gen1 且无 E4 污染。
@@ -1758,6 +1758,15 @@ Diagnostic/Q1/C1任一正式首次失败必须写既有 authority支持的 immut
   - [x] 月度分群前复用既有描述性合同编码，保留原来源/applicability/独立oracle；clean23dcc9ad预先捕获5个合同hash，重构前后完全相同。
     8文件140/140、Worker typecheck/build及4文件Biome通过；没有新增方法权限、业务算术或生产写入。
 - [ ] 所需能力离线闭合后最终clean build/full unit/fresh scratch，再fresh E17正式15回合从L1。当前ACTIVE，live E16 FAILED。
+
+**2026-08-31 用户恢复四层后的接续切片**
+
+- [x] `fd42ac59` clean worktree 接管；NAS SSH 可达，普通 PostgreSQL/Neo4j healthy，Falcon live 独立容器仍绑定 55433。
+  本次只读检查未启动 Web/Worker/OpenSandbox 或写数据库；旧 core/C7 checkpoint 与 volume 保留。
+- [ ] 月度分群叶子：复用描述性合同编码，原月份/分类/measure 身份与 NULL 保留；边界测试先 RED 再实现并 scoped commit。
+- [ ] 月度分群独立 source/Arrow Oracle 与唯一 production composition；不以 planner 单测代替执行验收。
+- [ ] 核对复杂多输入及 L4 当前 Run 事实重验、指代、口径纠正、报告/图表组合；有缺口先做 focused 修复与 scoped commit。
+- [ ] 全部组件闭合后进入上述 fresh scratch / F5 / F7；不另跑 child 历史六问，也不复用 core4 PASS。
 
 **F6 READY 轮次恢复边界（2026-08-30，历史）**
 

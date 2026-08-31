@@ -1746,3 +1746,11 @@ ROAS 使用实际已发布 Formula 的聚合与零分母规则，不用旧文案
 
 核心预检发现分面optional property破坏DeepSeek Strict工具schema投影。保留旧/新两种输入字节，改为两个closed且各自all-required的
 object分支，沿用相同字段/refinement；Provider投影器不放宽。真实model与authority schema均加入回归，不因本次无需Analysis而跳过此缺陷。
+
+## 27. 复杂四层恢复入口（2026-08-31）
+
+PRD §22 恢复 §25 的动态 Agent / 原 gate authority / 新构建前向恢复设计；§26 的暂停增强项不再是当前停止条件。
+从现有描述性方法扩展月份×分类输入，复用来源证明、ResultContract 编码、Sandbox、atomic publisher 和 V3 分面，
+不引入平行分析运行时或第二套发布权威。每个方法必须有独立源数据 Oracle，且仅凭形状与已发布能力注册，不按题号/关键词路由。
+多输入和连续对话先核对当前实际实现；优先在当前 Run 重验数据，不把历史回答转为 accepted evidence。
+旧月度分群草稿继续作为设计证据；重新读取并补齐边界后才进入生产测试，不能把旧 RED 或离线 PASS 当成真实模型验收。

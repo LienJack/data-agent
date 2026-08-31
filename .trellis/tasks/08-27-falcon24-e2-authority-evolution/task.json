@@ -2,10 +2,10 @@
   "id": "falcon24-e2-authority-evolution",
   "name": "falcon24-e2-authority-evolution",
   "title": "Falcon24 E2 Authority Evolution",
-  "description": "Current scope: verify the versioned four-case Semantic + Text2SQL core collaboration slice under PRD section 21; preserve historical formal gates and keep their release authority unchanged.",
+  "description": "User explicitly resumed the complex four-layer acceptance after core4 completion: finish remaining capability gaps, then prove all fifteen turns on one new frozen closure under PRD sections 20 and 22.",
   "status": "in_progress",
   "dev_type": null,
-  "scope": "Semantic + Text2SQL core acceptance, isolated NAS runtime, answer/trace UI and immutable evidence; complex Analysis and original fifteen-turn gate deferred",
+  "scope": "Four-layer Semantic/Text2SQL/Analysis/Report/Chart and multi-turn acceptance; isolated NAS preflight, same-Run answer/Trace UI, immutable history and governed forward activation",
   "package": null,
   "priority": "P2",
   "creator": "codex",
@@ -23,7 +23,7 @@
   ],
   "parent": "08-26-falcon24-e1-authority-reset",
   "relatedFiles": [],
-  "notes": "2026-08-31: the user-scoped four-case core collaboration milestone is complete. Keep the broader parent and child history open; complex Analysis and the original formal four-layer gate remain deferred and are not automatically resumed or declared passed.",
+  "notes": "2026-08-31: user explicitly requested continuing the complex four-layer acceptance. Core4 remains a completed historical milestone, not four-layer PASS. Resume section 25 F6 capability preflight before fresh E17 activation; preserve old Runs, receipts, checkpoints and protected live authority.",
   "meta": {
     "core_collaboration_status": "COMPLETE",
     "core_collaboration_result": "CORE_COLLABORATION_VERIFIED",
@@ -31,6 +31,8 @@
     "verified_source_commit": "ec3c1e61e3258404245e6d7a26e30ef397eef158",
     "core_collaboration_report": "research/core-collaboration-verification-ec3c1e61.md",
     "formal_four_layer_pass": false,
-    "remaining_scope": "DEFERRED_BY_USER_SCOPE_CHANGE"
+    "remaining_scope": "ACTIVE_FOUR_LAYER_ACCEPTANCE",
+    "current_checkpoint": "F6_COMPLEX_CAPABILITY_PREFLIGHT",
+    "resume_source_commit": "fd42ac59"
   }
 }
