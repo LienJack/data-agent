@@ -48,6 +48,16 @@ describe("safe cell diagnostics", () => {
     );
   });
 
+  it("returns an exact table-symbol repair for a table-type rejection", () => {
+    expect(
+      analysisToolLoopInternals.publishRepairInstruction("ANALYSIS_RESULT_TABLE_TYPE_UNSUPPORTED", {
+        result_fields: [],
+      }),
+    ).toBe(
+      "Repair only every table symbol referenced by publish_analysis_result.table_bindings. Rebuild each as either a pandas.DataFrame with the contract's exact columns or a non-empty built-in list of built-in dict rows with identical key order. Preserve the governed rows, values, nulls, and order; do not recompute the analysis. After this one repair Cell succeeds, publish the same corrected bindings immediately.",
+    );
+  });
+
   it("returns exact server-authored text constraints for a publish repair", () => {
     expect(
       analysisToolLoopInternals.publishRepairInstruction("ANALYSIS_RESULT_TEXT_POLICY_MISMATCH", {
@@ -947,6 +957,27 @@ async function run(input: {
 }
 
 describe("unique analysis Result Publisher state machine", () => {
+  it("requires exactly one repair Cell and then only re-publication after a publish rejection", async () => {
+    const calls: Parameters<AnalysisAgentModelPort["turn"]>[0][] = [];
+    await run({
+      script: [
+        cell("prepare"),
+        publishCall("first", false),
+        cell("repair-table"),
+        publishCall("first", false),
+      ],
+      obligations: [],
+      session: session({ invalid_publish_attempts: 1 }),
+      calls,
+    });
+
+    expect(calls[2]?.allowed_tool_names).toEqual(["python_cell"]);
+    expect(calls[3]?.allowed_tool_names).toEqual(["publish_analysis_result"]);
+    expect(calls[3]?.messages.at(-1)?.content).toContain(
+      "The publish-repair Cell succeeded. Call publish_analysis_result now",
+    );
+  });
+
   it("gives a date-accessor failure actionable data-free feedback within the existing single repair", async () => {
     const calls: Parameters<AnalysisAgentModelPort["turn"]>[0][] = [];
     const progress: AnalysisToolLoopProgressEvent[] = [];

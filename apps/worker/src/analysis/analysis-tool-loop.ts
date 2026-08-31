@@ -514,6 +514,14 @@ function publishRepairInstruction(code: string, contract: PublishRepairContract)
       "Convert every nested value to dict, list, str, bool, built-in int, finite built-in float, or None, then publish the same bindings again.",
     ].join(" ");
   }
+  if (code === "ANALYSIS_RESULT_TABLE_TYPE_UNSUPPORTED") {
+    return [
+      "Repair only every table symbol referenced by publish_analysis_result.table_bindings.",
+      "Rebuild each as either a pandas.DataFrame with the contract's exact columns or a non-empty built-in list of built-in dict rows with identical key order.",
+      "Preserve the governed rows, values, nulls, and order; do not recompute the analysis.",
+      "After this one repair Cell succeeds, publish the same corrected bindings immediately.",
+    ].join(" ");
+  }
   if (code !== "ANALYSIS_RESULT_TEXT_POLICY_MISMATCH") {
     return "Repair only the referenced Python symbols or publish bindings.";
   }
@@ -553,6 +561,7 @@ function allowedTools(input: {
   readonly state: AnalysisToolLoopState;
   readonly next_obligation: StatisticalOperatorObligation | undefined;
   readonly successful_python_cells: number;
+  readonly publish_repair_phase: "NONE" | "CELL_REQUIRED" | "PUBLISH_REQUIRED";
 }): readonly AnalysisToolName[] {
   if (input.state === "ANALYZE") {
     return input.next_obligation
@@ -560,6 +569,12 @@ function allowedTools(input: {
       : [ANALYSIS_PYTHON_CELL_TOOL_NAME];
   }
   if (input.state === "PUBLISH_REQUIRED") {
+    if (input.publish_repair_phase === "CELL_REQUIRED") {
+      return [ANALYSIS_PYTHON_CELL_TOOL_NAME];
+    }
+    if (input.publish_repair_phase === "PUBLISH_REQUIRED") {
+      return [ANALYSIS_RESULT_PUBLISH_TOOL_NAME];
+    }
     return input.successful_python_cells > 0
       ? [ANALYSIS_PYTHON_CELL_TOOL_NAME, ANALYSIS_RESULT_PUBLISH_TOOL_NAME]
       : [ANALYSIS_PYTHON_CELL_TOOL_NAME];
@@ -674,6 +689,7 @@ export async function executeAnalysisToolLoop(input: {
   const stateSequence: AnalysisToolLoopState[] = ["ANALYZE"];
   let state: AnalysisToolLoopState = "ANALYZE";
   let successfulPythonCells = 0;
+  let publishRepairPhase: "NONE" | "CELL_REQUIRED" | "PUBLISH_REQUIRED" = "NONE";
   let progressEpoch = 0;
   let publishedResult: PublishedAnalysisResult | null = null;
   let operatorFinalization: AnalysisOperatorFinalizationResult | null = null;
@@ -792,6 +808,7 @@ export async function executeAnalysisToolLoop(input: {
       state: currentState(),
       next_obligation: nextObligation,
       successful_python_cells: successfulPythonCells,
+      publish_repair_phase: publishRepairPhase,
     });
     messages.push({
       role: "user",
@@ -806,11 +823,15 @@ export async function executeAnalysisToolLoop(input: {
           : null,
         successful_python_cells: successfulPythonCells,
         instruction:
-          currentState() === "ANALYZE"
-            ? "Run a material Python transformation or invoke exactly the next governed operator. Keep final data in named Python symbols."
-            : successfulPythonCells === 0
-              ? "Run a material Python Cell that creates the result and table symbols. Final serialization and paths are server-owned."
-              : "Run any required final Python transformation, then call publish_analysis_result exactly once with symbol and chart bindings.",
+          publishRepairPhase === "CELL_REQUIRED"
+            ? "Run one changed Python Cell that repairs only the rejected publish symbols according to the preceding server error."
+            : publishRepairPhase === "PUBLISH_REQUIRED"
+              ? "The publish-repair Cell succeeded. Call publish_analysis_result now with the same corrected bindings; do not run another Python Cell."
+              : currentState() === "ANALYZE"
+                ? "Run a material Python transformation or invoke exactly the next governed operator. Keep final data in named Python symbols."
+                : successfulPythonCells === 0
+                  ? "Run a material Python Cell that creates the result and table symbols. Final serialization and paths are server-owned."
+                  : "Run any required final Python transformation, then call publish_analysis_result exactly once with symbol and chart bindings.",
       }),
     });
     const turn = await input.model.turn({
@@ -1042,6 +1063,7 @@ export async function executeAnalysisToolLoop(input: {
         observation,
       });
       successfulPythonCells += 1;
+      if (publishRepairPhase === "CELL_REQUIRED") publishRepairPhase = "PUBLISH_REQUIRED";
       progressEpoch += 1;
       successfulSignatures.add(signature);
       progress(turnIndex, candidate.tool_name, "CELL_SUCCEEDED");
@@ -1332,6 +1354,7 @@ export async function executeAnalysisToolLoop(input: {
         }),
       );
       repair("PUBLISH_SYMBOL_CONTRACT", code, turnIndex, candidate.tool_name, "PUBLISH_REJECTED");
+      publishRepairPhase = "CELL_REQUIRED";
       continue;
     }
     progressEpoch += 1;

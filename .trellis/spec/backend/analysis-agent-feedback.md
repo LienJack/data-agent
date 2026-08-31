@@ -9,6 +9,7 @@
 
 - `buildAnalysisAgentInitialMessages`：受治理输入schema、绑定symbol、固定runtime与result合同。
 - `safeCellErrorIdentifier` / `cellRepairInstruction`：无数据的错误类别与等权限修复说明。
+- `publishRepairInstruction` / `allowedTools`：Publisher拒绝后的精确无数据反馈与`CELL_REQUIRED -> PUBLISH_REQUIRED`工具收窄。
 - `buildAnalysisFinalMessages({ objective, result_summary, metric_units, ... })`：Oracle后的唯一解释上下文。
 - `buildVerifiedMonthlySummary`：原FULL Oracle后、原当前Run Context/QueryEvidence/contract重新绑定的同比事实展示。
 - `analysisFinalResponseSchema` / `assertAnalysisFinalSummary`：当前请求的原两字段响应收窄和接收/恢复校验。
@@ -20,6 +21,10 @@
   禁止coerce为NaT、改变protected input或推断新时间窗。已规范化ISO DATE可直接保留。
 - 不发送stdout/stderr/raw error；固定pandas accessor消息须精确匹配，拒绝未知/带数据后缀/异常类型不符。
   原CELL_EXECUTION最多一次repair，strict模式零次；AST、算子、Oracle和Publisher校验不放宽。
+- Publisher拒绝进入原`PUBLISH_SYMBOL_CONTRACT`单次修复预算后，状态机必须先只允许一条修复`python_cell`；
+  第一条成功修复Cell之后只允许`publish_analysis_result`，使用相同修复绑定重新经过原Publisher。不得继续暴露任意Python
+  让模型重复转换或重算；若重新发布仍不合法，沿用原预算终止。表类型拒绝只反馈合法容器形态（exact-column DataFrame，
+  或非空built-in list of built-in dict rows及稳定key顺序），要求保留行、值、NULL和顺序；不返回数据或扩大timeout/repair预算。
 - FINAL保留当前ResearchBrief的objective，视为意图而非事实；只解释相关经营结果，不穷举辅助序列统计，
   不把比率的相对变化误称为新的业务增速。仍只返回原`schema_version/summary_zh`两字段。
 - 缺失按字段读取：变化NULL不代表两个端点NULL，首端NULL不代表末端NULL；0是观测值。
@@ -51,6 +56,8 @@
 | `Can only use .dt accessor with datetimelike values` | `PANDAS_DATETIME_ACCESSOR_REQUIRES_CONVERSION`；显式转换声明日期列 |
 | `Can only use .str accessor with string values!` | `PANDAS_STRING_ACCESSOR_REQUIRES_STRING_VALUES`；仅声明字符串列、NULL保留 |
 | 未知/带行数据的其他消息 | 不按以上规则投影；保留原有受界identifier策略 |
+| `ANALYSIS_RESULT_TABLE_TYPE_UNSUPPORTED` | 只反馈DataFrame或稳定built-in dict rows；只允许一条成功修复Cell后重新发布 |
+| 修复Cell后再次请求`python_cell` | 工具不暴露；当前状态只允许`publish_analysis_result` |
 
 ## 5. Good / Base / Bad Cases
 
@@ -58,10 +65,16 @@ Good：first=null、last=20时只说明首端缺失，整体变化未定义。
 Base：first=0、last=20时绝对变化20，相对变化未定义，两个端点均存在。
 Bad：根据一个全局限制码写“两端均缺失”，或为了继续运行把坏日期变成NaT。
 
+Good：表symbol被拒后，用一条Cell保留原行/值/NULL/顺序并改为合法容器，随后立即重新发布。
+Base：重新发布仍不满足Publisher时按原`PUBLISH_SYMBOL_CONTRACT`预算终止。
+Bad：修复Cell成功后继续开放Python，允许重复转换、重算或用timeout掩盖未重新经过Publisher的symbol。
+
 ## 6. Tests Required
 
 - 真实NAS Agent image中Arrow DATE32与ISO文本转DataFrame的object dtype；显式转换后日期不变，无网络/数据源写入。
 - 固定错误正例、类型不符/数据后缀负例；provider消息和进度不泄漏raw output；一次repair后原Publisher仍闭合。
+- 发布表类型失败时的精确无数据反馈；拒绝后仅Cell、成功修复Cell后仅Publisher，禁止第三条Python旁路；
+  修复后错误表仍由原Publisher拒绝，不增加模型/Cell/timeout预算。
 - objective投影；非对称NULL、0分母证据不变；原两字段响应、来源货币限制和摘要预算不变。
 - focused回归不算真实业务或UI验收；后续按同构建/same Run独立复核。
 - 月度完整聚合序列原样保留、跨年/非对称NULL/多个正增长月；错误contract、超12行/超预算仍省略，其他collections不泄漏。
@@ -73,3 +86,6 @@ Bad：根据一个全局限制码写“两端均缺失”，或为了继续运�
 
 Wrong：`relative_change=null` → 两个端点都缺失。
 Correct：分别读first_value和last_value，说明实际缺失端；若仅摘要省略，不推断源数据状态。
+
+Wrong：Publisher拒绝 → 修复Cell成功 → 仍允许`python_cell | publish_analysis_result`。
+Correct：Publisher拒绝 → `CELL_REQUIRED`只允许一条成功修复Cell → `PUBLISH_REQUIRED`只允许原Publisher重验。

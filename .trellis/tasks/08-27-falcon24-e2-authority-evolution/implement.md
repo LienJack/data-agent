@@ -1940,6 +1940,13 @@ Diagnostic/Q1/C1任一正式首次失败必须写既有 authority支持的 immut
 > 0/负/NULL、无入选组、别名/顺序与浮点；原DataFrame不变、模型0调用、authority0写入。
 > 审计`monthly-panel-ratio-boundary-probe-557a7201.json`；新A/B业务与同Run UI未执行，不拼接60a PASS，formal15仍未开始。
 
+> `209de7a4` fresh scratch 的 A1/A2/B1 已通过独立来源 Oracle 与同 Run QA/Trace；A3 的 Semantic/Text2SQL完成并保留
+> 48行当前Run证据，但Analysis首次发布因表类型拒绝，一条修复Cell成功后Host仍允许继续Python，下一Cell及恢复重放超时，
+> 最终保留`FALCON24_ANALYSIS_PUBLICATION_TERMINAL_HOLD`，未验UI且不重放。现将原单次Publisher修复预算收紧为
+> 拒绝后只允许一条修复Cell、成功后只允许重新发布，并补表容器精确无数据反馈；不增加预算/timeout、不放宽Publisher/Oracle。
+> 见 [A3发布修复复盘](research/complex-209de7a4-analysis-publish-repair.md)；修复提交后须新build/fresh scratch重验，
+> 当前B2旧构建虽已终态但尚未业务/UI复核，B3未提交，complex preflight/formal15均未PASS。
+
 **F6 READY 轮次恢复边界（2026-08-30，历史）**
 
 > 以下为历史记录；当前 forward recovery 已到 E16 FAILED，下一 fresh epoch 为 E17，见上一节。
