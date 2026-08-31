@@ -456,3 +456,21 @@ Correct：`key = JSON.stringify([channel, audience])`，输出仍分别保留两
 图表原始分类分面的完整契约见 [受治理分析图表](./governed-analysis-charts.md)。
 
 完整月度分群的方法、独立 Oracle 与生产接线见 [受治理月度分群](./governed-monthly-panels.md)。
+
+## Accepted DATETIME 的业务时区输入表示
+
+`governedInputDatetimeTimezones` 只从原 verified QueryEvidence 的封存 time_window 读取 timezone，
+只投影与该窗口 dimension_id 精确匹配的 DIMENSION/DATETIME 输出列。ARROW 原字节、input hash、receipt、
+数值和绝对时刻不变；DATE 是日历日期，不做时区转换。无明确时区、不匹配的字段及非ARROW输入不猜测本机时区。
+
+Host 在原输入字节hash校验后将 TIMESTAMP_MS 按 UTC instant 解码再 `.dt.tz_convert(accepted_timezone)`，
+让 pandas 输入的表示与批准业务日历一致；不预计算月份/极值/排名/答案，不转换未知列或静默coerce。
+列必须存在、timezone有效且列名唯一；非法配置/输入立即失败，不补NULL或降级。
+`datetime_timezones` 同时进入 Agent input binding 提示、绑定identity及context恢复source；同名输入更换时区应拒绝，
+没有projection的旧身份保持兼容。模型做日期标签时必须保留业务时区，不能先截UTC月份或丢时区再取月。
+原独立Oracle的日期、数值、来源、窗口和完整结果校验不变。
+
+必测：上海月界/闰年/年界、DST时区、NULL/DATE/数值/原Arrow字节及绝对时刻不变，
+封存时区篡改、非法/重复列投影、同名timezone drift拒绝、恢复重放精确source。
+`2023-10-31T16:00:00Z` 对上海业务窗口是 `2023-11-01`；月份标签不能取UTC十月。
+独立Python探针只证明表示边界，不替代新Run的业务/QA/Trace验收。

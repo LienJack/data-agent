@@ -15,7 +15,7 @@ import { analysisOperatorArgumentSymbols } from "./analysis-operator-symbols.js"
 type AnalysisProgramNode = AnalysisProgramPayload["nodes"][number];
 
 const inputDateTimeRule =
-  "A logical DATE/TIMESTAMP field is not a pandas datetime dtype guarantee: Arrow may materialize ISO text or Python date objects as object dtype. Before using .dt on a declared date/time field, create a derived Series with pandas.to_datetime(series, errors='raise'); preserve the declared timezone and original calendar dates. Never coerce invalid dates to NaT, infer a new time window, or mutate the protected input. Already normalized ISO date strings may be retained directly when the result contract requires the same dates.";
+  "A logical DATE/TIMESTAMP field is not a pandas datetime dtype guarantee: Arrow may materialize ISO text or Python date objects as object dtype. inputs[].binding.datetime_timezones declares the exact columns already presented as timezone-aware pandas timestamps in the accepted business timezone. Preserve that timezone for every date label, extrema, endpoint and adjacent-period change. For such a column derive calendar dates with pandas.to_datetime(series, errors='raise', utc=True).dt.tz_convert(declared_timezone).dt.strftime('%Y-%m-%d'); never take the UTC month, slice the raw ISO string, or drop timezone before conversion. DATE is a calendar date, not an instant: preserve its day without UTC localization/conversion; pandas.to_datetime(series, errors='raise') may be used before .dt on DATE. Never coerce invalid dates to NaT, infer a new time window, or mutate the protected input. Already normalized ISO date strings may be retained directly when the result contract requires the same dates.";
 
 const inputSchemaProjectionSchema = z.strictObject({
   input_name: z.string().regex(/^[A-Za-z_][A-Za-z0-9_.-]{0,62}$/u),
@@ -36,6 +36,15 @@ const inputBindingProjectionSchema = z.strictObject({
   input_symbol: z.string().regex(/^__da_input_[a-f0-9]{24}$/u),
   content_sha256: z.string().regex(/^sha256:[a-f0-9]{64}$/u),
   materialization_receipt_hash: z.string().regex(/^sha256:[a-f0-9]{64}$/u),
+  datetime_timezones: z
+    .array(
+      z.strictObject({
+        column_name: z.string().min(1).max(256),
+        timezone: z.string().min(1).max(128),
+      }),
+    )
+    .max(512)
+    .optional(),
 });
 const governedAnalysisContractSchema = z.strictObject({
   schema_version: z.literal("governed-analysis-contract@3.0.0"),
@@ -248,6 +257,7 @@ export async function buildAnalysisAgentInitialMessages(input: {
             columns: schema.fields.length,
           },
           python_value_type: "pandas.DataFrame",
+          ...(binding.datetime_timezones ? { datetime_timezones: binding.datetime_timezones } : {}),
         },
       };
     }),

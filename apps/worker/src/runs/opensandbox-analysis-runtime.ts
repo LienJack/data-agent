@@ -396,6 +396,10 @@ export interface OpenSandboxAnalysisSession {
     readonly input_path: string;
     readonly format: "ARROW" | "CSV" | "JSON";
     readonly content_sha256: `sha256:${string}`;
+    readonly datetime_timezones?: readonly {
+      readonly column_name: string;
+      readonly timezone: string;
+    }[];
     readonly timeout_ms: number;
     readonly signal?: AbortSignal;
   }): Promise<{
@@ -753,9 +757,20 @@ function digest(bytes: Uint8Array): `sha256:${string}` {
 export function governedInputBindingIdentity(input: {
   readonly input_name: string;
   readonly content_sha256: `sha256:${string}`;
+  readonly datetime_timezones?: readonly {
+    readonly column_name: string;
+    readonly timezone: string;
+  }[];
 }) {
+  const timezones = governedInputDatetimeTimezonesSchema.parse(input.datetime_timezones ?? []);
   const suffix = createHash("sha256")
-    .update([input.input_name, input.content_sha256].join("\0"))
+    .update(
+      [
+        input.input_name,
+        input.content_sha256,
+        ...(timezones.length ? [JSON.stringify(timezones)] : []),
+      ].join("\0"),
+    )
     .digest("hex")
     .slice(0, 24);
   return Object.freeze({
@@ -764,13 +779,41 @@ export function governedInputBindingIdentity(input: {
   });
 }
 
+const governedInputDatetimeTimezonesSchema = z
+  .array(
+    z.strictObject({
+      column_name: z.string().min(1).max(256),
+      timezone: z
+        .string()
+        .min(1)
+        .max(128)
+        .refine((value) => {
+          try {
+            new Intl.DateTimeFormat("en", { timeZone: value });
+            return true;
+          } catch {
+            return false;
+          }
+        }),
+    }),
+  )
+  .max(512)
+  .refine((items) => new Set(items.map((item) => item.column_name)).size === items.length);
+
 function buildGovernedInputBindingSource(input: {
   readonly input_path: string;
   readonly input_symbol: string;
   readonly content_sha256: `sha256:${string}`;
   readonly format: "ARROW" | "CSV" | "JSON";
   readonly max_bytes: number;
+  readonly datetime_timezones?: readonly {
+    readonly column_name: string;
+    readonly timezone: string;
+  }[];
 }): string {
+  const timezones = governedInputDatetimeTimezonesSchema.parse(input.datetime_timezones ?? []);
+  if (timezones.length && input.format !== "ARROW")
+    throw new TypeError("ANALYSIS_GOVERNED_INPUT_TIMEZONE_FORMAT_INVALID");
   return `# server-owned-governed-input-binding@1.0.0
 import hashlib as _da_input_hashlib
 import io as _da_input_io
@@ -800,6 +843,15 @@ elif _da_input_format == "JSON":
     _da_input_value = _da_input_pd.DataFrame(_da_input_document)
 else:
     raise RuntimeError("ANALYSIS_GOVERNED_INPUT_FORMAT_UNSUPPORTED")
+for _da_input_temporal in ${JSON.stringify(timezones)}:
+    _da_input_column = _da_input_temporal["column_name"]
+    if _da_input_column not in _da_input_value.columns:
+        raise RuntimeError("ANALYSIS_GOVERNED_INPUT_TIMEZONE_COLUMN_MISSING")
+    # Arrow timestamp milliseconds encode instants, even when pandas dtype is naive.
+    # Attach UTC then convert representation; preserve each instant and all NULLs.
+    _da_input_value[_da_input_column] = _da_input_pd.to_datetime(
+        _da_input_value[_da_input_column], errors="raise", utc=True
+    ).dt.tz_convert(_da_input_temporal["timezone"])
 globals()[${JSON.stringify(input.input_symbol)}] = _da_input_value
 `;
 }
@@ -1648,6 +1700,9 @@ export function createOpenSandboxAnalysisRuntime(input: {
             input_symbol: identity.input_symbol,
             content_sha256: bindingInput.content_sha256,
             format: bindingInput.format,
+            ...(bindingInput.datetime_timezones
+              ? { datetime_timezones: bindingInput.datetime_timezones }
+              : {}),
             max_bytes: config.max_file_bytes,
           });
           await runCellWithDeadline({

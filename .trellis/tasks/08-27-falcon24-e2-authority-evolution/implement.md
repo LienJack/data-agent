@@ -1834,6 +1834,11 @@ Diagnostic/Q1/C1任一正式首次失败必须写既有 authority支持的 immut
     无分类/同表分类/认证关联分类采用同一语义编译，完整分类TABLE交给Analysis。保留原错误候选，不在失败后自动替换。
     Platform五文件297项、Worker三文件48项与两包typecheck通过，Trellis/diff/Biome通过；
     完成scoped commit后新clean build，不记作复杂题PASS。原失败SQL具体原因仍未知，没有用模板伪造历史修复证明。
+  - [x] 3252b416新scratch A1的Semantic/Text2SQL和独立来源校验通过；Analysis阶段65events FAILED，
+    原stage保留后发现38个日历字段偏早一月，数值一致。原Arrow UTC instant未按封存业务时区呈现是可复现边界缺陷。
+    Host输入只投影原批准DATETIME维度时区，绑定身份/恢复/提示一致；DATE/NULL/数值/字节不变，Oracle不放宽。
+    NAS同镜像无网络Python8项通过，focused128项与Worker typecheck通过；详见 [日历边界](research/complex-3252b416-calendar-boundary.md)。
+    原失败Run不重放；源348表不变，本轮临时服务清理、scratch停机保留。新clean build继续A/B，尚未复杂题PASS。
   再继续上述 F5 / F7；不另跑 child 历史六问，也不复用 core4 PASS。
 
 **F6 READY 轮次恢复边界（2026-08-30，历史）**

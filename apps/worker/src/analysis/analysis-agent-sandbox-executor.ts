@@ -29,6 +29,7 @@ import {
 import type { AnalysisAgentModelPort } from "./deepseek-analysis-agent.js";
 import {
   type GovernedAnalysisInput,
+  governedInputDatetimeTimezones,
   verifyGovernedAnalysisInputs,
 } from "./governed-analysis-input.js";
 import {
@@ -126,16 +127,23 @@ export async function executeAnalysisAgentSandbox(input: {
     analysis_program_ref: input.analysis_program_ref,
     node: input.node,
   });
-  const inputBindings = input.governed_inputs.map((governed) => ({
-    input_name: governed.name,
-    input_symbol: governedInputBindingIdentity({
-      input_name: governed.name,
-      content_sha256: governed.input_ref.content_hash as `sha256:${string}`,
-    }).input_symbol,
-    content_sha256: governed.input_ref.content_hash as `sha256:${string}`,
-    materialization_receipt_hash: governed.materialization_receipt_ref
-      .content_hash as `sha256:${string}`,
-  }));
+  const inputBindings = await Promise.all(
+    input.governed_inputs.map(async (governed) => {
+      const timezones = await governedInputDatetimeTimezones(governed);
+      return {
+        input_name: governed.name,
+        input_symbol: governedInputBindingIdentity({
+          input_name: governed.name,
+          content_sha256: governed.input_ref.content_hash as `sha256:${string}`,
+          datetime_timezones: timezones,
+        }).input_symbol,
+        ...(timezones.length ? { datetime_timezones: timezones } : {}),
+        content_sha256: governed.input_ref.content_hash as `sha256:${string}`,
+        materialization_receipt_hash: governed.materialization_receipt_ref
+          .content_hash as `sha256:${string}`,
+      };
+    }),
+  );
   const initialMessages = await buildAnalysisAgentInitialMessages({
     analysis_program: input.analysis_program,
     node: input.node,
@@ -283,6 +291,8 @@ export async function executeAnalysisAgentSandbox(input: {
   let durableStage: AnalysisResultStage | null = null;
   try {
     for (const governed of input.governed_inputs) {
+      const projection = inputBindings.find((binding) => binding.input_name === governed.name);
+      if (!projection) throw new TypeError("ANALYSIS_GOVERNED_INPUT_BINDING_MISMATCH");
       const path = inputPath(governed);
       await session.uploadAgentFile({
         path,
@@ -292,12 +302,14 @@ export async function executeAnalysisAgentSandbox(input: {
       const expected = governedInputBindingIdentity({
         input_name: governed.name,
         content_sha256: governed.input_ref.content_hash as `sha256:${string}`,
+        datetime_timezones: projection.datetime_timezones ?? [],
       });
       const binding = await session.bindGovernedInput({
         input_name: governed.name,
         input_path: path,
         format: governed.format,
         content_sha256: governed.input_ref.content_hash as `sha256:${string}`,
+        datetime_timezones: projection.datetime_timezones ?? [],
         timeout_ms: 30_000,
         ...(input.signal ? { signal: input.signal } : {}),
       });

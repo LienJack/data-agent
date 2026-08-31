@@ -641,6 +641,43 @@ describe("OpenSandbox analysis runtime", () => {
     expect(fake.created[1]?.deleted_contexts).toHaveLength(0);
   });
 
+  it("replays the same accepted datetime projection and rejects same-name timezone drift", async () => {
+    const fake = fakeFactory();
+    const runtime = createOpenSandboxAnalysisRuntime({
+      config: testConfig(),
+      sdk_factory: fake.factory,
+    });
+    const session = await runtime.createSession({
+      run_id: "run-timezone",
+      node_id: "node-timezone",
+      profile: "CORE_ANALYSIS",
+    });
+    const input = {
+      input_name: "orders",
+      input_path: "/workspace/inputs/orders.arrow",
+      format: "ARROW" as const,
+      content_sha256: digest(Buffer.from("arrow")),
+      datetime_timezones: [{ column_name: "month", timezone: "Asia/Shanghai" }],
+      timeout_ms: 1_000,
+    };
+    const binding = await session.bindGovernedInput(input);
+    const source = fake.created[0]?.executed_codes.at(-1);
+    expect(source).toContain('"timezone":"Asia/Shanghai"');
+    await expect(session.bindGovernedInput(input)).resolves.toEqual(binding);
+    await expect(
+      session.bindGovernedInput({
+        ...input,
+        datetime_timezones: [{ column_name: "month", timezone: "UTC" }],
+      }),
+    ).rejects.toMatchObject({ code: "ANALYSIS_SANDBOX_BINDING_HASH_MISMATCH", retryable: false });
+    await session.recoverAgentContext({ replay: [] });
+    const bindings = fake.created[0]?.executed_codes.filter((code) =>
+      code.includes("server-owned-governed-input-binding@1.0.0"),
+    );
+    expect(bindings).toEqual([source, source]);
+    await session.close();
+  });
+
   it("fails closed on a content hash mismatch", async () => {
     const fake = fakeFactory();
     const runtime = createOpenSandboxAnalysisRuntime({

@@ -25,6 +25,26 @@ export interface GovernedAnalysisInput {
   readonly content: Uint8Array;
 }
 
+/** A display timezone for the exact accepted temporal Dimension, never a new time window. */
+export async function governedInputDatetimeTimezones(
+  input: Pick<GovernedAnalysisInput, "format" | "query_evidence_ref" | "query_evidence_document">,
+) {
+  if (input.format !== "ARROW") return [];
+  const verified = await verifyProductTeamQueryEvidenceInput(input);
+  const binding = verified.semantic_binding,
+    window = binding.time_window;
+  const timezone = window?.timezone;
+  if (!window || !timezone) return [];
+  return binding.columns
+    .filter(
+      (column) =>
+        column.semantic_role === "DIMENSION" &&
+        column.semantic_object_id === window.dimension_id &&
+        column.logical_type === "DATETIME",
+    )
+    .map((column) => ({ column_name: column.output_name, timezone }));
+}
+
 function bytesHash(bytes: Uint8Array): `sha256:${string}` {
   return `sha256:${createHash("sha256").update(bytes).digest("hex")}`;
 }

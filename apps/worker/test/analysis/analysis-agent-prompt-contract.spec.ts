@@ -26,7 +26,10 @@ describe("governed analysis agent contract v3", () => {
     expect(rule).toContain("not a pandas datetime dtype guarantee");
     expect(rule).toContain("pandas.to_datetime");
     expect(rule).toContain("errors='raise'");
-    expect(rule).toContain("declared timezone");
+    expect(rule).toContain("accepted business timezone");
+    expect(rule).toContain("datetime_timezones");
+    expect(rule).toContain("utc=True).dt.tz_convert(declared_timezone)");
+    expect(rule).toContain("DATE is a calendar date, not an instant");
     expect(rule).toContain("Never coerce invalid dates to NaT");
   });
 
