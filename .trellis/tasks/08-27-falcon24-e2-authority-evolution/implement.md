@@ -1790,6 +1790,10 @@ Diagnostic/Q1/C1任一正式首次失败必须写既有 authority支持的 immut
   原始错误未保留，不声称具体原因已知。补固定accessor错误的安全反馈与逻辑DATE/dtype契约；4项RED→GREEN，
   NAS原image离线复现Arrow文本日期的`.dt`故障并验证显式转换不改值。live348表不变，未继续A2/UI，
   见 [Cell反馈记录](research/complex-3f876865-cell-feedback.md)。
+- [x] 1ff782a6 fresh scratch L4A1 Run SUCCEEDED/57events，1次Python/零repair；12月独立源Oracle通过。
+  业务复核发现解释两次把单边NULL写成两端缺失，故独立business FAIL，未继续A2/UI；原成功Run与报告未覆盖。
+  FINAL补当前objective与逐字段NULL/0说明，2项RED→GREEN；live348表不变、临时服务/转发/capability清理，
+  见 [解释边界记录](research/complex-1ff782a6-narrative.md)。
 - [ ] 新clean build/scratch验证完整L4A1及后续多轮，再继续上述 F5 / F7；不另跑 child 历史六问，也不复用 core4 PASS。
 
 **F6 READY 轮次恢复边界（2026-08-30，历史）**

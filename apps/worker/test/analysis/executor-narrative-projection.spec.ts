@@ -32,6 +32,7 @@ describe("analysis executor narrative projection", () => {
 
   it("pins the final explanation to the exact two-field response contract", () => {
     const messages = buildAnalysisFinalMessages({
+      objective: "解释订单收入同比，不是每个辅助序列的全部统计量。",
       stage_id: "stage-1",
       stage_hash: "sha256:stage",
       result_summary: { fields: { conclusion: "收入下降。" } },
@@ -50,11 +51,47 @@ describe("analysis executor narrative projection", () => {
     });
     expect(JSON.parse(messages[1]?.content ?? "null")).toMatchObject({
       kind: "ANALYSIS_STAGE_ORACLE_VERIFIED",
+      objective: "解释订单收入同比，不是每个辅助序列的全部统计量。",
       limitation_codes: ["SEASONALITY_NOT_CORRECTED"],
       instruction: expect.stringContaining(
         "Return only schema_version and summary_zh; express every disclosed limitation inside summary_zh",
       ),
     });
+    expect(messages[0]?.content).toContain("Answer the objective");
+    expect(messages[0]?.content).toContain("not evidence");
+    expect(messages[0]?.content).toContain("Do not enumerate every auxiliary series statistic");
+  });
+
+  it("keeps asymmetric null endpoints and zero denominators explicit in final-stage evidence", () => {
+    const measures = {
+      missing_start: {
+        first_value: null,
+        last_value: 20,
+        absolute_change: null,
+        relative_change: null,
+      },
+      missing_end: {
+        first_value: 10,
+        last_value: null,
+        absolute_change: null,
+        relative_change: null,
+      },
+      zero_start: { first_value: 0, last_value: 20, absolute_change: 20, relative_change: null },
+    };
+    const messages = buildAnalysisFinalMessages({
+      objective: "解释可观察的变化和缺失限制。",
+      stage_id: "stage-1",
+      stage_hash: "sha256:stage",
+      result_summary: buildAnalysisNarrativeProjection({ data: measures }),
+      artifacts: [],
+      oracle_result: { verdict: "PASS" },
+      limitation_codes: ["RELATIVE_DELTA_UNDEFINED"],
+      metric_units: [],
+    });
+    expect(JSON.parse(messages[1]?.content ?? "null").result_summary.fields).toEqual(measures);
+    expect(messages[0]?.content).toContain("A null change does not imply both endpoints are null");
+    expect(messages[0]?.content).toContain("zero is an observed value, not missing");
+    expect(messages[0]?.content).toContain("RELATIVE_DELTA_UNDEFINED is a result-level limitation");
   });
 
   it.each([
@@ -93,6 +130,7 @@ describe("analysis executor narrative projection", () => {
         unit,
       };
       const messages = buildAnalysisFinalMessages({
+        objective: "说明订单收入趋势。",
         stage_id: "stage-1",
         stage_hash: "sha256:stage",
         result_summary: { fields: { start_value: 567783.74, end_value: 537702.94 } },

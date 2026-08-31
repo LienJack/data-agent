@@ -5,6 +5,7 @@
 {"file":".trellis/spec/backend/resolution-trace.md","reason":"Audit historical E1 and current E2 trace correctness without latest or raw fallback."}
 {"file":".trellis/spec/backend/provider-invocation-authority.md","reason":"Audit credential secrecy, provider outcomes, and strict retry behavior."}
 {"file":".trellis/spec/backend/python-sandbox-execution.md","reason":"Audit Operator, Oracle, Publisher, sandbox receipt, and residual closure."}
+{"file":".trellis/spec/backend/analysis-agent-feedback.md","reason":"Audit data-free feedback, unchanged repair boundaries and final-stage intent/evidence separation."}
 {"file":".trellis/spec/backend/governed-analysis-charts.md","reason":"Audit exact source facets, historical chart compatibility, dataset completeness, and rendering boundaries."}
 {"file":".trellis/spec/backend/governed-monthly-panels.md","reason":"Audit monthly group identity, independent numeric checks, exact publication and retained narrative budgets."}
 {"file":".trellis/spec/frontend/agent-public-events.md","reason":"Audit browser and public trace surfaces for safe exact-reference behavior."}
