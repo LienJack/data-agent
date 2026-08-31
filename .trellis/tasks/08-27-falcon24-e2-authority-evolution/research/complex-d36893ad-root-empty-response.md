@@ -44,3 +44,11 @@ owned Biome、Trellis validate及diff check通过。Trellis原有大文件注入
 已同步Provider authority和Root runtime规范；`src/templates/markdown/spec`不存在，不新建第二套模板权威。
 遵照Trellis break-loop，本项只处理已定位根因，不扩充题库或放宽来源Oracle。完成focused validation与scoped commit，
 冻结新构建、创建新NAS scratch，再逐题A/B业务及同Run页面验证；formal15及L3跨域仍未验收。
+
+## 6. 新构建前置检查
+
+6bfb08c0 force build 8/8通过，全量单测在Contracts架构扫描失败：前序新增
+`postgresql-formula-reference.ts` 从根入口导入两项类型。原构建的缓存Contracts测试未扫描该跨包变更；
+改成原 `contracts/agents` 与 `contracts/artifacts` 领域子路径，不扩baseline、不改变运行逻辑。
+架构15项、公式参考4项和Platform typecheck通过。6bfb08c0没有签发attestation、认证、激活或业务模型调用；
+已创建的55503专用克隆及10816升级证明保留。后续新clean build重新执行全门禁。

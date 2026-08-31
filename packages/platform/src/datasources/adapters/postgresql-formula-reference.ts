@@ -1,4 +1,5 @@
-import type { SemanticFormulaExpression, Text2SqlQueryCandidate } from "@data-agent/contracts";
+import type { Text2SqlQueryCandidate } from "@data-agent/contracts/agents";
+import type { SemanticFormulaExpression } from "@data-agent/contracts/artifacts";
 
 type Slot = {
   readonly slot_id: string;
