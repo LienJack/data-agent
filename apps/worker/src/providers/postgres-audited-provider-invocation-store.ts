@@ -139,6 +139,8 @@ export function createPostgresAuditedProviderInvocationAdapter(input: {
             replay_action: parsed.data.replay_action,
             original_permit: originalPermit,
             status: parsed.data.outcome.candidate.status,
+            reason_code: parsed.data.outcome.candidate.reason_code,
+            delivery_certainty: parsed.data.outcome.candidate.delivery_certainty,
             response_artifact_ref: parsed.data.response_artifact_ref,
             response_hash: parsed.data.outcome.candidate.response_hash,
             projection: parsed.data.projection,
@@ -202,6 +204,8 @@ export function createPostgresAuditedProviderInvocationAdapter(input: {
         ok: true,
         value: {
           status: parsed.data.outcome.candidate.status,
+          reason_code: parsed.data.outcome.candidate.reason_code,
+          delivery_certainty: parsed.data.outcome.candidate.delivery_certainty,
           response_artifact_ref: parsed.data.outcome.candidate.response_artifact_ref,
           response_hash: parsed.data.outcome.candidate.response_hash,
           projection: parsed.data.projection,

@@ -887,6 +887,18 @@ export function createDirectRunBoundProviderDispatcher(input: {
               };
             }
             if (event.event_type === "FAILED" || event.event_type === "THROTTLED") {
+              if (
+                rootTurn &&
+                event.event_type === "FAILED" &&
+                event.reason_code === "MODEL_RESPONSE_EMPTY" &&
+                event.delivery_certainty === "DISPATCHED_OUTCOME_KNOWN"
+              ) {
+                return failure(
+                  "PROVIDER_RESPONSE_REJECTED",
+                  "Root 响应为空，未接受任何决策。",
+                  false,
+                );
+              }
               if (event.reason_code === "MODEL_STREAM_PROTOCOL_VIOLATION" && programDiagnostic) {
                 return {
                   ok: false,

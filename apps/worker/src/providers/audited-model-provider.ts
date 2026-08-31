@@ -76,6 +76,8 @@ export interface PrivateAuditedProviderTransport {
 
 type TerminalReplay = Readonly<{
   status: "COMPLETED" | "FAILED" | "THROTTLED" | "OUTCOME_UNKNOWN";
+  reason_code?: string | null;
+  delivery_certainty?: "NOT_DISPATCHED" | "DISPATCHED_OUTCOME_KNOWN" | "DISPATCHED_OUTCOME_UNKNOWN";
   response_artifact_ref: ProtectedResponseReference | null;
   response_hash: string | null;
   projection: ProviderInvocationPublicProjection;
@@ -120,6 +122,8 @@ export interface AuditedProviderInvocationStore {
             | "RECONCILIATION_REQUIRED";
           readonly original_permit: AuthoritativeCommittedProviderDispatchPermit;
           readonly status: "COMPLETED" | "FAILED" | "THROTTLED" | "OUTCOME_UNKNOWN";
+          readonly reason_code?: string | null;
+          readonly delivery_certainty?: NonNullable<TerminalReplay["delivery_certainty"]>;
           readonly response_artifact_ref: ProtectedResponseReference | null;
           readonly response_hash: string | null;
           readonly projection: ProviderInvocationPublicProjection;
@@ -250,13 +254,22 @@ function sameArtifactReference(
   );
 }
 
-function terminalFailure(status: TerminalReplay["status"]): PortResult<never> {
+function terminalFailure(
+  status: TerminalReplay["status"],
+  recorded?: Pick<TerminalReplay, "reason_code" | "delivery_certainty"> & {
+    readonly status?: string;
+  },
+): PortResult<never> {
   const code =
     status === "OUTCOME_UNKNOWN"
       ? "PROVIDER_INVOCATION_OUTCOME_UNKNOWN"
       : status === "THROTTLED"
         ? "PROVIDER_THROTTLED"
-        : "PROVIDER_INVOCATION_FAILED";
+        : status === "FAILED" &&
+            recorded?.reason_code === "PROVIDER_PROTOCOL_VIOLATION" &&
+            recorded.delivery_certainty === "DISPATCHED_OUTCOME_KNOWN"
+          ? "PROVIDER_RESPONSE_REJECTED"
+          : "PROVIDER_INVOCATION_FAILED";
   return failure(code, "Provider 调用已进入持久终态。", false);
 }
 
@@ -320,7 +333,7 @@ export function createAuditedModelProvider(dependencies: {
           !begun.value.response_artifact_ref ||
           !begun.value.response_hash
         ) {
-          return terminalFailure(begun.value.status);
+          return terminalFailure(begun.value.status, begun.value);
         }
         const response = await dependencies.response_artifacts.load({
           permit: begun.value.original_permit,
@@ -367,7 +380,7 @@ export function createAuditedModelProvider(dependencies: {
           !loaded.value.response_artifact_ref ||
           !loaded.value.response_hash
         ) {
-          return terminalFailure(loaded.value.status);
+          return terminalFailure(loaded.value.status, loaded.value);
         }
         const response = await dependencies.response_artifacts.load({
           permit,
@@ -529,7 +542,7 @@ export function createAuditedModelProvider(dependencies: {
           terminal: transportResult,
         });
         if (!terminal.ok) return terminal;
-        return terminalFailure(transportResult.kind);
+        return terminalFailure(transportResult.kind, transportResult);
       }
 
       if (!dispatchMarked) {

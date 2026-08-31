@@ -76,6 +76,47 @@ async function permit(
 }
 
 describe("Postgres audited provider invocation adapter", () => {
+  it("commits a known response rejection with one call, no accepted response, and no recovery action", async () => {
+    const commitTerminal = vi
+      .fn()
+      .mockResolvedValue({
+        ok: false,
+        error: { code: "STORAGE_SENTINEL", message: "test", retryable: false },
+      });
+    const adapter = createPostgresAuditedProviderInvocationAdapter({
+      store: { commitTerminal } as unknown as PostgresProviderInvocationStore,
+      capability: {} as AppCapability,
+    });
+    const result = await adapter.invocation_store.commitTerminal({
+      worker_lease: {} as never,
+      permit: await permit(),
+      terminal: {
+        kind: "FAILED",
+        reason_code: "PROVIDER_PROTOCOL_VIOLATION",
+        retryable: false,
+        delivery_certainty: "DISPATCHED_OUTCOME_KNOWN",
+      },
+    });
+    expect(result).toMatchObject({ ok: false, error: { code: "STORAGE_SENTINEL" } });
+    expect(commitTerminal).toHaveBeenCalledOnce();
+    expect(commitTerminal.mock.calls[0]?.[2]).toMatchObject({
+      schema_version: "provider-invocation-commit-terminal@1.0.0",
+      outcome: {
+        status: "FAILED",
+        reason_code: "PROVIDER_PROTOCOL_VIOLATION",
+        response_artifact_ref: null,
+        response_hash: null,
+        delivery_certainty: "DISPATCHED_OUTCOME_KNOWN",
+        transition_from: "RESPONSE_OBSERVED",
+        recovery_action: "NONE",
+        provider_call_count: 1,
+        retry_after_ms: null,
+        reconciliation_of: null,
+      },
+      usage: { provider_call_count: 1, input_tokens: null, output_tokens: null },
+    });
+  });
+
   it("forwards the raw-free response observation before any terminal transition", async () => {
     const markResponseObserved = vi.fn().mockResolvedValue({ ok: true, value: {} });
     const adapter = createPostgresAuditedProviderInvocationAdapter({

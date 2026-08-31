@@ -43,6 +43,18 @@ async function catalog(
 }
 
 describe("Root Agent Harness", () => {
+  it("keeps known rejected responses inside a new normal Root decision with no forced route", async () => {
+    const message = await buildRootAgentSystemMessage(await catalog(["semantic-management-agent"]));
+    expect(message).toContain("PROVIDER_RESPONSE_REJECTED");
+    expect(message).toContain(
+      "fully ended with only empty or whitespace text and no tool activity",
+    );
+    expect(message).toContain("next normal turn");
+    expect(message).toContain(
+      "do not requery existing evidence, add facts, force a particular profile, or increase the turn budget",
+    );
+  });
+
   it("does not turn published coverage into an unrequested SQL time filter", async () => {
     const message = await buildRootAgentSystemMessage(await catalog(["semantic-management-agent"]));
     expect(message).toContain("Published time-domain coverage is not a requested time window");

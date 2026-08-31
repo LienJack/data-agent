@@ -408,6 +408,37 @@ function createAlternatePrincipalSandboxBinding(
 }
 
 describe("版本化 Adapter Ports", () => {
+  it.each([
+    ["MODEL_RESPONSE_EMPTY", "DISPATCHED_OUTCOME_KNOWN", false, true],
+    ["MODEL_RESPONSE_EMPTY", "DISPATCHED_OUTCOME_KNOWN", true, false],
+    ["MODEL_RESPONSE_EMPTY", "DISPATCHED_OUTCOME_UNKNOWN", false, false],
+    ["MODEL_RESPONSE_EMPTY", "NOT_DISPATCHED", false, false],
+    ["MODEL_STREAM_PROTOCOL_VIOLATION", "DISPATCHED_OUTCOME_KNOWN", false, false],
+    ["MODEL_STREAM_PROTOCOL_VIOLATION", "DISPATCHED_OUTCOME_UNKNOWN", false, true],
+    ["MODEL_PROVIDER_TIMEOUT", "DISPATCHED_OUTCOME_UNKNOWN", true, true],
+    ["MODEL_PROVIDER_CREDENTIAL_UNAVAILABLE", "NOT_DISPATCHED", false, true],
+  ])(
+    "validates failure certainty without making known empty responses retryable (%s, %s, %s)",
+    (reason_code, delivery_certainty, retryable, valid) => {
+      expect(
+        modelProviderEventSchema.safeParse({
+          ...baseAttempt,
+          request_id: ids.receipt,
+          provider: "openai",
+          profile_id: ids.artifact,
+          profile_version: "1.0.0",
+          model_id: "example-model",
+          sequence: 1,
+          observed_at: "2026-07-25T00:00:00.000Z",
+          event_type: "FAILED",
+          reason_code,
+          delivery_certainty,
+          retryable,
+        }).success,
+      ).toBe(valid);
+    },
+  );
+
   it("Model Provider 只接收 AVAILABLE Profile 授权的调用，并关联每个流事件", async () => {
     const request = modelProviderRequestSchema.parse({
       ...baseAttempt,

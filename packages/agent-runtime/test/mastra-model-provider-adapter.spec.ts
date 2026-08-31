@@ -4,6 +4,7 @@ import {
   type ModelProviderEvent,
 } from "@data-agent/contracts";
 import { describe, expect, it, vi } from "vitest";
+import { MastraExecutionError } from "../src/mastra/errors.js";
 import type { ModelExecutionBridge, ModelExecutionChunk } from "../src/mastra/execution-bridge.js";
 import { MastraModelProviderAdapter } from "../src/mastra/model-provider-adapter.js";
 import { makeAvailableProfile, modelFixtureIds, modelFixtureScope } from "./model-fixtures.js";
@@ -92,6 +93,45 @@ async function collect(
 }
 
 describe("MastraModelProviderAdapter", () => {
+  it("does not promote copied private diagnostic counts into known response evidence", async () => {
+    const warning = vi.spyOn(console, "warn").mockImplementation(() => {});
+    try {
+      const events = await collect(
+        createAdapter({
+          async *stream() {
+            yield { chunk_type: "DISPATCH_READY" };
+            throw new MastraExecutionError(
+              "MODEL_STREAM_PROTOCOL_VIOLATION",
+              false,
+              "private",
+              "AUTO_RESPONSE_INVALID_JSON",
+              undefined,
+              {
+                finish_reason: "stop",
+                text_state: "WHITESPACE",
+                text_utf8_bytes: 216,
+                streamed_text_utf8_bytes: 216,
+                text_delta_chunks: 216,
+                observed_tool_calls: 0,
+                output_tokens: 216,
+              },
+            );
+          },
+        }),
+        await makeInvocation(),
+      );
+      expect(events.at(-1)).toMatchObject({
+        event_type: "FAILED",
+        reason_code: "MODEL_STREAM_PROTOCOL_VIOLATION",
+        retryable: false,
+        delivery_certainty: "DISPATCHED_OUTCOME_UNKNOWN",
+      });
+      expect(events.filter((event) => event.event_type === "COMPLETED")).toEqual([]);
+    } finally {
+      warning.mockRestore();
+    }
+  });
+
   it.each([false, true])(
     "keeps one fail-closed terminal with a raw-free diagnostic (sink throws: %s)",
     async (sinkThrows) => {

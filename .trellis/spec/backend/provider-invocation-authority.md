@@ -130,6 +130,22 @@ return committed.protectedResponse;
   一次 fetch、marker 顺序及无原文泄漏；恶意字段、无穷/负/小数计数和异常 getter 均须脱敏失败关闭。
 - Required tests：stage 分类、真实 adapter/bridge 生产路径、伪造 stage/未知路径/超长结构/抛异常 getter 脱敏、日志 sink 失败及终态不变。
 
+### 完整空响应的确定拒绝
+
+- AUTO 原 stream 已完整 drain、getFullOutput 成功、无 error/abort/工具活动，结束为 stop/length，
+  最终及已观察文本都仅空白，且已报告 usage 不越过冻结预算时，可生成包内不可序列化的空响应标记。
+  Adapter 仅在已 dispatch 且持有该标记时返回 `FAILED/MODEL_RESPONSE_EMPTY`、known、retryable=false。
+  日志 stage/计数、同形 Error、模型输出均不是该标记；缺失/未知 finish、断流、非空非法 JSON、工具错误和超预算仍原路径失败。
+- ModelProviderEvent 的 KNOWN FAILED 仅允许上述 reason 且不可重试。持久 transport 映射到现有
+  `PROVIDER_PROTOCOL_VIOLATION` known FAILED；先 ResponseObserved、再原 terminal RPC，call_count=1、
+  recovery_action=NONE、response_ref/hash=null，不产出成功响应或伪造已报告 token。无新 DB authority/RPC/migration。
+- 只有 terminal 持久化成功后的该 reason+certainty 组合产生 `PROVIDER_RESPONSE_REJECTED`。
+  restart 从持久 outcome 读取相同结果，不重派原调用；commit 失败不向 Root 提供恢复反馈。
+  Root 可先 checkpoint 再用不同 logical invocation 开始下一正常决策，消耗原四回合预算，不是 Provider retry。
+- 旧 OUTCOME_UNKNOWN 不重新分类、不用日志补收据、不重放；其他响应协议错误也不因此恢复。
+  必测真实 SDK 一次 fetch、空 stop/length、断流/未知 finish/超预算反例、复制诊断无效、终态重放零网络、
+  checkpoint 失败零后续调用和四回合耗尽。此分类适用于 AUTO；REQUIRED/无工具流程不变。
+
 ### Contracts
 
 - Provider、Profile、Model、上下文预算和超时仍由服务端冻结；浏览器、模型输出和调用方不得覆盖。

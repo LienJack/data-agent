@@ -72,7 +72,11 @@ Root turn 0..3 (AUTO)
   可成为普通下一回合的结构化 verifier feedback。原失败调用不执行；Host 不删改参数、不代选 Profile、不扩大输入类型。
   只保存固定 reason_code，已验收输入/观察原样保留；先 checkpoint `turn_index+1`，持久化失败不调用下一回合。
   纠正消耗原四回合预算，耗尽保存终态及最后反馈；恢复从下一 index 继续，绝不重放已拒绝 Provider 调用。
-  Catalog correlation、未知 Profile、权限/引用/hash、响应协议和 Provider outcome 错误不属于此白名单。
+  另仅允许已提交的完整空响应拒绝 `PROVIDER_RESPONSE_REJECTED` 进入同一 checkpoint/四回合反馈路径；
+  它没有接受决策或执行委派，下一正常调用保持原证据、目录与预算，不能让 Host 强制选择 Profile。
+  判定及持久化边界见 [Provider authority](./provider-invocation-authority.md#完整空响应的确定拒绝)。
+  Catalog correlation、未知 Profile、权限/引用/hash、其他响应协议与 Provider outcome 错误不属于此白名单；
+  特别是旧 OUTCOME_UNKNOWN/RECONCILIATION_REQUIRED 和未经 authority 映射的 MODEL_RESPONSE_EMPTY 不得恢复。
   Root 依据冻结目录纠正 native call，不重新查询已有证据；最后回合产出最终证据仍只走既有确定性答案验收。
 - `ROOT_HARNESS@1` is the only Q&A executor. V1/V2/`LEGACY_FIXED@1` leases return `ROOT_AGENT_LEASE_VERSION_UNSUPPORTED` and never fall back。
 - Root v3 ProviderTask commit 必须消费 exact EffectiveConfig conversation receipt 与冻结的 `visible_message_refs`；历史 `START_L2_RESEARCH` lease 没有 refs 时只允许在 live Conversation version 仍等于 command version 的条件下保留无摘要 replay。两条分支共用同一个 RPC，不存在 legacy fallback writer 或第二套上下文权威。

@@ -165,6 +165,10 @@ describe("Mastra execution bridge integration", () => {
     },
     { name: "empty final", tool: false, text: "", valid: false },
     { name: "whitespace final", tool: false, text: "  \n ", valid: false },
+    { name: "blank length", tool: false, text: "  \n ", valid: false },
+    { name: "blank unknown finish", tool: false, text: "  \n ", valid: false },
+    { name: "blank over budget", tool: false, text: "  \n ", valid: false },
+    { name: "blank interrupted", tool: false, text: "  \n ", valid: false },
     { name: "truncated final", tool: false, text: '{"summary":"private', valid: false },
     { name: "plain final", tool: false, text: "private-invalid-answer", valid: false },
     {
@@ -182,6 +186,18 @@ describe("Mastra execution bridge integration", () => {
   ])(
     "constrains DeepSeek AUTO transport to JSON without forcing a tool ($name)",
     async ({ name, tool, text, valid }) => {
+      const interrupted = name === "blank interrupted";
+      const knownEmpty =
+        !tool &&
+        text.trim().length === 0 &&
+        !interrupted &&
+        !["blank unknown finish", "blank over budget"].includes(name);
+      const finish =
+        name === "truncated final" || name === "blank length"
+          ? "length"
+          : name === "blank unknown finish"
+            ? "unknown"
+            : "stop";
       const binding = getModelProviderBinding("deepseek");
       const warning = vi.spyOn(console, "warn").mockImplementation(() => {});
       let marked = false;
@@ -232,10 +248,26 @@ describe("Mastra execution bridge integration", () => {
                       ],
                     }
                   : { content: text };
+                if (interrupted)
+                  return new Response(
+                    new ReadableStream({
+                      start(controller) {
+                        controller.enqueue(
+                          new TextEncoder().encode(
+                            `data: ${JSON.stringify({ ...common, choices: [{ index: 0, delta, finish_reason: null }] })}\n\n`,
+                          ),
+                        );
+                      },
+                      pull(controller) {
+                        controller.error(new Error("offline interrupted stream"));
+                      },
+                    }),
+                    { headers: { "content-type": "text/event-stream" } },
+                  );
                 return new Response(
                   [
                     `data: ${JSON.stringify({ ...common, choices: [{ index: 0, delta, finish_reason: null }] })}\n\n`,
-                    `data: ${JSON.stringify({ ...common, choices: [{ index: 0, delta: {}, finish_reason: tool ? "tool_calls" : name === "truncated final" ? "length" : "stop" }], usage: { prompt_tokens: 8, completion_tokens: 5, total_tokens: 13 } })}\n\n`,
+                    `data: ${JSON.stringify({ ...common, choices: [{ index: 0, delta: {}, finish_reason: tool ? "tool_calls" : finish }], usage: { prompt_tokens: 8, completion_tokens: name === "blank over budget" ? 101 : 5, total_tokens: name === "blank over budget" ? 109 : 13 } })}\n\n`,
                     "data: [DONE]\n\n",
                   ].join(""),
                   { headers: { "content-type": "text/event-stream" } },
@@ -278,8 +310,17 @@ describe("Mastra execution bridge integration", () => {
             ? { event_type: "COMPLETED" }
             : {
                 event_type: "FAILED",
-                reason_code: "MODEL_STREAM_PROTOCOL_VIOLATION",
-                retryable: false,
+                ...(interrupted
+                  ? {}
+                  : {
+                      reason_code: knownEmpty
+                        ? "MODEL_RESPONSE_EMPTY"
+                        : "MODEL_STREAM_PROTOCOL_VIOLATION",
+                    }),
+                retryable: interrupted,
+                delivery_certainty: knownEmpty
+                  ? "DISPATCHED_OUTCOME_KNOWN"
+                  : "DISPATCHED_OUTCOME_UNKNOWN",
               },
         );
         expect(events.filter((e) => e.event_type === "TOOL_CALL_CANDIDATE")).toHaveLength(
@@ -298,19 +339,19 @@ describe("Mastra execution bridge integration", () => {
           expect(events.at(-1)).toMatchObject({
             output_text: '{"confidence":1,"summary":"facts"}',
           });
-        if (!valid) expect(warning).toHaveBeenCalledTimes(1);
-        if (!valid && name !== "extra field") {
+        if (!valid && !interrupted) expect(warning).toHaveBeenCalledTimes(1);
+        if (!valid && !interrupted && name !== "extra field") {
           expect(JSON.parse(String(warning.mock.calls[0]?.[0]))).toMatchObject({
             stage: "AUTO_RESPONSE_INVALID_JSON",
             response: {
-              finish_reason: name === "truncated final" ? "length" : "stop",
+              finish_reason: finish === "unknown" ? "other" : finish,
               text_state:
                 text.length === 0 ? "EMPTY" : text.trim().length === 0 ? "WHITESPACE" : "NON_JSON",
               text_utf8_bytes: Buffer.byteLength(text),
               streamed_text_utf8_bytes: Buffer.byteLength(text),
               text_delta_chunks: text.length === 0 ? 0 : 1,
               observed_tool_calls: 0,
-              output_tokens: 5,
+              output_tokens: name === "blank over budget" ? 101 : 5,
             },
           });
         }
@@ -989,8 +1030,11 @@ describe("Mastra execution bridge integration", () => {
             }
           : {
               event_type: "FAILED",
-              reason_code: "MODEL_STREAM_PROTOCOL_VIOLATION",
+              reason_code:
+                name === "empty" ? "MODEL_RESPONSE_EMPTY" : "MODEL_STREAM_PROTOCOL_VIOLATION",
               retryable: false,
+              delivery_certainty:
+                name === "empty" ? "DISPATCHED_OUTCOME_KNOWN" : "DISPATCHED_OUTCOME_UNKNOWN",
             },
       );
     } finally {

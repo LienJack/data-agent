@@ -1904,6 +1904,14 @@ Diagnostic/Q1/C1任一正式首次失败必须写既有 authority支持的 immut
   - 当前已请求的发布Formula增加原AST证明后的无数据表达式参考，复用相同Metric物理依赖与冻结上下文预算；
     不提供整条替代查询、不修改口径/绑定/Oracle、不增加模型调用。Platform223+Worker55项及两包typecheck/Platform build通过。
     见 [Formula参考复盘](research/complex-e75cdbb9-formula-reference.md)；真实新B1尚待验证，原e75失败不重放。
+  - d36893ad新scratch B1/B2及独立A1业务+同Run UI通过（42/58/75 Trace节点）；B1首次候选匹配原发布CASE公式，
+    B2 request-only净ROI正确，渠道三指标分轴图未压缩比率，A1 Python原算法0差异。
+    B3 Root完整216字节空白/stop、A2已接受48行之后Root完整2048字节空白/length；均旧OUTCOME_UNKNOWN，
+    保留原FAILED，不重放。A3/formal15未提交。首个认证失败与后续独立新stage认证/Finalizer PASS分别保留。
+    live348表不变，本轮Web/Worker/两浏览器已关闭，scratch停机保留，55502转发已取消。
+    现修复窄完整空响应的持久拒绝与下一正常Root回合反馈，原四回合预算、Oracle、安全/未知结果边界不变。
+    见 [完整空响应复盘](research/complex-d36893ad-root-empty-response.md)；下一步新clean build/fresh scratch验证A/B，
+    不拼接本轮或历史core4 PASS，也不声称正式15题已通过。
 
 **F6 READY 轮次恢复边界（2026-08-30，历史）**
 

@@ -463,6 +463,7 @@ describe("bounded Root tool loop", () => {
   it.each([
     "ROOT_AGENT_PROVIDED_UNSUPPORTED_INPUT_ARTIFACT",
     "ROOT_AGENT_REQUESTED_UNSUPPORTED_OUTPUT_ARTIFACT",
+    "PROVIDER_RESPONSE_REJECTED",
   ])("checkpoints %s for a new normal turn without admitting the rejected call", async (code) => {
     const input = await fixture();
     const seeded = acceptedInput(input);
@@ -536,45 +537,51 @@ describe("bounded Root tool loop", () => {
     expect(execute).toHaveBeenCalledOnce();
   });
 
-  it("exhausts the existing four turns on repeated catalog type rejections and restores terminally", async () => {
-    const input = await fixture();
-    const code = "ROOT_AGENT_PROVIDED_UNSUPPORTED_INPUT_ARTIFACT";
-    const decide = vi.fn(async () => ({
-      ok: false as const,
-      error: { code, message: "private", retryable: false },
-    }));
-    const execute = vi.fn();
-    const runner = createDataAgentTeamRunner({
-      ...input.dependencies,
-      root: { decide },
-      root_runtime: { execute },
-    });
-    const execution = {
-      lease: input.lease,
-      restored_snapshot: null,
-      context: input.createContext(),
-      signal: new AbortController().signal,
-      deadline_at: input.lease.expires_at,
-    };
-    const failure = { kind: "FAILED", error_code: "ROOT_AGENT_TURN_BUDGET_EXHAUSTED" };
-    await expect(runner.execute(execution)).resolves.toEqual(failure);
-    expect(decide).toHaveBeenCalledTimes(4);
-    const calls = decide.mock.calls as unknown as Array<[unknown, { turn_index: number }]>;
-    expect(calls.map(([, state]) => state.turn_index)).toEqual([0, 1, 2, 3]);
-    expect(execute).not.toHaveBeenCalled();
-    const terminal = input.snapshots.at(-1);
-    expect(terminal?.mastra_snapshot).toMatchObject({
-      turn_index: 4,
-      terminal: true,
-      terminal_error_code: failure.error_code,
-      verifier_feedback: { reason_code: code },
-    });
-    if (!terminal) throw new Error("terminal checkpoint missing");
-    await expect(
-      runner.execute({ ...execution, restored_snapshot: terminal, context: input.createContext() }),
-    ).resolves.toEqual(failure);
-    expect(decide).toHaveBeenCalledTimes(4);
-  });
+  it.each(["ROOT_AGENT_PROVIDED_UNSUPPORTED_INPUT_ARTIFACT", "PROVIDER_RESPONSE_REJECTED"])(
+    "exhausts the existing four turns on repeated %s and restores terminally",
+    async (code) => {
+      const input = await fixture();
+      const decide = vi.fn(async () => ({
+        ok: false as const,
+        error: { code, message: "private", retryable: false },
+      }));
+      const execute = vi.fn();
+      const runner = createDataAgentTeamRunner({
+        ...input.dependencies,
+        root: { decide },
+        root_runtime: { execute },
+      });
+      const execution = {
+        lease: input.lease,
+        restored_snapshot: null,
+        context: input.createContext(),
+        signal: new AbortController().signal,
+        deadline_at: input.lease.expires_at,
+      };
+      const failure = { kind: "FAILED", error_code: "ROOT_AGENT_TURN_BUDGET_EXHAUSTED" };
+      await expect(runner.execute(execution)).resolves.toEqual(failure);
+      expect(decide).toHaveBeenCalledTimes(4);
+      const calls = decide.mock.calls as unknown as Array<[unknown, { turn_index: number }]>;
+      expect(calls.map(([, state]) => state.turn_index)).toEqual([0, 1, 2, 3]);
+      expect(execute).not.toHaveBeenCalled();
+      const terminal = input.snapshots.at(-1);
+      expect(terminal?.mastra_snapshot).toMatchObject({
+        turn_index: 4,
+        terminal: true,
+        terminal_error_code: failure.error_code,
+        verifier_feedback: { reason_code: code },
+      });
+      if (!terminal) throw new Error("terminal checkpoint missing");
+      await expect(
+        runner.execute({
+          ...execution,
+          restored_snapshot: terminal,
+          context: input.createContext(),
+        }),
+      ).resolves.toEqual(failure);
+      expect(decide).toHaveBeenCalledTimes(4);
+    },
+  );
 
   it.each([
     "ROOT_AGENT_SELECTED_PROFILE_NOT_IN_FROZEN_CATALOG",
@@ -583,6 +590,10 @@ describe("bounded Root tool loop", () => {
     "ROOT_AGENT_RESPONSE_INVALID",
     "ROOT_AGENT_DECISION_REJECTED",
     "PROVIDER_OUTCOME_UNKNOWN",
+    "PROVIDER_INVOCATION_OUTCOME_UNKNOWN",
+    "PROVIDER_RECONCILIATION_REQUIRED",
+    "PROVIDER_PROTOCOL_VIOLATION",
+    "MODEL_RESPONSE_EMPTY",
     "PROVIDER_LOGICAL_CALL_DUPLICATE",
     "RUN_EXECUTION_CONTEXT_NOT_TRUSTED",
   ])("does not turn %s into a model repair", async (code) => {
@@ -610,34 +621,37 @@ describe("bounded Root tool loop", () => {
     expect(input.snapshots).toHaveLength(0);
   });
 
-  it("does not start a correction if the rejection checkpoint cannot be persisted", async () => {
-    const input = await fixture();
-    const decide = vi.fn(async () => ({
-      ok: false as const,
-      error: {
-        code: "ROOT_AGENT_PROVIDED_UNSUPPORTED_INPUT_ARTIFACT",
-        message: "private",
-        retryable: false,
-      },
-    }));
-    const execute = vi.fn();
-    await expect(
-      createDataAgentTeamRunner({
-        ...input.dependencies,
-        root: { decide },
-        root_runtime: { execute },
-      }).execute({
-        lease: input.lease,
-        restored_snapshot: null,
-        context: input.createContext("ROOT_CHECKPOINT_UNAVAILABLE"),
-        signal: new AbortController().signal,
-        deadline_at: input.lease.expires_at,
-      }),
-    ).resolves.toEqual({ kind: "FAILED", error_code: "ROOT_CHECKPOINT_UNAVAILABLE" });
-    expect(decide).toHaveBeenCalledOnce();
-    expect(execute).not.toHaveBeenCalled();
-    expect(input.snapshots).toHaveLength(0);
-  });
+  it.each(["ROOT_AGENT_PROVIDED_UNSUPPORTED_INPUT_ARTIFACT", "PROVIDER_RESPONSE_REJECTED"])(
+    "does not correct %s if its checkpoint cannot be persisted",
+    async (code) => {
+      const input = await fixture();
+      const decide = vi.fn(async () => ({
+        ok: false as const,
+        error: {
+          code,
+          message: "private",
+          retryable: false,
+        },
+      }));
+      const execute = vi.fn();
+      await expect(
+        createDataAgentTeamRunner({
+          ...input.dependencies,
+          root: { decide },
+          root_runtime: { execute },
+        }).execute({
+          lease: input.lease,
+          restored_snapshot: null,
+          context: input.createContext("ROOT_CHECKPOINT_UNAVAILABLE"),
+          signal: new AbortController().signal,
+          deadline_at: input.lease.expires_at,
+        }),
+      ).resolves.toEqual({ kind: "FAILED", error_code: "ROOT_CHECKPOINT_UNAVAILABLE" });
+      expect(decide).toHaveBeenCalledOnce();
+      expect(execute).not.toHaveBeenCalled();
+      expect(input.snapshots).toHaveLength(0);
+    },
+  );
 
   it("feeds structured verifier rejection into a later normal turn", async () => {
     const input = await fixture();

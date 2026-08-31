@@ -37,11 +37,12 @@ const reasonCodeSchema = z
   .max(128)
   .regex(/^[A-Z][A-Z0-9_]*$/u);
 
-// Only local, pre-admission Artifact type rejections can consume another normal turn.
-// Catalog identity, permissions, protocol and provider outcome failures remain terminal.
-const ROOT_CATALOG_TYPE_FEEDBACK_CODES = new Set([
+// Local type rejection or a committed known empty response may consume a normal
+// turn. Unknown provider outcomes and all other protocol failures remain terminal.
+const ROOT_RECOVERABLE_TURN_FEEDBACK_CODES = new Set([
   "ROOT_AGENT_PROVIDED_UNSUPPORTED_INPUT_ARTIFACT",
   "ROOT_AGENT_REQUESTED_UNSUPPORTED_OUTPUT_ARTIFACT",
+  "PROVIDER_RESPONSE_REJECTED",
 ]);
 
 const rootRuntimeResultSchema = z.discriminatedUnion("status", [
@@ -399,7 +400,7 @@ export function createDataAgentTeamRunner(
           verifier_feedback: state.verifier_feedback,
         });
         if (!decision.ok) {
-          if (!ROOT_CATALOG_TYPE_FEEDBACK_CODES.has(decision.error.code)) {
+          if (!ROOT_RECOVERABLE_TURN_FEEDBACK_CODES.has(decision.error.code)) {
             return failed(decision.error.code);
           }
           const exhausted = turnIndex + 1 >= input.lease.execution_policy.max_root_turns;

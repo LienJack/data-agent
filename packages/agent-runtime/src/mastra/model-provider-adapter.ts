@@ -8,7 +8,11 @@ import {
   parseModelProviderEventForRequest,
   sha256ContentHash,
 } from "@data-agent/contracts";
-import { MastraExecutionError, normalizeMastraExecutionError } from "./errors.js";
+import {
+  isFullyObservedEmptyResponse,
+  MastraExecutionError,
+  normalizeMastraExecutionError,
+} from "./errors.js";
 import {
   type ModelExecutionBridge,
   type ModelExecutionChunk,
@@ -127,7 +131,10 @@ function nextSequenceEvent(
         readonly event_type: "FAILED";
         readonly reason_code: string;
         readonly retryable: boolean;
-        readonly delivery_certainty: "NOT_DISPATCHED" | "DISPATCHED_OUTCOME_UNKNOWN";
+        readonly delivery_certainty:
+          | "NOT_DISPATCHED"
+          | "DISPATCHED_OUTCOME_UNKNOWN"
+          | "DISPATCHED_OUTCOME_KNOWN";
       }
     | {
         readonly event_type: "THROTTLED";
@@ -160,6 +167,14 @@ function failedEvent(
   error: unknown,
   dispatchMarked: boolean,
 ): ModelProviderEvent {
+  if (dispatchMarked && isFullyObservedEmptyResponse(error)) {
+    return nextSequenceEvent(request, clock, sequence, {
+      event_type: "FAILED",
+      reason_code: "MODEL_RESPONSE_EMPTY",
+      retryable: false,
+      delivery_certainty: "DISPATCHED_OUTCOME_KNOWN",
+    });
+  }
   const normalized = normalizeMastraExecutionError(error);
   if (dispatchMarked && normalized.terminal_status === "THROTTLED") {
     return nextSequenceEvent(request, clock, sequence, {

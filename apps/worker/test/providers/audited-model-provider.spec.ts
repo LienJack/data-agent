@@ -614,12 +614,44 @@ describe("AuditedModelProvider", () => {
   });
 
   it.each([
-    ["FAILED", "NEW_LOGICAL_INVOCATION_REQUIRED", "PROVIDER_INVOCATION_FAILED"],
-    ["THROTTLED", "NEW_LOGICAL_INVOCATION_AFTER_RETRY_DELAY", "PROVIDER_THROTTLED"],
-    ["OUTCOME_UNKNOWN", "RECONCILIATION_REQUIRED", "PROVIDER_INVOCATION_OUTCOME_UNKNOWN"],
+    [
+      "FAILED",
+      "NEW_LOGICAL_INVOCATION_REQUIRED",
+      "PROVIDER_INVOCATION_FAILED",
+      undefined,
+      undefined,
+    ],
+    [
+      "THROTTLED",
+      "NEW_LOGICAL_INVOCATION_AFTER_RETRY_DELAY",
+      "PROVIDER_THROTTLED",
+      undefined,
+      undefined,
+    ],
+    [
+      "OUTCOME_UNKNOWN",
+      "RECONCILIATION_REQUIRED",
+      "PROVIDER_INVOCATION_OUTCOME_UNKNOWN",
+      undefined,
+      undefined,
+    ],
+    [
+      "FAILED",
+      "NEW_LOGICAL_INVOCATION_REQUIRED",
+      "PROVIDER_RESPONSE_REJECTED",
+      "PROVIDER_PROTOCOL_VIOLATION",
+      "DISPATCHED_OUTCOME_KNOWN",
+    ],
+    [
+      "OUTCOME_UNKNOWN",
+      "RECONCILIATION_REQUIRED",
+      "PROVIDER_INVOCATION_OUTCOME_UNKNOWN",
+      "PROVIDER_PROTOCOL_VIOLATION",
+      "DISPATCHED_OUTCOME_KNOWN",
+    ],
   ] as const)(
     "returns stable %s terminal replay without prepare, marker, or network",
-    async (status, replayAction, expectedCode) => {
+    async (status, replayAction, expectedCode, reasonCode, certainty) => {
       const dispatchEnvelope = await envelope();
       const ready = await committed(dispatchEnvelope);
       const prepare = vi.fn();
@@ -634,6 +666,9 @@ describe("AuditedModelProvider", () => {
               replay_action: replayAction,
               original_permit: ready.permit,
               status,
+              ...(reasonCode && certainty
+                ? { reason_code: reasonCode, delivery_certainty: certainty }
+                : {}),
               response_artifact_ref: null,
               response_hash: null,
               projection: publicProjection,
@@ -663,6 +698,93 @@ describe("AuditedModelProvider", () => {
       expect(prepare).not.toHaveBeenCalled();
       expect(markDispatched).not.toHaveBeenCalled();
       expect(dispatch).not.toHaveBeenCalled();
+    },
+  );
+
+  it.each([false, true])(
+    "commits known rejection before feedback and never redispatches it (persistence failure: %s)",
+    async (failCommit) => {
+      const dispatchEnvelope = await envelope();
+      const ready = await committed(dispatchEnvelope);
+      let recorded = false;
+      const order: string[] = [];
+      const terminal = {
+        kind: "FAILED" as const,
+        reason_code: "PROVIDER_PROTOCOL_VIOLATION",
+        retryable: false,
+        delivery_certainty: "DISPATCHED_OUTCOME_KNOWN" as const,
+      };
+      const markUnknown = vi.fn();
+      const commitCompleted = vi.fn();
+      const dispatch = vi.fn(async (input: { mark_dispatched: () => Promise<unknown> }) => {
+        await input.mark_dispatched();
+        order.push("dispatch");
+        return terminal;
+      });
+      const provider = createAuditedModelProvider({
+        invocation_store: {
+          begin: vi.fn(async () => ({ ok: true as const, value: ready })),
+          load: vi.fn(async () => ({
+            ok: true as const,
+            value: recorded
+              ? {
+                  status: "FAILED" as const,
+                  reason_code: terminal.reason_code,
+                  delivery_certainty: terminal.delivery_certainty,
+                  response_artifact_ref: null,
+                  response_hash: null,
+                  projection: publicProjection,
+                }
+              : null,
+          })),
+          markDispatched: vi.fn(async () => ({ ok: true as const, value: {} })),
+          markResponseObserved: vi.fn(async () => {
+            order.push("observed");
+            return { ok: true as const, value: {} };
+          }),
+          commitTerminal: vi.fn(async () => {
+            order.push("terminal");
+            if (failCommit)
+              return {
+                ok: false as const,
+                error: { code: "TERMINAL_COMMIT_FAILED", message: "private", retryable: false },
+              };
+            recorded = true;
+            return { ok: true as const, value: { projection: publicProjection } };
+          }),
+          commitPreflightFailure: vi.fn(),
+          commitCompleted,
+          markOutcomeUnknown: markUnknown,
+        },
+        projection_receipts: projectionReceipts,
+        response_artifacts: { load: vi.fn() },
+        transport: {
+          prepare: vi.fn(async () => ({ ok: true as const, value: { prepared: {} } })),
+          dispatch,
+        },
+      });
+      const input = {
+        signal: new AbortController().signal,
+        worker_lease: workerLease(),
+        envelope: dispatchEnvelope,
+        payload: {},
+      };
+      await expect(provider.invoke(input)).resolves.toMatchObject({
+        ok: false,
+        error: {
+          code: failCommit ? "TERMINAL_COMMIT_FAILED" : "PROVIDER_RESPONSE_REJECTED",
+          retryable: false,
+        },
+      });
+      expect(order).toEqual(["dispatch", "observed", "terminal"]);
+      if (!failCommit)
+        await expect(provider.invoke(input)).resolves.toMatchObject({
+          ok: false,
+          error: { code: "PROVIDER_RESPONSE_REJECTED" },
+        });
+      expect(dispatch).toHaveBeenCalledOnce();
+      expect(markUnknown).not.toHaveBeenCalled();
+      expect(commitCompleted).not.toHaveBeenCalled();
     },
   );
 

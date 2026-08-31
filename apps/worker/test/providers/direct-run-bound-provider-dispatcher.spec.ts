@@ -440,6 +440,7 @@ describe("direct run-bound provider retry policy", () => {
     "ROOT_ANSWER_ARTIFACT_NOT_ACCEPTED",
     "ROOT_AGENT_PROVIDED_UNSUPPORTED_INPUT_ARTIFACT",
     "ROOT_AGENT_REQUESTED_UNSUPPORTED_OUTPUT_ARTIFACT",
+    "PROVIDER_RESPONSE_REJECTED",
   ])(
     "projects only strict tool observations and %s feedback into later Root turns",
     (reasonCode) => {

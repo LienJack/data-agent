@@ -57,9 +57,12 @@ export function normalizeAuditedProviderTerminalEvent(
     return {
       kind: "FAILED",
       reason_code:
-        event.reason_code === "MODEL_PROVIDER_CREDENTIAL_UNAVAILABLE"
-          ? "PROVIDER_CREDENTIAL_UNAVAILABLE"
-          : "PROVIDER_LOCAL_PREPARATION_FAILED",
+        event.reason_code === "MODEL_RESPONSE_EMPTY" &&
+        event.delivery_certainty === "DISPATCHED_OUTCOME_KNOWN"
+          ? "PROVIDER_PROTOCOL_VIOLATION"
+          : event.reason_code === "MODEL_PROVIDER_CREDENTIAL_UNAVAILABLE"
+            ? "PROVIDER_CREDENTIAL_UNAVAILABLE"
+            : "PROVIDER_LOCAL_PREPARATION_FAILED",
       retryable: event.retryable,
       delivery_certainty: event.delivery_certainty,
     };

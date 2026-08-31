@@ -143,13 +143,29 @@ export const modelProviderEventSchema = z.discriminatedUnion("event_type", [
       }),
     ]),
   }),
-  z.strictObject({
-    ...modelEventBase,
-    event_type: z.literal("FAILED"),
-    reason_code: z.string().regex(/^[A-Z][A-Z0-9_]*$/),
-    retryable: z.boolean(),
-    delivery_certainty: z.enum(["NOT_DISPATCHED", "DISPATCHED_OUTCOME_UNKNOWN"]),
-  }),
+  z
+    .strictObject({
+      ...modelEventBase,
+      event_type: z.literal("FAILED"),
+      reason_code: z.string().regex(/^[A-Z][A-Z0-9_]*$/),
+      retryable: z.boolean(),
+      delivery_certainty: z.enum([
+        "NOT_DISPATCHED",
+        "DISPATCHED_OUTCOME_UNKNOWN",
+        "DISPATCHED_OUTCOME_KNOWN",
+      ]),
+    })
+    .superRefine((event, ctx) => {
+      const empty = event.reason_code === "MODEL_RESPONSE_EMPTY";
+      const known = event.delivery_certainty === "DISPATCHED_OUTCOME_KNOWN";
+      if (known !== empty || (empty && event.retryable)) {
+        ctx.addIssue({
+          code: "custom",
+          path: ["delivery_certainty"],
+          message: "Only a fully observed empty response may be a known, non-retryable failure.",
+        });
+      }
+    }),
   z.strictObject({
     ...modelEventBase,
     event_type: z.literal("THROTTLED"),
