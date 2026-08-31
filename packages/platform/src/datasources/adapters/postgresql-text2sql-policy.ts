@@ -53,6 +53,8 @@ export interface PostgresqlText2SqlPolicyInput {
   readonly parameter_count: number;
   readonly parameters?: readonly QueryParameter[];
   readonly published_time_coverage?: readonly PostgresqlText2SqlTimeCoverage[];
+  /** Host-only: set only after the exact candidate passes the complete period proof. */
+  readonly proved_period_full_join?: boolean;
   readonly allowed_relations: readonly {
     readonly schema_name: string;
     readonly relation_name: string;
@@ -1022,7 +1024,8 @@ export async function assertPostgresqlText2SqlCandidatePolicy(
           "TEXT2SQL_SQL_JOIN_SHAPE_REJECTED",
         );
         if (
-          !["JOIN_INNER", "JOIN_LEFT"].includes(String(node.jointype)) ||
+          (!["JOIN_INNER", "JOIN_LEFT"].includes(String(node.jointype)) &&
+            !(node.jointype === "JOIN_FULL" && input.proved_period_full_join === true)) ||
           !["RangeVar", "JoinExpr"].includes(wrappedNodeName(node.larg) ?? "") ||
           wrappedNodeName(node.rarg) !== "RangeVar" ||
           !["A_Expr", "BoolExpr"].includes(wrappedNodeName(node.quals) ?? "")

@@ -1,6 +1,6 @@
 import { periodComparisonFixture } from "./period-comparison-fixture.js";
 
-export function groupedPeriodComparisonFixture(joined = true) {
+export function groupedPeriodComparisonFixture(joined = true, completeGroups = false) {
   const input = periodComparisonFixture();
   const scan = (start: number, end: number) =>
     `SELECT date_trunc($1, o.order_date::pg_catalog.timestamp) AS m, ${joined ? "d" : "o"}.segment AS g, sum(o.amount) AS v FROM public.orders AS o${joined ? " LEFT JOIN public.customers AS d ON o.customer_id=d.customer_id" : ""} WHERE o.order_date::pg_catalog.timestamp >= $${start}::pg_catalog.timestamp AND o.order_date::pg_catalog.timestamp < $${end}::pg_catalog.timestamp GROUP BY date_trunc($1, o.order_date::pg_catalog.timestamp), ${joined ? "d" : "o"}.segment`;
@@ -11,6 +11,12 @@ export function groupedPeriodComparisonFixture(joined = true) {
     label: "客户类型",
     semantic_binding: { object_kind: "DIMENSION", object_id: "dimension.segment" },
   });
+  if (completeGroups) {
+    input.candidate.sql = input.candidate.sql
+      .replace("c.m AS month", "COALESCE(c.m,p.m+$6::pg_catalog.interval) AS month")
+      .replace("c.g AS segment", "COALESCE(c.g,p.g) AS segment")
+      .replace("LEFT JOIN comparison_months", "FULL JOIN comparison_months");
+  }
   return {
     ...input,
     group_dimension: {

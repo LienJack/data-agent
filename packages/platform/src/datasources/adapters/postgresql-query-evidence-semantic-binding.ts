@@ -528,6 +528,9 @@ async function requestDerivedColumn(input: {
   readonly sources: ReturnType<typeof physicalSources>;
   readonly grain: SemanticMetric["grain"];
   readonly proof: unknown;
+  readonly period_comparison?: NonNullable<
+    QueryEvidenceSemanticBinding["columns"][number]["request_derivation"]
+  >["period_comparison"];
 }) {
   const physical = [
     ...new Map(
@@ -552,6 +555,7 @@ async function requestDerivedColumn(input: {
       candidate: input.candidate,
       physical_sources: physical,
       proof: input.proof,
+      ...(input.period_comparison ? { period_comparison: input.period_comparison } : {}),
     }),
     aggregate: null,
     grain: { grain_id: input.grain.grain_id, granularity: input.grain.granularity },
@@ -559,6 +563,7 @@ async function requestDerivedColumn(input: {
     request_derivation: {
       semantic_query_context_hash: input.context.context_hash,
       interpretation: input.interpretation,
+      ...(input.period_comparison ? { period_comparison: input.period_comparison } : {}),
     },
   };
 }
@@ -1010,7 +1015,10 @@ export async function resolvePostgresqlRequestDerivedBindings(
         ...(group ? { group_dimension: group.proof_input } : {}),
       });
       return {
-        nullable_metric_outputs: [proof.comparison_output],
+        nullable_metric_outputs: [
+          proof.comparison_output,
+          ...(proof.group_coverage ? [proof.current_output] : []),
+        ],
         nullable_dimension_outputs:
           group?.proof_input.join && proof.group_output ? [proof.group_output] : [],
         dependency_metrics: [metric],
@@ -1022,6 +1030,17 @@ export async function resolvePostgresqlRequestDerivedBindings(
           sources: [...sources, ...times, ...(group?.sources ?? [])],
           grain: dimension.grain,
           proof,
+          period_comparison: {
+            time_output:
+              input.candidate.result_columns.find(
+                ({ semantic_binding: b }) =>
+                  b.object_kind === "DIMENSION" && b.object_id === dimension.dimension_id,
+              )?.name ?? reject("QUERY_EVIDENCE_REQUEST_DERIVATION_BINDING_INVALID"),
+            current_output: proof.current_output,
+            comparison_output: proof.comparison_output,
+            category_output: proof.group_output ?? null,
+            group_coverage: proof.group_coverage ?? "CURRENT_PERIOD_GROUPS",
+          },
         }),
       };
     }),

@@ -43,6 +43,15 @@ Candidate 使用 `object_kind=REQUEST_DERIVED`、exact `interpretation_id`，没
 - 跨表分类LEFT JOIN的输出即使维表源列NOT NULL也须nullable=true；同比派生hash的physical_sources包含分类及两端键。
   返回的是当前月份/分类面板。若某分类只在同期出现，本面板不能单独证明整体同期总额；整体排名须当前Run独立聚合
   或独立source oracle证明分组完整，不能把历史答案或组内同比平均冒充整体同比。
+- 完整分类同比新增原证明器的严格FULL分支：只允许外层两个已验证CTE之间FULL JOIN；内部事实到维度仍LEFT JOIN。
+  同一年度/NULL分类关联不变；输出月必须 `COALESCE(current.month, prior.month + $year::interval)`，
+  输出分类必须 `COALESCE(current.category, prior.category)`。只合并身份，不补数值；本期/同期均nullable。
+  原普通SQL policy仍拒绝FULL；Worker先执行pure request proof，再仅凭其 `BOTH_PERIOD_GROUPS` 结果传Host-only许可给原firewall，
+  编译和adapter admission共用该路径，模型Candidate不能传许可。原关系、覆盖边界、安全shape及query I/O校验不减少。
+- 新生成比较列的 `request_derivation.period_comparison` 封存time/current/comparison/category输出名与
+  `CURRENT_PERIOD_GROUPS` / `BOTH_PERIOD_GROUPS`，并进入派生及binding hash。Contracts重验输出唯一、同SUM Metric/Formula、
+  同时间Dimension/窗口、atomic STRING分类；完整分群标记必须有分类。下游不得从列名猜本期/同期或把单侧组提升为全集。
+  此字段可缺省以读取旧Artifact；缺省不添加默认值、不改变旧hash，不可据此宣称分群完整。仅新构建同步producer/consumer。
 - 原始值、图表、报告、Trace 沿既有 QueryEvidence 引用链；Analysis Arrow receipt 保留 REQUEST_DERIVED 与 source_binding_hash，
   不把派生列升级为可授权分析方法的 Published Metric。旧 payload 未携带新字段时 hash 材料不变。
 

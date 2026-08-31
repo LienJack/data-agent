@@ -1816,6 +1816,11 @@ Diagnostic/Q1/C1任一正式首次失败必须写既有 authority支持的 immut
   原resolver补无比较解释的重复Metric输出拒绝，Root澄清历史assistant不是本轮Tool Result；先RED后验证，不加路由/重试。
   live348表不变，临时服务/凭据清理、scratch停机保留；见 [A2比较边界](research/complex-50bd7f1e-comparison-boundary.md)。
 - [ ] 补齐结构化同比分群事实/总体完整性证明与摘要口径，再新构建继续A/B；不能用模型叙述补算或把单组变化称为总体变化。
+  - [x] 查询端完整性：原有界证明扩展外层FULL、合并月/分类身份，保留仅同期组与NULL；普通SQL默认仍拒绝FULL。
+    proof封存精确本期/同期输出与两期分类覆盖，进入原QueryEvidence/hash，旧无字段payload保持可读且不获完整性声明。
+    两个合法RED→PASS、错误合并/补零/维度FULL等反例、元数据漂移及Worker原firewall接线验证；NAS无网络tmpfs合成执行
+    证明确实保留PRIOR_ONLY=200且current=NULL，随后精确删除纯测试实例。未调用模型、未写Falcon authority。
+    下游同比排名/贡献Oracle尚未完成；见 [完整分类比较](research/complete-period-group-proof.md)。
   再继续上述 F5 / F7；不另跑 child 历史六问，也不复用 core4 PASS。
 
 **F6 READY 轮次恢复边界（2026-08-30，历史）**

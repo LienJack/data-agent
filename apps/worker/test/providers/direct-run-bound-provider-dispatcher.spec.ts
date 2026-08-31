@@ -300,6 +300,10 @@ describe("direct run-bound provider retry policy", () => {
     expect(prompt).toContain("exact Published certified many-to-one/one-to-one relationship");
     expect(prompt).toContain("current.category IS NULL AND comparison.category IS NULL");
     expect(prompt).toContain("Return the full approved monthly panel");
+    expect(prompt).toContain("complete two-period category domain");
+    expect(prompt).toContain("Prior-only groups must remain visible");
+    expect(prompt).toContain("never measures or the rate");
+    expect(prompt).toContain("Ordinary SQL has no permission to enable FULL JOIN");
     expect(prompt).toContain(
       "Repeated outputs of the same METRIC require the accepted comparison proof",
     );
@@ -316,7 +320,10 @@ describe("direct run-bound provider retry policy", () => {
     expect(prompt).toContain("Do not equate unshifted current-year and prior-year timestamps");
     expect(prompt).toContain("Apply the shift exactly once");
     expect(prompt).not.toContain("or equivalently shift the comparison bucket");
-    expect(prompt).toContain("only in the LEFT JOIN");
+    expect(prompt).toContain("exactly once in the period JOIN condition");
+    expect(prompt).toContain(
+      "identical shifted prior date only as the projected fallback identity",
+    );
     expect(prompt).toContain("TEXT2SQL_COMPARISON_ALIGNMENT_REJECTED");
     expect(prompt).toContain("TEXT2SQL_COMPARISON_CURRENT_GROUP_REJECTED");
     expect(prompt).toContain("Restrict the comparison source to published coverage");

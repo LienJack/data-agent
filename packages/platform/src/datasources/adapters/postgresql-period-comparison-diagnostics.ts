@@ -1,7 +1,7 @@
 /** Closed, value-free proof failures shared by validation, public diagnostics and repair. */
 export const POSTGRESQL_PERIOD_COMPARISON_REPAIR_HINTS = Object.freeze({
   TEXT2SQL_COMPARISON_QUERY_SHAPE_REJECTED:
-    "Use exactly two non-recursive aggregation CTEs and one outer LEFT JOIN; no extra SELECT clauses.",
+    "Use exactly two non-recursive aggregation CTEs and one outer period join: LEFT for ungrouped comparison; FULL with the proved merged month/category identities for a complete grouped comparison. No extra SELECT clauses.",
   TEXT2SQL_COMPARISON_SOURCE_TYPE_REJECTED:
     "The published SUM source must support non-truncating division; do not change frozen types.",
   TEXT2SQL_COMPARISON_CURRENT_SOURCE_REJECTED:
@@ -33,11 +33,11 @@ export const POSTGRESQL_PERIOD_COMPARISON_REPAIR_HINTS = Object.freeze({
   TEXT2SQL_COMPARISON_PRIOR_WINDOW_REJECTED:
     "Use only the prior CTE's direct >= and < predicates with the exact Host clipped comparison bounds and required temporal casts.",
   TEXT2SQL_COMPARISON_ALIGNMENT_REJECTED:
-    "Use current.month = prior.month + $year::pg_catalog.interval with the parameter exactly '1 year'; shift only in the LEFT JOIN. For a selected category append AND (current.category = prior.category OR (current.category IS NULL AND prior.category IS NULL)), in this order, preserving the NULL group.",
+    "Use current.month = prior.month + $year::pg_catalog.interval with the parameter exactly '1 year'; never shift CTE buckets. For a selected category append AND (current.category = prior.category OR (current.category IS NULL AND prior.category IS NULL)), in this order. A complete grouped FULL JOIN uses the same shifted prior month as its fallback output identity, preserving prior-only and NULL groups.",
   TEXT2SQL_COMPARISON_RATE_REJECTED:
     "Return exactly (current.value-prior.value)/NULLIF(prior.value,0), without casts, COALESCE or percentage scaling.",
   TEXT2SQL_COMPARISON_OUTPUT_BINDING_REJECTED:
-    "Return only the current month DIMENSION, the current category DIMENSION when selected, both unchanged raw values bound to the source METRIC, and the exact REQUEST_DERIVED rate.",
+    "Return only the month DIMENSION, category DIMENSION when selected, both unchanged raw values bound to the source METRIC, and the exact REQUEST_DERIVED rate. For a complete grouped FULL JOIN, month is COALESCE(current.month, prior.month + $year::pg_catalog.interval) and category is COALESCE(current.category, prior.category); never fill raw values or rates with zero.",
   TEXT2SQL_COMPARISON_ORDERING_REJECTED:
     "Omit ORDER BY or use the current-month output alias ascending, optionally followed by the selected category output alias ascending, without NULLS modifiers.",
 });

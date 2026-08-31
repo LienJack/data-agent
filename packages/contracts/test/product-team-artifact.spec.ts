@@ -126,6 +126,9 @@ describe("Product Team Artifact", () => {
         }
       }
       if (role === "REQUEST_DERIVED") {
+        expect(
+          Object.hasOwn(binding.columns[0]?.request_derivation ?? {}, "period_comparison"),
+        ).toBe(false);
         const { binding_hash: _hash, ...material } = binding;
         for (const change of [
           { request_derivation: undefined },

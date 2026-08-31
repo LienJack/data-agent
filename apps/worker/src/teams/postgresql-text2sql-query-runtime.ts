@@ -161,18 +161,26 @@ async function validateCandidate(
       );
     }
   }
+  // This pure source/AST proof cannot perform target I/O. Its exact candidate
+  // result is the only authority to admit the outer complete-period FULL JOIN.
+  const requests = prepared.binding_authority
+    ? await resolvePostgresqlRequestDerivedBindings({ candidate, ...prepared.binding_authority })
+    : [];
   await assertPostgresqlText2SqlCandidatePolicy({
     sql: candidate.sql,
     parameter_count: candidate.parameters.length,
     parameters: candidate.parameters,
     allowed_relations: allowedRelationBindings(prepared),
+    proved_period_full_join: requests.some(
+      ({ column }) =>
+        column.request_derivation.period_comparison?.group_coverage === "BOTH_PERIOD_GROUPS",
+    ),
     ...(prepared.published_time_coverage
       ? { published_time_coverage: prepared.published_time_coverage }
       : {}),
   });
   if (prepared.binding_authority) {
     await assertPostgresqlQueryTemporalSelection({ candidate, ...prepared.binding_authority });
-    await resolvePostgresqlRequestDerivedBindings({ candidate, ...prepared.binding_authority });
   }
   if (
     candidate.result_columns.some(

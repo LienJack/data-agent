@@ -58,6 +58,15 @@ const queryEvidenceColumnBindingSchema = z
       .strictObject({
         semantic_query_context_hash: contentHashSchema,
         interpretation: semanticRequestScopedInterpretationSchema,
+        period_comparison: z
+          .strictObject({
+            time_output: postgresqlOutputAliasSchema,
+            current_output: postgresqlOutputAliasSchema,
+            comparison_output: postgresqlOutputAliasSchema,
+            category_output: postgresqlOutputAliasSchema.nullable(),
+            group_coverage: z.enum(["CURRENT_PERIOD_GROUPS", "BOTH_PERIOD_GROUPS"]),
+          })
+          .optional(),
       })
       .optional(),
   })
@@ -155,6 +164,55 @@ const queryEvidenceSemanticBindingDraftSchema = z
     const outputNames = binding.columns.map(({ output_name: outputName }) => outputName);
     if (new Set(outputNames).size !== outputNames.length) {
       ctx.addIssue({ code: "custom", message: "QueryEvidence output bindings must be unique." });
+    }
+    for (const rate of binding.columns) {
+      const comparison = rate.request_derivation?.period_comparison;
+      if (!comparison) continue;
+      const operator = rate.request_derivation?.interpretation.operator;
+      const current = binding.columns.find((c) => c.output_name === comparison.current_output);
+      const prior = binding.columns.find((c) => c.output_name === comparison.comparison_output);
+      const time = binding.columns.find((c) => c.output_name === comparison.time_output);
+      const category = binding.columns.find((c) => c.output_name === comparison.category_output);
+      const names = [
+        rate.output_name,
+        comparison.time_output,
+        comparison.current_output,
+        comparison.comparison_output,
+        ...(comparison.category_output ? [comparison.category_output] : []),
+      ];
+      if (
+        operator?.kind !== "PERIOD_COMPARISON_RATE" ||
+        names.length !== binding.columns.length ||
+        new Set(names).size !== names.length ||
+        !names.every((name) => outputNames.includes(name)) ||
+        !current ||
+        !prior ||
+        current.semantic_role !== "METRIC" ||
+        prior.semantic_role !== "METRIC" ||
+        current.logical_type !== "NUMBER" ||
+        prior.logical_type !== "NUMBER" ||
+        current.semantic_object_id !== operator.metric_id ||
+        prior.semantic_object_id !== operator.metric_id ||
+        current.aggregate !== "sum" ||
+        prior.aggregate !== "sum" ||
+        current.formula_hash !== prior.formula_hash ||
+        !time ||
+        time.semantic_role !== "DIMENSION" ||
+        time.semantic_object_id !== operator.time_dimension_id ||
+        time.grain.granularity !== "month" ||
+        !["DATE", "DATETIME"].includes(time.logical_type) ||
+        binding.time_window?.dimension_id !== operator.time_dimension_id ||
+        (comparison.category_output !== null &&
+          (category?.semantic_role !== "DIMENSION" ||
+            category.logical_type !== "STRING" ||
+            category.grain.granularity !== "atomic")) ||
+        (comparison.group_coverage === "BOTH_PERIOD_GROUPS" && comparison.category_output === null)
+      )
+        ctx.addIssue({
+          code: "custom",
+          message:
+            "Period comparison output roles must close over the same bound source and window.",
+        });
     }
   });
 

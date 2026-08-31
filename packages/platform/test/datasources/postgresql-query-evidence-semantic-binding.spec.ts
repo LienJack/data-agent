@@ -1,5 +1,6 @@
 import {
   buildGovernedDatasourceQueryResult,
+  buildQueryEvidenceSemanticBinding,
   buildSemanticContextPackage,
   buildSemanticContextReceipt,
   buildSemanticInferenceReceipt,
@@ -12,6 +13,7 @@ import {
   type SemanticFormulaExpression,
   type SemanticRelationship,
   type Text2SqlQueryCandidate,
+  verifyQueryEvidenceSemanticBinding,
 } from "@data-agent/contracts";
 import { describe, expect, it } from "vitest";
 import { createPhysicalSchemaSnapshot } from "../../src/catalog/physical-schema.js";
@@ -695,6 +697,86 @@ async function groupedRequestDerivationFixture() {
 }
 
 describe("grouped request-derived authority", () => {
+  it.each([false, true])(
+    "binds exact period roles and group coverage (complete=%s)",
+    async (complete) => {
+      const input = await groupedRequestDerivationFixture();
+      input.candidate = groupedPeriodComparisonFixture(true, complete).candidate;
+      const proof = await resolvePostgresqlRequestDerivedBindings(input);
+      const binding = await buildPostgresqlQueryEvidenceSemanticBinding(input);
+      expect(binding.columns[4]?.request_derivation?.period_comparison).toEqual({
+        time_output: "month",
+        current_output: "current_value",
+        comparison_output: "comparison_value",
+        category_output: "segment",
+        group_coverage: complete ? "BOTH_PERIOD_GROUPS" : "CURRENT_PERIOD_GROUPS",
+      });
+      expect(proof[0]?.nullable_metric_outputs).toEqual(
+        complete ? ["comparison_value", "current_value"] : ["comparison_value"],
+      );
+      await expect(
+        verifyQueryEvidenceSemanticBinding(JSON.parse(JSON.stringify(binding))),
+      ).resolves.toEqual(binding);
+      const tampered = structuredClone(binding);
+      const mapping = tampered.columns[4]?.request_derivation?.period_comparison;
+      if (!mapping) throw new Error("COMPARISON_REQUIRED");
+      [mapping.current_output, mapping.comparison_output] = [
+        mapping.comparison_output,
+        mapping.current_output,
+      ];
+      await expect(verifyQueryEvidenceSemanticBinding(tampered)).rejects.toThrow(
+        "QUERY_EVIDENCE_SEMANTIC_BINDING_HASH_MISMATCH",
+      );
+    },
+  );
+
+  it.each([
+    "missing-current",
+    "same-period-alias",
+    "wrong-time",
+    "missing-category",
+    "category-is-measure",
+    "wrong-source",
+    "wrong-formula",
+    "wrong-aggregate",
+    "no-window",
+    "no-group-full",
+    "non-period-operator",
+  ])("rejects comparison metadata that does not close: %s", async (variant) => {
+    const input = await groupedRequestDerivationFixture();
+    input.candidate = groupedPeriodComparisonFixture(true, true).candidate;
+    const { binding_hash: _hash, ...draft } =
+      await buildPostgresqlQueryEvidenceSemanticBinding(input);
+    const current = draft.columns[2],
+      rate = draft.columns[4],
+      mapping = rate?.request_derivation?.period_comparison;
+    if (!current || !rate?.request_derivation || !mapping) throw new Error("COMPARISON_REQUIRED");
+    if (variant === "missing-current") mapping.current_output = "unknown";
+    if (variant === "same-period-alias") mapping.current_output = mapping.comparison_output;
+    if (variant === "wrong-time") mapping.time_output = "segment";
+    if (variant === "missing-category") mapping.category_output = "unknown";
+    if (variant === "category-is-measure") mapping.category_output = mapping.current_output;
+    if (variant === "wrong-source") current.semantic_object_id = "metric.other";
+    if (variant === "wrong-formula") current.formula_hash = hash("f");
+    if (variant === "wrong-aggregate") current.aggregate = "avg";
+    if (variant === "no-window") draft.time_window = null;
+    if (variant === "no-group-full") {
+      mapping.category_output = null;
+      draft.columns = draft.columns.filter((c) => c.output_name !== "segment");
+    }
+    if (variant === "non-period-operator") {
+      const ratio = (
+        await aggregateRatioBindingFixture()
+      ).semantic_query_context.request_scoped_interpretations?.find(
+        ({ operator }) => operator.kind === "AGGREGATE_RATIO",
+      );
+      if (!ratio) throw new Error("RATIO_REQUIRED");
+      rate.request_derivation.interpretation = ratio;
+      rate.semantic_object_id = ratio.interpretation_id;
+    }
+    await expect(buildQueryEvidenceSemanticBinding(draft)).rejects.toThrow();
+  });
+
   it("binds the exact certified relationship and both keys, retaining unmatched categorical NULL", async () => {
     const input = await groupedRequestDerivationFixture();
     const binding = await buildPostgresqlQueryEvidenceSemanticBinding(input);

@@ -369,6 +369,7 @@ export async function provePostgresqlPeriodComparison(input: {
   readonly current_output: string;
   readonly comparison_output: string;
   readonly group_output?: string;
+  readonly group_coverage?: "BOTH_PERIOD_GROUPS";
 }> {
   let diagnostic: keyof typeof POSTGRESQL_PERIOD_COMPARISON_REPAIR_HINTS =
     "TEXT2SQL_COMPARISON_QUERY_SHAPE_REJECTED";
@@ -391,7 +392,8 @@ export async function provePostgresqlPeriodComparison(input: {
     check(ctes.size === 2);
     const join = node(list(select.fromClause, 1)[0], "JoinExpr");
     only(join, ["jointype", "larg", "rarg", "quals"]);
-    check(join.jointype === "JOIN_LEFT");
+    const completeGroups = join.jointype === "JOIN_FULL";
+    check(join.jointype === "JOIN_LEFT" || (completeGroups && input.group_dimension));
     const left = range(join.larg),
       right = range(join.rarg);
     check(
@@ -607,19 +609,37 @@ export async function provePostgresqlPeriodComparison(input: {
             declaration.semantic_binding.object_kind === "DIMENSION" &&
             declaration.semantic_type === "STRING" &&
             current.category &&
-            column(expression, left.alias, current.category),
+            prior.category,
         );
+        if (completeGroups) {
+          const coalesce = node(expression, "CoalesceExpr");
+          only(coalesce, ["args"]);
+          const args = list(coalesce.args, 2);
+          check(
+            column(args[0], left.alias, current.category) &&
+              column(args[1], right.alias, prior.category),
+          );
+        } else check(column(expression, left.alias, current.category));
         groupOutput = declaration.name;
         continue;
       }
-      const fields = strings(node(cast(expression, ["date"]), "ColumnRef").fields);
-      check(fields.length === 2);
-      if (fields[0] === left.alias && fields[1] === current.month) {
+      if (declaration.semantic_binding.object_kind === "DIMENSION") {
         check(
-          declaration.semantic_binding.object_kind === "DIMENSION" &&
+          !monthOutput &&
             declaration.semantic_binding.object_id === input.dimension_id &&
             ["DATE", "DATETIME"].includes(declaration.semantic_type),
         );
+        const month = cast(expression, ["date"]);
+        if (completeGroups) {
+          const coalesce = node(month, "CoalesceExpr");
+          only(coalesce, ["args"]);
+          const args = list(coalesce.args, 2);
+          check(column(args[0], left.alias, current.month));
+          const fallback = binary(args[1], "+");
+          check(column(fallback.lexpr, right.alias, prior.month));
+          check(record(fallback.rexpr).TypeCast);
+          check(parameter(cast(fallback.rexpr, ["interval"]), candidate.parameters) === "1 year");
+        } else check(column(month, left.alias, current.month));
         monthOutput = declaration.name;
       } else {
         check(
@@ -659,6 +679,7 @@ export async function provePostgresqlPeriodComparison(input: {
       current_output: currentOutput,
       comparison_output: comparisonOutput,
       ...(groupOutput ? { group_output: groupOutput } : {}),
+      ...(completeGroups ? { group_coverage: "BOTH_PERIOD_GROUPS" as const } : {}),
     };
   } catch {
     throw Object.assign(new TypeError(failure), { diagnostic_code: diagnostic });
