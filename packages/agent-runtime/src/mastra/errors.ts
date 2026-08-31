@@ -42,6 +42,17 @@ export const MODEL_PROTOCOL_STAGES = [
 ] as const;
 export type ModelProtocolStage = (typeof MODEL_PROTOCOL_STAGES)[number];
 
+/** Non-content observations for private protocol diagnosis; never a replay receipt. */
+export interface ModelProtocolResponseObservation {
+  readonly finish_reason: string;
+  readonly text_state: "EMPTY" | "WHITESPACE" | "NON_JSON";
+  readonly text_utf8_bytes: number;
+  readonly streamed_text_utf8_bytes: number;
+  readonly text_delta_chunks: number;
+  readonly observed_tool_calls: number;
+  readonly output_tokens: number | null;
+}
+
 /**
  * The message is diagnostic-only and never copied into public stream events.
  * Public callers receive the stable code and retryability bit.
@@ -58,6 +69,7 @@ export class MastraExecutionError extends Error {
       readonly code: string;
       readonly path: readonly PropertyKey[];
     }[],
+    readonly protocol_response?: ModelProtocolResponseObservation,
   ) {
     super(message);
   }

@@ -121,6 +121,13 @@ return committed.protectedResponse;
 - 私有日志不进入公共 Event/Artifact，不授予证据或重试权限。日志写入失败仍输出原有唯一 FAILED/OUTCOME_UNKNOWN；
   不改变 schema、delivery certainty、dispatch/terminal、业务验收或任何调用预算。
 - 没有 stage 的历史失败只能报告“协议原因未确定”，不得凭新诊断追认旧失败的具体原因。
+- AUTO JSON.parse 失败可附私有 `response` 测量：固定 finish_reason、EMPTY/WHITESPACE/NON_JSON 分类、
+  fullOutput/streamed 文本 UTF-8 字节数、非空 text-delta 数、已观察工具数及可用 output token 数。
+  仅有限枚举与非负 safe integer；未知枚举归 unknown、非法/缺失计数归 null，其他键一律不投影。
+  这是区分空响应、Provider length 结束和内容格式问题的观测，不是响应正文、恢复证据或额度完整凭据。
+  没有该测量的旧失败不能补推原因；JSON mode 不是成功保证，不以计数补造文本、提取 JSON 或重放调用。
+  测试须使用固定 DeepSeek SDK + Mastra 的离线 SSE 验证空/空白/length/非JSON/fence 分类、原失败终态、
+  一次 fetch、marker 顺序及无原文泄漏；恶意字段、无穷/负/小数计数和异常 getter 均须脱敏失败关闭。
 - Required tests：stage 分类、真实 adapter/bridge 生产路径、伪造 stage/未知路径/超长结构/抛异常 getter 脱敏、日志 sink 失败及终态不变。
 
 ### Contracts

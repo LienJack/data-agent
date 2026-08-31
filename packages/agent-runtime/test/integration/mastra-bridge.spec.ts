@@ -164,6 +164,8 @@ describe("Mastra execution bridge integration", () => {
       valid: true,
     },
     { name: "empty final", tool: false, text: "", valid: false },
+    { name: "whitespace final", tool: false, text: "  \n ", valid: false },
+    { name: "truncated final", tool: false, text: '{"summary":"private', valid: false },
     { name: "plain final", tool: false, text: "private-invalid-answer", valid: false },
     {
       name: "fenced final",
@@ -179,7 +181,7 @@ describe("Mastra execution bridge integration", () => {
     },
   ])(
     "constrains DeepSeek AUTO transport to JSON without forcing a tool ($name)",
-    async ({ tool, text, valid }) => {
+    async ({ name, tool, text, valid }) => {
       const binding = getModelProviderBinding("deepseek");
       const warning = vi.spyOn(console, "warn").mockImplementation(() => {});
       let marked = false;
@@ -233,7 +235,7 @@ describe("Mastra execution bridge integration", () => {
                 return new Response(
                   [
                     `data: ${JSON.stringify({ ...common, choices: [{ index: 0, delta, finish_reason: null }] })}\n\n`,
-                    `data: ${JSON.stringify({ ...common, choices: [{ index: 0, delta: {}, finish_reason: tool ? "tool_calls" : "stop" }], usage: { prompt_tokens: 8, completion_tokens: 5, total_tokens: 13 } })}\n\n`,
+                    `data: ${JSON.stringify({ ...common, choices: [{ index: 0, delta: {}, finish_reason: tool ? "tool_calls" : name === "truncated final" ? "length" : "stop" }], usage: { prompt_tokens: 8, completion_tokens: 5, total_tokens: 13 } })}\n\n`,
                     "data: [DONE]\n\n",
                   ].join(""),
                   { headers: { "content-type": "text/event-stream" } },
@@ -297,6 +299,21 @@ describe("Mastra execution bridge integration", () => {
             output_text: '{"confidence":1,"summary":"facts"}',
           });
         if (!valid) expect(warning).toHaveBeenCalledTimes(1);
+        if (!valid && name !== "extra field") {
+          expect(JSON.parse(String(warning.mock.calls[0]?.[0]))).toMatchObject({
+            stage: "AUTO_RESPONSE_INVALID_JSON",
+            response: {
+              finish_reason: name === "truncated final" ? "length" : "stop",
+              text_state:
+                text.length === 0 ? "EMPTY" : text.trim().length === 0 ? "WHITESPACE" : "NON_JSON",
+              text_utf8_bytes: Buffer.byteLength(text),
+              streamed_text_utf8_bytes: Buffer.byteLength(text),
+              text_delta_chunks: text.length === 0 ? 0 : 1,
+              observed_tool_calls: 0,
+              output_tokens: 5,
+            },
+          });
+        }
         expect(JSON.stringify(warning.mock.calls)).not.toContain("private-invalid-answer");
       } finally {
         warning.mockRestore();

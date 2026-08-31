@@ -577,6 +577,8 @@ class MastraExecutionBridge implements ModelExecutionBridge {
         });
 
     let observedToolCalls = 0;
+    let streamedTextBytes = 0;
+    let textDeltaChunks = 0;
     const reader = output.fullStream.getReader();
     try {
       while (true) {
@@ -588,6 +590,8 @@ class MastraExecutionBridge implements ModelExecutionBridge {
         switch (chunk.type) {
           case "text-delta":
             if (chunk.payload.text.length > 0) {
+              streamedTextBytes += new TextEncoder().encode(chunk.payload.text).byteLength;
+              textDeltaChunks += 1;
               yield {
                 chunk_type: "TEXT_DELTA",
                 delta: chunk.payload.text,
@@ -686,11 +690,23 @@ class MastraExecutionBridge implements ModelExecutionBridge {
       try {
         candidate = JSON.parse(fullOutput.text ?? "");
       } catch {
+        const text = fullOutput.text ?? "";
         throw new MastraExecutionError(
           "MODEL_STREAM_PROTOCOL_VIOLATION",
           false,
           "AUTO 无工具响应必须是完整 JSON。",
           "AUTO_RESPONSE_INVALID_JSON",
+          undefined,
+          {
+            finish_reason: fullOutput.finishReason ?? "unknown",
+            text_state:
+              text.length === 0 ? "EMPTY" : text.trim().length === 0 ? "WHITESPACE" : "NON_JSON",
+            text_utf8_bytes: new TextEncoder().encode(text).byteLength,
+            streamed_text_utf8_bytes: streamedTextBytes,
+            text_delta_chunks: textDeltaChunks,
+            observed_tool_calls: observedToolCalls,
+            output_tokens: usage.availability === "AVAILABLE" ? usage.output_tokens : null,
+          },
         );
       }
       outputText = canonicalizeStructuredOutput(responseSchema, candidate);

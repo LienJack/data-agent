@@ -3,6 +3,54 @@ import { MastraExecutionError } from "../src/mastra/errors.js";
 import { modelProtocolDiagnostic } from "../src/mastra/protocol-diagnostic.js";
 
 describe("raw-free model protocol diagnostic", () => {
+  it("projects only bounded AUTO response measurements, never text or provider metadata", () => {
+    const error = new MastraExecutionError("MODEL_STREAM_PROTOCOL_VIOLATION", false, "private");
+    Object.defineProperty(error, "protocol_response", {
+      value: {
+        finish_reason: "length",
+        text_state: "NON_JSON",
+        text_utf8_bytes: 27,
+        streamed_text_utf8_bytes: 27,
+        text_delta_chunks: 2,
+        observed_tool_calls: 0,
+        output_tokens: 100,
+        text: "private SQL and answer",
+        headers: { authorization: "private" },
+      },
+    });
+    expect(modelProtocolDiagnostic(error)).toEqual({
+      stage: "UNKNOWN",
+      issues: [],
+      response: {
+        finish_reason: "length",
+        text_state: "NON_JSON",
+        text_utf8_bytes: 27,
+        streamed_text_utf8_bytes: 27,
+        text_delta_chunks: 2,
+        observed_tool_calls: 0,
+        output_tokens: 100,
+      },
+    });
+    Object.defineProperty(error.protocol_response, "finish_reason", { value: "private" });
+    Object.defineProperty(error.protocol_response, "text_state", { value: "private" });
+    Object.defineProperty(error.protocol_response, "text_utf8_bytes", { value: Infinity });
+    Object.defineProperty(error.protocol_response, "streamed_text_utf8_bytes", { value: -1 });
+    Object.defineProperty(error.protocol_response, "text_delta_chunks", { value: 1.5 });
+    Object.defineProperty(error.protocol_response, "output_tokens", { value: Number.MAX_VALUE });
+    expect(modelProtocolDiagnostic(error)).toMatchObject({
+      response: {
+        finish_reason: "unknown",
+        text_state: "UNKNOWN",
+        text_utf8_bytes: null,
+        streamed_text_utf8_bytes: null,
+        text_delta_chunks: null,
+        observed_tool_calls: 0,
+        output_tokens: null,
+      },
+    });
+    expect(JSON.stringify(modelProtocolDiagnostic(error))).not.toContain("private");
+  });
+
   it("projects a stable stage and structural schema issues without values or unknown keys", () => {
     const diagnostic = modelProtocolDiagnostic(
       new MastraExecutionError(
@@ -63,6 +111,16 @@ describe("raw-free model protocol diagnostic", () => {
     Object.defineProperty(error, "protocol_issues", {
       get() {
         throw new Error("secret");
+      },
+    });
+    expect(modelProtocolDiagnostic(error)).toEqual({ stage: "UNKNOWN", issues: [] });
+  });
+
+  it("does not serialize response observation getters or let them mask failure", () => {
+    const error = new MastraExecutionError("MODEL_STREAM_PROTOCOL_VIOLATION", false, "private");
+    Object.defineProperty(error, "protocol_response", {
+      get() {
+        throw new Error("private response");
       },
     });
     expect(modelProtocolDiagnostic(error)).toEqual({ stage: "UNKNOWN", issues: [] });

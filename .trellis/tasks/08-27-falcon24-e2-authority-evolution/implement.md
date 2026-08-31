@@ -1895,6 +1895,12 @@ Diagnostic/Q1/C1任一正式首次失败必须写既有 authority支持的 immut
   - 针对重复 Root AUTO 非JSON，真实固定 SDK 离线 wire 的6项先RED，现只对DeepSeek AUTO有工具请求开启json_object语法约束；
     native tool仍auto，原schema/失败/marker/一次调用/预算不变。Agent Runtime82+Worker46项、两包typecheck通过；
     见 [Root JSON传输复盘](research/complex-8cc4d933-root-json-transport.md)，不声称旧失败或新复杂题已通过。
+  - e75cdbb9新scratch先B1：Root不再增加coverage过滤，但6次SQL候选为发布公式表达式不一致，0查询/整体FAIL。
+    独立A1业务及同Run UI通过（75 Trace节点/5产物），NAS原双沙箱执行和Python结果0差异；A2完整48行来源Oracle通过，
+    后续Root仍AUTO_RESPONSE_INVALID_JSON，未启动Analysis，整体FAIL。A3/B2/B3及formal15未提交。
+    现仅补充私有协议形态/计数，不保存原文、不重放、不放宽校验；Agent Runtime58+Worker15项及两包typecheck/前者build通过。
+    见 [协议观测复盘](research/complex-e75cdbb9-protocol-observation.md)。源348表不变，本轮服务/浏览器关闭、scratch停机保留；
+    NAS无残留Analysis sandbox，控制面留用。继续处理发布公式交接和新构建真实验证，不据JSON mode宣称问题已解决。
 
 **F6 READY 轮次恢复边界（2026-08-30，历史）**
 
