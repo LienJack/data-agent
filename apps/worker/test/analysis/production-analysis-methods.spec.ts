@@ -7,6 +7,7 @@ import type { RunWorkLease } from "@data-agent/contracts/runs";
 import { describe, expect, it } from "vitest";
 import { CATEGORY_COMPARISON_METHOD_ID } from "../../src/analysis/category-comparison-planning.js";
 import { MONTHLY_COMPARISON_METHOD_ID } from "../../src/analysis/monthly-comparison-planning.js";
+import { MONTHLY_PANEL_METHOD_ID } from "../../src/analysis/monthly-panel-planning.js";
 import {
   FALCON24_SINGLE_SERIES_TREND_METHOD_ID,
   productionGovernedAnalysisRuntimeInternals,
@@ -17,6 +18,7 @@ import {
   comparisonScope,
   monthlyComparisonFixture,
 } from "./support/monthly-comparison-fixture.js";
+import { monthlyPanelFixture } from "./support/monthly-panel-fixture.js";
 
 async function registryInput(single = false) {
   const source = await monthlyComparisonFixture();
@@ -57,6 +59,34 @@ async function registryInput(single = false) {
 }
 
 describe("production governed analysis method composition", () => {
+  it.each([
+    [false, false],
+    [false, true],
+    [true, false],
+    [true, true],
+  ])("selects the monthly panel by full input shape: two=%s derived=%s", async (two, derived) => {
+    const source = await monthlyPanelFixture(two, derived);
+    const input = {
+      ...(await registryInput()),
+      context: source.context,
+      query_evidence_ref: source.reference,
+      query_evidence_document: source.document,
+      query_evidence_binding: source.binding,
+    };
+    for (const question of ["比较各组的月度变化", "a question with no business keywords"]) {
+      const methods = await productionGovernedAnalysisRuntimeInternals
+        .methodRegistry()
+        .resolve({ ...input, question });
+      expect(methods.map(({ method_id }) => method_id)).toEqual([MONTHLY_PANEL_METHOD_ID]);
+      expect(methods[0]?.execution_contract).toMatchObject({
+        chart_bindings: {
+          x_field: "month",
+          series_field: "channel",
+          ...(two ? { facet_field: "audience" } : {}),
+        },
+      });
+    }
+  });
   it.each([
     [false, false],
     [true, false],
@@ -120,61 +150,76 @@ describe("production governed analysis method composition", () => {
     ]);
   });
 
-  it("passes only the matching Host execution contract to the existing analysis context", async () => {
-    const input = await registryInput();
-    const methods = await productionGovernedAnalysisRuntimeInternals
-      .methodRegistry()
-      .resolve(input);
-    const method = methods[0];
-    if (!method) throw new Error("TEST_METHOD_REQUIRED");
-    const node: AnalysisProgramPayload["nodes"][number] = {
-      node_id: "comparison",
-      result_contract: method.result_contract,
-      method_registry_entry_ids: [method.method_id],
-      skill_id: method.skill_id,
-      operator_obligations: [],
-      metric_refs: input.context.metrics.map((metric) => metric.metric_ref),
-      dimension_refs: ["dimension.month"],
-      time_window: {
-        start: "2024-01-01T00:00:00+08:00",
-        end: "2025-01-01T00:00:00+08:00",
-        timezone: "Asia/Shanghai",
-        semantics: "HALF_OPEN",
-      },
-      comparison_window: null,
-      parameters: {},
-      execution_mode: "MODEL_GENERATED",
-      generated_source_policy: "OPEN_ANALYSIS",
-      dependency_node_ids: [],
-      activation_rule: { kind: "ALWAYS" },
-      criticality: "CRITICAL",
-    };
-    const port = productionGovernedAnalysisRuntimeInternals.analysisContextPort({
-      question: input.question,
-      semantic_context_package: {} as never,
-      context: input.context,
-      binding: input.query_evidence_binding,
-      methods,
-    });
-    const loaded = await port.load({ node });
-    expect(loaded.analysis_contract.semantic_contract).toMatchObject({
-      method_execution_contracts: [
-        { method_id: MONTHLY_COMPARISON_METHOD_ID, claim_strength: "DESCRIPTIVE" },
-      ],
-    });
-    expect(JSON.stringify(loaded)).not.toMatch(/ordered_rows|"current":120|"rate":null/);
-    await expect(
-      port.load({ node: { ...node, method_registry_entry_ids: ["unknown@1"] } }),
-    ).rejects.toThrow("PRODUCTION_ANALYSIS_METHOD_BINDING_INVALID");
-    const withoutRules = productionGovernedAnalysisRuntimeInternals.analysisContextPort({
-      question: input.question,
-      semantic_context_package: {} as never,
-      context: input.context,
-      binding: input.query_evidence_binding,
-      methods: methods.map(({ execution_contract: _rules, ...entry }) => entry),
-    });
-    await expect(withoutRules.load({ node })).rejects.toThrow(
-      "PRODUCTION_ANALYSIS_EXECUTION_CONTRACT_REQUIRED",
-    );
-  });
+  it.each(["monthly", "panel"])(
+    "passes only the matching %s Host execution contract to the existing analysis context",
+    async (variant) => {
+      const input = await registryInput();
+      if (variant === "panel") {
+        const source = await monthlyPanelFixture(true);
+        Object.assign(input, {
+          context: source.context,
+          query_evidence_ref: source.reference,
+          query_evidence_document: source.document,
+          query_evidence_binding: source.binding,
+        });
+      }
+      const methods = await productionGovernedAnalysisRuntimeInternals
+        .methodRegistry()
+        .resolve(input);
+      const method = methods[0];
+      if (!method) throw new Error("TEST_METHOD_REQUIRED");
+      const node: AnalysisProgramPayload["nodes"][number] = {
+        node_id: "comparison",
+        result_contract: method.result_contract,
+        method_registry_entry_ids: [method.method_id],
+        skill_id: method.skill_id,
+        operator_obligations: [],
+        metric_refs: input.context.metrics.map((metric) => metric.metric_ref),
+        dimension_refs: method.result_contract.grain.dimension_ids,
+        time_window: {
+          start: "2024-01-01T00:00:00+08:00",
+          end: "2025-01-01T00:00:00+08:00",
+          timezone: "Asia/Shanghai",
+          semantics: "HALF_OPEN",
+        },
+        comparison_window: null,
+        parameters: {},
+        execution_mode: "MODEL_GENERATED",
+        generated_source_policy: "OPEN_ANALYSIS",
+        dependency_node_ids: [],
+        activation_rule: { kind: "ALWAYS" },
+        criticality: "CRITICAL",
+      };
+      const port = productionGovernedAnalysisRuntimeInternals.analysisContextPort({
+        question: input.question,
+        semantic_context_package: {} as never,
+        context: input.context,
+        binding: input.query_evidence_binding,
+        methods,
+      });
+      const loaded = await port.load({ node });
+      expect(loaded.analysis_contract.semantic_contract).toMatchObject({
+        method_execution_contracts: [
+          {
+            method_id: variant === "panel" ? MONTHLY_PANEL_METHOD_ID : MONTHLY_COMPARISON_METHOD_ID,
+            claim_strength: "DESCRIPTIVE",
+          },
+        ],
+      });
+      expect(JSON.stringify(loaded)).not.toMatch(/ordered_rows|"current":120|"rate":null/);
+      await expect(
+        port.load({ node: { ...node, method_registry_entry_ids: ["unknown@1"] } }),
+      ).rejects.toThrow("PRODUCTION_ANALYSIS_METHOD_BINDING_INVALID");
+      const withoutRules = productionGovernedAnalysisRuntimeInternals.analysisContextPort({
+        question: input.question,
+        semantic_context_package: {} as never,
+        context: input.context,
+        binding: input.query_evidence_binding,
+        methods: methods.map(({ execution_contract: _rules, ...entry }) => entry),
+      });
+      await expect(withoutRules.load({ node })).rejects.toThrow(
+        "PRODUCTION_ANALYSIS_EXECUTION_CONTRACT_REQUIRED",
+      );
+    },
+  );
 });

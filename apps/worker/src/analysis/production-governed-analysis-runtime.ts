@@ -44,6 +44,8 @@ import {
   compileMonthlyComparisonPlan,
   MONTHLY_COMPARISON_METHOD_ID,
 } from "./monthly-comparison-planning.js";
+import { createMonthlyPanelOracle } from "./monthly-panel-oracle.js";
+import { compileMonthlyPanelPlan, MONTHLY_PANEL_METHOD_ID } from "./monthly-panel-planning.js";
 import {
   createProductTeamGovernedAnalysisQueryPort,
   type ProductTeamAnalysisArtifactAuthority,
@@ -160,8 +162,15 @@ function methodRegistry(): GovernedAnalysisMethodRegistryPort {
       );
       const categorical =
         dimensions.length > 0 && dimensions.every((column) => column.logical_type === "STRING");
+      const monthlyPanel =
+        dimensions.some((column) => ["DATE", "DATETIME"].includes(column.logical_type)) &&
+        dimensions.some((column) => column.logical_type === "STRING");
       if (categorical || methodInput.query_evidence_binding.columns.length !== 2) {
-        const compile = categorical ? compileCategoryComparisonPlan : compileMonthlyComparisonPlan;
+        const compile = categorical
+          ? compileCategoryComparisonPlan
+          : monthlyPanel
+            ? compileMonthlyPanelPlan
+            : compileMonthlyComparisonPlan;
         const plan = await compile({
           context: methodInput.context,
           query_evidence_ref: methodInput.query_evidence_ref,
@@ -225,6 +234,7 @@ function oracleForMethods(
   const single = createSingleSeriesAnalysisOracle();
   const comparison = createMonthlyComparisonOracle(context);
   const category = createCategoryComparisonOracle(context);
+  const panel = createMonthlyPanelOracle(context);
   return Object.freeze({
     async evaluate(input: Parameters<AnalysisOraclePort["evaluate"]>[0]) {
       const selected = registeredMethod(input.node, methods);
@@ -232,6 +242,7 @@ function oracleForMethods(
         return single.evaluate(input);
       if (selected.method_id === MONTHLY_COMPARISON_METHOD_ID) return comparison.evaluate(input);
       if (selected.method_id === CATEGORY_COMPARISON_METHOD_ID) return category.evaluate(input);
+      if (selected.method_id === MONTHLY_PANEL_METHOD_ID) return panel.evaluate(input);
       throw new TypeError("PRODUCTION_ANALYSIS_ORACLE_NOT_REGISTERED");
     },
   });
@@ -250,7 +261,11 @@ function analysisContextPort(input: {
     async load(command: { readonly node: AnalysisProgramPayload["nodes"][number] }) {
       const method = registeredMethod(command.node, input.methods);
       if (
-        [MONTHLY_COMPARISON_METHOD_ID, CATEGORY_COMPARISON_METHOD_ID].includes(method.method_id) &&
+        [
+          MONTHLY_COMPARISON_METHOD_ID,
+          CATEGORY_COMPARISON_METHOD_ID,
+          MONTHLY_PANEL_METHOD_ID,
+        ].includes(method.method_id) &&
         method.execution_contract === undefined
       )
         throw new TypeError("PRODUCTION_ANALYSIS_EXECUTION_CONTRACT_REQUIRED");

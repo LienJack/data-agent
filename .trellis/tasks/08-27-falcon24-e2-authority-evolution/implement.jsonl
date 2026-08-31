@@ -7,6 +7,7 @@
 {"file":".trellis/spec/backend/provider-invocation-authority.md","reason":"Defines credential-safe provider invocation, outcome, receipt, and retry semantics."}
 {"file":".trellis/spec/backend/python-sandbox-execution.md","reason":"Defines governed analysis sandbox, binding, publisher, reclamation, and production isolation evidence."}
 {"file":".trellis/spec/backend/governed-analysis-charts.md","reason":"Defines versioned source facets, complete chart dataset hashes, and deterministic multi-measure panels."}
+{"file":".trellis/spec/backend/governed-monthly-panels.md","reason":"Monthly group source shape, independent Oracle, original publisher and production method closure."}
 {"file":".trellis/spec/frontend/agent-public-events.md","reason":"Defines safe browser event, trace, inspector, artifact preview, and replay behavior."}
 {"file":"docs/plans/2026-08-26-001-refactor-falcon24-e1-authority-reset-plan.md","reason":"Source plan requiring next Epoch after post-activation frozen-closure changes and full G1-G5 evidence."}
 {"file":".trellis/spec/backend/qa-conversation-resource-binding.md","reason":"Defines same-window Conversation resource versions, Run admission snapshots, message ordering, and resource recovery for L4."}

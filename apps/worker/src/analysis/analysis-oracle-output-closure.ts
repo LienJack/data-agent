@@ -5,7 +5,11 @@ import { canonicalizeJson, sha256ContentHash } from "@data-agent/contracts/commo
 import type { AnalysisBoundOutput } from "./executor.js";
 
 /** Shared byte/reference checks only; each oracle independently computes its business expectations. */
-export function createAnalysisOracleOutputClosure(errorPrefix: string, oracleModuleUrl: string) {
+export function createAnalysisOracleOutputClosure(
+  errorPrefix: string,
+  oracleModuleUrl: string,
+  dependencyModuleUrls: readonly string[] = [],
+) {
   function fail(kind: string): never {
     throw new TypeError(`${errorPrefix}_${kind}`);
   }
@@ -54,14 +58,18 @@ export function createAnalysisOracleOutputClosure(errorPrefix: string, oracleMod
   let codeDigest: Promise<string> | undefined;
   function implementationCodeDigest() {
     codeDigest ??= Promise.all(
-      [oracleModuleUrl, import.meta.url].map(
+      [oracleModuleUrl, import.meta.url, ...dependencyModuleUrls].map(
         async (url) =>
           `sha256:${createHash("sha256")
             .update(await readFile(new URL(url)))
             .digest("hex")}`,
       ),
-    ).then(([oracle_code_digest, closure_code_digest]) =>
-      sha256ContentHash({ oracle_code_digest, closure_code_digest }),
+    ).then(([oracle_code_digest, closure_code_digest, ...dependency_code_digests]) =>
+      sha256ContentHash({
+        oracle_code_digest,
+        closure_code_digest,
+        ...(dependency_code_digests.length ? { dependency_code_digests } : {}),
+      }),
     );
     return codeDigest;
   }

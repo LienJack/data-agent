@@ -21,25 +21,29 @@ const MAX_GROUPS = 32;
 const MONTHS = 12;
 const groupSchema = z.record(z.string(), z.string().min(1).max(256));
 const periodSchema = z.string().regex(/^\d{4}-\d{2}-01$/u);
-export const monthlyPanelMeasureSchema = z
-  .array(monthlyComparisonMeasureSchema.extend({ group: groupSchema }))
-  .min(1)
-  .max(MAX_GROUPS);
-export const monthlyPanelOpposedChangesSchema = z
-  .array(
-    z.strictObject({
-      group: groupSchema,
-      increasing_column: z.string(),
-      decreasing_column: z.string(),
-      from_period: periodSchema,
-      to_period: periodSchema,
-      increasing_absolute_change: z.number().finite().positive(),
-      decreasing_absolute_change: z.number().finite().negative(),
-      increasing_relative_change: z.number().finite().nullable(),
-      decreasing_relative_change: z.number().finite().nullable(),
-    }),
-  )
-  .max(MAX_GROUPS * 12);
+export const monthlyPanelMeasureSchema = z.strictObject({
+  groups: z
+    .array(monthlyComparisonMeasureSchema.extend({ group: groupSchema }))
+    .min(1)
+    .max(MAX_GROUPS),
+});
+export const monthlyPanelOpposedChangesSchema = z.strictObject({
+  pairs: z
+    .array(
+      z.strictObject({
+        group: groupSchema,
+        increasing_column: z.string(),
+        decreasing_column: z.string(),
+        from_period: periodSchema,
+        to_period: periodSchema,
+        increasing_absolute_change: z.number().finite().positive(),
+        decreasing_absolute_change: z.number().finite().negative(),
+        increasing_relative_change: z.number().finite().nullable(),
+        decreasing_relative_change: z.number().finite().nullable(),
+      }),
+    )
+    .max(MAX_GROUPS * 12),
+});
 
 interface MonthlyPanelInput {
   readonly context: AnalysisContext;
@@ -286,9 +290,9 @@ export async function compileMonthlyPanelPlan(input: MonthlyPanelInput) {
       },
       rules: [
         "observations contains every source row and exactly its source columns/values/NULLs, stably sorted by calendar month. DATE retains its date; DATETIME becomes calendar date in the explicit timezone. Never merge tuples, invent composite columns, drop rows, fill NULL or average ratios.",
-        "Each measure field is an array in group first-appearance order in observations. Each item has group (all category_columns and exact values), source_column and the supplied monthly measure fields. Compute each group and measure independently from its own twelve months. observed_count excludes NULL; missing_count counts NULL; minimum/maximum use observed values. lowest/highest contain up to three {period,value}, ordered by value ascending/descending then period ascending.",
+        "Each measure field is an object with only groups, an array in group first-appearance order in observations. Each item has group (all category_columns and exact values), source_column and the supplied monthly measure fields. Compute each group and measure independently from its own twelve months. observed_count excludes NULL; missing_count counts NULL; minimum/maximum use observed values. lowest/highest contain up to three {period,value}, ordered by value ascending/descending then period ascending.",
         "first_period/last_period and first_value/last_value use the original window endpoints, retaining NULL. absolute_change=last-first, NULL if either is missing; relative_change=absolute_change/first, NULL if missing or zero denominator. Never move endpoints. largest_drops contains up to three strictly negative adjacent-month changes, sorted by absolute_change then to_period. NULL breaks adjacency; relative_change is NULL for zero previous value.",
-        "opposed_changes lists all ordered source-measure pairs in each group whose endpoint absolute changes are respectively strictly positive and strictly negative. Order by group first-appearance, increasing source column order, then decreasing source column order. Copy both endpoint changes and relative changes, original first/last periods and the complete group. Missing endpoints yield no pair; do not infer causality, materiality or direction from relative-change signs with negative denominators.",
+        "opposed_changes is an object with only pairs, an array listing all ordered source-measure pairs in each group whose endpoint absolute changes are respectively strictly positive and strictly negative. Order by group first-appearance, increasing source column order, then decreasing source column order. Copy both endpoint changes and relative changes, original first/last periods and the complete group. Missing endpoints yield no pair; do not infer causality, materiality or direction from relative-change signs with negative denominators.",
         "claim_strength must equal DESCRIPTIVE. No extra fields, free-form facts, statistical significance or causal claims. Use the existing publisher once with the exact chart_bindings and line.multi-series@1; all measures stay independent and the second category is an explicit facet.",
       ],
     }),

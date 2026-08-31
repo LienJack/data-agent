@@ -1766,7 +1766,10 @@ Diagnostic/Q1/C1任一正式首次失败必须写既有 authority支持的 immut
 - [x] 月度分群叶子：复用描述性合同编码和月度 schema，原月份/分类/measure 身份与 NULL 保留；≤32组/384行/16分面。
   恢复草稿先观察缺模块 RED；修正草稿误改冻结 fixture 后，30项新测试及旧方法/固定hash/编译回归共5文件93/93通过，Worker typecheck/build通过。
   仅叶子合同，无 production 注册、Oracle、模型调用或数据库写入；不能记为复杂业务 PASS。
-- [ ] 月度分群独立 source/Arrow Oracle 与唯一 production composition；不以 planner 单测代替执行验收。
+- [x] 月度分群独立 source/Arrow Oracle 与唯一 production composition；37项 Oracle 回归（数值/排名/组/NULL/变化对/表图/字节/来源）、
+  原端点及溢出边界通过。新生产选择5项/Oracle接线1项先RED后GREEN，单序列统计与原方法不变。
+  摘要消费4项先RED，改新结果为受界JSON对象后GREEN，未改原始行隐藏或预算。Worker Analysis/Teams49文件578/578，
+  focused10文件213/213、Worker typecheck/build和7文件Biome通过；仅离线验证，无模型Run/live写入。
 - [ ] 核对复杂多输入及 L4 当前 Run 事实重验、指代、口径纠正、报告/图表组合；有缺口先做 focused 修复与 scoped commit。
 - [ ] 全部组件闭合后进入上述 fresh scratch / F5 / F7；不另跑 child 历史六问，也不复用 core4 PASS。
 

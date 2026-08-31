@@ -1,0 +1,606 @@
+import { createHash } from "node:crypto";
+import { buildProductTeamArtifactDocument } from "@data-agent/contracts/artifacts";
+import { analysisSandboxExecutionReceiptSchema } from "@data-agent/contracts/ports";
+import { STATISTICAL_OPERATOR_REGISTRY_DIGEST } from "@data-agent/contracts/statistical-operators";
+import { describe, expect, it } from "vitest";
+import {
+  type AnalysisBoundOutput,
+  type AnalysisOraclePort,
+  buildAnalysisNarrativeProjection,
+} from "../../src/analysis/executor.js";
+import { projectStagedAnalysisChart } from "../../src/analysis/governed-analysis-runtime.js";
+import { buildGovernedResultProjections } from "../../src/analysis/governed-result-projection.js";
+import {
+  createMonthlyPanelOracle,
+  monthlyPanelOracleInternals,
+} from "../../src/analysis/monthly-panel-oracle.js";
+import {
+  compileMonthlyPanelPlan,
+  MONTHLY_PANEL_METHOD_ID,
+} from "../../src/analysis/monthly-panel-planning.js";
+import { productTeamGovernedQueryInternals } from "../../src/analysis/product-team-query-port.js";
+import { productionGovernedAnalysisRuntimeInternals } from "../../src/analysis/production-governed-analysis-runtime.js";
+import {
+  comparisonHash,
+  comparisonId,
+  comparisonRef,
+} from "./support/monthly-comparison-fixture.js";
+import { monthlyPanelFixture } from "./support/monthly-panel-fixture.js";
+
+function output(
+  name: string,
+  kind: AnalysisBoundOutput["artifact_kind"],
+  suffix: number,
+  document: unknown,
+): AnalysisBoundOutput {
+  const content = new TextEncoder().encode(JSON.stringify(document));
+  const hash = `sha256:${createHash("sha256").update(content).digest("hex")}` as const;
+  return {
+    artifact_name: name,
+    artifact_kind: kind,
+    media_type: "application/json",
+    content,
+    content_sha256: hash,
+    bytes: content.byteLength,
+    reference: { ...comparisonRef("SandboxResult", suffix), content_hash: hash },
+  };
+}
+const period = (month: number) => `2024-${String(month).padStart(2, "0")}-01`;
+const point = (month: number, value: number) => ({ period: period(month), value });
+type OracleInput = {
+  -readonly [K in keyof Parameters<AnalysisOraclePort["evaluate"]>[0]]: Parameters<
+    AnalysisOraclePort["evaluate"]
+  >[0][K];
+};
+
+async function fixture(two = true, derived = true) {
+  const source = await monthlyPanelFixture(two, derived);
+  const draft = structuredClone(source.document);
+  if (draft.projection.kind !== "TABLE" || draft.provenance?.kind !== "GOVERNED_QUERY_RESULT")
+    throw new Error("TEST_QUERY_REQUIRED");
+  // Deliberately simple hand-calculated input: one zero-denominator month and opposite endpoint changes.
+  draft.projection.rows = draft.projection.rows.map((row) => {
+    const factor = (row.channel === "Email" ? 1 : 3) + (row.audience === "老客" ? 1 : 0);
+    const missing = row.month === period(3);
+    const last = row.month === period(12);
+    return {
+      ...row,
+      spend: (missing ? 0 : last ? 20 : 10) * factor,
+      revenue: (missing ? 0 : last ? 20 : 40) * factor,
+      return_rate: missing ? null : (last ? 1 : 4) - (derived ? 1 : 0),
+    };
+  });
+  const document = await buildProductTeamArtifactDocument(draft);
+  if (
+    document.artifact_ref.artifact_type !== "QueryEvidence" ||
+    document.projection.kind !== "TABLE"
+  )
+    throw new Error("TEST_QUERY_REQUIRED");
+  const plan = await compileMonthlyPanelPlan({
+    context: source.context,
+    query_evidence_ref: document.artifact_ref,
+    query_evidence_document: document,
+  });
+  const groups = [
+    { group: { channel: "Email", ...(two ? { audience: "新客" } : {}) }, factor: 1 },
+    ...(two ? [{ group: { channel: "Email", audience: "老客" }, factor: 2 }] : []),
+    { group: { channel: "App", ...(two ? { audience: "新客" } : {}) }, factor: 3 },
+    ...(two ? [{ group: { channel: "App", audience: "老客" }, factor: 4 }] : []),
+  ];
+  const rateFirst = derived ? 3 : 4;
+  const rateLast = derived ? 0 : 1;
+  const common = {
+    observed_count: 12,
+    missing_count: 0,
+    first_period: period(1),
+    last_period: period(12),
+  };
+  // These expected ranks/changes are fixed, not obtained from the oracle or a second copy of its algorithm.
+  const rawData = {
+    observations: structuredClone(document.projection.rows),
+    claim_strength: "DESCRIPTIVE",
+    measure_1: groups.map(({ group, factor: f }) => ({
+      ...common,
+      group,
+      source_column: "spend",
+      minimum: 0,
+      maximum: 20 * f,
+      lowest: [point(3, 0), point(1, 10 * f), point(2, 10 * f)],
+      highest: [point(12, 20 * f), point(1, 10 * f), point(2, 10 * f)],
+      first_value: 10 * f,
+      last_value: 20 * f,
+      absolute_change: 10 * f,
+      relative_change: 1,
+      largest_drops: [
+        {
+          from_period: period(2),
+          to_period: period(3),
+          absolute_change: -10 * f,
+          relative_change: -1,
+        },
+      ],
+    })),
+    measure_2: groups.map(({ group, factor: f }) => ({
+      ...common,
+      group,
+      source_column: "revenue",
+      minimum: 0,
+      maximum: 40 * f,
+      lowest: [point(3, 0), point(12, 20 * f), point(1, 40 * f)],
+      highest: [point(1, 40 * f), point(2, 40 * f), point(4, 40 * f)],
+      first_value: 40 * f,
+      last_value: 20 * f,
+      absolute_change: -20 * f,
+      relative_change: -0.5,
+      largest_drops: [
+        {
+          from_period: period(2),
+          to_period: period(3),
+          absolute_change: -40 * f,
+          relative_change: -1,
+        },
+        {
+          from_period: period(11),
+          to_period: period(12),
+          absolute_change: -20 * f,
+          relative_change: -0.5,
+        },
+      ],
+    })),
+    measure_3: groups.map(({ group }) => ({
+      ...common,
+      group,
+      source_column: "return_rate",
+      observed_count: 11,
+      missing_count: 1,
+      minimum: rateLast,
+      maximum: rateFirst,
+      lowest: [point(12, rateLast), point(1, rateFirst), point(2, rateFirst)],
+      highest: [point(1, rateFirst), point(2, rateFirst), point(4, rateFirst)],
+      first_value: rateFirst,
+      last_value: rateLast,
+      absolute_change: -3,
+      relative_change: -3 / rateFirst,
+      largest_drops: [
+        {
+          from_period: period(11),
+          to_period: period(12),
+          absolute_change: -3,
+          relative_change: -3 / rateFirst,
+        },
+      ],
+    })),
+    opposed_changes: groups.flatMap(({ group, factor: f }) => [
+      {
+        group,
+        increasing_column: "spend",
+        decreasing_column: "revenue",
+        from_period: period(1),
+        to_period: period(12),
+        increasing_absolute_change: 10 * f,
+        decreasing_absolute_change: -20 * f,
+        increasing_relative_change: 1,
+        decreasing_relative_change: -0.5,
+      },
+      {
+        group,
+        increasing_column: "spend",
+        decreasing_column: "return_rate",
+        from_period: period(1),
+        to_period: period(12),
+        increasing_absolute_change: 10 * f,
+        decreasing_absolute_change: -3,
+        increasing_relative_change: 1,
+        decreasing_relative_change: -3 / rateFirst,
+      },
+    ]),
+  };
+  const data = {
+    ...rawData,
+    measure_1: { groups: rawData.measure_1 },
+    measure_2: { groups: rawData.measure_2 },
+    measure_3: { groups: rawData.measure_3 },
+    opposed_changes: { pairs: rawData.opposed_changes },
+  };
+  const contract = plan.result_contract;
+  const tableContract = contract.tables[0];
+  const chartContract = contract.charts[0];
+  if (!tableContract || !chartContract) throw new Error("TEST_CONTRACT_REQUIRED");
+  const result = {
+    schema_version: "analysis-published-result@1.0.0",
+    contract_id: contract.contract_id,
+    contract_hash: contract.contract_hash,
+    semantic_context_hash: contract.semantic_context_hash,
+    metrics: contract.metric_bindings,
+    dimensions: contract.dimension_bindings,
+    grain: contract.grain,
+    lineage: contract.lineage,
+    data,
+  };
+  const table = {
+    schema_version: "analysis-published-table@1.0.0",
+    table_id: tableContract.table_id,
+    title_zh: tableContract.title_zh,
+    columns: tableContract.columns,
+    rows: data.observations,
+    total_rows: data.observations.length,
+  };
+  const chart = {
+    schema_version: two ? "analysis-published-chart@1.1.0" : "analysis-published-chart@1.0.0",
+    chart_id: chartContract.chart_id,
+    title_zh: chartContract.title_zh,
+    intent: "TREND",
+    template_id: "line.multi-series@1",
+    bindings: plan.execution_contract.chart_bindings,
+    dataset: {
+      table_id: table.table_id,
+      columns: table.columns,
+      rows: table.rows,
+      total_rows: table.total_rows,
+    },
+  };
+  const content = productTeamGovernedQueryInternals.materializeProductTeamArrow(
+    document.projection,
+    source.binding.columns,
+  );
+  const inputRef = {
+    ...comparisonRef("SensitiveExecutionArtifact", 50),
+    content_hash: `sha256:${createHash("sha256").update(content).digest("hex")}` as const,
+  };
+  const outputs = [
+    output("result", "RESULT", 60, result),
+    output(`table:${table.table_id}`, "TABLE", 61, table),
+    output(`chart:${chart.chart_id}`, "CHART", 62, chart),
+  ];
+  // Schema-valid unit fixture only. Not a real sandbox execution, materialization or production-isolation receipt.
+  const receipt = analysisSandboxExecutionReceiptSchema.parse({
+    schema_version: "analysis-sandbox-execution-receipt@1.0.0",
+    workspace_id: comparisonId(2),
+    run_id: comparisonId(3),
+    attempt_id: comparisonId(90),
+    worker_fence: 1,
+    fence_token: "unit-fixture",
+    idempotency_key: "unit-panel-oracle",
+    request_hash: comparisonHash("1"),
+    analysis_program_ref: comparisonRef("AnalysisProgram", 91),
+    node_id: "panel",
+    runtime_profile: "CORE_ANALYSIS",
+    runtime: {
+      provider: "OpenSandbox",
+      opensandbox_sdk_version: "0.1.11",
+      code_interpreter_sdk_version: "0.1.3",
+      agent_image: "unit-agent",
+      operator_image: "unit-operator",
+      agent_sandbox_id: comparisonId(92),
+      operator_sandbox_id: comparisonId(93),
+    },
+    generated_source_policy: "OPEN_ANALYSIS",
+    operator_registry_digest: STATISTICAL_OPERATOR_REGISTRY_DIGEST,
+    operator_obligations: [],
+    operator_receipts: [],
+    operator_receipt_closure_hash: comparisonHash("f"),
+    result_contract_hash: contract.contract_hash,
+    publish_manifest_hash: comparisonHash("a"),
+    published_closure_hash: comparisonHash("b"),
+    publish_id: "panel-unit",
+    inputs: [
+      {
+        name: "query_evidence",
+        format: "ARROW",
+        query_evidence_ref: document.artifact_ref,
+        input_ref: inputRef,
+        materialization_receipt_ref: comparisonRef("AnalysisInputMaterializationReceipt", 51),
+        content_sha256: inputRef.content_hash,
+        bytes: content.byteLength,
+      },
+    ],
+    cells: [
+      {
+        cell_id: "unit-cell",
+        source_sha256: comparisonHash("c"),
+        execution_id: null,
+        execution_count: null,
+        elapsed_ms: 0,
+        status: "SUCCEEDED",
+      },
+    ],
+    started_at: "2026-08-31T00:00:00Z",
+    finished_at: "2026-08-31T00:00:00Z",
+    elapsed_ms: 0,
+    hard_controls: {
+      network_isolated: true,
+      scoped_filesystem: true,
+      separate_operator_sandbox: true,
+      resource_limits_enforced: true,
+      secure_access: false,
+    },
+    status: "SUCCEEDED",
+    failure_code: null,
+    outputs: outputs.map(({ content: _content, ...rest }) => rest),
+    execution_hash: comparisonHash("d"),
+  });
+  const input: OracleInput = {
+    node: {
+      node_id: "panel",
+      skill_id: "open-python-analysis@1",
+      method_registry_entry_ids: [MONTHLY_PANEL_METHOD_ID],
+      metric_refs: source.context.metrics.map((metric) => metric.metric_ref),
+      dimension_refs: plan.shape.dimension_ids,
+      time_window: {
+        start: "2024-01-01T00:00:00.000+08:00",
+        end: "2025-01-01T00:00:00.000+08:00",
+        timezone: "Asia/Shanghai",
+        semantics: "HALF_OPEN",
+      },
+      comparison_window: null,
+      parameters: {},
+      execution_mode: "MODEL_GENERATED",
+      generated_source_policy: "OPEN_ANALYSIS",
+      operator_obligations: [],
+      result_contract: contract,
+      dependency_node_ids: [],
+      activation_rule: { kind: "ALWAYS" },
+      criticality: "CRITICAL",
+    },
+    governed_inputs: [
+      {
+        name: "query_evidence",
+        format: "ARROW",
+        query_evidence_ref: document.artifact_ref,
+        query_evidence_document: document,
+        input_ref: inputRef,
+        materialization_receipt_ref: comparisonRef("AnalysisInputMaterializationReceipt", 51),
+        materialization_receipt_document: {},
+        content,
+      },
+    ],
+    sandbox_outputs: outputs,
+    sandbox_receipt: receipt,
+  };
+  return { source, document, plan, result, table, chart, input };
+}
+
+describe("independent monthly panel oracle", () => {
+  it("selects only the exact registered production oracle", async () => {
+    const test = await fixture();
+    const method = {
+      method_id: MONTHLY_PANEL_METHOD_ID,
+      skill_id: "open-python-analysis@1" as const,
+      result_contract: test.plan.result_contract,
+      required_operator_obligations: [],
+      execution_contract: test.plan.execution_contract,
+    };
+    await expect(
+      productionGovernedAnalysisRuntimeInternals
+        .oracleForMethods(test.source.context, [method])
+        .evaluate(test.input),
+    ).resolves.toMatchObject({ implementation_id: "monthly-group-panel-oracle@1.0.0" });
+    await expect(
+      productionGovernedAnalysisRuntimeInternals
+        .oracleForMethods(test.source.context, [])
+        .evaluate(test.input),
+    ).rejects.toThrow("PRODUCTION_ANALYSIS_METHOD_BINDING_INVALID");
+    await expect(
+      productionGovernedAnalysisRuntimeInternals
+        .oracleForMethods(test.source.context, [method])
+        .evaluate({ ...test.input, node: { ...test.input.node, skill_id: "trend-change@1" } }),
+    ).rejects.toThrow("PRODUCTION_ANALYSIS_METHOD_BINDING_INVALID");
+  });
+  it.each(["zero", "negative", "missing", "overflow"])(
+    "retains original %s endpoint semantics in opposed changes",
+    async (variant) => {
+      const test = await fixture(false);
+      const plan = structuredClone(test.plan);
+      const first = plan.shape.groups[0]?.rows[0];
+      const last = plan.shape.groups[0]?.rows.at(-1);
+      if (!first || !last) throw new Error("TEST_ENDPOINTS_REQUIRED");
+      first.spend =
+        variant === "zero"
+          ? 0
+          : variant === "negative"
+            ? -10
+            : variant === "overflow"
+              ? -Number.MAX_VALUE
+              : null;
+      if (variant === "overflow") last.spend = Number.MAX_VALUE;
+      const compute = () => monthlyPanelOracleInternals.expectedPanelData(plan);
+      if (variant === "overflow") {
+        expect(compute).toThrow("NUMERIC_RANGE_INVALID");
+        return;
+      }
+      const pairs = compute().data.opposed_changes.pairs.filter(
+        (pair) => pair.group.channel === "Email",
+      );
+      if (variant === "missing") expect(pairs).toEqual([]);
+      else
+        expect(pairs[0]).toMatchObject({
+          increasing_column: "spend",
+          increasing_absolute_change: variant === "negative" ? 30 : 20,
+          increasing_relative_change: variant === "negative" ? -3 : null,
+        });
+    },
+  );
+  it.each([
+    [false, false],
+    [false, true],
+    [true, false],
+    [true, true],
+  ])(
+    "checks all source groups and role-preserving table/chart: two=%s derived=%s",
+    async (two, derived) => {
+      const test = await fixture(two, derived);
+      const verdict = await createMonthlyPanelOracle(test.source.context).evaluate(test.input);
+      expect(verdict).toMatchObject({
+        sample_size: two ? 48 : 24,
+        coverage_ratio: 35 / 36,
+        material_change: false,
+        result: { oracle_scope: "FULL", declared_method: MONTHLY_PANEL_METHOD_ID },
+        oracle_receipt: { verdict: "PASS", no_inferential_or_causal_claim: true },
+      });
+      const projections = await buildGovernedResultProjections({
+        contract: test.plan.result_contract,
+        governed_inputs: test.input.governed_inputs,
+      });
+      expect(projections[0]?.table_rows).toEqual(test.table.rows);
+      expect(projections[0]?.result_rows).toEqual(test.result.data.observations);
+      const chart = test.input.sandbox_outputs[2];
+      if (!chart) throw new Error("TEST_CHART_REQUIRED");
+      const staged = projectStagedAnalysisChart(chart);
+      expect(staged.projection).toMatchObject({
+        chart_type: "LINE",
+        x_key: "month",
+        series_key: "channel",
+        ...(two ? { facet_key: "audience" } : {}),
+        table: { rows: test.table.rows, total_rows: two ? 48 : 24 },
+      });
+      const narrative = buildAnalysisNarrativeProjection(test.result);
+      expect(narrative.fields).toMatchObject({
+        measure_1: test.result.data.measure_1,
+        opposed_changes: test.result.data.opposed_changes,
+      });
+    },
+  );
+
+  it.each([
+    "measure",
+    "rank",
+    "count",
+    "group",
+    "missing",
+    "opposed-value",
+    "opposed-omit",
+    "opposed-order",
+    "extra-fact",
+    "causal",
+    "observation",
+    "table-row",
+    "table-dimension",
+    "chart-facet",
+    "chart-series",
+    "chart-row",
+    "chart-version",
+  ])("rejects rehashed %s corruption", async (kind) => {
+    const test = await fixture();
+    let changed: unknown = test.result;
+    let index = 0;
+    const first = test.result.data.measure_1.groups[0];
+    const pair = test.result.data.opposed_changes.pairs[0];
+    if (!first || !pair) throw new Error("TEST_MEASURE_REQUIRED");
+    if (kind === "measure") first.absolute_change += 1;
+    if (kind === "rank") first.lowest.reverse();
+    if (kind === "count") first.observed_count -= 1;
+    if (kind === "group") first.group.channel = "other";
+    if (kind === "missing") {
+      const rate = test.result.data.measure_3.groups[0];
+      if (!rate) throw new Error("TEST_RATE_REQUIRED");
+      rate.missing_count = 0;
+    }
+    if (kind === "opposed-value") pair.increasing_absolute_change += 1;
+    if (kind === "opposed-omit") test.result.data.opposed_changes.pairs.pop();
+    if (kind === "opposed-order") test.result.data.opposed_changes.pairs.reverse();
+    if (kind === "extra-fact")
+      changed = { ...test.result, data: { ...test.result.data, summary: "unverified assertion" } };
+    if (kind === "causal") test.result.data.claim_strength = "CAUSAL";
+    if (kind === "observation") test.result.data.observations.reverse();
+    if (kind.startsWith("table")) {
+      index = 1;
+      changed =
+        kind === "table-row"
+          ? { ...test.table, rows: test.table.rows.slice(1) }
+          : { ...test.table, columns: test.table.columns.slice(1) };
+    }
+    if (kind.startsWith("chart")) {
+      index = 2;
+      changed =
+        kind === "chart-facet"
+          ? { ...test.chart, bindings: { ...test.chart.bindings, facet_field: "channel" } }
+          : kind === "chart-series"
+            ? { ...test.chart, bindings: { ...test.chart.bindings, series_field: null } }
+            : kind === "chart-row"
+              ? {
+                  ...test.chart,
+                  dataset: { ...test.chart.dataset, rows: test.chart.dataset.rows.slice(1) },
+                }
+              : { ...test.chart, schema_version: "analysis-published-chart@1.0.0" };
+    }
+    test.input.sandbox_outputs = test.input.sandbox_outputs.map((original, i) =>
+      i === index
+        ? output(original.artifact_name, original.artifact_kind, 60 + i, changed)
+        : original,
+    );
+    await expect(
+      createMonthlyPanelOracle(test.source.context).evaluate(test.input),
+    ).rejects.toThrow(/MONTHLY_PANEL_ORACLE_.*MISMATCH/);
+  });
+
+  it.each([
+    "bytes",
+    "hash",
+    "run",
+    "duplicate-output",
+    "missing-output",
+    "method",
+    "dimension",
+    "window",
+    "receipt-contract",
+    "extra-input",
+    "arrow",
+  ])("rejects %s closure drift before accepting results", async (kind) => {
+    const test = await fixture();
+    const original = test.input.sandbox_outputs[0];
+    if (!original) throw new Error("TEST_OUTPUT_REQUIRED");
+    if (kind === "bytes")
+      test.input.sandbox_outputs = [
+        { ...original, bytes: original.bytes + 1 },
+        ...test.input.sandbox_outputs.slice(1),
+      ];
+    if (kind === "hash")
+      test.input.sandbox_outputs = [
+        { ...original, content_sha256: comparisonHash("e") },
+        ...test.input.sandbox_outputs.slice(1),
+      ];
+    if (kind === "run")
+      test.input.sandbox_outputs = [
+        { ...original, reference: { ...original.reference, run_id: comparisonId(999) } },
+        ...test.input.sandbox_outputs.slice(1),
+      ];
+    if (kind === "duplicate-output")
+      test.input.sandbox_outputs = [original, original, ...test.input.sandbox_outputs.slice(1)];
+    if (kind === "missing-output") test.input.sandbox_outputs = test.input.sandbox_outputs.slice(1);
+    if (kind === "method")
+      test.input.node = { ...test.input.node, method_registry_entry_ids: ["other@1"] };
+    if (kind === "dimension")
+      test.input.node = { ...test.input.node, dimension_refs: ["dimension.month"] };
+    if (kind === "window") test.input.node = { ...test.input.node, time_window: null };
+    if (kind === "receipt-contract")
+      test.input.sandbox_receipt = {
+        ...test.input.sandbox_receipt,
+        result_contract_hash: comparisonHash("e"),
+      };
+    if (kind === "extra-input")
+      test.input.governed_inputs = [...test.input.governed_inputs, ...test.input.governed_inputs];
+    if (kind === "arrow") {
+      const governed = test.input.governed_inputs[0];
+      if (!governed || test.document.projection.kind !== "TABLE")
+        throw new Error("TEST_INPUT_REQUIRED");
+      const projection = {
+        ...test.document.projection,
+        rows: test.document.projection.rows.map((row, index) =>
+          index === 0 ? { ...row, spend: 999 } : row,
+        ),
+      };
+      test.input.governed_inputs = [
+        {
+          ...governed,
+          content: productTeamGovernedQueryInternals.materializeProductTeamArrow(
+            projection,
+            test.source.binding.columns,
+          ),
+        },
+      ];
+    }
+    await expect(
+      createMonthlyPanelOracle(test.source.context).evaluate(test.input),
+    ).rejects.toThrow(/MONTHLY_PANEL_ORACLE_|ANALYSIS_INPUT_/);
+  });
+});

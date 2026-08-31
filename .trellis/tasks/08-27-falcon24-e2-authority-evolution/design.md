@@ -1758,3 +1758,10 @@ PRD §22 恢复 §25 的动态 Agent / 原 gate authority / 新构建前向恢�
 首个叶子限定每组完整12月、1–2分类、1–4数值结果，最多32组/384行/16分面。原值及NULL稳定按月投影，按完整tuple分别比较。
 结果包含每组每measure的既有月度描述性字段，以及同组端点absolute change一正一负的measure对；不移动端点、不平均比例、不做因果。
 复用原ResultContract构造器、月度字段schema和时区日历转换，旧5个合同hash不变；独立source/Arrow Oracle和唯一生产接线紧接着实施。
+
+Oracle/生产接线现已闭合：原 Arrow/source 重新验证，按组独立重算每列月度结果和反向变化对，完整 RESULT/TABLE/CHART 精确一致。
+复用原 Host 月度算术，implementation digest 包含该真实模块 URL 的内容摘要；无模型输出参与期望计算。
+消费链测试发现裸结果数组被既有 narrative projection 省略，故新方法用 `measure_n={groups:[...]}` / `opposed_changes={pairs:[...]}`；
+不改摘要8KiB/field与24KiB预算，不额外传原始 observations。新方法此前未注册/执行，旧方法格式/hash保持。
+37项 Oracle 测试包含真实 Arrow、重新封hash后的错误输出、NULL/零/负端点、溢出、原图表分面和摘要；生产选择6项新增行为先RED后GREEN。
+Worker Analysis/Teams 49文件578项、typecheck/build/Biome通过。此为组件验证，所有 Sandbox receipt 为明确 unit fixture；仍无模型/数据库写入。
