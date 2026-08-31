@@ -1845,6 +1845,12 @@ Diagnostic/Q1/C1任一正式首次失败必须写既有 authority支持的 immut
     明确排名/日历和负同比/降幅变化区别，3项RED后144项focused与Worker typecheck通过。
     见 [摘要时间序列边界](research/complex-47916676-narrative-chronology.md)；源348表不变，临时服务清理、scratch停机保留。
     下一步仍为新clean build/fresh scratch业务A/B；不能据结构化结果通过把错误文字视为PASS。
+  - [x] d9a91228新scratch A1业务及同Run QA/Trace通过（73节点/5产物，原stage独立算法0差异），仍非formal profile PASS。
+    A2 FAILED/50events：冻结历史含12月意图，但已接受语义只有同比操作，缺窗口，Text2SQL prepare三次拒绝且零查询。
+    现于已消歧DATA同比上下文commit前拒绝缺窗口并反馈Semantic/Root；不默认日期、不增预算、不改原SQL proof。
+    缺窗口先RED，完整窗口/纯定义/歧义兼容；Worker134与Agent Runtime8项、两包typecheck通过。
+    见 [同比窗口完整性](research/complex-d9a91228-comparison-window.md)；源348表不变，本轮临时服务清理，scratch停机保留。
+    下一步新clean build/fresh scratch从A1开始，未提交A3/B或formal15，不拼接本次A1。
   再继续上述 F5 / F7；不另跑 child 历史六问，也不复用 core4 PASS。
 
 **F6 READY 轮次恢复边界（2026-08-30，历史）**

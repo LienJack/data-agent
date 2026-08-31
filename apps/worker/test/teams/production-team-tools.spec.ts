@@ -432,7 +432,8 @@ describe("Production Team governed chart publication", () => {
     }
   });
 
-  it.each(["derived", "unresolved"])("projects %s semantics without SQL", async (mode) => {
+  const semanticModes = ["derived", "unresolved", "missing-window", "complete-window"];
+  it.each(semanticModes)("projects %s semantics without SQL", async (mode) => {
     const scope = { app_id: id(1), tenant_id: id(2), environment: "test" } as const;
     const lease = {
       scope,
@@ -463,7 +464,7 @@ describe("Production Team governed chart publication", () => {
       value: {
         output_text: JSON.stringify({
           schema_version: "semantic-query-selection-intent@1.0.0",
-          answer_scope: mode === "unresolved" ? "DATA_RESULT_REQUIRED" : "SEMANTIC_FACTS_ONLY",
+          answer_scope: mode === "derived" ? "SEMANTIC_FACTS_ONLY" : "DATA_RESULT_REQUIRED",
           selected_metric_ids: mode === "unresolved" ? [] : ["metric.order_revenue"],
           selected_dimension_ids: mode === "unresolved" ? [] : ["dimension.order_month"],
           selected_formula_ids: [],
@@ -486,6 +487,21 @@ describe("Production Team governed chart publication", () => {
                       formula: "(current_value - comparison_value) / NULLIF(comparison_value, 0)",
                     },
                   },
+                  ...(mode === "complete-window"
+                    ? [
+                        {
+                          requested_term: "inherited complete months",
+                          operator: {
+                            kind: "RECENT_COMPLETE_PERIODS",
+                            metric_id: "metric.order_revenue",
+                            time_dimension_id: "dimension.order_month",
+                            period_unit: "MONTH",
+                            period_count: 12,
+                            anchor: "PUBLISHED_COMPLETE_FRONTIER",
+                          },
+                        },
+                      ]
+                    : []),
                 ],
         }),
         tool_calls: [],
@@ -547,7 +563,7 @@ describe("Production Team governed chart publication", () => {
                 calendar: "gregorian",
                 timezone: "Asia/Shanghai",
                 min_time: null,
-                max_time: null,
+                max_time: mode === "complete-window" ? "2025-01-01T00:00:00.000Z" : null,
               },
               time_column_id: "orders.created_at",
               additivity: "additive",
@@ -685,7 +701,7 @@ describe("Production Team governed chart publication", () => {
               calendar: "gregorian",
               timezone: "Asia/Shanghai",
               min_time: null,
-              max_time: null,
+              max_time: mode === "complete-window" ? "2025-01-01T00:00:00.000Z" : null,
             },
             {
               time_domain_id: "time.unrelated_inventory_day",
@@ -775,19 +791,30 @@ describe("Production Team governed chart publication", () => {
         } as ProductionTeamToolFactoryInput["delegation"],
       },
     );
-    const result = await tools.invoke({
-      task: {
-        task_id: id(24),
-        run_id: lease.run_id,
-        profile_id: "semantic-management-agent",
-        scope,
-      } as Parameters<ProductProfileToolPort["invoke"]>[0]["task"],
-      profile: {
-        revision: { profile_id: "semantic-management-agent" },
-      } as unknown as AgentProductProfileRegistryItemV2,
-      tool_id: "semantic.catalog.read",
-      context_epoch: { epoch_id: id(25), build_signature: hash("e") },
-    });
+    const invoke = () =>
+      tools.invoke({
+        task: {
+          task_id: id(24),
+          run_id: lease.run_id,
+          profile_id: "semantic-management-agent",
+          scope,
+        } as Parameters<ProductProfileToolPort["invoke"]>[0]["task"],
+        profile: {
+          revision: { profile_id: "semantic-management-agent" },
+        } as unknown as AgentProductProfileRegistryItemV2,
+        tool_id: "semantic.catalog.read",
+        context_epoch: { epoch_id: id(25), build_signature: hash("e") },
+      });
+    if (mode === "missing-window") {
+      await expect(invoke()).rejects.toThrow("TEAM_SEMANTIC_COMPARISON_WINDOW_REQUIRED");
+      expect(committed).toBeNull();
+      expect(semanticProvider).toHaveBeenCalledOnce();
+      expect(text2sqlPrepare).not.toHaveBeenCalled();
+      expect(text2sqlCompile).not.toHaveBeenCalled();
+      expect(text2sqlExecute).not.toHaveBeenCalled();
+      return;
+    }
+    const result = await invoke();
 
     expect(result).toMatchObject({ output_ref: { artifact_type: "SemanticQueryContext" } });
     expect(releaseRead).toHaveBeenCalledOnce();
@@ -812,6 +839,28 @@ describe("Production Team governed chart publication", () => {
     expect(text2sqlPrepare).not.toHaveBeenCalled();
     expect(text2sqlCompile).not.toHaveBeenCalled();
     expect(text2sqlExecute).not.toHaveBeenCalled();
+    if (mode === "complete-window") {
+      expect(committed).toMatchObject({
+        projection: {
+          kind: "SEMANTIC_CONTEXT",
+          context: {
+            answer_scope: "DATA_RESULT_REQUIRED",
+            request_scoped_interpretations: expect.arrayContaining([
+              expect.objectContaining({
+                operator: expect.objectContaining({
+                  kind: "RECENT_COMPLETE_PERIODS",
+                  period_count: 12,
+                }),
+              }),
+              expect.objectContaining({
+                operator: expect.objectContaining({ kind: "PERIOD_COMPARISON_RATE" }),
+              }),
+            ]),
+          },
+        },
+      });
+      return;
+    }
     if (mode === "unresolved") {
       expect(committed).toMatchObject({
         projection: {

@@ -16,6 +16,7 @@ import {
 } from "@data-agent/contracts";
 import {
   buildSemanticQueryContext,
+  resolveSemanticRequestTimeWindow,
   type SemanticQueryContext,
   type SemanticQuerySelectionIntent,
   semanticQuerySelectionIntentSchema,
@@ -763,7 +764,7 @@ async function projectSemanticQueryContext(input: {
     throw new ProductionTeamToolError("TEAM_SEMANTIC_AUTHORITY_BINDING_INVALID");
   }
 
-  return buildSemanticQueryContext({
+  const context = await buildSemanticQueryContext({
     schema_version: "semantic-query-context@1.0.0",
     answer_scope: input.intent.answer_scope,
     scope: input.factory.lease.scope,
@@ -793,6 +794,17 @@ async function projectSemanticQueryContext(input: {
       ? { request_scoped_interpretations: requestScopedInterpretations }
       : {}),
   });
+  if (
+    context.answer_scope === "DATA_RESULT_REQUIRED" &&
+    context.unresolved_ambiguities.length === 0 &&
+    context.request_scoped_interpretations?.some(
+      ({ operator }) => operator.kind === "PERIOD_COMPARISON_RATE",
+    ) &&
+    resolveSemanticRequestTimeWindow(context) === null
+  ) {
+    throw new ProductionTeamToolError("TEAM_SEMANTIC_COMPARISON_WINDOW_REQUIRED");
+  }
+  return context;
 }
 
 async function resolveAcceptedSemanticQueryContext(

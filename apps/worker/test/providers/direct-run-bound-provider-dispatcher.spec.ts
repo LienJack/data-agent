@@ -373,6 +373,8 @@ describe("direct run-bound provider retry policy", () => {
       "When the assigned objective requests a derived comparison term such as year-over-year growth",
     );
     expect(prompt).toContain("MUST emit the matching request_scoped_operations entry");
+    expect(prompt).toContain("TEAM_SEMANTIC_COMPARISON_WINDOW_REQUIRED");
+    expect(prompt).toContain("Never invent a default duration");
     expect(prompt).toContain("SUBTRACT_DENOMINATOR for net ROI");
     expect(prompt).toContain("must not create, update, approve, or imply a Published formula");
     expect(prompt).toContain("do not expose index or governance lookup failures");

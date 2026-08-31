@@ -31,6 +31,12 @@ Root 多轮问答、Semantic Context Request/Snapshot/Receipt、检索候选容�
    不得把 Root Task ref 冒充 Specialist 派生请求的 identity；Root 请求仍保留原 Task ref。
    模型须从有界历史补全追问的指标、比较方式和完整周期窗口，当前明确纠正优先，无法消歧则返回 ambiguity。
    这不是确定性语义选择：真实 Run 仍须验证接受的 request operations 是否包含继承窗口和比较口径。
+9. 当前受支持的结果同比路径同时需要 PERIOD_COMPARISON_RATE 和可解析的完整周期窗口。
+   Worker 投影 DATA_RESULT_REQUIRED 且无 ambiguity 的上下文时，若包含同比操作但
+   `resolveSemanticRequestTimeWindow` 返回 null，须在 Artifact commit 前拒绝
+   `TEAM_SEMANTIC_COMPARISON_WINDOW_REQUIRED`。Semantic 从同一有界用户意图补齐窗口，
+   没有可支持的时长则声明 TIME_DOMAIN ambiguity；Root 在原预算内反馈 Semantic，不能重复提交 Text2SQL。
+   不增重试预算、不默认12月、不复制旧 Run 操作；SEMANTIC_FACTS_ONLY 定义查询不要求数据窗口。
 
 ## 禁止
 
@@ -46,5 +52,6 @@ Root 多轮问答、Semantic Context Request/Snapshot/Receipt、检索候选容�
 - Specialist：真实 dispatch 捕获窗口/同比上下文、最后8条边界、旧答案排除、首问空历史、当前纠正末位；
   lease/Run/scope/hash/Conversation/version/current-question/history漂移与Task失败时零模型调用。
 - Semantic：多轮弱匹配月份召回、显式与总容量、去重、excluded对象、依赖闭包；不得用测试题字符串分支。
+- Semantic projection：缺失同比窗口时零 Artifact commit/零 Text2SQL；完整窗口、纯定义和已声明歧义保持原契约。
 - PostgreSQL：clean install、populated clone升级和347张业务表hash不变、只投影最后8条user/text、原安全边界和reader窄grant。
 - 真实复杂 Run 仍需新clean build/scratch后的业务及同Run UI/Trace证明；离线历史重编译不是验收PASS。
