@@ -392,6 +392,10 @@ describe("direct run-bound provider retry policy", () => {
     expect(prompt).toContain("TEAM_SEMANTIC_COMPARISON_WINDOW_REQUIRED");
     expect(prompt).toContain("Never invent a default duration");
     expect(prompt).toContain("SUBTRACT_DENOMINATOR for net ROI");
+    expect(prompt).toContain(
+      "Sort every selected_*_ids and candidate_ids array by ascending exact ID string",
+    );
+    expect(prompt).toContain("not by query order, semantic role, or importance");
     expect(prompt).toContain("must not create, update, approve, or imply a Published formula");
     expect(prompt).toContain("do not expose index or governance lookup failures");
   });

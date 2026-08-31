@@ -2040,7 +2040,7 @@ live348表after与before完全相同；本轮Web/Worker/OpenSandbox及4个browse
 7条已报告usage合计105601 tokens、6条未报告，完整总量未知；恢复认证不计入该小计。
 完整ID/hash/失败/清理见 [核心验收报告](research/core-collaboration-verification-ec3c1e61.md)。当前核心范围完成；不继续扩建延期复杂能力或启动live正式题库。
 
-## 27. 复杂四层当前执行（b4a237db 前向恢复）
+## 27. 复杂四层当前执行（82aed231 前向恢复）
 
 - [x] `966760f5` clean build/fresh physical scratch 中 A1/A2/A3/B1/B2 完成独立 Oracle、业务、QA/Trace 与刷新验证；A3 新双图合同真实通过。
 - [x] 原 B3 单次 Run 保留 FAILED：四个 Semantic logical call 均 `STRUCTURED_OUTPUT_REJECTED`，零业务 Artifact；未重提同一 Run。
@@ -2054,7 +2054,15 @@ live348表after与before完全相同；本轮Web/Worker/OpenSandbox及4个browse
 - [x] TDD锁定 registry canonical JSON Schema bytes 与 JSON_TEXT exact system instruction；仍一次 `json_object`、零 tools、完整原文 strict
   parse，无 coercion/default/repair。focused 51 tests先RED 6项，再GREEN 51/51。
 - [x] 完成本轮 Agent Runtime/Worker回归、typecheck/build、Biome、Trellis/diff并随 scoped commit封存 `b4a237db` failure evidence。
-- [ ] 再一个新 clean force build/fresh scratch 从六题起点重跑，不拼接 `966760f5` 五题或 `b4a237db` A1；B3 业务通过后复用同 Run验 QA/Trace。
+- [x] `82aed231` clean force build 8/8（0 cache）、full unit 15/15、attestation PASS；fresh NAS scratch 55510 完成物理备份、
+  10816/347业务表/9表70列121445行数据集证明、独立新stage认证及E17 scratch-only activation，live仍E16。
+- [x] 同一 build/scratch 的 A1/A2/A3/B1/B2 依次完成一次composer、独立来源/阶段/业务复核和同 Run QA/Trace；Trace分别
+  73/76/76/86/73节点全开，A3双图、B1发布ROAS、B2请求级净ROI均真实通过，不拼旧build。
+- [x] B3唯一 Run `aa8c1da4-00ae-8fc8-9007-57cf3e7ec0c4` 永久FAILED：四次 Semantic均
+  `RESPONSE_SCHEMA_MISMATCH`，诊断为一个 set-like ID 字段的第2项 custom refinement；零Semantic/SQL/Analysis Artifact，未重提。
+- [x] 聚焦TDD先RED 1/17，再把 canonical ID order 明确定义为完整ID字符串升序、非题目/角色/重要性顺序；Host strict parse、
+  原数组和失败关闭不变。见 [B3 canonical selection order](research/complex-82aed231-semantic-id-order.md)。
+- [ ] 新 scoped commit 后重新 clean force build/fresh scratch 从A1重跑六题；不拼接 `82aed231` 前五题，B3业务通过后复用同 Run验 QA/Trace。
 - [ ] 六题预检闭合后继续 F5/F7 版本化15回合、authority、页面与最终清理；只有全部 AC 才 COMPLETE。
 
 当前细节见 [Semantic JSON text 复盘](research/complex-966760f5-semantic-json-text.md)。

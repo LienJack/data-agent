@@ -1836,3 +1836,9 @@ delivery mode 不进入 request contract，用户/模型无法覆盖；工具调
 exact canonical schema instruction、错 schema/非JSON/空白拒绝和 raw-free diagnostic。`b4a237db` 证明仅有 `json_object` 语法约束时，
 模型可返回 JSON 但嵌套类型不满足 strict schema；因此 schema instruction 是 transport contract，不是答案修补。真实验收仍需再一个
 clean build/fresh scratch 从 A1 重跑全链，单测与旧构建 PASS 都不计业务 PASS。
+
+`82aed231` 证明 exact JSON Schema 解决了字段/嵌套形状，但 B3 的多维选择连续四次落在
+`canonicalIdsSchema` 的数组第2项 refinement：JSON Schema 本身不能表达完整字符串升序，原提示中的“sorted”又不足以阻止模型按题目顺序
+排列时间、渠道和人群。前向提示因此把 canonical order 定义为 JavaScript 默认完整字符串升序，并给出维度 ID 例子；该提示在冻结
+Semantic evidence 之前、同一 server-owned system message 中发送。Host 继续对原文执行原 strict schema，不调用 `.sort()`、不删除重复项、
+不读取题号，也不把失败响应恢复成 candidate。这个变化只补 refinement 的可执行传输说明，不改变 Semantic 选择、SQL、公式或业务答案。
