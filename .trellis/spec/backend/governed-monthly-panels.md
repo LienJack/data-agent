@@ -21,8 +21,15 @@ method=`published-monthly-group-panel@1`，contract=`monthly-group-panel.result`
   原始相对变化/NULL 保留，不因负分母下相对变化符号推断升降，也不产生显著性或因果声明。
 - chart x=原月、series=第一原分类、facet=第二原分类（存在时）；通过原 Publisher，不能创造复合来源列或删维度。
 - execution_contract 仅字段/规则，不含行或预计算答案；FORMULA/REQUEST_DERIVED 不变为 Metric 或获得统计能力。
+- 分类同比仅接受本 Run QueryEvidence 中已封存的 `period_comparison` 列角色与 `BOTH_PERIOD_GROUPS`，且原 Metric 可加；
+  列名不得替代角色证明，无元数据/仅本期分类范围拒绝，普通比例面板保持原合同。
+  额外 `period_comparison` 对象逐月分别合计两期全部分类，任一贡献值 NULL 则该侧整体 NULL；保持源顺序逐项浮点相加。
+  总体同比 = 总差额 / 同期总额；仅两侧已知且同期总额 >0 的负同比参与最多3月排名，按同比升序、月份升序。
+  每个入选月保留全部组：组差额、来源已证同比、组差额/总体同期额的增速贡献（展示为百分点，非总损失占比）。
+  不平均组内比率，不用环比排名，不补零/补齐不足3月，不产生因果解释。
 
 - JSON 对象包装让受验统计量沿既有 narrative projection 进入摘要，原始 observations 仍只有计数；8KiB/field、24KiB 总预算不变，超限不伪造摘要。
+- 同比对象优先于辅助组统计进入摘要；对象省略不等于来源缺失，也不能从历史答案补算总体拆解。
 - 月度算术只在独立 Host Oracle 复用，不共享模型输出作为期望；真实 Arrow/value/source 比对后，完整结果/表/图必须精确相等。
   implementation digest 同时绑定 panel、共享月度 Oracle 模块和公共字节/ref closure；不得遗漏依赖代码或假设源码永远是 `.js`。
 - FULL 只覆盖固定描述性事实；`material_change=false`，缺失观测/零分母披露相对变化未定义；无因果或推断性授权。
@@ -34,6 +41,8 @@ method=`published-monthly-group-panel@1`，contract=`monthly-group-panel.result`
 原来源验证和月度日历错误仍允许传播其既有稳定拒绝码，不以 fallback 放行。
 Oracle 内容漂移 → `MONTHLY_PANEL_ORACLE_{RESULT|TABLE|CHART}_MISMATCH`；来源/字节/节点/合同漂移 → 既有 Arrow 拒绝或
 `MONTHLY_PANEL_ORACLE_*_INVALID`；有限输入运算溢出仍拒绝 `NUMERIC_RANGE_INVALID`。
+同比范围/角色缺失 → `MONTHLY_PANEL_COMPARISON_AUTHORITY_INVALID`；非可加 Metric → 原 authority 拒绝；
+独立同比算术非法值或溢出 → `MONTHLY_PANEL_COMPARISON_{VALUE|NUMERIC_RANGE}_INVALID`。
 生产方法/skill/contract 必须 exact，缺执行规则或未注册 Oracle 拒绝；不回退其他叶子。
 
 ### 5. Good / Base / Bad Cases
@@ -49,6 +58,8 @@ DATE/DATETIME、1/2 分类×比例角色、原 nullable/NULL、顺序/别名、�
 Oracle 正例使用手算期望；重封 hash 的数值/排名/组/NULL/反向变化对/表图漂移和额外因果事实拒绝；真实 Arrow 数值漂移拒绝。
 零/负/缺失端点、跨 NULL、有限数值溢出；真实投影保留全表和分面，摘要保留受验统计对象；生产 shape 选择不依赖问题文字。
 Schema-valid unit Sandbox receipt 是测试替身，不是生产执行或隔离认证。
+同比手算总体排名（区别于分类均值/环比）、缺失与零/负基数、贡献分母、并列月份与不足3月、有限溢出；
+真实 Arrow/生产 Oracle 接线下重封 hash 的总体/排名/贡献/漏组/漏对象/错基准均拒绝；四分类对象在既有摘要预算内保留。
 
 ### 7. Wrong vs Correct
 

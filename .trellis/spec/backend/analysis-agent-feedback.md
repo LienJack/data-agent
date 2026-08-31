@@ -23,6 +23,8 @@
 - 缺失按字段读取：变化NULL不代表两个端点NULL，首端NULL不代表末端NULL；0是观测值。
   `RELATIVE_DELTA_UNDEFINED`是结果级限制，不能据此反推所有measure；被摘要省略不等于源值缺失。
 - 数值Oracle成功不是自然语言正确性证明；真实业务复核仍可在Run SUCCEEDED后记录独立FAIL，不能改写原Run。
+- `largest_drops` 仅原序列相邻月变化，不能称同比；组统计不能称整体。分类同比只依据受验 `period_comparison` 的
+  `TOTAL_YOY_RATE/BOTH_PERIOD_GROUPS`；增速贡献按百分点展示，不称损失占比。对象缺失/摘要省略须披露不能建立该拆解。
 
 ## 4. Validation & Error Matrix
 

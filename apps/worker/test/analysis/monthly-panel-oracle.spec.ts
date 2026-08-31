@@ -25,7 +25,7 @@ import {
   comparisonId,
   comparisonRef,
 } from "./support/monthly-comparison-fixture.js";
-import { monthlyPanelFixture } from "./support/monthly-panel-fixture.js";
+import { monthlyPanelFixture, monthlyPeriodPanelFixture } from "./support/monthly-panel-fixture.js";
 
 function output(
   name: string,
@@ -53,8 +53,12 @@ type OracleInput = {
   >[0][K];
 };
 
-async function fixture(two = true, derived = true) {
-  const source = await monthlyPanelFixture(two, derived);
+async function fixture(two = true, derived = true, yoy = false) {
+  const source = yoy ? await monthlyPeriodPanelFixture() : await monthlyPanelFixture(two, derived);
+  const revenueLast = yoy ? 10 : 20;
+  const rateLast = yoy ? -0.5 : derived ? 0 : 1;
+  const rateFirst = derived ? 3 : 4;
+  const rateDelta = rateLast - rateFirst;
   const draft = structuredClone(source.document);
   if (draft.projection.kind !== "TABLE" || draft.provenance?.kind !== "GOVERNED_QUERY_RESULT")
     throw new Error("TEST_QUERY_REQUIRED");
@@ -66,8 +70,8 @@ async function fixture(two = true, derived = true) {
     return {
       ...row,
       spend: (missing ? 0 : last ? 20 : 10) * factor,
-      revenue: (missing ? 0 : last ? 20 : 40) * factor,
-      return_rate: missing ? null : (last ? 1 : 4) - (derived ? 1 : 0),
+      revenue: (missing ? 0 : last ? revenueLast : 40) * factor,
+      return_rate: missing ? null : last ? rateLast : rateFirst,
     };
   });
   const document = await buildProductTeamArtifactDocument(draft);
@@ -87,8 +91,6 @@ async function fixture(two = true, derived = true) {
     { group: { channel: "App", ...(two ? { audience: "新客" } : {}) }, factor: 3 },
     ...(two ? [{ group: { channel: "App", audience: "老客" }, factor: 4 }] : []),
   ];
-  const rateFirst = derived ? 3 : 4;
-  const rateLast = derived ? 0 : 1;
   const common = {
     observed_count: 12,
     missing_count: 0,
@@ -126,12 +128,12 @@ async function fixture(two = true, derived = true) {
       source_column: "revenue",
       minimum: 0,
       maximum: 40 * f,
-      lowest: [point(3, 0), point(12, 20 * f), point(1, 40 * f)],
+      lowest: [point(3, 0), point(12, revenueLast * f), point(1, 40 * f)],
       highest: [point(1, 40 * f), point(2, 40 * f), point(4, 40 * f)],
       first_value: 40 * f,
-      last_value: 20 * f,
-      absolute_change: -20 * f,
-      relative_change: -0.5,
+      last_value: revenueLast * f,
+      absolute_change: (revenueLast - 40) * f,
+      relative_change: (revenueLast - 40) / 40,
       largest_drops: [
         {
           from_period: period(2),
@@ -142,8 +144,8 @@ async function fixture(two = true, derived = true) {
         {
           from_period: period(11),
           to_period: period(12),
-          absolute_change: -20 * f,
-          relative_change: -0.5,
+          absolute_change: (revenueLast - 40) * f,
+          relative_change: (revenueLast - 40) / 40,
         },
       ],
     })),
@@ -159,14 +161,14 @@ async function fixture(two = true, derived = true) {
       highest: [point(1, rateFirst), point(2, rateFirst), point(4, rateFirst)],
       first_value: rateFirst,
       last_value: rateLast,
-      absolute_change: -3,
-      relative_change: -3 / rateFirst,
+      absolute_change: rateDelta,
+      relative_change: rateDelta / rateFirst,
       largest_drops: [
         {
           from_period: period(11),
           to_period: period(12),
-          absolute_change: -3,
-          relative_change: -3 / rateFirst,
+          absolute_change: rateDelta,
+          relative_change: rateDelta / rateFirst,
         },
       ],
     })),
@@ -178,9 +180,9 @@ async function fixture(two = true, derived = true) {
         from_period: period(1),
         to_period: period(12),
         increasing_absolute_change: 10 * f,
-        decreasing_absolute_change: -20 * f,
+        decreasing_absolute_change: (revenueLast - 40) * f,
         increasing_relative_change: 1,
-        decreasing_relative_change: -0.5,
+        decreasing_relative_change: (revenueLast - 40) / 40,
       },
       {
         group,
@@ -189,9 +191,9 @@ async function fixture(two = true, derived = true) {
         from_period: period(1),
         to_period: period(12),
         increasing_absolute_change: 10 * f,
-        decreasing_absolute_change: -3,
+        decreasing_absolute_change: rateDelta,
         increasing_relative_change: 1,
-        decreasing_relative_change: -3 / rateFirst,
+        decreasing_relative_change: rateDelta / rateFirst,
       },
     ]),
   };
@@ -201,6 +203,51 @@ async function fixture(two = true, derived = true) {
     measure_2: { groups: rawData.measure_2 },
     measure_3: { groups: rawData.measure_3 },
     opposed_changes: { pairs: rawData.opposed_changes },
+    ...(yoy
+      ? {
+          period_comparison: {
+            comparison_kind: "YEAR_OVER_YEAR",
+            group_coverage: "BOTH_PERIOD_GROUPS",
+            ranking_basis: "TOTAL_YOY_RATE",
+            months: Array.from({ length: 12 }, (_, i) => ({
+              period: period(i + 1),
+              current_value: i === 2 ? 0 : i === 11 ? 40 : 160,
+              comparison_value: i === 2 ? 0 : i === 11 ? 80 : 40,
+              absolute_change: i === 2 ? 0 : i === 11 ? -40 : 120,
+              yoy_rate: i === 2 ? null : i === 11 ? -0.5 : 3,
+              ranking_eligible: i !== 2,
+            })),
+            largest_declines: [
+              {
+                period: period(12),
+                current_value: 40,
+                comparison_value: 80,
+                absolute_change: -40,
+                yoy_rate: -0.5,
+                ranking_eligible: true,
+                groups: [
+                  {
+                    group: { channel: "Email" },
+                    current_value: 10,
+                    comparison_value: 20,
+                    absolute_change: -10,
+                    yoy_rate: -0.5,
+                    contribution_to_total_growth: -0.125,
+                  },
+                  {
+                    group: { channel: "App" },
+                    current_value: 30,
+                    comparison_value: 60,
+                    absolute_change: -30,
+                    yoy_rate: -0.5,
+                    contribution_to_total_growth: -0.375,
+                  },
+                ],
+              },
+            ],
+          },
+        }
+      : {}),
   };
   const contract = plan.result_contract;
   const tableContract = contract.tables[0];
@@ -361,6 +408,58 @@ async function fixture(two = true, derived = true) {
 }
 
 describe("independent monthly panel oracle", () => {
+  it("verifies complete overall YoY and category contributions through the production oracle and narrative projection", async () => {
+    const test = await fixture(false, true, true);
+    const method = {
+      method_id: MONTHLY_PANEL_METHOD_ID,
+      skill_id: "open-python-analysis@1" as const,
+      result_contract: test.plan.result_contract,
+      required_operator_obligations: [],
+      execution_contract: test.plan.execution_contract,
+    };
+    const verdict = await productionGovernedAnalysisRuntimeInternals
+      .oracleForMethods(test.source.context, [method])
+      .evaluate(test.input);
+    expect(verdict.oracle_receipt).toMatchObject({ verdict: "PASS" });
+    expect(test.plan.result_contract.metric_bindings).toHaveLength(1);
+    expect(buildAnalysisNarrativeProjection(test.result).fields.period_comparison).toEqual(
+      test.result.data.period_comparison,
+    );
+    expect(test.result.data.period_comparison?.months[2]).toMatchObject({
+      yoy_rate: null,
+      ranking_eligible: false,
+    });
+    expect(test.result.data.period_comparison?.largest_declines).toHaveLength(1);
+  });
+  it.each(["total", "ranking", "contribution", "group", "omit", "basis"])(
+    "rejects a rehashed YoY %s claim",
+    async (kind) => {
+      const test = await fixture(false, true, true);
+      const comparison = test.result.data.period_comparison;
+      const month = comparison?.months[0],
+        decline = comparison?.largest_declines[0],
+        group = decline?.groups[0];
+      if (!comparison || !month || !decline || !group) throw new Error("TEST_COMPARISON_REQUIRED");
+      if (kind === "total") month.current_value += 1;
+      if (kind === "ranking") decline.period = period(2);
+      if (kind === "contribution") group.contribution_to_total_growth = -0.25;
+      if (kind === "group") decline.groups.pop();
+      if (kind === "basis") comparison.ranking_basis = "GROUP_MOM";
+      if (kind === "omit") delete test.result.data.period_comparison;
+      test.input.sandbox_outputs = test.input.sandbox_outputs.map((original, i) =>
+        i === 0
+          ? output(original.artifact_name, original.artifact_kind, 60, test.result)
+          : original,
+      );
+      test.input.sandbox_receipt = {
+        ...test.input.sandbox_receipt,
+        outputs: test.input.sandbox_outputs.map(({ content: _content, ...rest }) => rest),
+      };
+      await expect(
+        createMonthlyPanelOracle(test.source.context).evaluate(test.input),
+      ).rejects.toThrow("MONTHLY_PANEL_ORACLE_RESULT_MISMATCH");
+    },
+  );
   it("selects only the exact registered production oracle", async () => {
     const test = await fixture();
     const method = {

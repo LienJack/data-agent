@@ -6,7 +6,7 @@ import { buildAnalysisContext } from "@data-agent/contracts/context";
 import { describe, expect, it } from "vitest";
 import { compileMonthlyPanelPlan } from "../../src/analysis/monthly-panel-planning.js";
 import { comparisonHash } from "./support/monthly-comparison-fixture.js";
-import { monthlyPanelFixture } from "./support/monthly-panel-fixture.js";
+import { monthlyPanelFixture, monthlyPeriodPanelFixture } from "./support/monthly-panel-fixture.js";
 
 async function inputFor(two = true, derived = true, datetime = false) {
   const source = await monthlyPanelFixture(two, derived, datetime);
@@ -18,6 +18,55 @@ async function inputFor(two = true, derived = true, datetime = false) {
 }
 
 describe("source-bound monthly group panel plan", () => {
+  it("takes period roles from sealed proof metadata, not misleading output names", async () => {
+    const source = await monthlyPeriodPanelFixture();
+    const plan = await compileMonthlyPanelPlan({
+      context: source.context,
+      query_evidence_ref: source.reference,
+      query_evidence_document: source.document,
+    });
+    expect(plan.execution_contract.period_comparison).toEqual({
+      time_output: "month",
+      current_output: "revenue",
+      comparison_output: "spend",
+      category_output: "channel",
+      rate_output: "return_rate",
+      group_coverage: "BOTH_PERIOD_GROUPS",
+    });
+    expect(plan.result_contract.result_fields.map(({ field }) => field)).toContain(
+      "period_comparison",
+    );
+    expect(JSON.stringify(plan.execution_contract)).not.toContain('"largest_declines":[');
+  });
+  it.each(["missing-metadata", "current-only", "nonadditive"])(
+    "rejects incomplete overall comparison authority: %s",
+    async (kind) => {
+      const source = await monthlyPeriodPanelFixture();
+      const draft = structuredClone(source.document);
+      if (draft.provenance?.kind !== "GOVERNED_QUERY_RESULT")
+        throw new Error("TEST_QUERY_REQUIRED");
+      const { binding_hash: _hash, ...material } = draft.provenance.semantic_binding;
+      const rate = material.columns.find((column) => column.request_derivation);
+      if (!rate?.request_derivation?.period_comparison) throw new Error("TEST_RATE_REQUIRED");
+      if (kind === "missing-metadata") delete rate.request_derivation.period_comparison;
+      if (kind === "current-only" && rate.request_derivation.period_comparison)
+        rate.request_derivation.period_comparison.group_coverage = "CURRENT_PERIOD_GROUPS";
+      draft.provenance.semantic_binding = await buildQueryEvidenceSemanticBinding(material);
+      const document = await buildProductTeamArtifactDocument(draft);
+      if (document.artifact_ref.artifact_type !== "QueryEvidence")
+        throw new Error("TEST_QUERY_REQUIRED");
+      const { context_hash: _contextHash, ...contextMaterial } = structuredClone(source.context);
+      if (kind === "nonadditive")
+        for (const metric of contextMaterial.metrics) metric.additivity = "non-additive";
+      await expect(
+        compileMonthlyPanelPlan({
+          context: await buildAnalysisContext(contextMaterial),
+          query_evidence_ref: document.artifact_ref,
+          query_evidence_document: document,
+        }),
+      ).rejects.toThrow(/MONTHLY_PANEL_(COMPARISON_)?AUTHORITY_INVALID/);
+    },
+  );
   it.each(["row-order", "column-order", "aliases", "tuple-separator", "32-groups", "16-facets"])(
     "preserves complete source identity at %s",
     async (variant) => {

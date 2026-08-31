@@ -12,6 +12,11 @@ import {
 } from "./analysis-result-source-authority.js";
 import { buildDescriptiveResultContract } from "./descriptive-result-contract.js";
 import { calendarDate, monthlyComparisonMeasureSchema } from "./monthly-comparison-planning.js";
+import {
+  PANEL_PERIOD_COMPARISON_RULES,
+  panelPeriodComparisonSchema,
+  resolvePanelPeriodComparison,
+} from "./monthly-panel-period-comparison.js";
 
 export const MONTHLY_PANEL_METHOD_ID = "published-monthly-group-panel@1";
 export const MONTHLY_PANEL_CONTRACT_ID = "monthly-group-panel.result";
@@ -223,13 +228,20 @@ export async function compileMonthlyPanelPlan(input: MonthlyPanelInput) {
     field: `measure_${index + 1}`,
     source_column: column.output_name,
   }));
+  const comparison = resolvePanelPeriodComparison(binding);
+  if (comparison && metrics.some((metric) => metric.additivity !== "additive"))
+    return fail("AUTHORITY");
   const contract = await buildDescriptiveResultContract({
     context,
     binding,
     metrics,
     columns,
     contract_id: MONTHLY_PANEL_CONTRACT_ID,
-    derived_fields: [...measureFields.map(({ field }) => field), "opposed_changes"],
+    derived_fields: [
+      ...measureFields.map(({ field }) => field),
+      "opposed_changes",
+      ...(comparison ? ["period_comparison"] : []),
+    ],
     grain: {
       dimension_ids: dimensionIds,
       time_dimension_id: time.semantic_object_id,
@@ -280,6 +292,12 @@ export async function compileMonthlyPanelPlan(input: MonthlyPanelInput) {
       measure_fields: measureFields,
       measure_schema: z.toJSONSchema(monthlyPanelMeasureSchema),
       opposed_changes_schema: z.toJSONSchema(monthlyPanelOpposedChangesSchema),
+      ...(comparison
+        ? {
+            period_comparison: comparison,
+            period_comparison_schema: z.toJSONSchema(panelPeriodComparisonSchema),
+          }
+        : {}),
       chart_bindings: {
         x_field: time.output_name,
         y_fields: measures.map((column) => column.output_name),
@@ -289,6 +307,7 @@ export async function compileMonthlyPanelPlan(input: MonthlyPanelInput) {
         ...(facet ? { facet_field: facet.output_name } : {}),
       },
       rules: [
+        ...(comparison ? PANEL_PERIOD_COMPARISON_RULES : []),
         "observations contains every source row and exactly its source columns/values/NULLs, stably sorted by calendar month. DATE retains its date; DATETIME becomes calendar date in the explicit timezone. Never merge tuples, invent composite columns, drop rows, fill NULL or average ratios.",
         "Each measure field is an object with only groups, an array in group first-appearance order in observations. Each item has group (all category_columns and exact values), source_column and the supplied monthly measure fields. Compute each group and measure independently from its own twelve months. observed_count excludes NULL; missing_count counts NULL; minimum/maximum use observed values. lowest/highest contain up to three {period,value}, ordered by value ascending/descending then period ascending.",
         "first_period/last_period and first_value/last_value use the original window endpoints, retaining NULL. absolute_change=last-first, NULL if either is missing; relative_change=absolute_change/first, NULL if missing or zero denominator. Never move endpoints. largest_drops contains up to three strictly negative adjacent-month changes, sorted by absolute_change then to_period. NULL breaks adjacency; relative_change is NULL for zero previous value.",

@@ -1821,6 +1821,10 @@ Diagnostic/Q1/C1任一正式首次失败必须写既有 authority支持的 immut
     两个合法RED→PASS、错误合并/补零/维度FULL等反例、元数据漂移及Worker原firewall接线验证；NAS无网络tmpfs合成执行
     证明确实保留PRIOR_ONLY=200且current=NULL，随后精确删除纯测试实例。未调用模型、未写Falcon authority。
     下游同比排名/贡献Oracle尚未完成；见 [完整分类比较](research/complete-period-group-proof.md)。
+  - [x] 分析端完整性：原月度分群方法读取封存角色与BOTH范围，独立计算总体同比排名和分类增速贡献，
+    不使用组均值/环比/旧Run答案；缺失、零/负基数及不足3月显式保留。结果对象进入原Publisher及FULL Oracle，摘要优先保留。
+    手算与真实Arrow/生产Oracle接线、重封hash的错误总体/排名/贡献等拒绝，8文件204项与Worker typecheck通过。
+    仅离线证明，尚未新模型业务验收；见 [同比事实闭合](research/complete-period-analysis-proof.md)。
   再继续上述 F5 / F7；不另跑 child 历史六问，也不复用 core4 PASS。
 
 **F6 READY 轮次恢复边界（2026-08-30，历史）**

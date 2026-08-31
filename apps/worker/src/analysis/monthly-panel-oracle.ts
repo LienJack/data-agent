@@ -14,6 +14,10 @@ import {
   MONTHLY_COMPARISON_ORACLE_MODULE_URL,
 } from "./monthly-comparison-oracle.js";
 import {
+  evaluatePanelPeriodComparison,
+  PANEL_PERIOD_COMPARISON_MODULE_URL,
+} from "./monthly-panel-period-comparison.js";
+import {
   compileMonthlyPanelPlan,
   MONTHLY_PANEL_METHOD_ID,
   type MonthlyPanelPlan,
@@ -25,6 +29,7 @@ const IMPLEMENTATION_ID = "monthly-group-panel-oracle@1.0.0";
 const { fail, same, sameScopeRun, outputOf, readJson, implementationCodeDigest } =
   createAnalysisOracleOutputClosure("MONTHLY_PANEL_ORACLE", import.meta.url, [
     MONTHLY_COMPARISON_ORACLE_MODULE_URL,
+    PANEL_PERIOD_COMPARISON_MODULE_URL,
   ]);
 
 /** Only accepted source rows enter the arithmetic. Model results never supply expected values. */
@@ -69,6 +74,14 @@ function expectedPanelData(plan: MonthlyPanelPlan) {
       observations: plan.shape.ordered_rows,
       ...Object.fromEntries(fields),
       opposed_changes: monthlyPanelOpposedChangesSchema.parse({ pairs }),
+      ...(plan.execution_contract.period_comparison
+        ? {
+            period_comparison: evaluatePanelPeriodComparison(
+              plan.execution_contract.period_comparison,
+              plan.shape.ordered_rows,
+            ),
+          }
+        : {}),
       claim_strength: "DESCRIPTIVE",
     },
     measures: fields.flatMap(([, measure]) => measure.groups),

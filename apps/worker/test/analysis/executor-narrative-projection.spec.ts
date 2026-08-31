@@ -60,6 +60,12 @@ describe("analysis executor narrative projection", () => {
     expect(messages[0]?.content).toContain("Answer the objective");
     expect(messages[0]?.content).toContain("not evidence");
     expect(messages[0]?.content).toContain("Do not enumerate every auxiliary series statistic");
+    expect(messages[0]?.content).toContain(
+      "Generic largest_drops describes adjacent-month changes",
+    );
+    expect(messages[0]?.content).toContain("TOTAL_YOY_RATE across BOTH_PERIOD_GROUPS");
+    expect(messages[0]?.content).toContain("percentage points, not a percent share of the loss");
+    expect(messages[0]?.content).toContain("If period_comparison is absent or omitted");
   });
 
   it("keeps asymmetric null endpoints and zero denominators explicit in final-stage evidence", () => {
