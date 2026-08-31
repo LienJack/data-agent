@@ -21,10 +21,18 @@ export const panelReferenceVariants = [
   "floating",
   "two-months",
   "two-months-datetime",
+  "two-months-counterexample",
+  "two-months-null",
+  "two-months-zero",
+  "two-months-negative",
+  "two-months-no-match",
+  "two-months-aliases",
+  "two-months-reverse-order",
+  "two-months-floating",
 ] as const;
 
 export async function panelReferenceCase(variant: (typeof panelReferenceVariants)[number]) {
-  const twoMonths = variant === "two-months" || variant === "two-months-datetime";
+  const twoMonths = variant.startsWith("two-months");
   const period = !twoMonths && !["base", "two-categories", "datetime"].includes(variant);
   const source = period
     ? await monthlyPeriodPanelFixture()
@@ -38,6 +46,27 @@ export async function panelReferenceCase(variant: (typeof panelReferenceVariants
   if (draft.projection.kind !== "TABLE" || draft.provenance?.kind !== "GOVERNED_QUERY_RESULT")
     throw new Error("TEST_QUERY_REQUIRED");
   const { binding_hash: _hash, ...binding } = draft.provenance.semantic_binding;
+  if (twoMonths) {
+    for (const [index, row] of draft.projection.rows.entries()) {
+      const before = row.month === "2024-01-01";
+      if (variant === "two-months-counterexample" && row.channel === "Email") {
+        row.spend = row.audience === "新客" ? (before ? 10 : 20) : before ? 90 : 180;
+        row.revenue = row.audience === "新客" ? 100 : before ? 90 : 198;
+      }
+      if (variant === "two-months-null" && !before && row.audience === "新客") row.revenue = null;
+      if (variant === "two-months-zero" && before) row.spend = 0;
+      if (variant === "two-months-negative" && before) row.spend = -10;
+      if (variant === "two-months-no-match") row.revenue = Number(row.spend) * 2;
+      if (variant === "two-months-floating") {
+        row.spend = index % 2 === 0 ? 0.1 : 1.23;
+        row.revenue = before ? 0.13 : 0.04;
+      }
+      row.return_rate =
+        row.revenue === null || row.spend === 0
+          ? null
+          : (Number(row.revenue) - Number(row.spend)) / Number(row.spend);
+    }
+  }
   if (variant === "period-datetime") {
     for (const column of binding.columns)
       if (column.output_name === "month") column.logical_type = "DATETIME";
@@ -63,7 +92,7 @@ export async function panelReferenceCase(variant: (typeof panelReferenceVariants
           : (Number(row.revenue) - Number(row.spend)) / Number(row.spend);
     }
   }
-  if (variant === "aliases") {
+  if (variant === "aliases" || variant === "two-months-aliases") {
     const rename = (key: string) => `bound_${key}`;
     for (const column of binding.columns) {
       column.output_name = rename(column.output_name);
@@ -83,7 +112,7 @@ export async function panelReferenceCase(variant: (typeof panelReferenceVariants
       Object.fromEntries(Object.entries(row).map(([key, value]) => [rename(key), value])),
     );
   }
-  if (variant === "reverse-order") {
+  if (variant === "reverse-order" || variant === "two-months-reverse-order") {
     binding.columns.reverse();
     draft.projection.columns.reverse();
     draft.projection.rows.reverse();

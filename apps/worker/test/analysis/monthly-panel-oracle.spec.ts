@@ -3,6 +3,7 @@ import { buildProductTeamArtifactDocument } from "@data-agent/contracts/artifact
 import { analysisSandboxExecutionReceiptSchema } from "@data-agent/contracts/ports";
 import { STATISTICAL_OPERATOR_REGISTRY_DIGEST } from "@data-agent/contracts/statistical-operators";
 import { describe, expect, it } from "vitest";
+import { resolveAnalysisEvidenceTimeWindow } from "../../src/analysis/analysis-evidence-time-window.js";
 import {
   type AnalysisBoundOutput,
   type AnalysisOraclePort,
@@ -408,6 +409,120 @@ async function fixture(two = true, derived = true, yoy = false) {
 }
 
 describe("independent monthly panel oracle", () => {
+  it.each(["valid", "parent", "child", "missing", "arrow"])(
+    "verifies two-month rollup through full production closure: %s",
+    async (kind) => {
+      const base = await fixture();
+      const source = await monthlyPanelFixture(true, true, false, 2);
+      const plan = await compileMonthlyPanelPlan({
+        context: source.context,
+        query_evidence_ref: source.reference,
+        query_evidence_document: source.document,
+      });
+      if (source.document.projection.kind !== "TABLE") throw new Error("TEST_TABLE_REQUIRED");
+      // Plumbing fixture; arithmetic is separately tested with hand-calculated counterexamples.
+      const data = monthlyPanelOracleInternals.expectedPanelData(plan).data;
+      const rollup = data.ratio_rollup;
+      if (!rollup?.axes[0]?.groups[0]) throw new Error("TEST_ROLLUP_REQUIRED");
+      if (kind === "parent") rollup.axes[0].groups[0].to.ratio = 1;
+      if (kind === "child") rollup.axes[0].groups[0].children.pop();
+      if (kind === "missing") delete data.ratio_rollup;
+      const contract = plan.result_contract;
+      const result = {
+        ...base.result,
+        contract_hash: contract.contract_hash,
+        metrics: contract.metric_bindings,
+        dimensions: contract.dimension_bindings,
+        grain: contract.grain,
+        lineage: contract.lineage,
+        data,
+      };
+      const table = {
+        ...base.table,
+        rows: data.observations,
+        total_rows: data.observations.length,
+      };
+      const chart = {
+        ...base.chart,
+        dataset: {
+          table_id: table.table_id,
+          columns: table.columns,
+          rows: table.rows,
+          total_rows: table.total_rows,
+        },
+      };
+      const projection = structuredClone(source.document.projection);
+      if (kind === "arrow" && projection.rows[0]) projection.rows[0].spend = 999;
+      const content = productTeamGovernedQueryInternals.materializeProductTeamArrow(
+        projection,
+        source.binding.columns,
+      );
+      const inputRef = {
+        ...comparisonRef("SensitiveExecutionArtifact", 50),
+        content_hash: `sha256:${createHash("sha256").update(content).digest("hex")}` as const,
+      };
+      const outputs = [
+        output("result", "RESULT", 60, result),
+        output(`table:${table.table_id}`, "TABLE", 61, table),
+        output(`chart:${chart.chart_id}`, "CHART", 62, chart),
+      ];
+      const prior = base.input.governed_inputs[0];
+      if (!prior) throw new Error("TEST_INPUT_REQUIRED");
+      const governed = {
+        ...prior,
+        query_evidence_ref: source.reference,
+        query_evidence_document: source.document,
+        content,
+        input_ref: inputRef,
+      };
+      const input: OracleInput = {
+        ...base.input,
+        node: {
+          ...base.input.node,
+          result_contract: contract,
+          time_window: resolveAnalysisEvidenceTimeWindow(source.binding, source.context),
+        },
+        governed_inputs: [governed],
+        sandbox_outputs: outputs,
+        sandbox_receipt: analysisSandboxExecutionReceiptSchema.parse({
+          ...base.input.sandbox_receipt,
+          result_contract_hash: contract.contract_hash,
+          inputs: [
+            {
+              name: "query_evidence",
+              format: "ARROW",
+              query_evidence_ref: source.reference,
+              input_ref: inputRef,
+              materialization_receipt_ref: governed.materialization_receipt_ref,
+              content_sha256: inputRef.content_hash,
+              bytes: content.byteLength,
+            },
+          ],
+          outputs: outputs.map(({ content: _content, ...rest }) => rest),
+        }),
+      };
+      const verdict = productionGovernedAnalysisRuntimeInternals
+        .oracleForMethods(source.context, [
+          {
+            method_id: MONTHLY_PANEL_METHOD_ID,
+            skill_id: "open-python-analysis@1",
+            result_contract: contract,
+            required_operator_obligations: [],
+            execution_contract: plan.execution_contract,
+          },
+        ])
+        .evaluate(input);
+      if (kind === "valid") {
+        await expect(verdict).resolves.toMatchObject({
+          sample_size: 8,
+          oracle_receipt: { verdict: "PASS" },
+        });
+        expect(buildAnalysisNarrativeProjection(result).fields.ratio_rollup).toEqual(
+          data.ratio_rollup,
+        );
+      } else await expect(verdict).rejects.toThrow();
+    },
+  );
   it("verifies complete overall YoY and category contributions through the production oracle and narrative projection", async () => {
     const test = await fixture(false, true, true);
     const method = {

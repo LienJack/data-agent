@@ -18,6 +18,7 @@ import {
   resolvePanelPeriodComparison,
 } from "./monthly-panel-period-comparison.js";
 import { compileMonthlyPanelPlan, MONTHLY_PANEL_CONTRACT_ID } from "./monthly-panel-planning.js";
+import { evaluatePanelRatioRollup, panelRatioRollupSchema } from "./monthly-panel-ratio-rollup.js";
 
 const resultSchema = z.object({
   schema_version: z.literal("analysis-published-result@1.0.0"),
@@ -40,6 +41,59 @@ const same = (left: unknown, right: unknown) => {
     throw new TypeError("ANALYSIS_FINAL_SOURCE_MISMATCH");
   }
 };
+
+function boundedSummary(lines: string[]) {
+  const summary = lines.join("\n\n");
+  if (summary.length > 6_000 || new TextEncoder().encode(summary).byteLength > 18_000) {
+    throw new TypeError("ANALYSIS_FINAL_SUMMARY_BUDGET_EXCEEDED");
+  }
+  return summary;
+}
+
+function ratioSummary(
+  rollup: z.infer<typeof panelRatioRollupSchema>,
+  columns: readonly { key: string; label: string }[],
+  limitations: readonly string[],
+) {
+  const label = (key: string) =>
+    JSON.stringify(columns.find((column) => column.key === key)?.label ?? key);
+  const lines = [
+    `两期比较：${monthText(rollup.from_period)}为基期，${monthText(rollup.to_period)}为本期；仅比较这两个完整月，不代表持续趋势。`,
+    `${label(rollup.ratio_output)}按原值先聚合再计算：${rollup.numerator_adjustment === "SUBTRACT_DENOMINATOR" ? "（分子合计－分母合计）/分母合计" : "分子合计/分母合计"}；分子=${label(rollup.numerator_output)}，分母=${label(rollup.denominator_output)}。不平均细分组比率；缺失或零分母时未定义。`,
+  ];
+  const totals = (
+    row: Pick<
+      z.infer<typeof panelRatioRollupSchema>["axes"][number]["groups"][number],
+      "from" | "to" | "ratio_change"
+    >,
+  ) =>
+    `分母${numberText(row.from.denominator)}→${numberText(row.to.denominator)}；分子${numberText(row.from.numerator)}→${numberText(row.to.numerator)}；比率${rateText(row.from.ratio)}→${rateText(row.to.ratio)}（差额${rateText(row.ratio_change, "个百分点")}）`;
+  for (const axis of rollup.axes) {
+    const selected = axis.groups.filter((group) => group.selected);
+    lines.push(
+      `按${label(axis.dimension_output)}汇总筛选：两期分母均为正，分母增加且比率下降；符合条件${selected.length}组。${selected.length === 0 ? "没有符合条件的组，不改窗口寻找结果。" : "入选后保留其全部细分组，不对子组重复筛选。"}`,
+    );
+    for (const parent of axis.groups) {
+      lines.push(
+        `${JSON.stringify(parent.value)}：${totals(parent)}；${parent.selected ? "入选" : "未入选"}。`,
+      );
+      for (const child of parent.children) {
+        const groupName = Object.entries(child.group)
+          .map(([key, value]) => `${label(key)}=${JSON.stringify(value)}`)
+          .join("，");
+        lines.push(`细分[${groupName}]：${totals(child)}。`);
+      }
+    }
+  }
+  lines.push(
+    "上述数值保留源表单位，不推断具体币种。完整原始表与图保留未入选组，筛选结果以上层汇总为准。只有相关变化证据，不能证明原因；分组构成变化、分子与分母的变化、业务记录时点或确认滞后可作为待验证假设。下一步核对各细分组的业务明细、时间归属和确认周期，再决定是否调整资源配置，不能仅凭两个月断定应收缩或扩大。",
+  );
+  if (limitations.length)
+    lines.push(
+      `本轮限制标识：${limitations.join("、")}；按对应字段解释，不把局部缺失推成全表缺失。`,
+    );
+  return boundedSummary(lines);
+}
 
 /** Called after the stage's original FULL Oracle PASS. No question/name-based routing. */
 export async function buildVerifiedMonthlySummary(input: {
@@ -73,6 +127,26 @@ export async function buildVerifiedMonthlySummary(input: {
     contractId === MONTHLY_COMPARISON_CONTRACT_ID
       ? await compileMonthlyComparisonPlan(planningInput)
       : await compileMonthlyPanelPlan(planningInput);
+  if (
+    "ratio_rollup_mapping" in plan.execution_contract &&
+    plan.execution_contract.ratio_rollup_mapping
+  ) {
+    const result = resultSchema.parse(input.result_document);
+    same(result.contract_id, contractId);
+    same(result.contract_hash, input.result_contract.contract_hash);
+    same(result.contract_hash, plan.result_contract.contract_hash);
+    same(result.data.observations, plan.shape.ordered_rows);
+    same(result.data.claim_strength, "DESCRIPTIVE");
+    const rollup = panelRatioRollupSchema.parse(result.data.ratio_rollup);
+    same(
+      rollup,
+      evaluatePanelRatioRollup(
+        plan.execution_contract.ratio_rollup_mapping,
+        plan.shape.ordered_rows,
+      ),
+    );
+    return ratioSummary(rollup, plan.shape.columns, input.limitation_codes);
+  }
   const rates = plan.shape.binding.columns.filter(
     (column) =>
       column.request_derivation?.interpretation.operator.kind === "PERIOD_COMPARISON_RATE",
@@ -173,9 +247,5 @@ export async function buildVerifiedMonthlySummary(input: {
     lines.push(
       `本轮限制标识：${input.limitation_codes.join("、")}；限制按对应字段判断，不据此推断所有字段均缺失。`,
     );
-  const summary = lines.join("\n\n");
-  if (summary.length > 6_000 || new TextEncoder().encode(summary).byteLength > 18_000) {
-    throw new TypeError("ANALYSIS_FINAL_SUMMARY_BUDGET_EXCEEDED");
-  }
-  return summary;
+  return boundedSummary(lines);
 }

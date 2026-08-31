@@ -86,6 +86,7 @@ const FINAL_NARRATIVE_PRIORITY_FIELDS = [
   "claim_strength",
   "primary_reliable",
   "period_comparison",
+  "ratio_rollup",
   "observations",
   "worst_revenue_decline",
   "shapley_decomposition",

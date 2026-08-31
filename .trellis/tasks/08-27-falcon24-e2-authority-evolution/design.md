@@ -1784,3 +1784,8 @@ Python参考显式接收month_count，独立Host Oracle复用原月度算术；�
 分别汇总后重算比例；每个原分类轴都能提供上层对比，模型按已接受语义选择渠道轴，不以列名猜角色。
 先在渠道层筛选，再保留该渠道全部细分组；完整原表/图不删行，数字由独立Oracle核验，不能以组内opposed_changes代替。
 这一后续能力尚未因窗口支持而完成；新scratch运行须等其闭合，正式15题须先前向版本化门禁再执行。
+
+分层实现现已接入原@2 planner、Python参考、独立FULL Oracle、优先叙述投影及source-constrained FINAL。
+两分类轴均保留全部父组，只为入选父组展开所有子组，不以列顺序认定渠道；2月净比例角色来自sealed operator的唯一可加Metric列。
+保留原结果表/图，不裁掉未入选组；缺失/零/非正分母不强判有效下降。原窗口、来源、字节/回合预算不扩。
+当前仅离线与原Python镜像证明，非B3业务PASS；真实Root→Semantic→Text2SQL→Analysis协作仍待新构建验证。

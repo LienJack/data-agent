@@ -24,12 +24,17 @@ import {
   monthlyPanelMeasureSchema,
   monthlyPanelOpposedChangesSchema,
 } from "./monthly-panel-planning.js";
+import {
+  evaluatePanelRatioRollup,
+  PANEL_RATIO_ROLLUP_MODULE_URL,
+} from "./monthly-panel-ratio-rollup.js";
 
 const IMPLEMENTATION_ID = "monthly-group-panel-oracle@2.0.0";
 const { fail, same, sameScopeRun, outputOf, readJson, implementationCodeDigest } =
   createAnalysisOracleOutputClosure("MONTHLY_PANEL_ORACLE", import.meta.url, [
     MONTHLY_COMPARISON_ORACLE_MODULE_URL,
     PANEL_PERIOD_COMPARISON_MODULE_URL,
+    PANEL_RATIO_ROLLUP_MODULE_URL,
   ]);
 
 /** Only accepted source rows enter the arithmetic. Model results never supply expected values. */
@@ -74,6 +79,14 @@ function expectedPanelData(plan: MonthlyPanelPlan) {
       observations: plan.shape.ordered_rows,
       ...Object.fromEntries(fields),
       opposed_changes: monthlyPanelOpposedChangesSchema.parse({ pairs }),
+      ...(plan.execution_contract.ratio_rollup_mapping
+        ? {
+            ratio_rollup: evaluatePanelRatioRollup(
+              plan.execution_contract.ratio_rollup_mapping,
+              plan.shape.ordered_rows,
+            ),
+          }
+        : {}),
       ...(plan.execution_contract.period_comparison
         ? {
             period_comparison: evaluatePanelPeriodComparison(

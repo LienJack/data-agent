@@ -11,6 +11,7 @@ import {
 import type { GovernedAnalysisInput } from "../../src/analysis/governed-analysis-input.js";
 import { evaluateMonthlyMeasure } from "../../src/analysis/monthly-comparison-oracle.js";
 import { compileMonthlyComparisonPlan } from "../../src/analysis/monthly-comparison-planning.js";
+import { monthlyPanelOracleInternals } from "../../src/analysis/monthly-panel-oracle.js";
 import {
   evaluatePanelPeriodComparison,
   resolvePanelPeriodComparison,
@@ -18,7 +19,7 @@ import {
 import { compileMonthlyPanelPlan } from "../../src/analysis/monthly-panel-planning.js";
 import { buildVerifiedMonthlySummary } from "../../src/analysis/verified-monthly-summary.js";
 import { monthlyComparisonFixture } from "./support/monthly-comparison-fixture.js";
-import { monthlyPeriodPanelFixture } from "./support/monthly-panel-fixture.js";
+import { monthlyPanelFixture, monthlyPeriodPanelFixture } from "./support/monthly-panel-fixture.js";
 
 async function fixture(variant = "default") {
   const source = await monthlyComparisonFixture();
@@ -122,6 +123,54 @@ async function fixture(variant = "default") {
 }
 
 describe("verified monthly factual summary", () => {
+  it.each(["valid", "wrong-parent", "missing-child", "wrong-period"])(
+    "verifies two-month parent-first facts: %s",
+    async (kind) => {
+      const source = await monthlyPanelFixture(true, true, false, 2);
+      const plan = await compileMonthlyPanelPlan({
+        context: source.context,
+        query_evidence_ref: source.reference,
+        query_evidence_document: source.document,
+      });
+      const data = monthlyPanelOracleInternals.expectedPanelData(plan).data;
+      const rollup = data.ratio_rollup;
+      if (!rollup?.axes[0]?.groups[0]) throw new Error("TEST_ROLLUP_REQUIRED");
+      if (kind === "wrong-parent") rollup.axes[0].groups[0].selected = false;
+      if (kind === "missing-child") rollup.axes[0].groups[0].children.pop();
+      if (kind === "wrong-period") rollup.from_period = "2023-01-01";
+      const result = buildVerifiedMonthlySummary({
+        context: source.context,
+        run_id: source.reference.run_id,
+        result_contract: plan.result_contract,
+        governed_inputs: [
+          {
+            query_evidence_ref: source.reference,
+            query_evidence_document: source.document,
+          } as GovernedAnalysisInput,
+        ],
+        limitation_codes: [],
+        result_document: {
+          schema_version: "analysis-published-result@1.0.0",
+          contract_id: plan.result_contract.contract_id,
+          contract_hash: plan.result_contract.contract_hash,
+          data,
+        },
+      });
+      if (kind !== "valid") {
+        await expect(result).rejects.toThrow("ANALYSIS_FINAL_SOURCE_MISMATCH");
+        return;
+      }
+      const summary = await result;
+      expect(summary).toContain("2024-01为基期，2024-02为本期");
+      expect(summary).toContain(
+        '"Email"：分母300.00→330.00；分子600.00→615.00；比率100.00%→86.36%',
+      );
+      expect(summary).toContain("不对子组重复筛选");
+      expect(summary).toContain("待验证假设");
+      expect(summary).toContain('"App"：分母240.00→240.00');
+      expect(summary?.length).toBeLessThanOrEqual(6000);
+    },
+  );
   it("uses accepted overall YoY and contribution roles even when source aliases resemble spend/revenue", async () => {
     const source = await monthlyPeriodPanelFixture();
     const draft = structuredClone(source.document);

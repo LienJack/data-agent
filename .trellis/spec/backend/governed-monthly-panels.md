@@ -43,6 +43,23 @@ method=`published-monthly-group-panel@2`，contract=`monthly-group-panel.result`
   implementation digest 同时绑定 panel、共享月度 Oracle 模块和公共字节/ref closure；不得遗漏依赖代码或假设源码永远是 `.js`。
 - FULL 只覆盖固定描述性事实；`material_change=false`，缺失观测/零分母披露相对变化未定义；无因果或推断性授权。
 
+### 两期分层比例比较（@2）
+
+- 仅2月、2个原分类、唯一request-only `AGGREGATE_RATIO`触发`ratio_rollup`；12月和无该推导的面板不增加此字段。
+  分子/分母按已封存operator的Metric ID映射唯一原Metric结果列，且两者可加；缺失/重复来源或非可加Metric拒绝。
+  不以列名/题号/关键词、已发布ROAS或旧Run比率猜映射；原来源与适用性重验仍先于本编译。
+- 两个原分类轴分别提供上层汇总，不由Host猜哪个叫渠道。每个值/每期按源顺序独立求分子/分母总和后按sealed adjustment相除；
+  任一贡献NULL则该侧总和NULL，零分母比率NULL。筛选只在父组：两期分母均正、分母差额>0且比率差额<0。
+  保留全部父组及selected标记；仅入选父组展开全部原子tuple，子组不重复套筛选；原表/图完整保留未入选行。
+- Python参考接收仅含角色的`ratio_rollup_mapping`，不接受预计算答案；仍原Cell policy/独立Sandbox/Publisher/FULL Oracle。
+  Host独立重算完整结构，implementation digest包含分层算术模块；不存在新增发布权威或自由执行路径。
+- 原叙述投影优先保留ratio_rollup，8KiB字段/24KiB总预算不扩大；FINAL还需从current-Run源重验映射/全部数值与组集合，
+  沿原source-constrained summary输出两期事实、父组入选/未入选和完整子组。6,000字/18,000字节不扩大；超限失败，不裁掉证据。
+  原因和建议只作明确待验证的通用假设，不能把两期差异当持续趋势或因果。金额/数值不推断具体币种。
+- 必测手算比例均值反例、入选父组含回报上升子组、0/负/NULL分母、空集合、别名/tuple、有限输入溢出；
+  生产Oracle重封hash后改父组/删子组/删结果/Arrow漂移均拒绝，FINAL改期间/父组/漏子组拒绝。
+  原Agent Python镜像与operator Cell policy须覆盖两月DATE/DATETIME、NULL/零/负/空集合、别名/源序与浮点，独立Host零差异。
+
 ### 4. Validation & Error Matrix
 
 来源/能力/维度/公式/单位/粒度/时区漂移 → `MONTHLY_PANEL_AUTHORITY_INVALID`；非法形态或分面上限 → `MONTHLY_PANEL_SHAPE_INVALID`；

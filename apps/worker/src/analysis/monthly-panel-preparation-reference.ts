@@ -1,6 +1,10 @@
+import { PANEL_RATIO_PREPARATION_REFERENCE } from "./monthly-panel-ratio-reference.js";
+
 /** Data-free reference for the model's Cell, not executed by the Host or used by the Oracle. */
 export const MONTHLY_PANEL_PREPARATION_REFERENCE = `import math
 import pandas as pd
+
+${PANEL_RATIO_PREPARATION_REFERENCE}
 
 def prepare_monthly_panel(input_frame, contract):
     time_key = contract['time_column']
@@ -72,6 +76,8 @@ def prepare_monthly_panel(input_frame, contract):
                                   'increasing_absolute_change': up['absolute_change'], 'decreasing_absolute_change': down['absolute_change'],
                                   'increasing_relative_change': up['relative_change'], 'decreasing_relative_change': down['relative_change']})
     result['opposed_changes'] = {'pairs': pairs}
+    if 'ratio_rollup_mapping' in contract:
+        result['ratio_rollup'] = prepare_ratio_rollup(observations, contract['ratio_rollup_mapping'])
 
     def total(rows, column):
         value = 0.0

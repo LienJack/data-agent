@@ -1935,6 +1935,11 @@ Diagnostic/Q1/C1任一正式首次失败必须写既有 authority支持的 immut
 > model_calls=0、authority_writes=0；审计`monthly-panel-two-month-reference-probe-959d130c.json`。
 > 渠道先筛选/再拆人群仍是下一独立工作项，未开始新的模型运行，不声称B3或formal15 PASS。
 
+> 前向两期分层实现：sealed比例映射→两轴父组原值汇总→父组筛选→保留全部子组；接入原planner/Python/FULL Oracle/FINAL。
+> 173项focused、Worker typecheck/build通过；原NAS Python及operator policy22种输入逐字段0差异，含不满足父筛选的子组、
+> 0/负/NULL、无入选组、别名/顺序与浮点；原DataFrame不变、模型0调用、authority0写入。
+> 审计`monthly-panel-ratio-boundary-probe-557a7201.json`；新A/B业务与同Run UI未执行，不拼接60a PASS，formal15仍未开始。
+
 **F6 READY 轮次恢复边界（2026-08-30，历史）**
 
 > 以下为历史记录；当前 forward recovery 已到 E16 FAILED，下一 fresh epoch 为 E17，见上一节。

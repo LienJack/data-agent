@@ -18,6 +18,11 @@ import {
   resolvePanelPeriodComparison,
 } from "./monthly-panel-period-comparison.js";
 import { MONTHLY_PANEL_PREPARATION_REFERENCE } from "./monthly-panel-preparation-reference.js";
+import {
+  PANEL_RATIO_ROLLUP_RULES,
+  panelRatioRollupSchema,
+  resolvePanelRatioRollup,
+} from "./monthly-panel-ratio-rollup.js";
 
 export const MONTHLY_PANEL_METHOD_ID = "published-monthly-group-panel@2";
 export const MONTHLY_PANEL_CONTRACT_ID = "monthly-group-panel.result";
@@ -238,6 +243,7 @@ export async function compileMonthlyPanelPlan(input: MonthlyPanelInput) {
   if (comparison && months !== 12) return fail("WINDOW");
   if (comparison && metrics.some((metric) => metric.additivity !== "additive"))
     return fail("AUTHORITY");
+  const ratioRollup = resolvePanelRatioRollup(binding, context, months);
   const contract = await buildDescriptiveResultContract({
     context,
     binding,
@@ -248,6 +254,7 @@ export async function compileMonthlyPanelPlan(input: MonthlyPanelInput) {
       ...measureFields.map(({ field }) => field),
       "opposed_changes",
       ...(comparison ? ["period_comparison"] : []),
+      ...(ratioRollup ? ["ratio_rollup"] : []),
     ],
     grain: {
       dimension_ids: dimensionIds,
@@ -302,6 +309,12 @@ export async function compileMonthlyPanelPlan(input: MonthlyPanelInput) {
       measure_fields: measureFields,
       measure_schema: z.toJSONSchema(monthlyPanelMeasureSchema),
       opposed_changes_schema: z.toJSONSchema(monthlyPanelOpposedChangesSchema),
+      ...(ratioRollup
+        ? {
+            ratio_rollup_mapping: ratioRollup,
+            ratio_rollup_schema: z.toJSONSchema(panelRatioRollupSchema),
+          }
+        : {}),
       ...(comparison
         ? {
             period_comparison: comparison,
@@ -319,6 +332,12 @@ export async function compileMonthlyPanelPlan(input: MonthlyPanelInput) {
       rules: [
         "Use preparation_reference as the data-free reference implementation of these descriptive rules. Copy its function into your actual python_cell. Call prepare_monthly_panel with the exact bound input DataFrame and a configuration dict copying only source_columns, time_column, time_logical_type, timezone, month_count, category_columns, measure_fields, and period_comparison when supplied. Do not copy schemas, rules or preparation_reference into that dict. Assign the returned dict to a named result symbol and construct the table from result['observations'] with exactly source_columns. Never add temporary columns such as month_str to the source or later look them up in observations; the approved time_column remains the calendar-date key throughout. The reference is not pre-executed output and does not replace Cell policy, Publisher or FULL Oracle checks.",
         ...(comparison ? PANEL_PERIOD_COMPARISON_RULES : []),
+        ...(ratioRollup
+          ? [
+              "Also copy the supplied ratio_rollup_mapping into the preparation configuration. The reference computes data.ratio_rollup from original observations; do not copy or precompute an answer into the configuration.",
+              ...PANEL_RATIO_ROLLUP_RULES,
+            ]
+          : []),
         "observations contains every source row and exactly its source columns/values/NULLs, stably sorted by calendar month. DATE retains its date; DATETIME becomes calendar date in the explicit timezone. Never merge tuples, invent composite columns, drop rows, fill NULL or average ratios.",
         "Each measure field is an object with only groups, an array in group first-appearance order in observations. Each item has group (all category_columns and exact values), source_column and the supplied monthly measure fields. Compute each group and measure independently from its exact month_count (2 or 12) complete calendar months. Two months support an endpoint comparison, not a persistent trend or trend-strength claim. observed_count excludes NULL; missing_count counts NULL; minimum/maximum use observed values. lowest/highest contain up to three {period,value}, ordered by value ascending/descending then period ascending.",
         "first_period/last_period and first_value/last_value use the original window endpoints, retaining NULL. absolute_change=last-first, NULL if either is missing; relative_change=absolute_change/first, NULL if missing or zero denominator. Never move endpoints. largest_drops contains up to three strictly negative adjacent-month changes, sorted by absolute_change then to_period. NULL breaks adjacency; relative_change is NULL for zero previous value.",
