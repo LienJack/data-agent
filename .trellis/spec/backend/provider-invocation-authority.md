@@ -163,6 +163,10 @@ return committed.protectedResponse;
   固定 `delivery_mode=JSON_TEXT` 时，才允许同一次调用使用原 SDK JSON mode；当前仅 Semantic selection schema 启用。原始完整文本必须
   先 `JSON.parse`，再通过同一个注册 Zod strict schema 并 canonicalize；空白、非 JSON、Markdown fence、尾随 prose、错类型、额外字段和
   schema mismatch 全部失败关闭。禁止提取局部 JSON、修补模型文本、增加 Provider 调用、跳过 schema 或把该模式用于工具调用。
+- `JSON_TEXT` 必须把 registry 从同一 Zod schema 确定性生成的 canonical JSON Schema 原样加入该次服务端 system instructions；不能只发
+  `json_object` 语法约束后要求模型从自然语言猜嵌套类型。该 schema instruction 与原业务 system instruction 均进入 trusted UTF-8 upper
+  bound；registry 保留 exact canonical bytes，模型、用户与题库不能提供或覆盖 schema。返回值仍按完整原文严格验证，不允许利用 schema
+  instruction 增加 Host coercion、默认值或 repair。
 - `JSON_TEXT` 是 build-bound 服务端部署策略，不进入用户请求或模型输出。Trusted token upper bound 仍按完整注册 schema 计算；
   dispatch marker、usage、known empty/invalid JSON 分类、protected response commit 与不重放边界不变。私有协议诊断只记录固定
   `JSON_TEXT_RESPONSE_INVALID_JSON` stage 与有界计数，不能记录原文或反向授予成功。
@@ -182,5 +186,6 @@ return committed.protectedResponse;
 - Contract 测试证明直连请求不需要 Certification Receipt 或 Permit 仍可获得严格品牌。
 - Worker 测试覆盖 Scope/Run/Attempt 换绑、缺凭据、非法请求、Provider 稳定错误码与单次重试上限。
 - Agent Runtime 离线真实 SDK wire 测试覆盖 server-owned `JSON_TEXT` 的一次 DeepSeek fetch、`json_object`、零 tools、strict PASS、
-  schema mismatch、空白与非 JSON；默认 schema 仍走 Structured Output，用户请求不能选择 delivery mode。
+  exact canonical schema system instruction、schema mismatch、空白与非 JSON；默认 schema 仍走 Structured Output，用户请求不能选择
+  delivery mode 或提供 schema instruction。
 - 真实运行证明调用前后持久 Intent/Permit 行数不增加，且公开 Event 不出现 Root/Specialist 生命周期。

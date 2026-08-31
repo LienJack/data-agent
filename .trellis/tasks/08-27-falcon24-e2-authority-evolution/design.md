@@ -1820,6 +1820,7 @@ DeepSeek 零工具 Structured Output transport，不位于业务公式、SQL、�
 
 ```text
 server-owned schema + JSON_TEXT
+  -> exact canonical JSON Schema appended to server-owned system instructions
   -> original SDK response_format=json_object, tool_choice=none, one fetch
   -> fully drain original text/usage
   -> JSON.parse exact full text
@@ -1832,4 +1833,6 @@ server-owned schema + JSON_TEXT
 delivery mode 不进入 request contract，用户/模型无法覆盖；工具调用、Text2SQL、Analysis、Report 和其他 schema 保持原模式。
 
 测试必须同时锁定 registry 默认值、server-owned override、DeepSeek wire 的 `json_object`/零 tools/一次 fetch、strict canonical output、
-错 schema/非JSON/空白拒绝和 raw-free diagnostic。真实验收仍需新 clean build/fresh scratch 跑 B3 全链，单测不计业务 PASS。
+exact canonical schema instruction、错 schema/非JSON/空白拒绝和 raw-free diagnostic。`b4a237db` 证明仅有 `json_object` 语法约束时，
+模型可返回 JSON 但嵌套类型不满足 strict schema；因此 schema instruction 是 transport contract，不是答案修补。真实验收仍需再一个
+clean build/fresh scratch 从 A1 重跑全链，单测与旧构建 PASS 都不计业务 PASS。

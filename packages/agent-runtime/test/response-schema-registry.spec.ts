@@ -17,6 +17,7 @@ describe("ServerModelResponseSchemaRegistry", () => {
       response_schema_version: "1.0.0",
       schema,
       delivery_mode: "STRUCTURED_OUTPUT",
+      canonical_schema_json: canonicalizeJson(z.toJSONSchema(schema)),
       canonical_schema_bytes: Buffer.byteLength(canonicalizeJson(z.toJSONSchema(schema)), "utf8"),
     });
     expect(registry.resolve("1.0.1")).toBeNull();
@@ -36,6 +37,7 @@ describe("ServerModelResponseSchemaRegistry", () => {
       response_schema_version: "1.0.0",
       schema,
       delivery_mode: "JSON_TEXT",
+      canonical_schema_json: canonicalizeJson(z.toJSONSchema(schema)),
     });
   });
 

@@ -12,6 +12,7 @@ export interface ServerModelResponseSchemaDescriptor {
 export interface RegisteredServerModelResponseSchema {
   readonly response_schema_version: string;
   readonly schema: z.ZodType<ServerModelStructuredOutput>;
+  readonly canonical_schema_json: string;
   readonly canonical_schema_bytes: number;
   readonly delivery_mode: "STRUCTURED_OUTPUT" | "JSON_TEXT";
 }
@@ -41,6 +42,7 @@ function parseDescriptor(
   return Object.freeze({
     response_schema_version: versionIdentifierSchema.parse(input.response_schema_version),
     schema: input.schema,
+    canonical_schema_json: canonicalSchema,
     canonical_schema_bytes: Buffer.byteLength(canonicalSchema, "utf8"),
     delivery_mode: deliveryMode,
   });

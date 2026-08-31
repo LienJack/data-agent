@@ -765,5 +765,9 @@ ROAS 始终以实际已发布 AST 为准：当前是 `CASE WHEN SUM(spend)=0 THE
   执行 `JSON.parse -> 原Zod strict schema -> canonicalize`，任何格式或 schema 错误失败关闭。
 - **R-FL-JSON-03** delivery mode 不能由用户、题库、模型或 Run payload 选择；不增加调用/turn/token预算，不提取/修补 JSON，
   不改变 marker、usage、response protection、Oracle、Semantic/Text2SQL/Analysis authority 或 live 数据。
+- **R-FL-JSON-04** `JSON_TEXT` 的 system instructions 必须包含 registry 由同一 Zod schema 生成的 exact canonical JSON Schema；该字节串
+  纳入 trusted input upper bound。禁止自然语言近似 schema、客户端 schema、模型自报 schema、默认填充或类型强制转换。
 - **AC-FL-JSON-01** 离线真实 SDK wire 覆盖一次请求、`json_object`、零 tools、strict PASS 与空白/非JSON/错schema拒绝；新 clean
   build/fresh scratch 的 B3 必须真实形成 Semantic -> Text2SQL -> Analysis 后，才证明修复有效。
+- **AC-FL-JSON-02** `b4a237db` 新构建首题 Run 的四个 Semantic 调用全部到达 JSON schema mismatch、零业务 Artifact；该失败不可重提，
+  只能由再一个 clean build/fresh scratch 从 A1 前向证明 canonical schema instruction 闭包。

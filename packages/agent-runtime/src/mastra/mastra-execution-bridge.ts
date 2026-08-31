@@ -401,6 +401,17 @@ function withJsonResponse(model: ReturnType<typeof createProviderRuntimeModel>) 
   };
 }
 
+function jsonTextInstructions(
+  responseSchema: RegisteredServerModelResponseSchema,
+  instructions: string,
+): string {
+  return [
+    "Return exactly one JSON value matching this server-owned canonical JSON Schema. Do not add, remove, rename, coerce, or repair fields.",
+    responseSchema.canonical_schema_json,
+    instructions,
+  ].join("\n\n");
+}
+
 function canonicalizeStructuredOutput(
   responseSchema: RegisteredServerModelResponseSchema,
   input: unknown,
@@ -495,10 +506,15 @@ class MastraExecutionBridge implements ModelExecutionBridge {
       binding.provider,
     );
     const projected = projectMessages(input.request);
+    const usesToolCalling = descriptors.length > 0;
+    const usesJsonTextResponse = !usesToolCalling && responseSchema.delivery_mode === "JSON_TEXT";
+    const executionInstructions = usesJsonTextResponse
+      ? jsonTextInstructions(responseSchema, projected.instructions)
+      : projected.instructions;
     await assertTrustedInputTokenBudget(this.#inputTokenCounter, {
       request: input.request,
       binding,
-      instructions: projected.instructions,
+      instructions: executionInstructions,
       messages: projected.messages,
       tools: descriptors,
       response_schema_version: responseSchema.response_schema_version,
@@ -519,8 +535,6 @@ class MastraExecutionBridge implements ModelExecutionBridge {
     }
 
     const runtimeModel = this.#runtimeModelFactory(binding, credential);
-    const usesToolCalling = descriptors.length > 0;
-    const usesJsonTextResponse = !usesToolCalling && responseSchema.delivery_mode === "JSON_TEXT";
     // DeepSeek AUTO needs JSON mode without Mastra's separate object parsing or
     // formatting pass. The original SDK sends json_object and retains tool_choice
     // auto. The pinned SDK adds only its standard "Return JSON." syntax prefix;
@@ -535,7 +549,7 @@ class MastraExecutionBridge implements ModelExecutionBridge {
     const agent = new Agent({
       id: `model-provider-${input.request.request_id}`,
       name: "Data Agent Model Provider Adapter",
-      instructions: projected.instructions,
+      instructions: executionInstructions,
       model,
       tools: mastraTools,
       maxRetries: 0,

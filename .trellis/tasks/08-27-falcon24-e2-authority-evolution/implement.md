@@ -2040,19 +2040,31 @@ live348表after与before完全相同；本轮Web/Worker/OpenSandbox及4个browse
 7条已报告usage合计105601 tokens、6条未报告，完整总量未知；恢复认证不计入该小计。
 完整ID/hash/失败/清理见 [核心验收报告](research/core-collaboration-verification-ec3c1e61.md)。当前核心范围完成；不继续扩建延期复杂能力或启动live正式题库。
 
-## 27. 复杂四层当前执行（966760f5 前向恢复）
+## 27. 复杂四层当前执行（b4a237db 前向恢复）
 
 - [x] `966760f5` clean build/fresh physical scratch 中 A1/A2/A3/B1/B2 完成独立 Oracle、业务、QA/Trace 与刷新验证；A3 新双图合同真实通过。
 - [x] 原 B3 单次 Run 保留 FAILED：四个 Semantic logical call 均 `STRUCTURED_OUTPUT_REJECTED`，零业务 Artifact；未重提同一 Run。
 - [x] 独立显式定义诊断把净 ROI、两完整月、父渠道先筛选、子人群全保留和非因果建议写全，仍四次同形失败；确认不是题面歧义。
 - [x] TDD 增加 server-owned response schema delivery mode 与 DeepSeek 零工具 JSON text 路径；完整原文仍经原 strict schema，失败不修补。
 - [x] 完成 Agent Runtime/Worker focused、typecheck/build、Biome、Trellis/diff，更新规范与研究记录并随本小任务 scoped commit 封存。
-- [ ] 新 clean force build/fresh scratch 从六题起点重跑，不拼接 `966760f5` 五题；B3 业务通过后复用同 Run验 QA/Trace。
+- [x] `b4a237db` clean force build 8/8（0 cache）、full unit 15/15、attestation PASS；fresh NAS scratch 55509 完成物理备份验证、
+  10816 与347业务表无漂移证明、数据集三 hash、一次 LLM certification和 E17 scratch-only activation，live仍E16。
+- [x] `b4a237db` A1 新 Run `cf11f7e9-6bdd-81f3-b93c-f3b6c70d3040` 不可变 FAILED：四次 Semantic 都由空白前进到
+  `RESPONSE_SCHEMA_MISMATCH`，零 Semantic/SQL/Analysis Artifact；没有重提，也没有继续拼 A2-B3。
+- [x] TDD锁定 registry canonical JSON Schema bytes 与 JSON_TEXT exact system instruction；仍一次 `json_object`、零 tools、完整原文 strict
+  parse，无 coercion/default/repair。focused 51 tests先RED 6项，再GREEN 51/51。
+- [x] 完成本轮 Agent Runtime/Worker回归、typecheck/build、Biome、Trellis/diff并随 scoped commit封存 `b4a237db` failure evidence。
+- [ ] 再一个新 clean force build/fresh scratch 从六题起点重跑，不拼接 `966760f5` 五题或 `b4a237db` A1；B3 业务通过后复用同 Run验 QA/Trace。
 - [ ] 六题预检闭合后继续 F5/F7 版本化15回合、authority、页面与最终清理；只有全部 AC 才 COMPLETE。
 
 当前细节见 [Semantic JSON text 复盘](research/complex-966760f5-semantic-json-text.md)。
+`b4a237db` 进展与下一闭包见 [Semantic canonical schema instruction 复盘](research/complex-b4a237db-semantic-schema-instruction.md)。
 
 修复验证：TDD RED 先证明原 Mastra Structured Output 仍被使用；GREEN 后 Agent Runtime unit 193、integration 46、security 67、
 contract 32 与 focused 51 tests PASS，Worker official unit 101 与 focused 114 tests PASS；两个 package typecheck/build、6 个 owned code/test
 Biome、`git diff --check` 和 Trellis validate PASS。Worker provider 目录的非官方 broad run另暴露两个既存旧断言，它们期望历史 assistant
 消息直入 prompt，与当前未改动的 untrusted observation 安全合同冲突；本修复未掩盖或纳入该无关旧测试。
+
+canonical schema instruction修复验证：Agent Runtime unit 193、integration 46、security 67、contract 32、focused 51 tests，Worker official
+unit 101与受影响 focused 116 tests全部PASS；两个 package typecheck/build、4个owned code/test Biome、diff与Trellis validate PASS。
+`b4a237db` live before/after 348表完全一致；旧Web/Worker/browser/auth精确关闭，scratch容器停机且volume作为失败checkpoint保留。

@@ -1,6 +1,7 @@
 import {
   type AuthoritativeModelProviderInvocation,
   authorizeModelProviderInvocation,
+  canonicalizeJson,
 } from "@data-agent/contracts";
 import { describe, expect, it, vi } from "vitest";
 import { z } from "zod";
@@ -500,7 +501,15 @@ describe("Mastra execution bridge integration", () => {
         expect(bodies[0]?.tools).toBeUndefined();
         expect(bodies[0]?.messages).toEqual([
           { role: "system", content: "Return JSON." },
-          ...request.messages,
+          {
+            role: "system",
+            content: [
+              "Return exactly one JSON value matching this server-owned canonical JSON Schema. Do not add, remove, rename, coerce, or repair fields.",
+              canonicalizeJson(z.toJSONSchema(responseSchema)),
+              "只返回经过范围约束的候选分析。",
+            ].join("\n\n"),
+          },
+          { role: "user", content: "给出候选结论。" },
         ]);
         expect(events.at(-1)).toMatchObject(
           terminal === "COMPLETED"
