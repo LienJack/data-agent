@@ -28,9 +28,19 @@ Candidate 使用 `object_kind=REQUEST_DERIVED`、exact `interpretation_id`，没
 - 首个可执行子集为同表单数值来源的 SUM，MONTH 维度、两个直接物理聚合 CTE、各自 exact current/comparison WHERE
   下上界、单 LEFT JOIN `current.month = comparison.month + $year::interval`，参数值 `1 year`，只投影当前月、两个原始值及
   `(current-comparison)/NULLIF(comparison,0)`。检查真实源码列、GROUP BY、类型提升、零值、年度对齐与返回值身份。
-- 禁止 DISTINCT/FILTER/AVG、额外过滤/联表/CTE、预先平移、外层条件/聚合/LIMIT、百分比倍乘、补零与错分母。
+- 同一证明器可接收 Host 验证的一个 atomic/text/groupable 分类维度：必须被本轮选择且在源 Metric allowed_dimension_ids中。
+  同表直接分组；跨表仅接受 exact Published/当前Context相同的 physical、非DECLARED_ONLY、join_allowed/fanout_closed、
+  many-to-one/one-to-one 单键关系，右端行保留必须 optional。两端 active key bindings须匹配同快照、同型物理列。
+  仅该关系键参与JOIN证明和派生来源，不授予其他物理列输出权限；catalog没有关系投影时跨表失败关闭。
+  两个CTE均用同一fact→dimension LEFT JOIN，精确等值键，无附加条件。分类列保持raw STRING，两边都按月和分类分组。
+  外层先按年对齐，再 `AND (current.category = prior.category OR (current.category IS NULL AND prior.category IS NULL))`，
+  输出多一个当前分类DIMENSION，可在月份排序后按分类排序；不使用COALESCE哨兵替代NULL类别。
+- 禁止 DISTINCT/FILTER/AVG、额外过滤/未证明联表/CTE、预先平移、外层条件/聚合/LIMIT、百分比倍乘、补零与错分母。
   不支持的形态失败关闭，不自动重写 SQL、扩大重试或创建新 Formula。AGGREGATE_RATIO 使用下节独立的同源聚合证明子集。
 - PostgreSQL OID/type gate 不变；经证明的 LEFT JOIN 同期列即使源列 NOT NULL 也必须 nullable=true，缺失同期值不得补零。
+- 跨表分类LEFT JOIN的输出即使维表源列NOT NULL也须nullable=true；同比派生hash的physical_sources包含分类及两端键。
+  返回的是当前月份/分类面板。若某分类只在同期出现，本面板不能单独证明整体同期总额；整体排名须当前Run独立聚合
+  或独立source oracle证明分组完整，不能把历史答案或组内同比平均冒充整体同比。
 - 原始值、图表、报告、Trace 沿既有 QueryEvidence 引用链；Analysis Arrow receipt 保留 REQUEST_DERIVED 与 source_binding_hash，
   不把派生列升级为可授权分析方法的 Published Metric。旧 payload 未携带新字段时 hash 材料不变。
 
@@ -61,6 +71,8 @@ Context hash/Run/receipt/Metric/binding/interpretation 漂移与重标绕过；L
 compile 前零 target I/O、安全诊断、两次 bounded repair 不扩容。真实 scratch 必须另做业务/QA/Trace，不得拿离线测试替代。
 两个派生算子均须覆盖 requested mandatory Relationship 的成功、未授予关系拒绝、metadata 冒充结果对象拒绝和 inference 篡改拒绝。
 增加每个检查阶段的安全码、并发互不串线、未知码拒绝、修复上下文/公开事件传递、提示词无相反建议的断言。
+分类扩展须覆盖同表/跨表compiler+coverage roundtrip、NULL类别对齐、错键/fanout/未认证关系/缺key binding/漏分组拒绝；
+独立PostgreSQL合成数据证明未匹配维表、零分母、缺同期、发布覆盖之外旧行和只在同期出现的分类边界。
 
 ### 7. Wrong / Correct
 

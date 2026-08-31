@@ -1808,6 +1808,9 @@ Diagnostic/Q1/C1任一正式首次失败必须写既有 authority支持的 immut
   Text2SQL无accepted evidence且Run FAILED。补齐Semantic Specialist的原冻结Task用户意图投影与请求hash绑定；
   不复制旧答案、不扩大历史窗口或重试。分组同比AST能力仍需单独闭合后才启动下一新构建。
   live348表不变，本轮临时资源精确清理、scratch停机保留；详见 [A2窗口断点](research/complex-201ef834-semantic-window.md)。
+- [x] 分类同比沿原proof/resolver接入一个已选atomic文本维度和可选认证非fanout LEFT JOIN；保留来源键、NULL与原修复预算。
+  compiler/coverage、QueryEvidence/source绑定、SQL反例及独立NAS合成PostgreSQL预期通过；正式多层仍未通过。
+  见 [分类同比证明](research/grouped-yoy-proof.md)，下一步新clean build/fresh scratch验证A/B复杂多轮。
   再继续上述 F5 / F7；不另跑 child 历史六问，也不复用 core4 PASS。
 
 **F6 READY 轮次恢复边界（2026-08-30，历史）**

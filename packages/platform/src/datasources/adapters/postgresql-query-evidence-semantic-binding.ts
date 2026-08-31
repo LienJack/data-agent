@@ -13,6 +13,7 @@ import {
   type SemanticDimension,
   type SemanticMetric,
   type SemanticQueryContext,
+  type SemanticRelationship,
   verifySemanticQueryContext,
 } from "@data-agent/contracts/artifacts";
 import {
@@ -42,6 +43,7 @@ import {
 } from "./postgresql-text2sql-policy.js";
 
 export interface QueryEvidenceSemanticCatalog {
+  readonly relationships?: { readonly relationships: readonly SemanticRelationship[] };
   readonly release_identity: {
     readonly semantic_domain: string;
     readonly release_id: string;
@@ -561,6 +563,131 @@ async function requestDerivedColumn(input: {
   };
 }
 
+/** A single selected atomic category, with an optional Published non-fanout edge. */
+function requestComparisonGroup(input: {
+  readonly context: SemanticQueryContext;
+  readonly selected: ReadonlySet<string>;
+  readonly metric: SemanticMetric;
+  readonly time_dimension_id: string;
+  readonly metric_source: ReturnType<typeof physicalSources>[number];
+  readonly authority: Omit<
+    PostgresqlQueryEvidenceSemanticBindingInput,
+    "result" | "target_binding_hash"
+  >;
+}) {
+  const { context, selected, metric, authority } = input;
+  const dimensions = context.dimensions.filter((d) => d.dimension_id !== input.time_dimension_id);
+  if (dimensions.length === 0) return null;
+  const dimension = dimensions[0];
+  const published = authority.semantic_catalog.executable.dimensions.filter(
+    (d) => d.dimension_id === dimension?.dimension_id,
+  );
+  if (
+    dimensions.length !== 1 ||
+    !dimension ||
+    published.length !== 1 ||
+    !selected.has(dimension.dimension_id) ||
+    !context.requested_object_ids.includes(dimension.dimension_id) ||
+    canonicalizeJson(dimension) !== canonicalizeJson(published[0]) ||
+    !dimension.analysis.groupable ||
+    dimension.grain.granularity !== "atomic" ||
+    dimension.data_type !== "text" ||
+    !metric.analysis.allowed_dimension_ids.includes(dimension.dimension_id)
+  )
+    reject("QUERY_EVIDENCE_REQUEST_DERIVATION_BINDING_INVALID");
+  const sources = physicalSources({
+    object_id: dimension.dimension_id,
+    object_kind: "DIMENSION",
+    table_id: dimension.table_id,
+    column_ids: [dimension.column_id],
+    datasource_id: authority.datasource_ref.resource_id,
+    bindings: context.physical_bindings,
+    snapshot: authority.physical_snapshot,
+  });
+  const source = sources[0];
+  if (sources.length !== 1 || !source || source.logical_type !== "STRING")
+    reject("QUERY_EVIDENCE_REQUEST_DERIVATION_BINDING_INVALID");
+  let join: { left_column: string; right_column: string } | null = null;
+  if (dimension.table_id === metric.table_id) {
+    if (
+      source.schema_name !== input.metric_source.schema_name ||
+      source.relation_name !== input.metric_source.relation_name
+    )
+      reject("QUERY_EVIDENCE_REQUEST_DERIVATION_BINDING_INVALID");
+  } else {
+    const relationships = context.relationships.filter(
+      (r) => r.left_table_id === metric.table_id && r.right_table_id === dimension.table_id,
+    );
+    const relationship = relationships[0];
+    const publishedRelationships =
+      authority.semantic_catalog.relationships?.relationships.filter(
+        (r) => r.relationship_id === relationship?.relationship_id,
+      ) ?? [];
+    const allowed =
+      relationship &&
+      (selected.has(relationship.relationship_id) ||
+        authority.semantic_context.package.inference_receipt.mandatory_relationship_ids.includes(
+          relationship.relationship_id,
+        ));
+    if (
+      relationships.length !== 1 ||
+      !relationship ||
+      !allowed ||
+      !context.requested_object_ids.includes(relationship.relationship_id) ||
+      publishedRelationships.length !== 1 ||
+      canonicalizeJson(relationship) !== canonicalizeJson(publishedRelationships[0]) ||
+      relationship.kind !== "physical" ||
+      relationship.proof_kind === "DECLARED_ONLY" ||
+      !relationship.analysis.join_allowed ||
+      !relationship.analysis.fanout_closed ||
+      !["many-to-one", "one-to-one"].includes(relationship.cardinality) ||
+      relationship.right_row_preservation !== "optional" ||
+      relationship.left_column_ids.length !== 1 ||
+      relationship.right_column_ids.length !== 1
+    )
+      reject("QUERY_EVIDENCE_REQUEST_DERIVATION_BINDING_INVALID");
+    const key = (table_id: string, column_id: string) =>
+      physicalSources({
+        object_id: physicalColumnId(table_id, column_id),
+        object_kind: "PHYSICAL_COLUMN",
+        table_id,
+        column_ids: [column_id],
+        datasource_id: authority.datasource_ref.resource_id,
+        // Only the exact Published edge's key columns; these are not selectable output grants.
+        bindings: authority.semantic_catalog.executable.physical_bindings,
+        snapshot: authority.physical_snapshot,
+      });
+    const left = key(relationship.left_table_id, relationship.left_column_ids[0] ?? "");
+    const right = key(relationship.right_table_id, relationship.right_column_ids[0] ?? "");
+    const l = left[0],
+      r = right[0];
+    if (
+      left.length !== 1 ||
+      right.length !== 1 ||
+      !l ||
+      !r ||
+      l.formatted_type !== r.formatted_type ||
+      l.schema_name !== input.metric_source.schema_name ||
+      l.relation_name !== input.metric_source.relation_name ||
+      r.schema_name !== source.schema_name ||
+      r.relation_name !== source.relation_name
+    )
+      reject("QUERY_EVIDENCE_REQUEST_DERIVATION_BINDING_INVALID");
+    sources.push(...left, ...right);
+    join = { left_column: l.column_name, right_column: r.column_name };
+  }
+  return {
+    sources,
+    proof_input: {
+      object_id: dimension.dimension_id,
+      schema_name: source.schema_name,
+      relation_name: source.relation_name,
+      column_name: source.column_name,
+      join,
+    },
+  };
+}
+
 export async function resolvePostgresqlRequestDerivedBindings(
   input: Omit<PostgresqlQueryEvidenceSemanticBindingInput, "result" | "target_binding_hash">,
 ) {
@@ -845,6 +972,14 @@ export async function resolvePostgresqlRequestDerivedBindings(
         source.relation_name !== time.relation_name
       )
         reject("QUERY_EVIDENCE_REQUEST_DERIVATION_BINDING_INVALID");
+      const group = requestComparisonGroup({
+        context,
+        selected,
+        metric,
+        time_dimension_id: dimension.dimension_id,
+        metric_source: source,
+        authority: input,
+      });
       const proof = await provePostgresqlPeriodComparison({
         candidate: input.candidate,
         output_name: output.name,
@@ -860,16 +995,19 @@ export async function resolvePostgresqlRequestDerivedBindings(
         },
         current,
         comparison,
+        ...(group ? { group_dimension: group.proof_input } : {}),
       });
       return {
         nullable_metric_outputs: [proof.comparison_output],
+        nullable_dimension_outputs:
+          group?.proof_input.join && proof.group_output ? [proof.group_output] : [],
         dependency_metrics: [metric],
         column: await requestDerivedColumn({
           output_name: output.name,
           context,
           interpretation,
           candidate: input.candidate,
-          sources: [...sources, ...times],
+          sources: [...sources, ...times, ...(group?.sources ?? [])],
           grain: dimension.grain,
           proof,
         }),
@@ -1245,7 +1383,13 @@ export async function buildPostgresqlQueryEvidenceSemanticBinding(
       return {
         output_name: column.name,
         logical_type: column.semantic_type,
-        nullable: sources.some(({ nullable }) => nullable),
+        nullable:
+          sources.some(({ nullable }) => nullable) ||
+          requestBindings.some(
+            (binding) =>
+              "nullable_dimension_outputs" in binding &&
+              binding.nullable_dimension_outputs?.includes(column.name),
+          ),
         semantic_role: "DIMENSION" as const,
         semantic_object_id: dimension.dimension_id,
         formula_hash: null,

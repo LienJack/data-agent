@@ -5,13 +5,13 @@ export const POSTGRESQL_PERIOD_COMPARISON_REPAIR_HINTS = Object.freeze({
   TEXT2SQL_COMPARISON_SOURCE_TYPE_REJECTED:
     "The published SUM source must support non-truncating division; do not change frozen types.",
   TEXT2SQL_COMPARISON_CURRENT_SOURCE_REJECTED:
-    "The current CTE must directly scan the exact qualified published table with an explicit alias.",
+    "The current CTE must scan the exact qualified published fact table with an explicit alias; a selected atomic category may use one exact certified non-fanout LEFT JOIN on its published key pair.",
   TEXT2SQL_COMPARISON_PRIOR_SOURCE_REJECTED:
-    "The prior CTE must directly scan the same exact qualified published table with an explicit alias.",
+    "The prior CTE must scan the same exact qualified published fact table with an explicit alias and the identical selected category/optional certified LEFT JOIN.",
   TEXT2SQL_COMPARISON_CURRENT_PROJECTION_REJECTED:
-    "The current CTE must project exactly two uniquely aliased expressions: unshifted date_trunc month (optionally displayed as date) and raw SUM. No other wrappers, result casts or projections are supported.",
+    "The current CTE must project unshifted date_trunc month (optionally displayed as date), raw SUM, and only when selected one raw atomic text category. Give each expression a unique alias; no extra wrappers or projections.",
   TEXT2SQL_COMPARISON_PRIOR_PROJECTION_REJECTED:
-    "The prior CTE must project exactly two uniquely aliased expressions: unshifted date_trunc month (optionally displayed as date) and raw SUM. No other wrappers, result casts or projections are supported.",
+    "The prior CTE must project unshifted date_trunc month (optionally displayed as date), raw SUM, and the identical selected raw category when present. Give each expression a unique alias; no extra wrappers or projections.",
   TEXT2SQL_COMPARISON_CURRENT_MONTH_UNIT_REJECTED:
     "The current month bucket needs two date_trunc arguments: a direct positional parameter whose value is exactly month, then the qualified time input. Do not cast, concatenate or compute the unit parameter.",
   TEXT2SQL_COMPARISON_PRIOR_MONTH_UNIT_REJECTED:
@@ -25,19 +25,19 @@ export const POSTGRESQL_PERIOD_COMPARISON_REPAIR_HINTS = Object.freeze({
   TEXT2SQL_COMPARISON_PRIOR_SUM_INPUT_REJECTED:
     "The prior amount must be raw SUM of exactly one qualified published value column. Do not change the aggregate, source, argument or add DISTINCT, FILTER, casts or COALESCE.",
   TEXT2SQL_COMPARISON_CURRENT_GROUP_REJECTED:
-    "Group the current CTE by its exact projected month expression or that output alias, not a positional ordinal.",
+    "Group the current CTE by all and only the projected month and selected category expressions or output aliases, each once, not positional ordinals.",
   TEXT2SQL_COMPARISON_PRIOR_GROUP_REJECTED:
-    "Group the prior CTE by its exact projected month expression or that output alias, not a positional ordinal.",
+    "Group the prior CTE by all and only the projected month and selected category expressions or output aliases, each once, not positional ordinals.",
   TEXT2SQL_COMPARISON_CURRENT_WINDOW_REJECTED:
     "Use only the current CTE's direct >= and < predicates with the exact Host current bounds and required temporal casts.",
   TEXT2SQL_COMPARISON_PRIOR_WINDOW_REJECTED:
     "Use only the prior CTE's direct >= and < predicates with the exact Host clipped comparison bounds and required temporal casts.",
   TEXT2SQL_COMPARISON_ALIGNMENT_REJECTED:
-    "Use current.month = prior.month + $year::pg_catalog.interval with the parameter exactly '1 year'; shift only in the LEFT JOIN.",
+    "Use current.month = prior.month + $year::pg_catalog.interval with the parameter exactly '1 year'; shift only in the LEFT JOIN. For a selected category append AND (current.category = prior.category OR (current.category IS NULL AND prior.category IS NULL)), in this order, preserving the NULL group.",
   TEXT2SQL_COMPARISON_RATE_REJECTED:
     "Return exactly (current.value-prior.value)/NULLIF(prior.value,0), without casts, COALESCE or percentage scaling.",
   TEXT2SQL_COMPARISON_OUTPUT_BINDING_REJECTED:
-    "Return only the current month DIMENSION, both unchanged raw values bound to the source METRIC, and the exact REQUEST_DERIVED rate.",
+    "Return only the current month DIMENSION, the current category DIMENSION when selected, both unchanged raw values bound to the source METRIC, and the exact REQUEST_DERIVED rate.",
   TEXT2SQL_COMPARISON_ORDERING_REJECTED:
-    "Omit ORDER BY or use only the current-month output alias ascending without NULLS modifiers.",
+    "Omit ORDER BY or use the current-month output alias ascending, optionally followed by the selected category output alias ascending, without NULLS modifiers.",
 });

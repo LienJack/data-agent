@@ -296,6 +296,11 @@ describe("direct run-bound provider retry policy", () => {
     );
     expect(prompt).toContain("semantic_context.request_scoped_interpretations");
     expect(prompt).toContain("aggregates numerator and denominator separately before division");
+    expect(prompt).toContain("one atomic text category DIMENSION allowed by the metric");
+    expect(prompt).toContain("exact Published certified many-to-one/one-to-one relationship");
+    expect(prompt).toContain("current.category IS NULL AND comparison.category IS NULL");
+    expect(prompt).toContain("Return the full approved monthly panel");
+    expect(prompt).not.toContain("projects only date_trunc");
   });
 
   it("explains calendar alignment separately from comparison coverage and missing data", () => {

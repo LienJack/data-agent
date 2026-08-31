@@ -24,6 +24,7 @@ import {
   resolvePostgresqlPublishedFormulaBindings,
   resolvePostgresqlRequestDerivedBindings,
 } from "../../src/datasources/adapters/postgresql-query-evidence-semantic-binding.js";
+import { groupedPeriodComparisonFixture } from "../support/grouped-period-comparison-fixture.js";
 import { periodComparisonFixture } from "../support/period-comparison-fixture.js";
 
 const id = (suffix: number) => `95000000-0000-4000-8000-${String(suffix).padStart(12, "0")}`;
@@ -538,6 +539,259 @@ async function requestDerivationFixture() {
     ),
   };
 }
+
+async function groupedRequestDerivationFixture() {
+  const base = await requestDerivationFixture();
+  const fact = base.physical_snapshot.content.relations[0];
+  if (!fact) throw new Error("FACT_REQUIRED");
+  const snapshot = await createPhysicalSchemaSnapshot({
+    schema_version: "physical-schema-snapshot-draft@1.0.0",
+    snapshot_id: snapshotId,
+    scan_run_id: id(7),
+    captured_at: "2026-08-26T00:00:00.000Z",
+    content: {
+      ...base.physical_snapshot.content,
+      relations: [
+        { ...fact, columns: [...fact.columns, column("customer_id", 4, "text", "text", false)] },
+        {
+          ...fact,
+          identity: { schema_name: "public", relation_name: "customers" },
+          columns: [
+            column("customer_id", 1, "text", "text", false),
+            column("segment", 2, "text", "text", false),
+          ],
+        },
+      ],
+    },
+  });
+  const dimension: SemanticDimension = {
+    dimension_id: "dimension.segment",
+    name: "客户类型",
+    aliases: ["客户类型"],
+    table_id: "customers",
+    column_id: "customers.segment",
+    grain: { grain_id: "customer", granularity: "atomic" },
+    data_type: "text",
+    sensitivity: "INTERNAL",
+    hierarchical: false,
+    parent_dimension_id: null,
+    tags: [],
+    analysis: { groupable: true, pivotable: true, causal_role: null },
+  };
+  const relationship: SemanticRelationship = {
+    relationship_id: "relationship.order_customer",
+    name: "order_customer",
+    kind: "physical",
+    left_table_id: "orders",
+    left_column_ids: ["orders.customer_id"],
+    right_table_id: "customers",
+    right_column_ids: ["customers.customer_id"],
+    cardinality: "many-to-one",
+    left_row_preservation: "required",
+    right_row_preservation: "optional",
+    proof_kind: "SNAPSHOT_CERTIFIED",
+    proof_detail: "fixed snapshot",
+    tags: [],
+    analysis: { join_allowed: true, fanout_closed: true, ontology_path: [] },
+  };
+  const binding = (
+    table: string,
+    name: string,
+    objectId: string,
+    objectType: "dimension" | "column",
+  ) => ({
+    logical_object_id: objectId,
+    logical_object_type: objectType,
+    datasource_id: datasourceId,
+    schema_name: "public",
+    table_name: table,
+    column_name: name,
+    binding_lifecycle: "active" as const,
+    valid_from: null,
+    valid_until: null,
+  });
+  const groupBinding = binding("customers", "segment", dimension.dimension_id, "dimension");
+  const catalog = {
+    ...base.semantic_catalog,
+    relationships: { relationships: [relationship] },
+    executable: {
+      ...base.semantic_catalog.executable,
+      metrics: base.semantic_catalog.executable.metrics.map((m) => ({
+        ...m,
+        analysis: {
+          ...m.analysis,
+          allowed_dimension_ids: [
+            ...m.analysis.allowed_dimension_ids,
+            dimension.dimension_id,
+          ].sort(),
+        },
+      })),
+      dimensions: [...base.semantic_catalog.executable.dimensions, dimension],
+      physical_bindings: [
+        ...base.semantic_catalog.executable.physical_bindings,
+        groupBinding,
+        binding("orders", "customer_id", "column.orders.customer_id", "column"),
+        binding("customers", "customer_id", "column.customers.customer_id", "column"),
+      ],
+    },
+  };
+  const semantic = await semanticContext(
+    snapshot,
+    [dimension.dimension_id],
+    [relationship.relationship_id],
+  );
+  const pkg = semantic.package;
+  const { context_hash: _hash, ...draft } = base.semantic_query_context;
+  const context = await buildSemanticQueryContext({
+    ...draft,
+    schema_snapshot: pkg.schema_snapshot,
+    semantic_context_ref: {
+      package_id: pkg.package_id,
+      package_hash: pkg.package_hash,
+      receipt_id: semantic.receipt.receipt_id,
+      receipt_hash: semantic.receipt.receipt_hash,
+      retrieval_receipt_hash: pkg.retrieval_receipt.receipt_hash,
+      inference_receipt_hash: pkg.inference_receipt.receipt_hash,
+    },
+    requested_object_ids: [
+      ...draft.requested_object_ids,
+      dimension.dimension_id,
+      relationship.relationship_id,
+    ].sort(),
+    metrics: catalog.executable.metrics,
+    dimensions: catalog.executable.dimensions,
+    relationships: [relationship],
+    // Key columns are not output grants in the accepted SemanticQueryContext.
+    physical_bindings: [...draft.physical_bindings, groupBinding].sort((a, b) =>
+      a.logical_object_id.localeCompare(b.logical_object_id),
+    ),
+  });
+  return {
+    ...base,
+    candidate: groupedPeriodComparisonFixture().candidate,
+    physical_snapshot: snapshot,
+    semantic_catalog: catalog,
+    semantic_context: semantic,
+    semantic_query_context: context,
+    result: await queryResult(
+      [
+        { name: "month", type: "1114" },
+        { name: "segment", type: "25" },
+        { name: "current_value", type: "1700" },
+        { name: "comparison_value", type: "1700" },
+        { name: "growth", type: "1700" },
+      ],
+      [
+        {
+          month: "2023-11-01T00:00:00.000Z",
+          segment: null,
+          current_value: "100",
+          comparison_value: null,
+          growth: null,
+        },
+      ],
+    ),
+  };
+}
+
+describe("grouped request-derived authority", () => {
+  it("binds the exact certified relationship and both keys, retaining unmatched categorical NULL", async () => {
+    const input = await groupedRequestDerivationFixture();
+    const binding = await buildPostgresqlQueryEvidenceSemanticBinding(input);
+    expect(binding.columns[1]).toMatchObject({
+      semantic_role: "DIMENSION",
+      semantic_object_id: "dimension.segment",
+      nullable: true,
+    });
+    expect(binding.columns[4]).toMatchObject({ semantic_role: "REQUEST_DERIVED", nullable: true });
+    expect(
+      binding.columns[4]?.physical_sources.map((s) => `${s.relation_name}.${s.column_name}`).sort(),
+    ).toEqual([
+      "customers.customer_id",
+      "customers.segment",
+      "orders.amount",
+      "orders.customer_id",
+      "orders.order_date",
+    ]);
+    expect(
+      input.semantic_query_context.physical_bindings.some(
+        (b) => b.logical_object_id === "column.customers.customer_id",
+      ),
+    ).toBe(false);
+  });
+  it.each([
+    "published-edge-missing",
+    "edge-tamper",
+    "fanout",
+    "declared-only",
+    "join-denied",
+    "preserve-right",
+    "metric-dimension-denied",
+    "dimension-not-groupable",
+    "key-binding-missing",
+    "missing-window",
+    "omitted-group",
+  ])("rejects %s without query I/O", async (variant) => {
+    const input = await groupedRequestDerivationFixture();
+    const { context_hash: _hash, ...draft } = input.semantic_query_context;
+    const edge = input.semantic_catalog.relationships.relationships[0];
+    if (!edge) throw new Error("EDGE_REQUIRED");
+    if (variant === "published-edge-missing")
+      input.semantic_catalog.relationships.relationships = [];
+    if (variant === "edge-tamper") draft.relationships = [{ ...edge, proof_detail: "invented" }];
+    if (["fanout", "declared-only", "join-denied", "preserve-right"].includes(variant)) {
+      const changed: SemanticRelationship = {
+        ...edge,
+        ...(variant === "fanout" ? { cardinality: "one-to-many" as const } : {}),
+        ...(variant === "declared-only" ? { proof_kind: "DECLARED_ONLY" as const } : {}),
+        ...(variant === "preserve-right" ? { right_row_preservation: "required" as const } : {}),
+        analysis: {
+          ...edge.analysis,
+          ...(variant === "join-denied" ? { join_allowed: false } : {}),
+          ...(variant === "fanout" ? { fanout_closed: false } : {}),
+        },
+      };
+      draft.relationships = [changed];
+      input.semantic_catalog.relationships.relationships = [changed];
+    }
+    if (variant === "metric-dimension-denied") {
+      input.semantic_catalog.executable.metrics = input.semantic_catalog.executable.metrics.map(
+        (m) => ({
+          ...m,
+          analysis: { ...m.analysis, allowed_dimension_ids: ["dimension.order_month"] },
+        }),
+      );
+      draft.metrics = input.semantic_catalog.executable.metrics;
+    }
+    if (variant === "dimension-not-groupable") {
+      input.semantic_catalog.executable.dimensions =
+        input.semantic_catalog.executable.dimensions.map((d) =>
+          d.dimension_id === "dimension.segment"
+            ? { ...d, analysis: { ...d.analysis, groupable: false } }
+            : d,
+        );
+      draft.dimensions = input.semantic_catalog.executable.dimensions;
+    }
+    if (variant === "key-binding-missing")
+      input.semantic_catalog.executable.physical_bindings =
+        input.semantic_catalog.executable.physical_bindings.filter(
+          (b) => b.logical_object_id !== "column.customers.customer_id",
+        );
+    if (variant === "missing-window")
+      draft.request_scoped_interpretations = draft.request_scoped_interpretations?.filter(
+        (i) => i.operator.kind !== "RECENT_COMPLETE_PERIODS",
+      );
+    if (variant === "omitted-group") input.candidate = periodComparisonFixture().candidate;
+    input.semantic_query_context = await buildSemanticQueryContext(draft);
+    await expect(resolvePostgresqlRequestDerivedBindings(input)).rejects.toThrow(
+      variant === "key-binding-missing"
+        ? "QUERY_EVIDENCE_PHYSICAL_BINDING_INVALID"
+        : variant === "omitted-group"
+          ? "TEXT2SQL_REQUEST_DERIVATION_EXPRESSION_MISMATCH"
+          : "QUERY_EVIDENCE_REQUEST_DERIVATION_BINDING_INVALID",
+    );
+  });
+});
 
 describe("request-derived QueryEvidence authority", () => {
   it("preserves exact context and request-only provenance, numeric type and NULL comparison", async () => {
