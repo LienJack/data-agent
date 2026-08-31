@@ -20,7 +20,13 @@ method=`published-monthly-group-panel@1`，contract=`monthly-group-panel.result`
 - `opposed_changes={pairs:[...]}` 只列同组原端点 absolute_change 一正一负的所有有序 measure 对；顺序为组、上升列、下降列的源顺序。
   原始相对变化/NULL 保留，不因负分母下相对变化符号推断升降，也不产生显著性或因果声明。
 - chart x=原月、series=第一原分类、facet=第二原分类（存在时）；通过原 Publisher，不能创造复合来源列或删维度。
-- execution_contract 仅字段/规则，不含行或预计算答案；FORMULA/REQUEST_DERIVED 不变为 Metric 或获得统计能力。
+- execution_contract 仅字段、规则及无数据Python参考实现，不含行或预计算答案；FORMULA/REQUEST_DERIVED 不变为 Metric 或获得统计能力。
+  `preparation_reference` 是原固定描述性公式的参考，不由Host执行或作为Oracle期望值；仅原monthly panel方法提供。
+  Agent仍返回实际python_cell source，经原AST策略和Sandbox执行、原Publisher/FULL Oracle后才接受；无源代码替换或修复预算放宽。
+  显式`source_columns/time_logical_type`与既有时间、分类、measure映射决定准备步骤；time_column原键保存业务日历日期，
+  不引入month_str等临时来源列。原DataFrame只读，派生副本转JSON-native NULL，保留完整源列、稳定月序和分类tuple。
+  配置仅复制上述字段和可选period_comparison，不回传大块schema/rules/reference；表从原observations完整投影。
+  这证明参考辅助的固定方法执行，不宣称从零自由生成任意分析算法；原statistical_operator义务不受影响。
 - 分类同比仅接受本 Run QueryEvidence 中已封存的 `period_comparison` 列角色与 `BOTH_PERIOD_GROUPS`，且原 Metric 可加；
   列名不得替代角色证明，无元数据/仅本期分类范围拒绝，普通比例面板保持原合同。
   额外 `period_comparison` 对象逐月分别合计两期全部分类，任一贡献值 NULL 则该侧整体 NULL；保持源顺序逐项浮点相加。
@@ -58,6 +64,8 @@ DATE/DATETIME、1/2 分类×比例角色、原 nullable/NULL、顺序/别名、�
 Oracle 正例使用手算期望；重封 hash 的数值/排名/组/NULL/反向变化对/表图漂移和额外因果事实拒绝；真实 Arrow 数值漂移拒绝。
 零/负/缺失端点、跨 NULL、有限数值溢出；真实投影保留全表和分面，摘要保留受验统计对象；生产 shape 选择不依赖问题文字。
 Schema-valid unit Sandbox receipt 是测试替身，不是生产执行或隔离认证。
+Python参考必须另在真实Agent镜像执行并与独立Host Oracle逐字段比较，原operator镜像Cell策略验证；不把Node元数据测试当Python执行证明。
+覆盖别名/列序、DATE/DATETIME、1/2分类、同比映射、缺失/零/负基数、无下降和浮点相加顺序，断言原DataFrame不变。
 同比手算总体排名（区别于分类均值/环比）、缺失与零/负基数、贡献分母、并列月份与不足3月、有限溢出；
 真实 Arrow/生产 Oracle 接线下重封 hash 的总体/排名/贡献/漏组/漏对象/错基准均拒绝；四分类对象在既有摘要预算内保留。
 

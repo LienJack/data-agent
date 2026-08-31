@@ -1862,6 +1862,10 @@ Diagnostic/Q1/C1任一正式首次失败必须写既有 authority支持的 immut
     先修规划输入缺必需Metric/Dimension投影、缺时间维度误报来源无效；原数据权限/Oracle不变，不补齐候选。
     两项RED转PASS；Python准备错误仍待修。见 [计划权限边界](research/complex-40a04db9-plan-authority.md)。
     源348表不变，本轮临时服务精确关闭，scratch和volume保留；未提交A3/B或formal15，下一步继续修复而非重复失败Run。
+  - [x] 原月度分群execution_contract新增无数据Python准备参考与显式原列/时间类型；模型实际Cell仍走原策略/执行/Publisher/Oracle。
+    NAS原Agent镜像12种数据边界逐字段对原Oracle0差异，原operator镜像Cell策略通过，原输入不变，未调用模型/数据库。
+    固定方法参考辅助执行不等同自由算法合成；见 [分群准备边界](research/complex-40a04db9-panel-preparation.md)。
+    下一步新clean build/fresh scratch从A1验证，不复用40a04db9 A1或失败A2。
   再继续上述 F5 / F7；不另跑 child 历史六问，也不复用 core4 PASS。
 
 **F6 READY 轮次恢复边界（2026-08-30，历史）**

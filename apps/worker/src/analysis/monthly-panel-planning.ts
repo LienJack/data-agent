@@ -17,6 +17,7 @@ import {
   panelPeriodComparisonSchema,
   resolvePanelPeriodComparison,
 } from "./monthly-panel-period-comparison.js";
+import { MONTHLY_PANEL_PREPARATION_REFERENCE } from "./monthly-panel-preparation-reference.js";
 
 export const MONTHLY_PANEL_METHOD_ID = "published-monthly-group-panel@1";
 export const MONTHLY_PANEL_CONTRACT_ID = "monthly-group-panel.result";
@@ -287,7 +288,9 @@ export async function compileMonthlyPanelPlan(input: MonthlyPanelInput) {
       method_id: MONTHLY_PANEL_METHOD_ID,
       claim_strength: "DESCRIPTIVE" as const,
       time_column: time.output_name,
+      time_logical_type: time.logical_type,
       timezone: window.timezone,
+      source_columns: columns.map((column) => column.key),
       category_columns: categories.map((column) => column.output_name),
       measure_fields: measureFields,
       measure_schema: z.toJSONSchema(monthlyPanelMeasureSchema),
@@ -307,6 +310,7 @@ export async function compileMonthlyPanelPlan(input: MonthlyPanelInput) {
         ...(facet ? { facet_field: facet.output_name } : {}),
       },
       rules: [
+        "Use preparation_reference as the data-free reference implementation of these descriptive rules. Copy its function into your actual python_cell. Call prepare_monthly_panel with the exact bound input DataFrame and a configuration dict copying only source_columns, time_column, time_logical_type, timezone, category_columns, measure_fields, and period_comparison when supplied. Do not copy schemas, rules or preparation_reference into that dict. Assign the returned dict to a named result symbol and construct the table from result['observations'] with exactly source_columns. Never add temporary columns such as month_str to the source or later look them up in observations; the approved time_column remains the calendar-date key throughout. The reference is not pre-executed output and does not replace Cell policy, Publisher or FULL Oracle checks.",
         ...(comparison ? PANEL_PERIOD_COMPARISON_RULES : []),
         "observations contains every source row and exactly its source columns/values/NULLs, stably sorted by calendar month. DATE retains its date; DATETIME becomes calendar date in the explicit timezone. Never merge tuples, invent composite columns, drop rows, fill NULL or average ratios.",
         "Each measure field is an object with only groups, an array in group first-appearance order in observations. Each item has group (all category_columns and exact values), source_column and the supplied monthly measure fields. Compute each group and measure independently from its own twelve months. observed_count excludes NULL; missing_count counts NULL; minimum/maximum use observed values. lowest/highest contain up to three {period,value}, ordered by value ascending/descending then period ascending.",
@@ -314,6 +318,7 @@ export async function compileMonthlyPanelPlan(input: MonthlyPanelInput) {
         "opposed_changes is an object with only pairs, an array listing all ordered source-measure pairs in each group whose endpoint absolute changes are respectively strictly positive and strictly negative. Order by group first-appearance, increasing source column order, then decreasing source column order. Copy both endpoint changes and relative changes, original first/last periods and the complete group. Missing endpoints yield no pair; do not infer causality, materiality or direction from relative-change signs with negative denominators.",
         "claim_strength must equal DESCRIPTIVE. No extra fields, free-form facts, statistical significance or causal claims. Use the existing publisher once with the exact chart_bindings and line.multi-series@1; all measures stay independent and the second category is an explicit facet.",
       ],
+      preparation_reference: MONTHLY_PANEL_PREPARATION_REFERENCE,
     }),
   });
 }
