@@ -349,16 +349,21 @@ export async function provePostgresqlPeriodComparison(input: {
         return column(expression, relation.alias, source.time_column);
       }
       for (const [key, expression] of outputs) {
+        diagnostic = `TEXT2SQL_COMPARISON_${period}_PROJECTION_REJECTED`;
         const uncast = cast(expression, ["date"]);
         const call = node(uncast, "FuncCall");
         only(call, ["funcname", "args", "funcformat"]);
         const name = primitive(call.funcname);
         if (name === "date_trunc") {
+          diagnostic = `TEXT2SQL_COMPARISON_${period}_MONTH_UNIT_REJECTED`;
           const args = list(call.args, 2);
-          check(parameter(args[0], candidate.parameters) === "month" && timeColumn(args[1]));
+          check(parameter(args[0], candidate.parameters) === "month");
+          diagnostic = `TEXT2SQL_COMPARISON_${period}_TIME_INPUT_REJECTED`;
+          check(timeColumn(args[1]));
           month = key;
           bucket = expression;
         } else {
+          diagnostic = `TEXT2SQL_COMPARISON_${period}_SUM_INPUT_REJECTED`;
           check(
             name === "sum" &&
               uncast === expression &&
@@ -367,6 +372,7 @@ export async function provePostgresqlPeriodComparison(input: {
           amount = key;
         }
       }
+      diagnostic = `TEXT2SQL_COMPARISON_${period}_PROJECTION_REJECTED`;
       check(month && amount && month !== amount);
       diagnostic = `TEXT2SQL_COMPARISON_${period}_GROUP_REJECTED`;
       const grouped = list(query.groupClause, 1)[0];

@@ -7,12 +7,44 @@ import {
 import { periodComparisonFixture as fixture } from "../support/period-comparison-fixture.js";
 
 describe("request-scoped period comparison SQL proof", () => {
+  it.each(
+    (["CURRENT", "PRIOR"] as const).flatMap((period) =>
+      (
+        [
+          ["MONTH_UNIT", "date_trunc($1,", "date_trunc($2,"],
+          ["TIME_INPUT", "o.order_date::pg_catalog.timestamp", "o.order_date::pg_catalog.date"],
+          ["SUM_INPUT", "sum(o.amount)", "sum(o.other_amount)"],
+        ] as const
+      ).map(([stage, from, to]) => ({ period, stage, from, to })),
+    ),
+  )(
+    "distinguishes the value-free $period $stage projection checkpoint after compilation",
+    async ({ period, stage, from, to }) => {
+      const input = fixture();
+      const sql = input.candidate.sql;
+      const start = period === "CURRENT" ? 0 : sql.indexOf("comparison_months AS");
+      const index = sql.indexOf(from, start);
+      expect(index).toBeGreaterThanOrEqual(start);
+      input.candidate.sql = sql.slice(0, index) + to + sql.slice(index + from.length);
+      const compiled = await parameterizePostgresqlText2SqlCandidate(input.candidate);
+      input.candidate = { ...input.candidate, ...compiled, parameters: [...compiled.parameters] };
+      const before = JSON.stringify(input);
+      const error = await provePostgresqlPeriodComparison(input).catch((error) => error);
+      expect(error).toBeInstanceOf(TypeError);
+      expect(error.message).toBe("TEXT2SQL_REQUEST_DERIVATION_EXPRESSION_MISMATCH");
+      expect(error.diagnostic_code).toBe(`TEXT2SQL_COMPARISON_${period}_${stage}_REJECTED`);
+      expect(Object.keys(error)).toEqual(["diagnostic_code"]);
+      expect(JSON.stringify(error)).not.toMatch(/other_amount|order_date|orders|2023|2024/);
+      expect(JSON.stringify(input)).toBe(before);
+    },
+  );
+
   it.each([
     ["QUERY_SHAPE", "LEFT JOIN", "INNER JOIN"],
     ["CURRENT_SOURCE", "public.orders", "public.private_relation"],
     ["PRIOR_SOURCE", "public.orders", "public.private_relation"],
-    ["CURRENT_PROJECTION", "sum(o.amount)", "avg(o.amount)"],
-    ["PRIOR_PROJECTION", "sum(o.amount)", "avg(o.amount)"],
+    ["CURRENT_SUM_INPUT", "sum(o.amount)", "avg(o.amount)"],
+    ["PRIOR_SUM_INPUT", "sum(o.amount)", "avg(o.amount)"],
     [
       "CURRENT_GROUP",
       "GROUP BY date_trunc($1, o.order_date::pg_catalog.timestamp)",
@@ -66,6 +98,42 @@ describe("request-scoped period comparison SQL proof", () => {
     });
     expect(results[2]).toMatchObject({ status: "fulfilled" });
     expect(JSON.stringify(results)).not.toContain("private");
+  });
+
+  it("resets the projection checkpoint after a valid month before rejecting an unsupported SUM wrapper", async () => {
+    const input = fixture();
+    input.candidate.sql = input.candidate.sql.replace(
+      "sum(o.amount)",
+      "sum(o.amount)::pg_catalog.numeric",
+    );
+    await expect(provePostgresqlPeriodComparison(input)).rejects.toMatchObject({
+      diagnostic_code: "TEXT2SQL_COMPARISON_CURRENT_PROJECTION_REJECTED",
+    });
+  });
+
+  it("preserves accepted month literals through parameterization and deparse", async () => {
+    const input = fixture();
+    input.candidate.sql = input.candidate.sql.replace(/\$(\d+)/gu, (_, index: string) =>
+      index === "1" ? "'month'" : `$${Number(index) - 1}`,
+    );
+    input.candidate.parameters = input.candidate.parameters.slice(1);
+    input.candidate.time_window = {
+      dimension_id: input.dimension_id,
+      start_parameter: 1,
+      end_parameter: 2,
+      semantics: "HALF_OPEN",
+    };
+    const compiled = await parameterizePostgresqlText2SqlCandidate(input.candidate);
+    input.candidate = { ...input.candidate, ...compiled, parameters: [...compiled.parameters] };
+    await assertPostgresqlText2SqlCandidatePolicy({
+      ...input.candidate,
+      parameter_count: input.candidate.parameters.length,
+      allowed_relations: [{ schema_name: "public", relation_name: "orders" }],
+    });
+    await expect(provePostgresqlPeriodComparison(input)).resolves.toEqual({
+      current_output: "current_value",
+      comparison_output: "comparison_value",
+    });
   });
 
   it("proves the exact rate, both raw value columns, two clipped sources and one annual alignment after the real compiler round trip", async () => {

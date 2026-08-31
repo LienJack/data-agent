@@ -1598,3 +1598,14 @@ CASE NULL 和 NULLIF 的零值语义相同，不能借用已发布 ROAS 的0。�
 不授权其他 Metric/Dimension/物理列/Join。原 SQL AST 子集、窗口、身份/hash、发布与重试预算完全不变。
 两算子正例先 RED 后 GREEN，并覆盖未授予关系、metadata 冒充输出对象和回执篡改。真实 NAS 只读重放原 Context：12个月/6个 NULL，
 独立源金额/同比相等；未重建历史失败 SQL、无模型或权威写入，不算业务 PASS。下一 clean build/fresh scratch 重做所有 canary。
+
+### 25.19 月度投影证明的可区分无值诊断
+
+`5327d719` fresh scratch 同比 Run `1e4dbc77-45c1-8b7f-a4c8-9ba06affe52f` FAILED/74 events，无 QueryEvidence。
+两次 alias 与四次 CURRENT_PROJECTION 拒绝；未再出现请求闭包拒绝，但新 Context 未显式请求该 Relationship，不能单凭此 Run 证明该分支。
+失败记录及数据库保留，其余四题未提交。投影总码不能区分 unit、时间输入与 SUM，历史 SQL 未落盘，不能猜测实际表达式。
+
+保留所有 SQL 接纳/拒绝条件，仅在纯证明内增加 CURRENT/PRIOR MONTH_UNIT、TIME_INPUT、SUM_INPUT 六个固定检查点，
+统一经原 registry、Worker allowlist、显式两候选 repair 和模型消息传递。逐表达式重置诊断；不泄露 AST/标识符/SQL/值，不扩大调用预算。
+六个 parser/deparse 回归先 RED 后 GREEN，公开链路与真实 dispatcher 的离线 capture 全覆盖；正向 SQL/参数 round trip 保持通过。
+本项证明可观测性修复，不宣称历史候选根因已查明或模型问题已解决；新 clean build/fresh scratch 才能继续业务验证。

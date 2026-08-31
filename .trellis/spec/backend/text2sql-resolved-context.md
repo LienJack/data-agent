@@ -43,6 +43,9 @@ SQL 证明失败 → `TEXT2SQL_REQUEST_DERIVATION_EXPRESSION_MISMATCH`。错误�
 ALIGNMENT、RATE、OUTPUT_BINDING、ORDERING，统一前缀 `TEXT2SQL_COMPARISON_` 与后缀 `_REJECTED`。
 `POSTGRESQL_PERIOD_COMPARISON_REPAIR_HINTS` 是证明类型、Worker 安全白名单和 Provider 修复说明的共同有限集合。
 只记录失败检查，不携带 AST、标识符、SQL、参数、异常 cause；每次证明独立保存 checkpoint，不使用全局可变状态。
+CURRENT/PRIOR 投影另区分 `MONTH_UNIT`（两个参数及 exact month 直接参数）、`TIME_INPUT`（exact 时间列及要求的 timestamp cast）、
+`SUM_INPUT`（exact 原值 SUM）；原 `PROJECTION` 留给数量、别名、包装与函数结构。不把总投影码解释成某一历史 SQL 写法。
+进入每个投影前重置检查点，防止合法 month 后的非法 SUM wrapper 被归因给上一表达式。新增码必须穿过公开反馈与实际 model-port capture 测试。
 通用提示不能建议证明器不支持的“等价 SQL”，尤其禁止一处要求 JOIN 平移、另一处允许 CTE 预平移。
 
 ### 5. Good / Base / Bad

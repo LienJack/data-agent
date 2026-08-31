@@ -1670,6 +1670,19 @@ Diagnostic/Q1/C1任一正式首次失败必须写既有 authority支持的 immut
   provider_calls/authority_writes/artifact_commits=0；不是模型/正式 PASS。详见 `research/e17-request-relationship-closure.md`。
 - 当前 ACTIVE；完成 scoped commit 后 fresh clean build/full gate/scratch 重新验证五题。live E17 尚未激活，旧 PASS 不拼入。
 
+**E17 scratch 投影检查点细分（2026-08-31）**
+
+- 关系闭包修复提交 `5327d719`；force build8/8、single-concurrent full unit15/15、attestation通过，generation
+  `sha256:9f524201e0c35f2317b990d87684c058007f468b8eab6bdbb7b27b271c50b90f`。
+  NAS fresh scratch55474/独立volume/cluster、exact源镜像与pg_verifybackup、原数据指纹一致；认证与scratch正常激活完成。
+- scratch baseline `f77e766f-a8b9-5011-9cda-03c0f4415a13`；唯一同比 Run `1e4dbc77-45c1-8b7f-a4c8-9ba06affe52f`
+  FAILED/74 events：2次alias、4次CURRENT_PROJECTION，无SQL/QueryEvidence。完整source与一次业务failure保存在
+  `e17-yoy-canary-5327d719`，QA/Trace未执行，其他四题未提交。owned服务/browser/vault关闭，scratch/audit保留；live仍E16。
+- 离线仅细分月桶参数、时间输入与SUM输入的六个有限诊断，不改SQL支持条件、发布、预算或历史；逐表达式重置checkpoint。
+  六个编译round-trip反例先RED，后Platform241/241、Worker131/131聚焦测试通过；包含公开repair与真实dispatcher离线capture。
+  详见 `research/e17-monthly-projection-diagnostics.md`。历史候选原文不可恢复，不宣称已证明具体SQL错误。
+- 任务ACTIVE：本项scoped commit后新clean build/full gate/fresh scratch继续；仍不能激活live E17或拼入旧PASS。
+
 **F6 READY 轮次恢复边界（2026-08-30，历史）**
 
 > 以下为历史记录；当前 forward recovery 已到 E16 FAILED，下一 fresh epoch 为 E17，见上一节。

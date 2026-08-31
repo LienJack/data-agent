@@ -9,9 +9,21 @@ export const POSTGRESQL_PERIOD_COMPARISON_REPAIR_HINTS = Object.freeze({
   TEXT2SQL_COMPARISON_PRIOR_SOURCE_REJECTED:
     "The prior CTE must directly scan the same exact qualified published table with an explicit alias.",
   TEXT2SQL_COMPARISON_CURRENT_PROJECTION_REJECTED:
-    "The current CTE must project only an aliased unshifted date_trunc month and an aliased SUM of the exact source value.",
+    "The current CTE must project exactly two uniquely aliased expressions: unshifted date_trunc month (optionally displayed as date) and raw SUM. No other wrappers, result casts or projections are supported.",
   TEXT2SQL_COMPARISON_PRIOR_PROJECTION_REJECTED:
-    "The prior CTE must project only an aliased unshifted date_trunc month and an aliased SUM of the exact source value.",
+    "The prior CTE must project exactly two uniquely aliased expressions: unshifted date_trunc month (optionally displayed as date) and raw SUM. No other wrappers, result casts or projections are supported.",
+  TEXT2SQL_COMPARISON_CURRENT_MONTH_UNIT_REJECTED:
+    "The current month bucket needs two date_trunc arguments: a direct positional parameter whose value is exactly month, then the qualified time input. Do not cast, concatenate or compute the unit parameter.",
+  TEXT2SQL_COMPARISON_PRIOR_MONTH_UNIT_REJECTED:
+    "The prior month bucket needs two date_trunc arguments: a direct positional parameter whose value is exactly month, then the qualified time input. Do not cast, concatenate or compute the unit parameter.",
+  TEXT2SQL_COMPARISON_CURRENT_TIME_INPUT_REJECTED:
+    "The current date_trunc input must be the exact qualified published time column. A text source must be cast directly to pg_catalog.timestamp, not date, timestamptz, a formatting function or an arithmetic expression.",
+  TEXT2SQL_COMPARISON_PRIOR_TIME_INPUT_REJECTED:
+    "The prior date_trunc input must be the exact qualified published time column. A text source must be cast directly to pg_catalog.timestamp, not date, timestamptz, a formatting function or an arithmetic expression.",
+  TEXT2SQL_COMPARISON_CURRENT_SUM_INPUT_REJECTED:
+    "The current amount must be raw SUM of exactly one qualified published value column. Do not change the aggregate, source, argument or add DISTINCT, FILTER, casts or COALESCE.",
+  TEXT2SQL_COMPARISON_PRIOR_SUM_INPUT_REJECTED:
+    "The prior amount must be raw SUM of exactly one qualified published value column. Do not change the aggregate, source, argument or add DISTINCT, FILTER, casts or COALESCE.",
   TEXT2SQL_COMPARISON_CURRENT_GROUP_REJECTED:
     "Group the current CTE by its exact projected month expression or that output alias, not a positional ordinal.",
   TEXT2SQL_COMPARISON_PRIOR_GROUP_REJECTED:
