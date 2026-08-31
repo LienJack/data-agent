@@ -403,6 +403,8 @@ Correct：`requested_time_window = resolveAnalysisEvidenceTimeWindow(binding, co
 `compileCategoryComparisonPlan({context,query_evidence_ref,query_evidence_document})`返回`result_contract/shape/execution_contract`及空算子义务。
 method=`published-category-multi-measure-comparison@1`，contract=`category-multi-measure-comparison.result`。
 `categoryComparisonMeasureSchema`规定原列、观测/缺失数、极值和最低/最高各最多3个`{source_row_index,group,value}`。
+分类/月度叶子共用`buildDescriptiveResultContract`编码固定observations、JSON字段、原source/role/NULL、lineage与图表元数据；
+该纯构造器不验证或授予权限，调用者仍须独立执行原来源、applicability与结果source proof。
 `createCategoryComparisonOracle(context): AnalysisOraclePort`重编原来源合同并独立验算；公共`createAnalysisOracleOutputClosure`
 只复用字节/ref/JSON检查，implementation digest同时绑定叶子与公共模块内容，不共享业务期望算法。
 
@@ -442,6 +444,7 @@ Bad：把每个渠道的人群行合并成一点，或将4个ROI求平均后称�
 补零/额外事实/因果、完整表图绑定与重新封hash、类型正确但篡改值的Arrow。真实投影保留两个分类与NULL，叙述保留受验值。
 生产选择更换问题文字仍不变；匹配规则及oracle通过，缺规则/错绑定拒绝。stub Sandbox receipt仅是unit边界fixture，不是执行回执。
 入口64行通过且可通过原V3 BAR schema，65行须在方法编译时拒绝；不能扩大图表预算或删行来迁就输入。
+公共合同编码重构须保持改动前固定的5个ResultContract golden hash（月度1项、分类1/2维×两派生角色4项），不可通过改期望掩盖漂移。
 
 ### 7. Wrong vs Correct
 

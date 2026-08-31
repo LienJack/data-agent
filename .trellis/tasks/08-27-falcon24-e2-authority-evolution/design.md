@@ -1719,3 +1719,7 @@ Contracts53/53、Worker8文件145/145、Platform40/40及四包typecheck、Contra
 
 随后纠正分类方法行数闭包：最初200行入口与原V3 BAR的64行限制不一致，现将方法/合同/rank schema收紧到64，不扩大图表预算、不删行。
 64/65两项边界先RED，64行同时通过原BAR schema；旧少量分类/独立oracle/生产接线回归保持。该修改只影响新构建编译，不回写历史合同。
+
+月度分群前抽出已有月度/分类的固定ResultContract编码，调用者仍保留原source proof/方法适用性/发布权限和独立oracle。
+在clean `23dcc9ad`实现上先固定5个合同hash，重构前后都通过，8文件140/140及Worker typecheck/build通过；
+公共函数不包含方法选择或业务算术，不改变合同/执行规则/输出或历史hash。新月度分群随后复用这一源列编码。

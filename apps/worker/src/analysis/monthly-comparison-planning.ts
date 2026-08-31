@@ -1,6 +1,5 @@
 import {
   type ArtifactReference,
-  buildAnalysisResultContract,
   type ProductTeamArtifactDocument,
   verifyProductTeamArtifactDocument,
 } from "@data-agent/contracts/artifacts";
@@ -9,6 +8,7 @@ import { type AnalysisContext, verifyAnalysisContext } from "@data-agent/contrac
 import { evaluateAnalysisApplicability } from "@data-agent/semantic/runtime-context";
 import { z } from "zod";
 import { resolveAnalysisResultSourceObjects } from "./analysis-result-source-authority.js";
+import { buildDescriptiveResultContract } from "./descriptive-result-contract.js";
 import { verifyProductTeamQueryEvidenceInput } from "./governed-analysis-input.js";
 
 export const MONTHLY_COMPARISON_METHOD_ID = "published-monthly-multi-measure-comparison@1";
@@ -236,102 +236,35 @@ export async function compileMonthlyComparisonPlan(input: MonthlyComparisonInput
     )
   )
     return fail("AUTHORITY");
-  const semanticIds = [...new Set(binding.columns.map((column) => column.semantic_object_id))];
-  const physicalFields = binding.columns.map((column) => `query_evidence.${column.output_name}`);
   const measureFields = shape.measures.map((column, index) => ({
     field: `measure_${index + 1}`,
     source_column: column.output_name,
   }));
-  const contract = await buildAnalysisResultContract({
-    schema_version: "analysis-result-contract@2.0.0",
+  const contract = await buildDescriptiveResultContract({
+    context,
+    binding,
+    metrics,
+    columns: shape.columns,
     contract_id: MONTHLY_COMPARISON_CONTRACT_ID,
-    semantic_context_hash: context.semantic_context_binding.package_hash,
-    result_fields: [
-      { field: "observations", data_type: "JSON", nullable: false, semantic_role: "DERIVED" },
-      ...measureFields.map(({ field }) => ({
-        field,
-        data_type: "JSON" as const,
-        nullable: false,
-        semantic_role: "DERIVED" as const,
-      })),
-      {
-        field: "claim_strength",
-        data_type: "STRING",
-        nullable: false,
-        semantic_role: "LIMITATION",
-        text_constraints: {
-          required_substrings: ["DESCRIPTIVE"],
-          forbidden_substrings: [],
-          required_suffix: "DESCRIPTIVE",
-        },
-      },
-    ],
-    metric_bindings: metrics.map((metric) => ({
-      semantic_metric_id: metric.metric_ref.node_id,
-      field: "observations",
-      unit: metric.unit?.unit_id ?? null,
-      aggregation: "NONE",
-      formula_hash: metric.formula_hash,
-    })),
-    dimension_bindings: [{ semantic_dimension_id: shape.time_dimension_id, field: "observations" }],
+    derived_fields: measureFields.map(({ field }) => field),
     grain: {
       dimension_ids: [shape.time_dimension_id],
       time_dimension_id: shape.time_dimension_id,
       time_grain: "MONTH",
     },
-    lineage: ["observations", ...measureFields.map(({ field }) => field), "claim_strength"].map(
-      (field) => ({
-        field,
-        source_semantic_object_ids: semanticIds,
-        source_physical_fields: physicalFields,
-        transformation: field === "observations" ? "DIRECT" : "AGGREGATION",
-      }),
-    ),
-    collection_constraints: [],
-    tables: [
-      {
-        table_id: MONTHLY_COMPARISON_TABLE_ID,
-        title_zh: "月度多结果比较",
-        required: true,
-        columns: binding.columns.map((column, index) => {
-          if (column.semantic_role === "PHYSICAL_COLUMN") return fail("SHAPE");
-          return {
-            key: column.output_name,
-            label_zh: shape.columns[index]?.label ?? column.output_name,
-            data_type: column.semantic_role === "DIMENSION" ? "STRING" : "NUMBER",
-            nullable: column.nullable,
-            semantic_object_id: column.semantic_object_id,
-            semantic_role: column.semantic_role,
-          };
-        }),
-        projection: {
-          mode: "RESULT_COLLECTION",
-          collection_field: "observations",
-          column_mappings: binding.columns.map((column) => ({
-            result_field: column.output_name,
-            table_column: column.output_name,
-            source: { input_name: "query_evidence", output_name: column.output_name },
-          })),
-        },
-        max_rows: 12,
-      },
-    ],
-    charts: [
-      {
-        chart_id: MONTHLY_COMPARISON_CHART_ID,
-        title_zh: "月度结果与缺失观测",
-        required: true,
-        intent: "TREND",
-        table_id: MONTHLY_COMPARISON_TABLE_ID,
-        allowed_template_ids: ["line.multi-series@1"],
-      },
-    ],
-    limits: {
-      max_result_bytes: 1_048_576,
-      max_table_rows: 12,
-      max_table_columns: 5,
-      max_closure_bytes: 4_194_304,
+    table: {
+      id: MONTHLY_COMPARISON_TABLE_ID,
+      title: "月度多结果比较",
+      max_rows: 12,
+      max_columns: 5,
     },
+    chart: {
+      id: MONTHLY_COMPARISON_CHART_ID,
+      title: "月度结果与缺失观测",
+      intent: "TREND",
+      template_id: "line.multi-series@1",
+    },
+    invalid_shape: () => fail("SHAPE"),
   });
   await resolveAnalysisResultSourceObjects({
     result_contract: contract,

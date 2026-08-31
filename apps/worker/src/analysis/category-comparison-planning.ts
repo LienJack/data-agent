@@ -1,6 +1,5 @@
 import {
   type ArtifactReference,
-  buildAnalysisResultContract,
   type ProductTeamArtifactDocument,
   verifyProductTeamArtifactDocument,
 } from "@data-agent/contracts/artifacts";
@@ -12,6 +11,7 @@ import {
   resolveAnalysisResultSourceObjects,
   verifyAcceptedAnalysisQueryEvidence,
 } from "./analysis-result-source-authority.js";
+import { buildDescriptiveResultContract } from "./descriptive-result-contract.js";
 
 export const CATEGORY_COMPARISON_METHOD_ID = "published-category-multi-measure-comparison@1";
 export const CATEGORY_COMPARISON_CONTRACT_ID = "category-multi-measure-comparison.result";
@@ -164,102 +164,31 @@ export async function compileCategoryComparisonPlan(input: CategoryComparisonInp
   )
     return fail("AUTHORITY");
   const timeWindow = resolveAnalysisEvidenceTimeWindow(binding, context);
-  const semanticIds = [...new Set(binding.columns.map((column) => column.semantic_object_id))];
   const measureFields = measures.map((column, index) => ({
     field: `measure_${index + 1}`,
     source_column: column.output_name,
   }));
-  const contract = await buildAnalysisResultContract({
-    schema_version: "analysis-result-contract@2.0.0",
+  const contract = await buildDescriptiveResultContract({
+    context,
+    binding,
+    metrics,
+    columns,
     contract_id: CATEGORY_COMPARISON_CONTRACT_ID,
-    semantic_context_hash: context.semantic_context_binding.package_hash,
-    result_fields: [
-      { field: "observations", data_type: "JSON", nullable: false, semantic_role: "DERIVED" },
-      ...measureFields.map(({ field }) => ({
-        field,
-        data_type: "JSON" as const,
-        nullable: false,
-        semantic_role: "DERIVED" as const,
-      })),
-      {
-        field: "claim_strength",
-        data_type: "STRING",
-        nullable: false,
-        semantic_role: "LIMITATION",
-        text_constraints: {
-          required_substrings: ["DESCRIPTIVE"],
-          forbidden_substrings: [],
-          required_suffix: "DESCRIPTIVE",
-        },
-      },
-    ],
-    metric_bindings: metrics.map((metric) => ({
-      semantic_metric_id: metric.metric_ref.node_id,
-      field: "observations",
-      unit: metric.unit?.unit_id ?? null,
-      aggregation: "NONE",
-      formula_hash: metric.formula_hash,
-    })),
-    dimension_bindings: dimensionIds.map((id) => ({
-      semantic_dimension_id: id,
-      field: "observations",
-    })),
+    derived_fields: measureFields.map(({ field }) => field),
     grain: { dimension_ids: dimensionIds, time_dimension_id: null, time_grain: "NONE" },
-    lineage: ["observations", ...measureFields.map(({ field }) => field), "claim_strength"].map(
-      (field) => ({
-        field,
-        source_semantic_object_ids: semanticIds,
-        source_physical_fields: binding.columns.map(
-          (column) => `query_evidence.${column.output_name}`,
-        ),
-        transformation: field === "observations" ? "DIRECT" : "AGGREGATION",
-      }),
-    ),
-    collection_constraints: [],
-    tables: [
-      {
-        table_id: CATEGORY_COMPARISON_TABLE_ID,
-        title_zh: "分类结果比较",
-        required: true,
-        columns: binding.columns.map((column, index) => {
-          if (column.semantic_role === "PHYSICAL_COLUMN") return fail("SHAPE");
-          return {
-            key: column.output_name,
-            label_zh: columns[index]?.label ?? column.output_name,
-            data_type: column.semantic_role === "DIMENSION" ? "STRING" : "NUMBER",
-            nullable: column.nullable,
-            semantic_object_id: column.semantic_object_id,
-            semantic_role: column.semantic_role,
-          };
-        }),
-        projection: {
-          mode: "RESULT_COLLECTION",
-          collection_field: "observations",
-          column_mappings: binding.columns.map((column) => ({
-            result_field: column.output_name,
-            table_column: column.output_name,
-            source: { input_name: "query_evidence", output_name: column.output_name },
-          })),
-        },
-        max_rows: MAX_ROWS,
-      },
-    ],
-    charts: [
-      {
-        chart_id: CATEGORY_COMPARISON_CHART_ID,
-        title_zh: "分类结果与缺失观测",
-        required: true,
-        intent: "COMPARISON",
-        table_id: CATEGORY_COMPARISON_TABLE_ID,
-        allowed_template_ids: ["bar.grouped@1"],
-      },
-    ],
-    limits: {
-      max_result_bytes: 1_048_576,
-      max_table_rows: MAX_ROWS,
-      max_table_columns: 6,
-      max_closure_bytes: 4_194_304,
+    table: {
+      id: CATEGORY_COMPARISON_TABLE_ID,
+      title: "分类结果比较",
+      max_rows: MAX_ROWS,
+      max_columns: 6,
     },
+    chart: {
+      id: CATEGORY_COMPARISON_CHART_ID,
+      title: "分类结果与缺失观测",
+      intent: "COMPARISON",
+      template_id: "bar.grouped@1",
+    },
+    invalid_shape: () => fail("SHAPE"),
   });
   await resolveAnalysisResultSourceObjects({
     result_contract: contract,

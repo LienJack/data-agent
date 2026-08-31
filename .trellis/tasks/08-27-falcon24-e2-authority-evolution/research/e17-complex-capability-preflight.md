@@ -165,3 +165,10 @@ Trace两个重新封hash的缺列/非DIMENSION反例先实际返回ok:true，补
 编译器最初允许200行但其必需BAR图仍为原64行上限；若不处理，会在分析完成后才拒绝显示。现方法/合同/rank schema统一收紧64，
 不增加预算、不丢弃source行；64/65两个反例先RED，64行同时通过原V3 BAR schema。历史合同/hash不改写，只应用于后继新构建。
 4文件69/69、Worker typecheck/build及2文件Biome通过；无模型调用或库写入。
+
+## 月度分群前的固定合同编码复用
+
+将现有月度/分类共同的observations/source/role/NULL/lineage/元数据编码收敛到纯buildDescriptiveResultContract；原方法选取、来源与权限证明、
+执行规则和独立oracle不动。改前clean23dcc9ad先捕获5个合同golden hash并验证，再重构；不是拿改后输出倒填期望。
+8文件140/140、Worker typecheck/build与4文件Biome通过。初始tsx -e走CJS不兼容仓库ESM exports，改用node --import tsx --input-type=module完成只读捕获；
+未修改运行时或依赖。新增函数的字段map使用明确合同类型修复字面量推断，没有类型绕过。该项无模型/数据库操作，新分群方法继续接续。
