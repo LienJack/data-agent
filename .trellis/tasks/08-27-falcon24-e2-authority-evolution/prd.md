@@ -1,7 +1,8 @@
 # Falcon24 Semantic Generation 2、E4 原子恢复与 E5 前向构建权威
 
 > 最新需求权威（2026-08-31）：用户允许简化反复失败的门禁，优先证明 Semantic + Text2SQL 协作。
-> 当前收敛到第 21 节核心协作验收；第 20 节原四层 15 回合及旧 Epoch 记录保留，不改判 PASS。
+> 第 21 节核心协作验收已完成（四题 4/4）；见 research/core-collaboration-verification-ec3c1e61.md。
+> 第 20 节原四层 15 回合及旧 Epoch 记录保留，不改判 PASS；延期项不自动续跑。
 
 > 执行状态（2026-08-29）：W1-W8-R4 已完成。10797 已应用，`e432` 已经既有 capability authority 封存为 `HOLD`；clean build 上
 > 唯一一次 `e433` Finalizer 已把 generation 2 与 E4 在同一事务中激活并通过 production-port readback。当前 exact authority 为 E4，
@@ -712,11 +713,14 @@ Provider、SQL、Sandbox 或 Artifact side effect。
 如确实需要新增可复用术语/公式，用户允许走现有 Candidate/ChangeSet/review/publish 流程；不得用聊天授权伪造 exact 治理批准。
 本版已有收入、投入、ROAS 和 request-scoped ratio 原语，先不创建非必要的全局对象。
 
-- [ ] **AC-CORE-01** 同一 clean build、专用物理 scratch、baseline/release/datasource/profile 下四题均通过独立业务复核；不拼接历史 PASS。
-- [ ] **AC-CORE-02** 两道协作题有同 Run 的 Semantic Context → accepted SQL → QueryEvidence，来源列、聚合公式、NULL/零分母与源数据一致。
-- [ ] **AC-CORE-03** 每题真实 composer 只提交一次；业务通过后复用同 Run 验证答案、表格、实际 Agent、答案入口 Trace、Artifact 和刷新恢复。
-- [ ] **AC-CORE-04** 保存四题 question/Conversation/Run、build/binding、答案/证据 hash、原始失败与当前验证记录；不将 scratch 证明写成原四层正式 PASS。
-- [ ] **AC-CORE-05** 相关回归/clean build、受保护历史、服务清理和 scoped commits 闭合。最终单独报告核心协作结果、原四层状态和 production isolation。
+- [x] **AC-CORE-01** 同一 clean build、专用物理 scratch、baseline/release/datasource/profile 下四题均通过独立业务复核；不拼接历史 PASS。
+- [x] **AC-CORE-02** 两道协作题有同 Run 的 Semantic Context → accepted SQL → QueryEvidence，来源列、聚合公式、NULL/零分母与源数据一致。
+- [x] **AC-CORE-03** 每题真实 composer 只提交一次；业务通过后复用同 Run 验证答案、表格、实际 Agent、答案入口 Trace、Artifact 和刷新恢复。
+- [x] **AC-CORE-04** 保存四题 question/Conversation/Run、build/binding、答案/证据 hash、原始失败与当前验证记录；不将 scratch 证明写成原四层正式 PASS。
+- [x] **AC-CORE-05** 相关回归/clean build、受保护历史、服务清理和 scoped commits 闭合。最终单独报告核心协作结果、原四层状态和 production isolation。
+
+2026-08-31 核心里程碑完成，见 [验收报告](research/core-collaboration-verification-ec3c1e61.md)。四题源码构建为 `ec3c1e61`，
+live 348 表零漂移；原四层及 child 未完成项保持延期，不因核心交付归档整个父任务。
 
 核心任务交付可在上述五项完成后结束；旧 E16 失败与 E17 正式激活/四层验收不会因本版核心证明自动改变。
 恢复完整四层或生产发布时仍需对应门禁，不得将 `CORE_COLLABORATION_VERIFIED` 当成生产发布凭据。

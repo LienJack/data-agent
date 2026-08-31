@@ -1,6 +1,6 @@
 # Falcon24 Semantic Generation 2、E4 原子恢复与 E5 前向构建权威 — Implementation Plan
 
-> 最新执行入口（2026-08-31）：按用户简化门禁的授权，从第 26 节 C0-C3 核心协作切片继续。
+> 最新执行状态（2026-08-31）：按用户简化门禁的授权，第 26 节 C0-C3 核心协作切片已完成，四题 4/4。
 > 第 25 节原四层记录保留，未完成复杂能力暂缓；不能修改历史 PASS/FAIL 或绕过发布安全边界。
 
 > W1-W7 已于 2026-08-28 实施并全量验证。用户已批准 exact review packet 与 W8；10795 已应用，旧 `e430` 已封存为 HOLD。
@@ -1811,9 +1811,9 @@ git diff --check
 
 ### C1 — 新构建与隔离预检
 
-- [ ] 审计当前 live E16 与已保留 scratch；新 clean force build/full unit/attestation，不复用 cc9 的 PASS。
-- [ ] 新建显式 NAS scratch 物理克隆，验证 source dataset/发布身份/受保护历史；原认证及 Finalizer 仅作用 scratch。
-- [ ] 启动 attested Web/Worker 与必要依赖；保持 OrbStack 关闭，不连接普通 NAS data_agent 作为 Falcon authority。
+- [x] 审计当前 live E16 与已保留 scratch；新 clean force build/full unit/attestation，不复用 cc9 的 PASS。
+- [x] 新建显式 NAS scratch 物理克隆，验证 source dataset/发布身份/受保护历史；原认证及 Finalizer 仅作用 scratch。
+- [x] 启动 attested Web/Worker 与必要依赖；保持 OrbStack 关闭，不连接普通 NAS data_agent 作为 Falcon authority。
 
 预检记录：`fa03e0ed` force build 8/8 通过，full unit 在 DeepSeek Strict 的可选facet投影处失败，未创建/激活新scratch、未调用模型。
 补充真实model与authority两个schema分支测试，先观察3个RED；改为closed/all-required object union后Agent Runtime 15/15、Contracts 11/11、
@@ -1822,12 +1822,21 @@ Worker 84/84，以及Contracts/Agent Runtime/Worker typecheck、Contracts build�
 
 ### C2 — 四题单链路证明
 
-- [ ] 依次执行 C1 语义口径、C2 最近订单、C3 发布 ROAS、C4 显式净 ROI；每题一次 composer，不重新提交已存在 Run。
-- [ ] 先真实独立业务 oracle，再同 Run QA/Trace/Artifact/Agent/SQL 页与刷新；表格必须，图表非必需但显示后须验证。
-- [ ] 内部失败保留 exact 证据、定位最小缺陷；修复后 focused validation/scoped commit，再新 clean 构建证明，不拼 PASS。
+- [x] 依次执行 C1 语义口径、C2 最近订单、C3 发布 ROAS、C4 显式净 ROI；每题一次 composer，不重新提交已存在 Run。
+- [x] 先真实独立业务 oracle，再同 Run QA/Trace/Artifact/Agent/SQL 页与刷新；表格必须，图表非必需但显示后须验证。
+- [x] 内部失败保留 exact 证据、定位最小缺陷；修复后 focused validation/scoped commit，再新 clean 构建证明，不拼 PASS。
 
 ### C3 — 核心交付与清理
 
-- [ ] 汇总四题同构建/同 baseline 证据及使用量；明确 `CORE_COLLABORATION_VERIFIED` 不等于旧 FL1 PASSED。
-- [ ] 比较 live authority 与历史，清理本次临时服务/browser/credential；保留旧失败克隆/backup/audit。
-- [ ] 更新本节与核心报告、验证/scoped commit，交付核心协作结果；原 E17 live 激活、完整四层和 production isolation 单独列状态。
+- [x] 汇总四题同构建/同 baseline 证据及使用量；明确 `CORE_COLLABORATION_VERIFIED` 不等于旧 FL1 PASSED。
+- [x] 比较 live authority 与历史，清理本次临时服务/browser/credential；保留旧失败克隆/backup/audit。
+- [x] 更新本节与核心报告、验证/scoped commit，交付核心协作结果；原 E17 live 激活、完整四层和 production isolation 单独列状态。
+
+闭合记录：clean `ec3c1e61` force build 8/8（0 cache）、full unit 15/15 task（6 cache）、attestation PASS；
+新 NAS scratch 55476 与 live 克隆前348表一致，9表/70列/121445行来源完整，原认证/Finalizer仅激活scratch。
+四题同baseline真实composer各一次，业务/QA/Trace/刷新4/4，节点21/27/45/42全部打开；两道渠道题同Run语义到SQL证据闭合。
+ROAS同Run一次候选修复保留；只读harness的SQL直接引用误判单独纠正，同一Run重验，无模型重跑，原失败及旧结果元数据差异明确记录。
+live348表after与before完全相同；本轮Web/Worker/OpenSandbox及4个browser/auth清理，专用scratch停机保留checkpoint，55476转发取消，
+本轮capability文件删除。普通NAS数据库healthy，OrbStack关闭，旧资源未批量清理。
+7条已报告usage合计105601 tokens、6条未报告，完整总量未知；恢复认证不计入该小计。
+完整ID/hash/失败/清理见 [核心验收报告](research/core-collaboration-verification-ec3c1e61.md)。当前核心范围完成；不继续扩建延期复杂能力或启动live正式题库。

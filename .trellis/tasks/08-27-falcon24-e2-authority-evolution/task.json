@@ -23,6 +23,14 @@
   ],
   "parent": "08-26-falcon24-e1-authority-reset",
   "relatedFiles": [],
-  "notes": "",
-  "meta": {}
+  "notes": "2026-08-31: the user-scoped four-case core collaboration milestone is complete. Keep the broader parent and child history open; complex Analysis and the original formal four-layer gate remain deferred and are not automatically resumed or declared passed.",
+  "meta": {
+    "core_collaboration_status": "COMPLETE",
+    "core_collaboration_result": "CORE_COLLABORATION_VERIFIED",
+    "core_collaboration_profile": "falcon24-core-collaboration@1.0.0",
+    "verified_source_commit": "ec3c1e61e3258404245e6d7a26e30ef397eef158",
+    "core_collaboration_report": "research/core-collaboration-verification-ec3c1e61.md",
+    "formal_four_layer_pass": false,
+    "remaining_scope": "DEFERRED_BY_USER_SCOPE_CHANGE"
+  }
 }
