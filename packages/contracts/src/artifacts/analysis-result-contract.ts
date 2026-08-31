@@ -130,6 +130,12 @@ const tableProjectionSchema = z.discriminatedUnion("mode", [
         z.strictObject({
           result_field: fieldNameSchema,
           table_column: fieldNameSchema,
+          source: z
+            .strictObject({
+              input_name: z.string().regex(/^[A-Za-z_][A-Za-z0-9_]{0,62}$/u),
+              output_name: fieldNameSchema,
+            })
+            .optional(),
         }),
       )
       .min(1)
@@ -347,6 +353,27 @@ export const analysisResultContractMaterialSchema = z
           ["tables", index, "projection", "column_mappings"],
           "Projected result fields must be unique.",
         );
+        const sources = table.projection.column_mappings.flatMap(({ source }) =>
+          source ? [`${source.input_name}.${source.output_name}`] : [],
+        );
+        unique(
+          sources,
+          ["tables", index, "projection", "column_mappings"],
+          "Explicit source columns must be unique.",
+        );
+        const collectionField = table.projection.collection_field;
+        const lineage = contract.lineage.find(({ field }) => field === collectionField);
+        if (
+          sources.length > 0 &&
+          (lineage?.transformation !== "DIRECT" ||
+            sources.some((source) => !lineage.source_physical_fields.includes(source)))
+        ) {
+          context.addIssue({
+            code: "custom",
+            path: ["tables", index, "projection", "column_mappings"],
+            message: "Explicit source columns require exact DIRECT lineage.",
+          });
+        }
         if (
           fields.get(table.projection.collection_field)?.data_type !== "JSON" ||
           tableColumnKeys.length !== mappedTableColumns.length ||

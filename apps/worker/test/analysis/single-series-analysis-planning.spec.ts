@@ -1,7 +1,9 @@
 import { createHash } from "node:crypto";
 import {
   type ArtifactReference,
+  buildAnalysisResultContract,
   buildProductTeamArtifactDocument,
+  buildQueryEvidenceSemanticBinding,
   type ProductTeamArtifactDocument,
 } from "@data-agent/contracts/artifacts";
 import { buildAnalysisContext } from "@data-agent/contracts/context";
@@ -227,6 +229,211 @@ async function planInput(document: ProductTeamArtifactDocument) {
     query_evidence_document: document,
   };
 }
+
+async function repeatedMetricProjectionFixture() {
+  const base = await queryEvidence();
+  const plan = await compileSingleSeriesAnalysisPlan(await planInput(base));
+  if (base.projection.kind !== "TABLE" || base.provenance?.kind !== "GOVERNED_QUERY_RESULT")
+    throw new TypeError("TEST_QUERY_EVIDENCE_REQUIRED");
+  const valueBinding = base.provenance.semantic_binding.columns[1];
+  const table = plan.result_contract.tables[0];
+  const valueColumn = table?.columns[1];
+  if (!valueBinding || !table || !valueColumn) throw new TypeError("TEST_VALUE_REQUIRED");
+  const { binding_hash: _bindingHash, ...binding } = base.provenance.semantic_binding;
+  const evidence = await buildProductTeamArtifactDocument({
+    ...base,
+    provenance: {
+      ...base.provenance,
+      semantic_binding: await buildQueryEvidenceSemanticBinding({
+        ...binding,
+        columns: [
+          ...binding.columns,
+          { ...valueBinding, output_name: "prior_value", nullable: true },
+        ],
+      }),
+    },
+    projection: {
+      ...base.projection,
+      columns: [
+        ...base.projection.columns,
+        { key: "prior_value", label: "同期收入", data_type: "NUMBER" },
+      ],
+      rows: base.projection.rows.map((row, index) => ({
+        ...row,
+        prior_value: index === 0 ? null : 80 + index,
+      })),
+    },
+  });
+  if (
+    evidence.artifact_ref.artifact_type !== "QueryEvidence" ||
+    evidence.projection.kind !== "TABLE" ||
+    evidence.provenance?.kind !== "GOVERNED_QUERY_RESULT"
+  )
+    throw new TypeError("TEST_QUERY_EVIDENCE_REQUIRED");
+  const { contract_hash: _contractHash, ...material } = plan.result_contract;
+  const contract = await buildAnalysisResultContract({
+    ...material,
+    lineage: material.lineage.map((lineage) =>
+      lineage.field === "series"
+        ? {
+            ...lineage,
+            source_physical_fields: [
+              ...lineage.source_physical_fields,
+              "query_evidence.prior_value",
+            ],
+          }
+        : lineage,
+    ),
+    tables: [
+      {
+        ...table,
+        columns: [...table.columns, { ...valueColumn, key: "comparison", nullable: true }],
+        projection: {
+          mode: "RESULT_COLLECTION",
+          collection_field: "series",
+          column_mappings: [
+            {
+              result_field: "period",
+              table_column: "period",
+              source: { input_name: "query_evidence", output_name: "period" },
+            },
+            {
+              result_field: "value",
+              table_column: "value",
+              source: { input_name: "query_evidence", output_name: "metric_value" },
+            },
+            {
+              result_field: "comparison",
+              table_column: "comparison",
+              source: { input_name: "query_evidence", output_name: "prior_value" },
+            },
+          ],
+        },
+      },
+    ],
+    limits: { ...material.limits, max_table_columns: 3 },
+  });
+  return {
+    contract,
+    governed: {
+      name: "query_evidence",
+      format: "ARROW" as const,
+      query_evidence_ref: evidence.artifact_ref,
+      query_evidence_document: evidence,
+      input_ref: reference("SensitiveExecutionArtifact", 80),
+      materialization_receipt_ref: reference("AnalysisInputMaterializationReceipt", 81),
+      materialization_receipt_document: {},
+      content: productTeamGovernedQueryInternals.materializeProductTeamArrow(
+        evidence.projection,
+        evidence.provenance.semantic_binding.columns,
+      ),
+    },
+  };
+}
+
+describe("explicit source columns for direct governed projection", () => {
+  it("disambiguates repeated Metric identities and retains nullable prior values", async () => {
+    const { contract, governed } = await repeatedMetricProjectionFixture();
+    const projections = await buildGovernedResultProjections({
+      contract,
+      governed_inputs: [governed],
+    });
+    expect(projections[0]?.result_rows).toEqual(
+      Array.from({ length: 12 }, (_, index) => ({
+        period: month(index),
+        value: 100 + index * 10,
+        comparison: index === 0 ? null : 80 + index,
+      })),
+    );
+    expect(projections[0]?.table_rows).toEqual(projections[0]?.result_rows);
+    expect(projections[0]?.result_rows).toHaveLength(12);
+  });
+
+  it.each([
+    "missing-source",
+    "wrong-input",
+    "wrong-output",
+    "wrong-role",
+    "wrong-identity",
+    "wrong-type",
+    "nullability",
+    "mixed-inputs",
+    "duplicate-input",
+    "arrow-drift",
+  ])("rejects %s instead of guessing between equal Metric identities", async (variant) => {
+    const { contract: baseContract, governed } = await repeatedMetricProjectionFixture();
+    const { contract_hash: _hash, ...material } = baseContract;
+    const tables = material.tables.map((table) => ({
+      ...table,
+      columns: table.columns.map((column) =>
+        column.key === "comparison"
+          ? {
+              ...column,
+              ...(variant === "wrong-role" ? { semantic_role: "DERIVED" as const } : {}),
+              ...(variant === "wrong-type" ? { data_type: "STRING" as const } : {}),
+              ...(variant === "nullability" ? { nullable: false } : {}),
+              ...(variant === "wrong-identity" ? { semantic_object_id: "metric.other" } : {}),
+            }
+          : column,
+      ),
+      projection:
+        table.projection.mode === "RESULT_COLLECTION"
+          ? {
+              ...table.projection,
+              column_mappings: table.projection.column_mappings.map((mapping) => {
+                if (variant === "missing-source") {
+                  const { source: _source, ...withoutSource } = mapping;
+                  return withoutSource;
+                }
+                if (mapping.table_column !== "comparison") return mapping;
+                return {
+                  ...mapping,
+                  source: {
+                    input_name: ["wrong-input", "mixed-inputs"].includes(variant)
+                      ? "other_evidence"
+                      : "query_evidence",
+                    output_name: variant === "wrong-output" ? "missing_value" : "prior_value",
+                  },
+                };
+              }),
+            }
+          : table.projection,
+    }));
+    const contract = await buildAnalysisResultContract({
+      ...material,
+      tables,
+      lineage: material.lineage.map((lineage) =>
+        lineage.field === "series"
+          ? {
+              ...lineage,
+              source_semantic_object_ids: [...lineage.source_semantic_object_ids, "metric.other"],
+              source_physical_fields: [
+                ...lineage.source_physical_fields,
+                "other_evidence.prior_value",
+                "query_evidence.missing_value",
+              ],
+            }
+          : lineage,
+      ),
+    });
+    const inputs =
+      variant === "duplicate-input"
+        ? [governed, { ...governed }]
+        : variant === "mixed-inputs"
+          ? [governed, { ...governed, name: "other_evidence" }]
+          : [
+              {
+                ...governed,
+                ...(variant === "arrow-drift" ? { content: new Uint8Array([0]) } : {}),
+              },
+            ];
+    const assertion = expect(
+      buildGovernedResultProjections({ contract, governed_inputs: inputs }),
+    ).rejects;
+    if (variant === "arrow-drift") await assertion.toThrow();
+    else await assertion.toThrow("ANALYSIS_GOVERNED_RESULT_PROJECTION_INVALID");
+  });
+});
 
 describe("generic single-series analysis planning", () => {
   it("compiles exact semantic, operator, result and chart obligations without a case id", async () => {

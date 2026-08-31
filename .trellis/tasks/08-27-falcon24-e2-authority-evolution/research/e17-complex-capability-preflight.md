@@ -47,3 +47,13 @@
   `provider_calls=0 / authority_writes=0 / artifact_commits=0 / formal_gate_pass=false`。
 - 后续新Run仍必须正常取得已接受且含时间Dimension的Context；再证明全部生产路径和真实模型问答。当前不激活live E17，
   下一小项仍为生产Analysis的形状/能力驱动方法和独立oracle，旧五项canary仅保留历史证据。
+
+## 第二个小项：重复Metric的精确直接投影
+
+`buildGovernedResultProjections` 原先仅按role/object_id定位输入：本期与同期共享Metric时必然二义，不能靠“第一列”修复。
+在原ResultContract@2的column mapping加入可选显式source，进入相同hash并受DIRECT physical lineage校验；Worker额外精确匹配
+input/output而不删除role/ID证明。真实Arrow fixture证明12个月、本期/同期不同值和NULL保留；错输入/列/身份/角色/类型/NULL，
+重复输入、跨输入拼表、Arrow篡改及无source二义性均拒绝。Contracts41/41、Worker71/71、两包typecheck/build通过。
+
+本小项没有生产方法注册、候选预算或发布器变更。后续仍须解决FORMULA/REQUEST_DERIVED输出角色闭包、通用有界方法与独立oracle；
+全量Analysis的非空Brief时间窗约束和跨Run组合仍未完成。当前只读工程审计不能记为这些业务能力通过。

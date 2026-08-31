@@ -187,18 +187,23 @@ export async function buildGovernedResultProjections(input: {
     );
     const resolvedColumns = table.columns.map((column) => {
       if (!lineage.source_semantic_object_ids.includes(column.semantic_object_id)) fail();
+      const mapping = mappings.get(column.key);
+      if (!mapping) fail();
+      const explicitSource = mapping.source;
       const candidates = governedInputs.flatMap((governed) =>
         governed.binding.columns
           .filter(
             (source) =>
               source.semantic_object_id === column.semantic_object_id &&
-              source.semantic_role === column.semantic_role,
+              source.semantic_role === column.semantic_role &&
+              (!explicitSource ||
+                (governed.governed.name === explicitSource.input_name &&
+                  source.output_name === explicitSource.output_name)),
           )
           .map((source) => ({ governed, source })),
       );
-      const mapping = mappings.get(column.key);
       const candidate = candidates[0];
-      if (candidates.length !== 1 || !mapping || !candidate) fail();
+      if (candidates.length !== 1 || !candidate) fail();
       return { column, mapping, ...candidate };
     });
     const sourceInput = resolvedColumns[0]?.governed;

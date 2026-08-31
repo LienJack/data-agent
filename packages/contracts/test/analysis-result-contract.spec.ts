@@ -118,12 +118,115 @@ function material() {
   };
 }
 
+function directCollectionMaterial() {
+  const base = material();
+  return {
+    ...base,
+    result_fields: [
+      {
+        field: "series",
+        data_type: "JSON" as const,
+        nullable: false,
+        semantic_role: "DERIVED" as const,
+      },
+    ],
+    metric_bindings: base.metric_bindings.map((binding) => ({ ...binding, field: "series" })),
+    dimension_bindings: base.dimension_bindings.map((binding) => ({ ...binding, field: "series" })),
+    lineage: [
+      {
+        field: "series",
+        source_semantic_object_ids: ["metric.order_revenue", "dimension.order_month"],
+        source_physical_fields: ["query_evidence.period", "query_evidence.current_revenue"],
+        transformation: "DIRECT" as const,
+      },
+    ],
+    tables: base.tables.map((table) => ({
+      ...table,
+      projection: {
+        mode: "RESULT_COLLECTION" as const,
+        collection_field: "series",
+        column_mappings: [
+          {
+            result_field: "month",
+            table_column: "month",
+            source: { input_name: "query_evidence", output_name: "period" },
+          },
+          {
+            result_field: "revenue",
+            table_column: "revenue",
+            source: { input_name: "query_evidence", output_name: "current_revenue" },
+          },
+        ],
+      },
+    })),
+  };
+}
+
 describe("AnalysisResultContract@2", () => {
+  it("binds explicit source columns into a direct projection contract hash", async () => {
+    const input = directCollectionMaterial();
+    const contract = await buildAnalysisResultContract(input);
+    await expect(verifyAnalysisResultContract(contract)).resolves.toEqual(contract);
+    const changed = directCollectionMaterial();
+    required(changed.tables[0]).projection.column_mappings[1] = {
+      result_field: "revenue",
+      table_column: "revenue",
+      source: { input_name: "query_evidence", output_name: "prior_revenue" },
+    };
+    required(changed.lineage[0]).source_physical_fields.push("query_evidence.prior_revenue");
+    expect((await buildAnalysisResultContract(changed)).contract_hash).not.toBe(
+      contract.contract_hash,
+    );
+    await expect(
+      verifyAnalysisResultContract({ ...changed, contract_hash: contract.contract_hash }),
+    ).rejects.toThrow("ANALYSIS_RESULT_CONTRACT_HASH_MISMATCH");
+  });
+
+  it.each(["missing-lineage", "not-direct", "duplicate-source", "invalid-source", "unknown-field"])(
+    "rejects explicit source mapping %s",
+    async (variant) => {
+      const input = directCollectionMaterial();
+      const lineage = required(input.lineage[0]);
+      const mappings = required(input.tables[0]).projection.column_mappings;
+      if (variant === "missing-lineage") lineage.source_physical_fields.pop();
+      if (variant === "duplicate-source")
+        required(mappings[1]).source = required(mappings[0]).source;
+      if (variant === "invalid-source") required(mappings[1]).source.output_name = "value;drop";
+      await expect(
+        buildAnalysisResultContract({
+          ...input,
+          ...(variant === "not-direct"
+            ? { lineage: [{ ...lineage, transformation: "FORMULA" }] }
+            : {}),
+          ...(variant === "unknown-field"
+            ? {
+                tables: [
+                  {
+                    ...required(input.tables[0]),
+                    projection: {
+                      ...required(input.tables[0]).projection,
+                      column_mappings: mappings.map((mapping) => ({
+                        ...mapping,
+                        source: { ...mapping.source, trusted: true },
+                      })),
+                    },
+                  },
+                ],
+              }
+            : {}),
+        }),
+      ).rejects.toThrow();
+    },
+  );
+
   it("builds and verifies a content-addressed semantic result contract", async () => {
     const contract = await buildAnalysisResultContract(material());
 
     await expect(verifyAnalysisResultContract(contract)).resolves.toEqual(contract);
     expect(contract.contract_hash).toMatch(/^sha256:[a-f0-9]{64}$/u);
+    expect(contract.contract_hash).toBe(
+      "sha256:f8799262ea92ad2e0ad85feb1f9ec518931b8a0934fa073d20a18ec9f3fc4945",
+    );
     expect(Object.isFrozen(contract)).toBe(true);
   });
 

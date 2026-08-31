@@ -182,3 +182,54 @@ await authority.commitAnalysisAuthority(buildVerifiedCommit(stage, oracle, expla
 ```
 
 唯一 manifest + 精确实现源码继续生成统计 Registry digest；DeepSeek 编排 BH-FDR、Theil-Sen、Mann-Kendall、HAC、Shapley、分群留存等冻结算子，不能重写底层统计公式。
+
+## Scenario: 直接表投影的精确输入列
+
+### 1. Scope / Trigger
+
+同一已发布 Metric 在一个已接受 QueryEvidence 中多次输出（如本期/同期值）时，语义ID不能唯一定位列。
+这只消除直接数据投影的二义性，不授予新方法能力、不把 Formula/REQUEST_DERIVED 当成 Metric。
+
+### 2. Signatures
+
+`AnalysisResultContract@2.tables[].projection` 的 `RESULT_COLLECTION.column_mappings[]` 可选：
+
+```ts
+{ result_field: "current", table_column: "current", source: {
+  input_name: "query_evidence", output_name: "current_revenue"
+} }
+```
+
+`buildGovernedResultProjections({contract,governed_inputs})` 继续是唯一直接投影实现。
+
+### 3. Contracts
+
+- `source` 只能由Host结果契约提供，strict字段且进入原contract hash；不默认填充，未携带字段的旧契约结构/hash不变。
+- input_name为1–63位ASCII标识符，output_name沿原1–128位field规则；同一表的显式input.output不可重复。
+- 显式source仅允许DIRECT lineage，且该collection的source_physical_fields必须包含精确input.output。
+- Worker必须同时匹配input_name、output_name、semantic_role、semantic_object_id，且唯一；缺显式source仍要求role/ID唯一。
+- 先验证exact QueryEvidence/Arrow，再保留原类型、NULL、时间维度/时区、排序与有界行数规则。同表所有列来自同一输入，禁止跨输入拼接。
+- 显式source不表示“本期/同期”业务授权；该含义仍由原SQL/QueryEvidence证明承担，不能按列名或位置推断。
+
+### 4. Validation & Error Matrix
+
+- source未知字段/非法标识符/非DIRECT/遗漏lineage/重复显式源 → ResultContract strict/refinement拒绝。
+- source或其他内容变更而复用hash → `ANALYSIS_RESULT_CONTRACT_HASH_MISMATCH`。
+- 错输入/列/角色/ID/类型/NULL约束、无source的多源匹配、混合或重复输入 → `ANALYSIS_GOVERNED_RESULT_PROJECTION_INVALID`。
+- Arrow漂移仍由原 `verifyProductTeamQueryEvidenceInput` 拒绝，不能只信projection JSON。
+
+### 5. Good / Base / Bad Cases
+
+Good：本期/同期共用Metric，以显式source区分，NULL同期和全部月份保留。
+Base：旧单序列契约不带source且唯一匹配，继续可读可执行。
+Bad：取第一个同ID列，或仅因source列名存在就绕过role/ID校验。
+
+### 6. Tests Required
+
+契约source hash/strict/lineage/唯一性；重复Metric的真实Arrow投影；缺source/错输入/错列/错角色/身份/类型/NULL/跨输入与Arrow漂移。
+原单序列趋势、Result Publisher、Program Compiler与publication闭包回归；无source契约固定golden hash。
+
+### 7. Wrong vs Correct
+
+Wrong：`candidates.find(c => c.semantic_object_id === id)`。
+Correct：按显式source与语义role/ID共同筛选，要求exactly one，再走原类型/NULL/Arrow及同输入闭包。

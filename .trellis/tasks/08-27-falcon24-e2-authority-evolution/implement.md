@@ -1701,6 +1701,10 @@ Diagnostic/Q1/C1任一正式首次失败必须写既有 authority支持的 immut
   真实源只读探针48行/12月/4渠道与独立SUM/比例oracle一致；未更改原Context、未调用模型/提交artifact或绕过生产Context gate。
   该探针不证明新Run接受或完整Workercompile；详情与audit路径见 `research/e17-complex-capability-preflight.md`，随本小项scoped commit。
 - [ ] Analysis注册/契约/oracle按已发布能力及真实输入形态扩展，沿现有Sandbox与原子publisher；focused validation + scoped commit。
+  - [x] 直接投影源列身份前置：ResultContract@2可选显式input/output，保留role/ID/type/NULL/Arrow/同输入门禁。
+    契约新增正例先因unknown source失败；schema通过后Worker正例仍因重复Metric失败，投影修复后通过。
+    Contracts6文件41/41、Worker7文件71/71、两包typecheck/build与4文件Biome通过；原无source契约golden hash固定。
+    不注册新方法、不创建模型Run或触碰live；§25.21与Python Sandbox code-spec随本小项scoped commit。
 - [ ] 所需能力离线闭合后最终clean build/full unit/fresh scratch，再fresh E17正式15回合从L1。当前ACTIVE，live E16 FAILED。
 
 **F6 READY 轮次恢复边界（2026-08-30，历史）**

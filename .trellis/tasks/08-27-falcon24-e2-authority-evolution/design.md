@@ -1626,3 +1626,13 @@ CASE NULL 和 NULLIF 的零值语义相同，不能借用已发布 ROAS 的0。�
 先写真实 compiler round-trip 和 exact Context 的失败测试，再修改共享证明、结果解析和公开修复提示。
 验证正例含窗口总计/月度渠道分组；反例含来源、权限、双指标 coverage/时区、错下上界/参数、月桶、额外筛选与无窗退化。
 这只闭合查询输入，不声称已完成复杂 Analysis、跨 Run 指代或正式15题；后续依原 ACTIVE 流程逐项补齐。
+
+### 25.21 Analysis 直接投影的显式源列身份
+
+同一个发布 Metric 可在接受的 QueryEvidence 中分别投影本期与同期；仅按 role/object_id 选择源列会产生二义性。
+在原 ResultContract@2 的 RESULT_COLLECTION column mapping 中增加可选 `source={input_name,output_name}`，
+由 Host 方法编译器指定并进入原 contract hash。只允许 DIRECT lineage 且精确列出该 input.output；不是新执行授权。
+Worker 投影同时匹配显式输入名/输出列名与原语义 role/object_id，重验同一 QueryEvidence 与 Arrow，再保留原类型/NULL/月历校验。
+缺显式映射的旧契约仍只接受唯一来源；不得按第一个命中、current/prior 关键词、输出位置或值猜测消歧。
+跨输入拼表、重复同名输入、错语义角色/身份、遗漏lineage与错列均失败关闭。无新增字段的旧契约hash保持不变。
+本小项先覆盖本期/同期共用Metric与NULL同期的离线回归；尚不注册新Analysis方法，也不宣称REQUEST_DERIVED表契约闭包。
