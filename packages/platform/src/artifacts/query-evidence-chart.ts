@@ -90,6 +90,9 @@ export async function buildQueryEvidenceChartDocument(input: {
     ];
   });
   if (rows.length < 2) return null;
+  // V2 has no category/series identity. Repeated x values cannot be flattened
+  // into one series: retain the full QueryEvidence for a role-aware producer.
+  if (new Set(rows.map((row) => row[xColumn.key])).size !== rows.length) return null;
 
   const primaryKey = yColumns[0]?.key;
   if (!primaryKey) return null;

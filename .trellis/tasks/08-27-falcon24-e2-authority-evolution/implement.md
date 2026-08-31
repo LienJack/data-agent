@@ -1871,6 +1871,10 @@ Diagnostic/Q1/C1任一正式首次失败必须写既有 authority支持的 immut
     尚未证明A2 Python参考/复杂A-B闭环，formal15仍未开始；见 [排名窗口复盘](research/complex-a97bd856-ranked-window.md)。
     下一步新clean build/fresh scratch从A1验证，不复用40a04db9 A1或失败A2。
   再继续上述 F5 / F7；不另跑 child 历史六问，也不复用 core4 PASS。
+  - d9c3c7e3新scratch A1业务+73节点UI/Trace通过；A2运行SUCCEEDED，完整48行来源及Python结构化输出
+    原算法0差异，但额外V2 SQL图丢category，48行重复12个x。整体业务FAIL，未验UI/提交A3。
+    共用V2自动图现在对重复x返回null，原QueryEvidence和正确V3分群图不变，不改SQL/Oracle或模型预算。
+    见 [自动图身份边界](research/complex-d9c3c7e3-group-chart.md)；旧scratch停机保留、源348表无漂移。
 
 **F6 READY 轮次恢复边界（2026-08-30，历史）**
 

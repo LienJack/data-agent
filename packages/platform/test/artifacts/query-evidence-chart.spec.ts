@@ -16,6 +16,7 @@ async function evidence(
     { month: "2026-01", order_count: 137 },
   ],
   numericKeys: readonly string[] = ["order_count"],
+  categoryKeys: readonly string[] = [],
 ) {
   const sqlRef = {
     artifact_id: id(9),
@@ -59,6 +60,13 @@ async function evidence(
           semantic_role: "DIMENSION",
           semantic_object_id: "dimension.month",
         },
+        ...categoryKeys.map((key) => ({
+          name: key,
+          logical_type: "STRING" as const,
+          nullable: false,
+          semantic_role: "DIMENSION" as const,
+          semantic_object_id: `dimension.${key}`,
+        })),
         ...numericKeys.map((key) => ({
           name: key,
           logical_type: "NUMBER" as const,
@@ -72,6 +80,7 @@ async function evidence(
       kind: "TABLE",
       columns: [
         { key: "month", label: "月份", data_type: "STRING" },
+        ...categoryKeys.map((key) => ({ key, label: key, data_type: "STRING" as const })),
         ...numericKeys.map((key) => ({ key, label: key, data_type: "NUMBER" as const })),
       ],
       rows,
@@ -100,6 +109,32 @@ const semanticContext = {
 };
 
 describe("QueryEvidence chart projection", () => {
+  it.each(["TREND", "COMPARISON", "COMPOSITION"] as const)(
+    "keeps a grouped panel as evidence instead of dropping category identity in %s",
+    async (intent) => {
+      const source = await evidence(
+        [
+          { month: "2026-01", segment: "A", current: 100, prior: null },
+          { month: "2026-01", segment: "B", current: 200, prior: null },
+          { month: "2026-02", segment: "A", current: 120, prior: 100 },
+          { month: "2026-02", segment: "B", current: 180, prior: 200 },
+        ],
+        ["current", "prior"],
+        ["segment"],
+      );
+      const before = structuredClone(source);
+      await expect(
+        buildQueryEvidenceChartDocument({
+          intent,
+          document_ref: documentRef,
+          evidence: source,
+          semantic_context: semanticContext,
+        }),
+      ).resolves.toBeNull();
+      expect(source).toEqual(before);
+    },
+  );
+
   it("projects verified temporal binding into table and chart display without changing facts", async () => {
     const base = await evidence([
       { month: "2023-10-31T16:00:00.000Z", order_count: 137 },

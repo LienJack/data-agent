@@ -56,3 +56,17 @@ DeepSeek Strict必须对真实model和authority两份Zod schema做投影回归�
 
 Wrong：`row.series = row.channel + "|" + row.audience`。
 Correct：`{ x_key: "month", series_key: "channel", facet_key: "audience" }`，完整原表封hash，UI只分区显示。
+
+## QueryEvidence 自动 V2 图的唯一横轴边界
+
+`buildQueryEvidenceChartDocument` 仍返回原 V2 图或 null；V2 没有 series/category 身份。
+从已验证 QueryEvidence 投影后若 x 值重复，TREND/COMPARISON/COMPOSITION 均不生成自动图。
+不合并、取均值、去重、改数值或拼接分类来伪造唯一 x；保留完整 QueryEvidence，交原有按角色
+映射的 Analysis/V3 生产者作图。已有唯一 x 的图及其hash、空值、排序/数量边界不变。
+
+Text2SQL 的 TABLE/NONE presentation 仍可能经既有自动选图逻辑，故仅依赖模型填 TABLE 不足以保护
+分群数据；唯一 x 防线必须位于共用图投影函数。此处 null 是“不生成不适配的附加图”，不是隐藏
+查询错误或完成用户图表要求；业务需图时仍须取得正确图后验收，不能把空图当图表 PASS。
+
+回归覆盖三个 intent 的月×分类重复 x、原证据不变、原唯一 x 的 LINE/BAR/PIE、多measure及NULL。
+离线对真实48行证据检查自动图为null可证明投影修复，不能改写旧Run错误图或代替新Run验收。
