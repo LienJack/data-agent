@@ -36,6 +36,8 @@ export function resolveAnalysisEvidenceTimeWindow(
   context: AnalysisContext,
 ): ResearchBriefV3Payload["requested_time_window"] {
   const window = binding.time_window;
+  // Explicit null means all rows of this accepted evidence, never a guessed coverage window.
+  if (window === null) return null;
   if (!window) throw new TypeError("GOVERNED_ANALYSIS_TIME_WINDOW_REQUIRED");
   const metricTimezones = new Set(
     context.metrics

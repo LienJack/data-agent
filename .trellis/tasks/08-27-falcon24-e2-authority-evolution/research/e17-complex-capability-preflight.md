@@ -103,3 +103,13 @@ FULL严格限于固定描述性合同，不授予统计/因果或material-change
 随原registry hash封存，只进入匹配节点的执行上下文；新/旧oracle均按exact method/skill/contract绑定，无兜底或预算扩大。
 4个生产接线回归先因旧单序列形态限制失败；修复后10文件132/132，Worker typecheck/build通过。新方法关键数值经过叙述投影保留，
 原方法删算子仍失败，错方法与缺规则拒绝。本项不含真实Sandbox/模型/浏览器运行或正式PASS，live仍E16 FAILED。
+
+## 第八个小项：全量输入不虚构时间范围
+
+无窗QueryEvidence现在可以经原Brief进入显式Program1.1（candidate2.1/envelope1.1）；Compiler重验原接受输入及Context/Run/资源，
+Gate对null也必须精确匹配。只支持无时间grain/无统计算子/无比较窗的open-python节点范围，未注册渠道方法或扩大capability。
+Host新增approved_time_window，拒绝从coverage猜日期。原有窗Program仍1.0，旧封包hash与2.0/2.1有窗编译结果完全相同。
+
+Contracts59/59、Worker144/144、Platform42/42，四包typecheck及Contracts/Worker build通过；新增范围8项预期行为先RED，
+3项负例fixture的Context须先剥离旧hash再重封，修正后重测通过；新Wire正例先RED，旧hash从改动前实现固定。
+这是契约、发布封包和消费方离线验证，不是Sandbox/模型/数据库写入或四层PASS。接续分类/分群方法、独立oracle及跨Run闭包。

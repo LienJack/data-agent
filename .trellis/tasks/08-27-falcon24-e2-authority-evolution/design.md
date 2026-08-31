@@ -1675,3 +1675,12 @@ Host只向模型提供Schema与计算规则，不提供已算答案；独立orac
 Host-only execution_contract随既有registry hash进入上下文，只传给exact匹配节点；oracle选择器同时核对method/skill/contract，
 原方法不退化为新描述性方法。10个focused文件132项通过，包含生产选择器、原算子拒绝与后续叙述数值保留；无预算变化。
 这里只证明离线生产组件接线，不是Sandbox服务、真实模型问答或正式门禁证据；全量范围、多维/多输入与跨Run闭包继续处理。
+
+### 25.25 全量分析不虚构请求日期
+
+QueryEvidence无窗时原Brief已有nullable表达，Program却强制有窗且Gate对无窗Brief跳过比对。现在显式全量以candidate2.1/
+Program1.1/envelope1.1表达；Compiler必须从原accepted QueryEvidence重验Run/Scope/Context/Release/Schema与null范围，Gate始终
+精确比对Brief和节点。null仅限无时间grain、无统计算子、无比较窗的open-python描述性节点，不能借此注册任意分析方法。
+原有窗编译仍产生旧Program1.0/Host2.0，2.1候选的有窗结果与2.0完全相同；旧封包golden hash保留。Hash domain随显式版本，
+原Wire/publisher读取新增精确tuple，不增加数据库写入口或修改历史。Host提供approved_time_window，模型不从coverage猜日期。
+此小项只解除范围契约断裂；渠道形态/独立oracle、分群多输入与跨Run报告仍须继续完成，不激活live E17或记为真实业务PASS。

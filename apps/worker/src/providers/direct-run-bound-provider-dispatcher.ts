@@ -51,7 +51,7 @@ const SEMANTIC_QUERY_SELECTION_INTENT_SCHEMA_VERSION = "semantic-query-selection
 const PROVIDER_SMOKE_RESPONSE_SCHEMA_VERSION = "provider-smoke-answer@1.0.0";
 const ANALYSIS_PYTHON_RESPONSE_SCHEMA_VERSION = "analysis-python-source@1.0.0";
 const ANALYSIS_AGENT_FINAL_RESPONSE_SCHEMA_VERSION = "analysis-agent-final@1.0.0";
-const ANALYSIS_PROGRAM_CANDIDATE_SCHEMA_VERSION = "analysis-program-candidate@2.0.0";
+const ANALYSIS_PROGRAM_CANDIDATE_SCHEMA_VERSION = "analysis-program-candidate@2.1.0";
 const TEXT2SQL_QUERY_CANDIDATE_SCHEMA_VERSION = "text2sql-query-candidate@1.0.0";
 const specialistAnswerSchema = z.strictObject({ answer: z.string().trim().min(1).max(32_000) });
 const analysisPythonSourceSchema = z.strictObject({
@@ -239,10 +239,10 @@ function semanticSpecialistSystemPrompt(contextText: string): string {
 function analysisProgramSpecialistSystemPrompt(contextText: string): string {
   return [
     "You are the governed analysis-program planner.",
-    "Return exactly one analysis-program-candidate@2.0.0 JSON object and no prose.",
+    "Return exactly one analysis-program-candidate@2.1.0 JSON object and no prose.",
     "Bind objective_hash to the exact Host-provided objective hash and return a nodes DAG.",
     "Select only metric_ids and dimension_ids present in the frozen Published AnalysisContext.",
-    "Use the exact approved half-open time window. Never invent or widen a time range.",
+    "Copy Host approved_time_window exactly. A non-null value is the approved half-open time window. Explicit null means all rows of the accepted input, not unknown dates: set both time_window and comparison_window to null. Never infer dates from metric coverage, omit the property, invent or widen a time range, or drop an approved window.",
     "Do not return ResultContract, semantic hashes, physical lineage, limits, generated-source policy, benchmark-case identity, acceptance metadata, Python source, SQL, or chart data; those are Host-owned.",
     "Choose only statistical operator obligations from the frozen registry and exact host-required operator ids. Every operator input must bind exact governed input, an approved server transform, or a preceding governed operator result.",
     "Do not implement BH-FDR, Theil-Sen, Mann-Kendall, HAC, Shapley, cohort retention, or any other registered operator in generated Python.",

@@ -318,6 +318,10 @@ describe("direct run-bound provider retry policy", () => {
     expect(prompt).toContain("parameter_schema");
     expect(prompt).toContain("Unknown parameter keys are forbidden");
     expect(prompt).toContain("Use {} when the selected method needs no parameters");
+    expect(prompt).toContain("analysis-program-candidate@2.1.0");
+    expect(prompt).toContain("Copy Host approved_time_window exactly");
+    expect(prompt).toContain("set both time_window and comparison_window to null");
+    expect(prompt).toContain("Never infer dates from metric coverage");
   });
 
   it("allows a missing exact semantic term to close only through governed request-scoped primitives", () => {

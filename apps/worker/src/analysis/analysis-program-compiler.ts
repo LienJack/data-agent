@@ -6,17 +6,19 @@ import {
   researchBriefRefSchema,
   verifyAnalysisResultContract,
 } from "@data-agent/contracts/artifacts";
-import { sha256ContentHash } from "@data-agent/contracts/common";
+import { canonicalizeJson, sha256ContentHash } from "@data-agent/contracts/common";
 import { type AnalysisContext, verifyAnalysisContext } from "@data-agent/contracts/context";
 import {
   STATISTICAL_OPERATOR_REGISTRY_DIGEST,
   statisticalOperatorObligationsSchema,
 } from "@data-agent/contracts/statistical-operators";
 import { z } from "zod";
+import { resolveAnalysisEvidenceTimeWindow } from "./analysis-evidence-time-window.js";
 import { computeAnalysisProgramHash } from "./analysis-program-hash.js";
 import {
   type AcceptedAnalysisQueryEvidence,
   resolveAnalysisResultSourceObjects,
+  verifyAcceptedAnalysisQueryEvidence,
 } from "./analysis-result-source-authority.js";
 import { gateAnalysisProgram } from "./program-gate.js";
 
@@ -84,7 +86,7 @@ const candidateNodeV2Schema = z
       .min(1)
       .max(3),
     dimension_ids: z.array(z.string().regex(/^[A-Za-z][A-Za-z0-9._:-]{0,255}$/u)).max(5),
-    time_window: halfOpenTimeWindowSchema,
+    time_window: halfOpenTimeWindowSchema.nullable(),
     comparison_window: halfOpenTimeWindowSchema.nullable(),
     parameters: z.record(z.string(), z.json()),
     operator_obligations: statisticalOperatorObligationsSchema,
@@ -119,11 +121,24 @@ const candidateNodeV2Schema = z
 
 const analysisProgramCandidateV2Schema = z
   .strictObject({
-    schema_version: z.literal("analysis-program-candidate@2.0.0"),
+    schema_version: z.enum([
+      "analysis-program-candidate@2.0.0",
+      "analysis-program-candidate@2.1.0",
+    ]),
     objective_hash: z.string().regex(/^sha256:[a-f0-9]{64}$/u),
     nodes: z.array(candidateNodeV2Schema).min(1).max(64),
   })
   .superRefine((candidate, context) => {
+    if (candidate.schema_version === "analysis-program-candidate@2.0.0") {
+      for (const [index, node] of candidate.nodes.entries()) {
+        if (node.time_window === null)
+          context.addIssue({
+            code: "custom",
+            path: ["nodes", index, "time_window"],
+            message: "All-accepted-input scope requires analysis-program-candidate@2.1.0.",
+          });
+      }
+    }
     const nodeIds = candidate.nodes.map(({ node_id: nodeId }) => nodeId);
     if (new Set(nodeIds).size !== nodeIds.length) {
       context.addIssue({ code: "custom", path: ["nodes"], message: "Node ids must be unique." });
@@ -165,7 +180,7 @@ export async function compileAnalysisProgramCandidate(input: {
     question: input.brief.question,
   });
   if (
-    candidate.schema_version === "analysis-program-candidate@2.0.0" &&
+    candidate.schema_version !== "analysis-program-candidate@1.0.0" &&
     candidate.objective_hash !== objectiveHash
   ) {
     throw new TypeError("ANALYSIS_PROGRAM_OBJECTIVE_HASH_MISMATCH");
@@ -185,6 +200,28 @@ export async function compileAnalysisProgramCandidate(input: {
           },
         ]
       : candidate.nodes;
+  const allAcceptedInput = candidateNodes.some((node) => node.time_window === null);
+  if (allAcceptedInput) {
+    try {
+      if (!input.query_evidence) throw new TypeError("ACCEPTED_QUERY_REQUIRED");
+      const { semantic_binding: binding } = await verifyAcceptedAnalysisQueryEvidence({
+        context,
+        run_id: input.brief.question_frame_ref.run_id,
+        query_evidence: input.query_evidence,
+      });
+      const acceptedWindow = resolveAnalysisEvidenceTimeWindow(binding, context);
+      if (
+        candidateNodes.some(
+          (node) =>
+            canonicalizeJson(node.time_window) !== canonicalizeJson(acceptedWindow) ||
+            node.comparison_window !== null,
+        )
+      )
+        throw new TypeError("ACCEPTED_WINDOW_MISMATCH");
+    } catch {
+      throw new TypeError("ANALYSIS_PROGRAM_INPUT_TIME_SCOPE_INVALID");
+    }
+  }
   const compiledNodes = await Promise.all(
     candidateNodes.map(async (candidateNode) => {
       const metrics = candidateNode.metric_ids.map((metricId) => {
@@ -322,7 +359,7 @@ export async function compileAnalysisProgramCandidate(input: {
   );
   const material: Omit<AnalysisProgramPayload, "program_hash"> = {
     artifact_type: "AnalysisProgram",
-    protocol_version: "analysis-program@1.0.0",
+    protocol_version: allAcceptedInput ? "analysis-program@1.1.0" : "analysis-program@1.0.0",
     brief_ref: briefRef,
     analysis_context_hash: context.context_hash,
     semantic_context_package_hash: context.semantic_context_binding.package_hash,
@@ -338,7 +375,9 @@ export async function compileAnalysisProgramCandidate(input: {
       max_elapsed_ms: Math.min(300_000, input.brief.budget.max_elapsed_ms),
     },
     compiler_kind: "MODEL_CANDIDATE_HOST_VERIFIED",
-    compiler_version: PROGRAM_COMPILER_VERSION,
+    compiler_version: allAcceptedInput
+      ? "analysis-program-host-compiler@2.1.0"
+      : PROGRAM_COMPILER_VERSION,
   };
   const program = analysisProgramPayloadSchema.parse({
     ...material,

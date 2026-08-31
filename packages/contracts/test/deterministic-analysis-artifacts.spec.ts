@@ -606,6 +606,7 @@ describe("deterministic analysis contracts", () => {
     } as const;
     expect(parseL2ResearchDocumentCandidate(document)).toEqual(document);
     const first = await computeL2ResearchEnvelopeContentHash(document);
+    expect(first).toBe("sha256:b66fd689bcf8284e89ad7ee3c42a18f49efcf26c3e4e7894c98bde161364fb1c");
     const second = await computeL2ResearchEnvelopeContentHash(structuredClone(document));
     expect(first).toBe(second);
     expect(() =>
@@ -614,6 +615,80 @@ describe("deterministic analysis contracts", () => {
         envelope: { ...document.envelope, schema_version: "2.0.0" },
       }),
     ).toThrow(/L2_WIRE_VERSION_WRITE_UNSUPPORTED/);
+  });
+
+  it("uses a distinct wire version for an explicit all-accepted-input analysis", () => {
+    const original = validPlan();
+    const payload = {
+      ...original,
+      protocol_version: "analysis-program@1.1.0",
+      compiler_version: "analysis-program-host-compiler@2.1.0",
+      objective_hash: hashes.input,
+      nodes: [
+        {
+          ...original.nodes[0],
+          skill_id: "open-python-analysis@1",
+          method_registry_entry_ids: ["published-category-comparison@1"],
+          time_window: null,
+        },
+      ],
+    };
+    const document = {
+      envelope: {
+        ...makeArtifactEnvelope(),
+        artifact_type: "AnalysisProgram",
+        schema_version: "1.1.0",
+        input_refs: collectL2ResearchPayloadArtifactReferences(payload),
+      },
+      payload,
+    };
+    expect(parseL2ResearchDocumentCandidate(document)).toEqual(document);
+    expect(() =>
+      parseL2ResearchDocumentCandidate({
+        ...document,
+        envelope: { ...document.envelope, schema_version: "1.0.0" },
+      }),
+    ).toThrow(/L2_WIRE_VERSION_WRITE_UNSUPPORTED/);
+    expect(
+      analysisProgramPayloadSchema.safeParse({
+        ...payload,
+        protocol_version: "analysis-program@1.0.0",
+      }).success,
+    ).toBe(false);
+    for (const change of [
+      { comparison_window: original.nodes[0].time_window },
+      { skill_id: "trend-change@1" },
+      {
+        generated_source_policy: "GOVERNED_OPERATOR_ORCHESTRATION",
+        operator_obligations: [trendOperatorObligation],
+      },
+      {
+        result_contract: {
+          ...payload.nodes[0]?.result_contract,
+          grain: {
+            dimension_ids: ["product"],
+            time_dimension_id: "product",
+            time_grain: "MONTH",
+          },
+        },
+      },
+    ]) {
+      expect(
+        analysisProgramPayloadSchema.safeParse({
+          ...payload,
+          nodes: [{ ...payload.nodes[0], ...change }],
+        }).success,
+      ).toBe(false);
+    }
+    expect(
+      analysisProgramPayloadSchema.safeParse({ ...payload, objective_hash: undefined }).success,
+    ).toBe(false);
+    expect(
+      analysisProgramPayloadSchema.safeParse({
+        ...payload,
+        nodes: [{ ...payload.nodes[0], method_registry_entry_ids: undefined }],
+      }).success,
+    ).toBe(false);
   });
 
   it("keeps analysis report claim closure explicit", () => {

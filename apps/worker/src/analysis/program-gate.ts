@@ -49,7 +49,7 @@ function reject(
 
 function sameWindow(
   left: AnalysisProgramPayload["nodes"][number]["time_window"],
-  right: NonNullable<ResearchBriefV3Payload["requested_time_window"]>,
+  right: ResearchBriefV3Payload["requested_time_window"],
 ): boolean {
   return canonicalizeJson(left) === canonicalizeJson(right);
 }
@@ -153,9 +153,9 @@ export async function gateAnalysisProgram(input: {
       return reject("ANALYSIS_PROGRAM_DIMENSION_NOT_APPROVED", ["DIMENSION_NOT_ALLOWED"]);
     }
     if (
-      input.brief.requested_time_window &&
-      (!sameWindow(node.time_window, input.brief.requested_time_window) ||
-        (node.comparison_window !== null &&
+      !sameWindow(node.time_window, input.brief.requested_time_window) ||
+      (node.comparison_window !== null &&
+        (input.brief.requested_time_window === null ||
           !approvedComparisonWindow(node.comparison_window, input.brief.requested_time_window)))
     ) {
       return reject("ANALYSIS_PROGRAM_TIME_WINDOW_NOT_APPROVED", ["TIMEZONE_MISMATCH"]);
@@ -166,9 +166,7 @@ export async function gateAnalysisProgram(input: {
     try {
       await verifyAnalysisResultContract(node.result_contract);
     } catch {
-      return reject("ANALYSIS_PROGRAM_RESULT_CONTRACT_INVALID", [
-        "PROGRAM_OUTPUT_CONTRACT_FAILED",
-      ]);
+      return reject("ANALYSIS_PROGRAM_RESULT_CONTRACT_INVALID", ["PROGRAM_OUTPUT_CONTRACT_FAILED"]);
     }
     const applicability = await evaluateAnalysisApplicability(context, {
       skill_id: node.skill_id,

@@ -457,7 +457,10 @@ describe("independent monthly comparison oracle", () => {
     const input = structuredClone(test.input);
     if (mutation === "method") input.node.method_registry_entry_ids = ["unknown@1"];
     if (mutation === "contract") input.node.result_contract.contract_hash = comparisonHash("0");
-    if (mutation === "window") input.node.time_window.end = "2025-02-01T00:00:00.000+08:00";
+    if (mutation === "window") {
+      if (!input.node.time_window) throw new Error("TEST_MONTHLY_WINDOW_REQUIRED");
+      input.node.time_window.end = "2025-02-01T00:00:00.000+08:00";
+    }
     if (mutation === "metric") input.node.metric_refs = [];
     if (mutation === "operators") input.sandbox_receipt.operator_receipts = [{}] as never;
     if (mutation === "arrow") {

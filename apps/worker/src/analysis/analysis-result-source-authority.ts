@@ -16,6 +16,43 @@ function reject(): never {
   throw new TypeError("ANALYSIS_PROGRAM_RESULT_SOURCE_AUTHORITY_INVALID");
 }
 
+/** Verify the accepted artifact against the original Run/Context/resource authority. */
+export async function verifyAcceptedAnalysisQueryEvidence(input: {
+  readonly context: AnalysisContext;
+  readonly run_id: string;
+  readonly query_evidence: AcceptedAnalysisQueryEvidence;
+}) {
+  const context = await verifyAnalysisContext(input.context);
+  const { reference, document } = input.query_evidence;
+  const verified = await verifyProductTeamQueryEvidenceInput({
+    query_evidence_ref: reference,
+    query_evidence_document: document,
+  });
+  const binding = verified.semantic_binding;
+  if (
+    reference.run_id !== input.run_id ||
+    reference.app_id !== context.scope.app_id ||
+    reference.tenant_id !== context.scope.tenant_id ||
+    reference.environment !== context.scope.environment ||
+    canonicalizeJson(binding.semantic_context_ref) !==
+      canonicalizeJson(context.semantic_context_binding)
+  )
+    return reject();
+  for (const [resource, artifact] of [
+    [binding.semantic_release_ref, context.semantic_release_ref],
+    [binding.schema_snapshot_ref, context.schema_snapshot_ref],
+  ] as const) {
+    if (
+      resource.resource_id !== artifact.artifact_id ||
+      resource.resource_revision !== artifact.revision ||
+      resource.resource_hash !== artifact.content_hash ||
+      artifact.run_id !== input.run_id
+    )
+      return reject();
+  }
+  return verified;
+}
+
 /** Data-only input authority. These IDs never enter Metric/Skill capability selection. */
 export async function resolveAnalysisResultSourceObjects(input: {
   readonly result_contract: AnalysisResultContract;
@@ -35,33 +72,13 @@ export async function resolveAnalysisResultSourceObjects(input: {
     const context = await verifyAnalysisContext(input.context);
     const evidence = input.query_evidence;
     if (!evidence) return reject();
-    const reference = evidence.reference;
-    const { semantic_binding: binding } = await verifyProductTeamQueryEvidenceInput({
-      query_evidence_ref: reference,
-      query_evidence_document: evidence.document,
+    const { semantic_binding: binding } = await verifyAcceptedAnalysisQueryEvidence({
+      context,
+      run_id: input.run_id,
+      query_evidence: evidence,
     });
-    if (
-      reference.run_id !== input.run_id ||
-      reference.app_id !== context.scope.app_id ||
-      reference.tenant_id !== context.scope.tenant_id ||
-      reference.environment !== context.scope.environment ||
-      canonicalizeJson(binding.semantic_context_ref) !==
-        canonicalizeJson(context.semantic_context_binding) ||
-      contract.semantic_context_hash !== context.semantic_context_binding.package_hash
-    )
+    if (contract.semantic_context_hash !== context.semantic_context_binding.package_hash)
       return reject();
-    for (const [resource, artifact] of [
-      [binding.semantic_release_ref, context.semantic_release_ref],
-      [binding.schema_snapshot_ref, context.schema_snapshot_ref],
-    ] as const) {
-      if (
-        resource.resource_id !== artifact.artifact_id ||
-        resource.resource_revision !== artifact.revision ||
-        resource.resource_hash !== artifact.content_hash ||
-        artifact.run_id !== input.run_id
-      )
-        return reject();
-    }
     const ids = new Set<string>();
     for (const { table, column } of sourceColumns) {
       const projection = table.projection;

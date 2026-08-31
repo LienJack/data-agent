@@ -1725,6 +1725,12 @@ Diagnostic/Q1/C1任一正式首次失败必须写既有 authority支持的 immut
     只给exact method/skill/contract节点。初始4个生产接线回归因旧single-series形态限制失败，修复后10文件132/132，
     Worker typecheck/build通过；新叙述投影保留已验数值，缺规则/错方法与删旧算子均拒绝。
     未改预算/Root路由/发布器，未创建模型Run或live写入；后续全量范围、多维/多输入及跨Run闭包仍待完成。
+  - [x] 全量已接受输入范围契约：candidate2.1/Program1.1/envelope1.1保留null，只授权原accepted QueryEvidence，
+    Gate对null也精确比较，禁止虚构/丢弃窗口、比较窗、时间grain与统计义务；旧有窗Program与hash不变。
+    新Worker范围行为8项先RED（另3项fixture封hash方式修正后重测），Contracts新wire正例先RED；
+    Worker11文件144/144、Contracts5文件59/59、Platform2文件42/42，Contracts/Worker/Platform/Research typecheck通过，
+    Contracts及Worker build通过。真实source authority负例、旧单指标统计和新月度oracle保持，原发布封包两版可读。
+    本项没有生产渠道方法、模型Run、数据库写入或正式PASS；接着补渠道/分群形态与独立oracle。
 - [ ] 所需能力离线闭合后最终clean build/full unit/fresh scratch，再fresh E17正式15回合从L1。当前ACTIVE，live E16 FAILED。
 
 **F6 READY 轮次恢复边界（2026-08-30，历史）**

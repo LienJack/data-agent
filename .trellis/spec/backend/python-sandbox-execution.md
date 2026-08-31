@@ -340,3 +340,50 @@ Oracle测试必须用手写已知值作为正例，不调用oracle算法生成�
 
 Wrong：`first_value = series.dropna().iloc[0]`。
 Correct：`first_value = original_monthly_series.iloc[0]`，缺失端点保持NULL，变化只能来自原窗口端点。
+
+## Scenario: 全量已接受输入与显式时间窗
+
+### 1. Scope / Trigger
+
+原QueryEvidence的`time_window=null`进入描述性分析；不得用Metric coverage推测请求日期，也不能因此跳过Program窗口校验。
+这只是输入范围契约，不是通用分析方法、业务通过或新发布权威。
+
+### 2. Signatures
+
+`resolveAnalysisEvidenceTimeWindow(binding,context)`保留显式null；有窗输入继续原日期/时区归一化。
+`verifyAcceptedAnalysisQueryEvidence({context,run_id,query_evidence})`复用原QueryEvidence/Run/Scope/Context/Release/Schema重验。
+Candidate `analysis-program-candidate@2.1.0`允许必填字段`time_window:null`；原1.0/2.0仍拒绝null。
+全量Program使用`analysis-program@1.1.0`、Host compiler2.1及envelope1.1；原有窗Program仍1.0/Host2.0。
+
+### 3. Contracts
+
+- 全量仅由Host原resolveCommitted QueryEvidence授权，Compiler不能仅凭模型或Brief声称null；全部节点范围须与原输入完全一致。
+- null节点只允许open-python/OPEN_ANALYSIS、空operator obligations、comparison_window=null、ResultContract无时间grain。
+  具体方法仍须独立的输入形态、发布capability和oracle，不因null而获得统计/因果能力。
+- Gate始终精确比较Brief与节点窗口，包括null；无窗Brief不能被擅自加窗，有窗Brief不能被删窗。
+- 新Wire tuple显式注册；Program hash domain等于自身protocol_version。旧1.0非空封包golden hash保持；不改历史文档或hash。
+- Host planning authority新增`approved_time_window`，模型只复制归一化后的原值，不从指标coverage猜范围。
+  2.1 candidate在有窗场景编译结果与原2.0完全相同；原publisher、预算、动态Root与数据库权威不变。
+
+### 4. Validation & Error Matrix
+
+无来源/错Run、Scope、Context或Release/Schema/来源有窗但节点null → `ANALYSIS_PROGRAM_INPUT_TIME_SCOPE_INVALID`。
+旧版null、新版null附对比窗、统计算子或时间grain → Schema拒绝`ANALYSIS_PROGRAM_ALL_INPUT_SCOPE_INVALID`。
+Brief与节点窗口不同 → `ANALYSIS_PROGRAM_TIME_WINDOW_NOT_APPROVED`；缺必填字段或未知wire tuple仍严格拒绝。
+
+### 5. Good / Base / Bad Cases
+
+Good：全量渠道来源的null逐层保留，具体比较仍等待独立方法与oracle。
+Base：12月趋势保留精确半开窗口、两个统计义务及旧Program格式。
+Bad：把published min/max填成用户请求，或`if (brief.window)`后直接略过校验。
+
+### 6. Tests Required
+
+null传递、候选版本门禁、来源/Context/Run/Release/Schema漂移、擅自加窗/删窗/加对比窗；新版本封包与幂等引用；
+旧候选和新候选的有窗Program逐字段相等、旧Wire golden hash；原单指标、月度比较、发布与Trace消费方回归。
+这类fixture仅证明契约边界，不得将mock commit或方法fixture记为生产数据库/Sandbox/模型执行证据。
+
+### 7. Wrong vs Correct
+
+Wrong：`requested_time_window = binding.time_window ?? metric.time_domain`。
+Correct：`requested_time_window = resolveAnalysisEvidenceTimeWindow(binding, context)`，显式null保留且由原接受输入证明。

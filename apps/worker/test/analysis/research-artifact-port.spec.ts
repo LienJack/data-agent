@@ -158,60 +158,80 @@ const lease = {
 } as const;
 
 describe("research analysis artifact port", () => {
-  it("seals revision-one L2 candidates without confusing payload dependencies for revision parents", async () => {
-    const commands: Array<Record<string, unknown>> = [];
-    const commitCurrent = vi.fn(async (_capability: unknown, command: Record<string, unknown>) => {
-      commands.push(command);
-      const candidate = command.candidate as { envelope: ArtifactReference };
-      return {
-        protocol_version: "u6-db-result@1.0.0" as const,
-        ok: true as const,
-        value: { reference: candidate.envelope, created: commands.length === 1 },
-      };
-    });
-    const artifacts = createResearchAnalysisArtifactPort({
-      capabilities: {
-        forArtifactType: (artifactType) => ({ authority: artifactType }) as never,
-        forDomain: (domain) => ({ authority: domain }) as never,
-      },
-      authority: {
-        commitCurrent: commitCurrent as never,
-        readHistorical: vi.fn(async () => ({
-          protocol_version: "u6-db-result@1.0.0" as const,
-          ok: true as const,
-          value: null,
-        })),
-        commitAnalysisSystem: vi.fn(),
-      },
-      now: () => new Date("2026-08-24T00:00:00.000Z"),
-    });
-    const payload = program();
-    const input = {
-      lease,
-      principal_id: lease.principal_id,
-      idempotency_key: "analysis-program:falcon24",
-      payload,
-    } as const;
-    const first = await artifacts.commitL2(input);
-    const replay = await artifacts.commitL2(input);
-
-    expect(first).toEqual(replay);
-    expect(commands).toHaveLength(2);
-    expect(commands[0]).toMatchObject({
-      attempt_id: lease.attempt_id,
-      worker_fence: 2,
-      expected_parent_ref: null,
-      candidate: {
-        envelope: {
-          artifact_type: "AnalysisProgram",
-          parent_ref: null,
-          producer: { kind: "deterministic", id: "analysis-program-executor@1" },
-          status: "CANDIDATE",
+  it.each([false, true])(
+    "seals revision-one L2 candidates without confusing payload dependencies for revision parents (all input=%s)",
+    async (allInput) => {
+      const commands: Array<Record<string, unknown>> = [];
+      const commitCurrent = vi.fn(
+        async (_capability: unknown, command: Record<string, unknown>) => {
+          commands.push(command);
+          const candidate = command.candidate as { envelope: ArtifactReference };
+          return {
+            protocol_version: "u6-db-result@1.0.0" as const,
+            ok: true as const,
+            value: { reference: candidate.envelope, created: commands.length === 1 },
+          };
         },
-      },
-    });
-    expect(commands[1]?.expected_parent_ref).toBeNull();
-  });
+      );
+      const artifacts = createResearchAnalysisArtifactPort({
+        capabilities: {
+          forArtifactType: (artifactType) => ({ authority: artifactType }) as never,
+          forDomain: (domain) => ({ authority: domain }) as never,
+        },
+        authority: {
+          commitCurrent: commitCurrent as never,
+          readHistorical: vi.fn(async () => ({
+            protocol_version: "u6-db-result@1.0.0" as const,
+            ok: true as const,
+            value: null,
+          })),
+          commitAnalysisSystem: vi.fn(),
+        },
+        now: () => new Date("2026-08-24T00:00:00.000Z"),
+      });
+      const original = program();
+      const payload = allInput
+        ? analysisProgramPayloadSchema.parse({
+            ...original,
+            protocol_version: "analysis-program@1.1.0",
+            compiler_version: "analysis-program-host-compiler@2.1.0",
+            objective_hash: hash("d"),
+            nodes: original.nodes.map((node) => ({
+              ...node,
+              method_registry_entry_ids: ["test-all-input@1"],
+              time_window: null,
+            })),
+          })
+        : original;
+      const input = {
+        lease,
+        principal_id: lease.principal_id,
+        idempotency_key: "analysis-program:falcon24",
+        payload,
+      } as const;
+      const first = await artifacts.commitL2(input);
+      const replay = await artifacts.commitL2(input);
+
+      expect(first).toEqual(replay);
+      expect(commands).toHaveLength(2);
+      expect(commands[0]).toMatchObject({
+        attempt_id: lease.attempt_id,
+        worker_fence: 2,
+        expected_parent_ref: null,
+        candidate: {
+          envelope: {
+            artifact_type: "AnalysisProgram",
+            schema_version: allInput ? "1.1.0" : "1.0.0",
+            parent_ref: null,
+            producer: { kind: "deterministic", id: "analysis-program-executor@1" },
+            status: "CANDIDATE",
+          },
+          payload: { protocol_version: payload.protocol_version, nodes: payload.nodes },
+        },
+      });
+      expect(commands[1]?.expected_parent_ref).toBeNull();
+    },
+  );
 
   it("commits system artifacts through the fenced PostgreSQL authority", async () => {
     const systemRef = reference("SandboxExecutionReceipt", 20);

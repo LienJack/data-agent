@@ -328,6 +328,22 @@ function methodRegistry(
 }
 
 describe("generic analysis program host compiler", () => {
+  it("keeps bounded candidate 2.1 output identical to the original candidate 2.0 contract", async () => {
+    const input = await fixture();
+    const candidate = await candidateV2(input);
+    const old = await compileAnalysisProgramCandidate({
+      ...input,
+      candidate,
+      method_registry: methodRegistry(input),
+    });
+    const current = await compileAnalysisProgramCandidate({
+      ...input,
+      candidate: { ...candidate, schema_version: "analysis-program-candidate@2.1.0" },
+      method_registry: methodRegistry(input),
+    });
+    expect(current).toEqual(old);
+    expect(current.protocol_version).toBe("analysis-program@1.0.0");
+  });
   it("binds the actual user question and published semantic authority", async () => {
     const input = await fixture();
     const program = await compileAnalysisProgramCandidate({

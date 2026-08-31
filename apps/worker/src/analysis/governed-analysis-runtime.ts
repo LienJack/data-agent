@@ -340,6 +340,7 @@ export function createGovernedAnalysisRuntime(input: {
               context_text: canonicalizeJson({
                 schema_version: "governed-analysis-planning-authority@1.0.0",
                 objective_hash: objectiveHash,
+                approved_time_window: brief.requested_time_window,
                 analysis_context: {
                   context_hash: context.context_hash,
                   semantic_context_package_hash: context.semantic_context_binding.package_hash,

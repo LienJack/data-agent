@@ -280,7 +280,7 @@ const analysisProgramNodeSchema = z.strictObject({
   method_registry_entry_ids: z.array(versionIdentifierSchema).min(1).max(32).optional(),
   metric_refs: z.array(metricRefSchema).max(ANALYSIS_LIMITS.max_metrics_per_node),
   dimension_refs: uniqueIdentifierArraySchema(0, ANALYSIS_LIMITS.max_dimensions_per_node),
-  time_window: halfOpenTimeWindowSchema,
+  time_window: halfOpenTimeWindowSchema.nullable(),
   comparison_window: halfOpenTimeWindowSchema.nullable(),
   parameters: z.json(),
   execution_mode: z.literal("MODEL_GENERATED"),
@@ -352,7 +352,7 @@ function validateAnalysisProgramGraph(
 export const analysisProgramPayloadSchema = z
   .strictObject({
     artifact_type: z.literal("AnalysisProgram"),
-    protocol_version: z.literal("analysis-program@1.0.0"),
+    protocol_version: z.enum(["analysis-program@1.0.0", "analysis-program@1.1.0"]),
     brief_ref: researchBriefRefSchema,
     analysis_context_hash: contentHashSchema,
     semantic_context_package_hash: contentHashSchema,
@@ -374,7 +374,11 @@ export const analysisProgramPayloadSchema = z
   .superRefine((program, ctx) => {
     addUniqueIssues(program.nodes, ({ node_id }) => node_id, ctx, ["nodes"], "node_id 必须唯一。");
     validateAnalysisProgramGraph(program.nodes, ctx);
-    if (program.compiler_version === "analysis-program-host-compiler@2.0.0") {
+    if (
+      program.compiler_version === "analysis-program-host-compiler@2.0.0" ||
+      program.compiler_version === "analysis-program-host-compiler@2.1.0" ||
+      program.protocol_version === "analysis-program@1.1.0"
+    ) {
       if (!program.objective_hash) {
         ctx.addIssue({
           code: "custom",
@@ -393,6 +397,24 @@ export const analysisProgramPayloadSchema = z
       }
     }
     for (const [index, node] of program.nodes.entries()) {
+      if (
+        node.time_window === null &&
+        (program.protocol_version !== "analysis-program@1.1.0" ||
+          program.compiler_kind !== "MODEL_CANDIDATE_HOST_VERIFIED" ||
+          program.compiler_version !== "analysis-program-host-compiler@2.1.0" ||
+          node.comparison_window !== null ||
+          node.skill_id !== "open-python-analysis@1" ||
+          node.generated_source_policy !== "OPEN_ANALYSIS" ||
+          node.operator_obligations.length !== 0 ||
+          node.result_contract.grain.time_dimension_id !== null ||
+          node.result_contract.grain.time_grain !== "NONE")
+      ) {
+        ctx.addIssue({
+          code: "custom",
+          path: ["nodes", index, "time_window"],
+          message: "ANALYSIS_PROGRAM_ALL_INPUT_SCOPE_INVALID",
+        });
+      }
       if (node.generated_source_policy === "NO_GENERATED_SOURCE") {
         ctx.addIssue({
           code: "custom",
