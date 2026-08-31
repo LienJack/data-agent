@@ -29,6 +29,7 @@ import {
   type GovernedDatasourceQueryResult,
   verifyGovernedDatasourceQueryResult,
 } from "@data-agent/contracts/datasources";
+import { renderPostgresqlPeriodComparisonCandidate } from "./postgresql-period-comparison-candidate.js";
 import {
   provePostgresqlAggregateRatio,
   provePostgresqlPeriodComparison,
@@ -457,7 +458,7 @@ function requestSumMetric(input: {
   readonly selected: ReadonlySet<string>;
   readonly authority: Omit<
     PostgresqlQueryEvidenceSemanticBindingInput,
-    "result" | "target_binding_hash"
+    "candidate" | "result" | "target_binding_hash"
   >;
 }) {
   const { authority, context } = input;
@@ -577,7 +578,7 @@ function requestComparisonGroup(input: {
   readonly metric_source: ReturnType<typeof physicalSources>[number];
   readonly authority: Omit<
     PostgresqlQueryEvidenceSemanticBindingInput,
-    "result" | "target_binding_hash"
+    "candidate" | "result" | "target_binding_hash"
   >;
 }) {
   const { context, selected, metric, authority } = input;
@@ -691,6 +692,91 @@ function requestComparisonGroup(input: {
       join,
     },
   };
+}
+
+/** Optional model input compiled from the current accepted semantics; never executes or repairs a candidate. */
+export async function buildPostgresqlPeriodComparisonCandidate(
+  input: Omit<
+    PostgresqlQueryEvidenceSemanticBindingInput,
+    "candidate" | "result" | "target_binding_hash"
+  >,
+): Promise<Text2SqlQueryCandidate | null> {
+  if (
+    !input.semantic_query_context?.request_scoped_interpretations?.some(
+      ({ operator }) => operator.kind === "PERIOD_COMPARISON_RATE",
+    )
+  )
+    return null;
+  const context = await verifySemanticQueryContext(input.semantic_query_context);
+  const requests =
+    context.request_scoped_interpretations?.filter(
+      ({ operator }) => operator.kind !== "RECENT_COMPLETE_PERIODS",
+    ) ?? [];
+  const request = requests[0];
+  const current = resolveSemanticRequestTimeWindow(context);
+  if (
+    requests.length !== 1 ||
+    request?.operator.kind !== "PERIOD_COMPARISON_RATE" ||
+    !current ||
+    context.metrics.length !== 1 ||
+    context.unresolved_ambiguities.length > 0
+  )
+    reject("QUERY_EVIDENCE_REQUEST_DERIVATION_BINDING_INVALID");
+  const operator = request.operator;
+  const authority = await verifySemanticContextCommitResult(input.semantic_context);
+  const selected = selectedSemanticObjects(authority);
+  const { metric, source } = requestSumMetric({
+    metric_id: operator.metric_id,
+    context,
+    selected,
+    authority: input,
+  });
+  const dimension = context.dimensions.find((d) => d.dimension_id === operator.time_dimension_id);
+  const comparison = resolveSemanticComparisonTimeWindows(context).find(
+    (w) => w.metric_id === metric.metric_id && w.dimension_id === dimension?.dimension_id,
+  );
+  if (!dimension || !comparison) reject("QUERY_EVIDENCE_REQUEST_DERIVATION_BINDING_INVALID");
+  const times = physicalSources({
+    object_id: dimension.dimension_id,
+    object_kind: "DIMENSION",
+    table_id: dimension.table_id,
+    column_ids: [dimension.column_id],
+    datasource_id: input.datasource_ref.resource_id,
+    bindings: context.physical_bindings,
+    snapshot: input.physical_snapshot,
+  });
+  const time = times[0];
+  if (times.length !== 1 || !time) reject("QUERY_EVIDENCE_REQUEST_DERIVATION_BINDING_INVALID");
+  const group = requestComparisonGroup({
+    context,
+    selected,
+    metric,
+    time_dimension_id: dimension.dimension_id,
+    metric_source: source,
+    authority: input,
+  });
+  const candidate = text2sqlQueryCandidateSchema.parse(
+    renderPostgresqlPeriodComparisonCandidate({
+      interpretation_id: request.interpretation_id,
+      metric_id: metric.metric_id,
+      dimension_id: dimension.dimension_id,
+      source: {
+        schema_name: source.schema_name,
+        relation_name: source.relation_name,
+        value_column: source.column_name,
+        value_type: source.formatted_type,
+        time_column: time.column_name,
+        time_type: time.formatted_type,
+      },
+      current,
+      comparison,
+      ...(group ? { group_dimension: group.proof_input } : {}),
+    }),
+  );
+  // Reuse the exact authority/AST proof, including complete-group and source/window checks.
+  // No independently maintained template allowlist or alternate publication authority exists.
+  await resolvePostgresqlRequestDerivedBindings({ ...input, candidate });
+  return candidate;
 }
 
 export async function resolvePostgresqlRequestDerivedBindings(

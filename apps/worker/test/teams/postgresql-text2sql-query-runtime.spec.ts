@@ -1,5 +1,9 @@
 import {
+  buildSemanticContextPackage,
+  buildSemanticContextReceipt,
+  buildSemanticInferenceReceipt,
   buildSemanticQueryContext,
+  buildSemanticRetrievalReceipt,
   type SemanticContextCommitResult,
   type Text2SqlQueryCandidate,
   type WorkspaceDatasource,
@@ -24,7 +28,7 @@ function column(name: string, ordinal: number, type = "text") {
     formatted_type: type,
     type_identity: {
       type_schema: "pg_catalog",
-      type_name: type === "integer" ? "int4" : "text",
+      type_name: type === "integer" ? "int4" : type === "bigint" ? "int8" : "text",
       type_kind: "BASE" as const,
       array_dimensions: 0,
     },
@@ -36,7 +40,11 @@ function column(name: string, ordinal: number, type = "text") {
   };
 }
 
-async function fixture(includeFormulaSelection = false, includeTimeColumn = false) {
+async function fixture(
+  includeFormulaSelection = false,
+  includeTimeColumn = false,
+  periodSource = false,
+) {
   const baseConfig = await buildWorkerEffectiveConfigFixture({
     scope,
     workspace_id: scope.tenant_id,
@@ -63,7 +71,7 @@ async function fixture(includeFormulaSelection = false, includeTimeColumn = fals
           comment: "Orders",
           columns: [
             column("customer_id", 1),
-            column("amount", 2, "integer"),
+            column("amount", 2, periodSource ? "bigint" : "integer"),
             column("created_at", 3),
           ],
           primary_key: null,
@@ -298,6 +306,118 @@ async function fixture(includeFormulaSelection = false, includeTimeColumn = fals
     semanticContextPackage,
     semanticQueryContext,
     snapshot,
+  };
+}
+
+// The period template runs the production semantic receipt proof, so use real
+// contract builders here rather than the narrow legacy projection-only fixture.
+async function sealedPeriodContext(
+  config: Awaited<ReturnType<typeof fixture>>["config"],
+): Promise<SemanticContextCommitResult> {
+  const ids = ["dimension.customer-id", "metric.order-count"];
+  const retrieval = await buildSemanticRetrievalReceipt({
+    schema_version: "semantic-retrieval-receipt@1.0.0",
+    authority_snapshot_hash: hash("a"),
+    release_hash: config.semantic_release.resource_hash,
+    query_hash: hash("b"),
+    rrf_k: 60,
+    hard_filter: {
+      scope_hash: hash("c"),
+      publication_status: "PUBLISHED",
+      authority_mode: "POSTGRES_FILTERED_SNAPSHOT",
+      included_object_ids: ids,
+      excluded_objects: [],
+    },
+    route_states: { LEXICON: "READY", SPARSE: "READY", VECTOR: "READY", GRAPH: "READY" },
+    hits: [],
+    expansions: [],
+    selected_object_ids: ids,
+    pruned_object_ids: [],
+    fallback_reason_codes: [],
+  });
+  const inference = await buildSemanticInferenceReceipt({
+    schema_version: "semantic-inference-receipt@1.0.0",
+    retrieval_receipt_hash: retrieval.receipt_hash,
+    ruleset_id: "semantic-mandatory-closure@1",
+    ruleset_hash: hash("d"),
+    steps: [],
+    mandatory_object_ids: ids,
+    mandatory_relationship_ids: [],
+    closure_complete: true,
+    reason_codes: [],
+  });
+  const pkg = await buildSemanticContextPackage({
+    schema_version: "semantic-context-package@1.0.0",
+    scope,
+    semantic_domain: "falcon24",
+    question_hash: hash("b"),
+    defaults_ref: config.defaults_ref,
+    semantic_release: config.semantic_release,
+    schema_snapshot: config.schema_snapshot,
+    context_policy: config.context_policy,
+    egress_policy: config.egress_policy,
+    provider: "deepseek",
+    authority_snapshot_hash: hash("a"),
+    route_decision: {
+      schema_version: "semantic-context-route-decision@1.0.0",
+      state: "READY",
+      route: "METRIC",
+      selected_metric_id: "metric.order-count",
+      selected_ontology_ids: [ids[0]],
+      clarification_candidates: [],
+      lexical_evidence: [],
+      capability_chain: ["METRIC", "ONTOLOGY_TEXT2SQL", "KNOWLEDGE", "GRAPH"],
+      reason_codes: ["EXACT_PUBLISHED_METRIC"],
+    },
+    capacity: {
+      schema_version: "context-capacity-plan@1.0.0",
+      policy_version: "utf8-byte-upper-bound@1.0.0",
+      max_context_tokens: 32000,
+      max_context_bytes: 32000,
+      mandatory_bytes: 128,
+      included_bytes: 128,
+      cropped_bytes: 0,
+      items: ids.map((item_id) => ({
+        item_kind: item_id.startsWith("metric.") ? ("METRIC" as const) : ("ONTOLOGY" as const),
+        item_id,
+        item_hash: hash("e"),
+        byte_size: 64,
+        priority: 10000,
+        mandatory: true,
+        disposition: "MANDATORY" as const,
+        reason_code: "ROUTE_SELECTED" as const,
+      })),
+    },
+    evidence: [],
+    knowledge_refs: [],
+    retrieval_receipt: retrieval,
+    inference_receipt: inference,
+    mandatory_closure: { object_ids: ids, relationship_ids: [], closure_hash: hash("f") },
+    analysis_capabilities: ["CHART_DATASET", "TREND_CHANGE"],
+  });
+  const receipt = await buildSemanticContextReceipt({
+    schema_version: "semantic-context-receipt@1.0.0",
+    receipt_id: id(9),
+    scope,
+    consumer: "RUN",
+    request_id: id(12),
+    request_hash: hash("1"),
+    run_id: config.run_id,
+    package_ref: {
+      package_id: pkg.package_id,
+      package_revision: 1,
+      package_hash: pkg.package_hash,
+    },
+    state: "READY",
+    route: "METRIC",
+    authority_snapshot_hash: pkg.authority_snapshot_hash,
+    resolved_at: "2026-08-26T00:00:00.000Z",
+  });
+  return {
+    schema_version: "semantic-context-commit-result@1.0.0",
+    disposition: "CREATED",
+    package: pkg,
+    receipt,
   };
 }
 
@@ -696,6 +816,7 @@ describe("PostgreSQL Text2SQL query runtime", () => {
     expect(prepared.context_text).not.toContain("dimension.hidden");
     expect(prepared.context_text).not.toContain("managed-postgres");
     expect(prepared.context_text).not.toContain("secretref:");
+    expect(JSON.parse(prepared.context_text)).not.toHaveProperty("period_comparison_candidate");
     await expect(
       runtime.compileCandidate({
         prepared,
@@ -877,10 +998,11 @@ describe("PostgreSQL Text2SQL query runtime", () => {
         config,
         datasource,
         semanticCatalog,
-        semanticContext,
+        semanticContext: _legacyContext,
         semanticQueryContext,
         snapshot,
-      } = await fixture();
+      } = await fixture(false, false, true);
+      const semanticContext = await sealedPeriodContext(config);
       const catalog = semanticCatalog as unknown as {
         readonly executable: {
           readonly metrics: readonly Readonly<Record<string, unknown>>[];
@@ -911,6 +1033,8 @@ describe("PostgreSQL Text2SQL query runtime", () => {
       };
       const selectedMetric = {
         ...catalog.executable.metrics[0],
+        aggregation: "sum",
+        formula: null,
         time_domain: timeDomain,
         time_column_id: "orders.created_at",
       };
@@ -939,6 +1063,15 @@ describe("PostgreSQL Text2SQL query runtime", () => {
       const { context_hash: _contextHash, ...draft } = semanticQueryContext;
       const contextWithTimeDependency = await buildSemanticQueryContext({
         ...draft,
+        formulas: [],
+        semantic_context_ref: {
+          package_id: semanticContext.package.package_id,
+          package_hash: semanticContext.package.package_hash,
+          receipt_id: semanticContext.receipt.receipt_id,
+          receipt_hash: semanticContext.receipt.receipt_hash,
+          retrieval_receipt_hash: semanticContext.package.retrieval_receipt.receipt_hash,
+          inference_receipt_hash: semanticContext.package.inference_receipt.receipt_hash,
+        },
         requested_object_ids: ["dimension.customer-id", "metric.order-count", "time.order-month"],
         metrics: [selectedMetric],
         dimensions: [timeDimension],
@@ -1017,6 +1150,32 @@ describe("PostgreSQL Text2SQL query runtime", () => {
         return;
       }
       const prepared = await preparation;
+      const compiledCandidate = JSON.parse(prepared.context_text).period_comparison_candidate;
+      expect(compiledCandidate).toMatchObject({
+        schema_version: "text2sql-query-candidate@1.0.0",
+        time_window: { start_parameter: 2, end_parameter: 3 },
+      });
+      await expect(
+        runtime.compileCandidate({ prepared, candidate: compiledCandidate }),
+      ).resolves.toMatchObject({
+        parameters: compiledCandidate.parameters,
+        result_columns: compiledCandidate.result_columns,
+        time_window: compiledCandidate.time_window,
+      });
+      const drifted = structuredClone(compiledCandidate);
+      drifted.parameters[3] = "2022-11-01T00:00:00.000Z";
+      await expect(runtime.compileCandidate({ prepared, candidate: drifted })).rejects.toThrow();
+      expect(() =>
+        postgresqlText2SqlQueryRuntimeInternals.text2sqlContext({
+          snapshot,
+          semantic_context_package: semanticContext.package,
+          semantic_catalog: catalogWithTimeDependency as never,
+          semantic_query_context: contextWithTimeDependency,
+          period_comparison_candidate: compiledCandidate,
+          allowed_relations: prepared.allowed_relations,
+          max_context_bytes: 256,
+        }),
+      ).toThrow("TEXT2SQL_CONTEXT_BUDGET_EXCEEDED");
       expect(prepared).toMatchObject({
         semantic_query_context_hash: contextWithTimeDependency.context_hash,
         published_time_coverage: [

@@ -24,6 +24,7 @@ import {
   assertPostgresqlQueryTemporalSelection,
   assertPostgresqlText2SqlCandidatePolicy,
   buildBuiltinDatasourceAdapterDescriptors,
+  buildPostgresqlPeriodComparisonCandidate,
   buildPostgresqlQueryEvidenceSemanticBinding,
   createGovernedDatasourceAdapter,
   DatasourceAdapterPolicyError,
@@ -471,6 +472,7 @@ function text2sqlContext(input: {
   readonly semantic_context_package: SemanticContextPackage;
   readonly semantic_catalog: FrozenSemanticReleaseCatalog;
   readonly semantic_query_context?: SemanticQueryContext | null;
+  readonly period_comparison_candidate?: Text2SqlQueryCandidate | null;
   readonly allowed_relations: readonly string[];
   readonly max_context_bytes: number;
 }): string {
@@ -487,6 +489,9 @@ function text2sqlContext(input: {
       input.semantic_catalog,
       input.semantic_query_context ?? null,
     ),
+    ...(input.period_comparison_candidate
+      ? { period_comparison_candidate: input.period_comparison_candidate }
+      : {}),
   });
   if (new TextEncoder().encode(context).byteLength > input.max_context_bytes) {
     throw new Text2SqlQueryRuntimeError("TEXT2SQL_CONTEXT_BUDGET_EXCEEDED");
@@ -1023,12 +1028,33 @@ export function createPostgresqlText2SqlQueryRuntime(
         secret_ref: { ref: secret.ref, version: secret.version, status: secret.status },
         reader_role: datasource.username,
       });
+      const bindingAuthority = {
+        physical_snapshot: snapshot,
+        semantic_context,
+        semantic_catalog,
+        datasource_ref: config.datasource,
+        ...(semanticQueryContext
+          ? {
+              semantic_query_context: semanticQueryContext,
+              formula_dependency_metric_ids: semanticQueryContext.metrics.map(
+                ({ metric_id }) => metric_id,
+              ),
+            }
+          : {}),
+      };
+      // Resolve coverage first, then reuse the full authority/AST proof for an optional
+      // model input. The returned model candidate still passes compile/execute checks.
+      const publishedTimeCoverage = semanticQueryContext
+        ? publishedComparisonTimeCoverage(semanticQueryContext, snapshot)
+        : [];
+      const periodCandidate = await buildPostgresqlPeriodComparisonCandidate(bindingAuthority);
       return Object.freeze({
         context_text: text2sqlContext({
           snapshot,
           semantic_context_package,
           semantic_catalog,
           semantic_query_context: semanticQueryContext,
+          period_comparison_candidate: periodCandidate,
           allowed_relations: allowedRelations,
           max_context_bytes,
         }),
@@ -1042,10 +1068,7 @@ export function createPostgresqlText2SqlQueryRuntime(
         ...(semanticQueryContext
           ? {
               requested_time_window: resolveSemanticRequestTimeWindow(semanticQueryContext),
-              published_time_coverage: publishedComparisonTimeCoverage(
-                semanticQueryContext,
-                snapshot,
-              ),
+              published_time_coverage: publishedTimeCoverage,
               semantic_query_context_binding: {
                 metric_ids: semanticQueryContext.metrics.map(({ metric_id: id }) => id),
                 dimension_ids: semanticQueryContext.dimensions.map(({ dimension_id: id }) => id),
@@ -1056,20 +1079,7 @@ export function createPostgresqlText2SqlQueryRuntime(
               },
             }
           : {}),
-        binding_authority: {
-          physical_snapshot: snapshot,
-          semantic_context,
-          semantic_catalog,
-          datasource_ref: config.datasource,
-          ...(semanticQueryContext ? { semantic_query_context: semanticQueryContext } : {}),
-          ...(semanticQueryContext
-            ? {
-                formula_dependency_metric_ids: semanticQueryContext.metrics.map(
-                  ({ metric_id }) => metric_id,
-                ),
-              }
-            : {}),
-        },
+        binding_authority: bindingAuthority,
       });
     },
 

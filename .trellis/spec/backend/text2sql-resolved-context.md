@@ -646,3 +646,30 @@ and generic rejection alone cannot identify its SQL defect, and durable Root res
 Use the actual event kind/code to report progress; event count does not prove that Analysis started.
 Regression: forbidden outer WHERE/LIMIT, recursive/materialized CTEs, wrong join and missing CTE alias must
 reach distinct checkpoints after parsing; errors retain only `diagnostic_code`, with all source values absent.
+
+### Proved period candidate as model input
+
+`buildPostgresqlPeriodComparisonCandidate(authority)` is an optional input compiler, not an execution path.
+For a current accepted PERIOD_COMPARISON_RATE + complete-month window, reuse published SUM metric,
+physical time/category bindings, certified non-fanout relationship and exact resolved windows to render
+one candidate. Run the original `resolvePostgresqlRequestDerivedBindings` authority/AST proof before
+including it as `period_comparison_candidate` in the existing frozen Text2SQL context and byte budget.
+Other requests omit the field. Unsupported/ambiguous/stale period authority fails before provider I/O;
+do not invent a template or silently broaden selection to recover.
+
+Text2SQL copies the structural fields and may adapt only title/summary. Ungrouped output remains a
+monthly trend; grouped output is a complete TABLE for downstream role-aware Analysis, not an x-only
+chart with duplicate month keys. FULL applies only to the proved outer period join, category/month
+identity fallback only; missing measures/rates remain NULL. All returned model SQL still passes
+parameterization, original proof, firewall, temporal/source/result binding and downstream Oracle.
+Never replace a rejected model candidate with the template after the fact or treat it as query evidence.
+
+Regression: ungrouped, same-table and certified-join category candidates through original AST/firewall;
+exact role/window preservation, current Run/receipt/datasource/published binding/aggregation/fanout
+drift rejection; Worker prepare -> context -> compile including changed source-bound rejection and
+unchanged context budget. Use real sealed semantic contract fixtures for production-proof integration;
+projection-only fake receipts do not establish authority. Build the Platform export before Worker tests.
+
+Good: current semantic operator compiles to an independently proved model input, then ordinary checks.
+Bad: choose a canned SQL by question keyword, fill missing measures, copy old answers or weaken proof
+when a candidate is rejected. Offline compiler PASS is not complex-question or formal-gate PASS.

@@ -19,6 +19,7 @@ import { describe, expect, it } from "vitest";
 import { createPhysicalSchemaSnapshot } from "../../src/catalog/physical-schema.js";
 import {
   assertPostgresqlQueryTemporalSelection,
+  buildPostgresqlPeriodComparisonCandidate,
   buildPostgresqlQueryEvidenceSemanticBinding,
   PostgresqlQueryEvidenceSemanticBindingError,
   postgresqlQueryEvidenceSemanticBindingInternals,
@@ -695,6 +696,102 @@ async function groupedRequestDerivationFixture() {
     ),
   };
 }
+
+describe("current semantic period candidate", () => {
+  it.each([false, true])(
+    "compiles and proves frozen roles without an input SQL (grouped=%s)",
+    async (grouped) => {
+      const input = grouped
+        ? await groupedRequestDerivationFixture()
+        : await requestDerivationFixture();
+      const {
+        candidate: _candidate,
+        result: _result,
+        target_binding_hash: _target,
+        ...authority
+      } = input;
+      const candidate = await buildPostgresqlPeriodComparisonCandidate(authority);
+      expect(candidate).not.toBeNull();
+      if (!candidate) throw new Error("CANDIDATE_REQUIRED");
+      expect(candidate.parameters).toEqual([
+        "month",
+        "2023-11-01T00:00:00.000Z",
+        "2024-11-01T00:00:00.000Z",
+        "2023-05-01T00:00:00.000Z",
+        "2023-11-01T00:00:00.000Z",
+        "1 year",
+        0,
+      ]);
+      const proof = await resolvePostgresqlRequestDerivedBindings({ ...authority, candidate });
+      expect(proof[0]?.column.request_derivation?.period_comparison).toEqual({
+        time_output: "month",
+        current_output: "current_value",
+        comparison_output: "comparison_value",
+        category_output: grouped ? "category" : null,
+        group_coverage: grouped ? "BOTH_PERIOD_GROUPS" : "CURRENT_PERIOD_GROUPS",
+      });
+      const result = await queryResult(
+        candidate.result_columns.map((c) => ({
+          name: c.name,
+          type:
+            c.semantic_type === "DATETIME" ? "1114" : c.semantic_type === "STRING" ? "25" : "1700",
+        })),
+        [
+          {
+            month: "2023-11-01T00:00:00.000Z",
+            ...(grouped ? { category: null } : {}),
+            current_value: "100",
+            comparison_value: null,
+            growth: null,
+          },
+        ],
+      );
+      const binding = await buildPostgresqlQueryEvidenceSemanticBinding({
+        ...input,
+        candidate,
+        result,
+      });
+      expect(binding.columns.at(-1)?.request_derivation?.period_comparison).toEqual(
+        proof[0]?.column.request_derivation?.period_comparison,
+      );
+      expect(await buildPostgresqlPeriodComparisonCandidate(authority)).toEqual(candidate);
+      const changed = structuredClone(candidate);
+      changed.parameters[3] = "2022-11-01T00:00:00.000Z";
+      await expect(
+        resolvePostgresqlRequestDerivedBindings({ ...authority, candidate: changed }),
+      ).rejects.toThrow();
+    },
+  );
+  it("does not add a template to ordinary SQL contexts", async () => {
+    await expect(buildPostgresqlPeriodComparisonCandidate(await fixture())).resolves.toBeNull();
+  });
+  it.each(["run", "datasource", "receipt", "unpublished-source", "aggregate", "fanout"])(
+    "rejects %s authority drift without producing a candidate",
+    async (variant) => {
+      const input = await groupedRequestDerivationFixture();
+      const { context_hash: _hash, ...draft } = input.semantic_query_context;
+      if (variant === "run") draft.run_id = id(888);
+      if (variant === "datasource")
+        draft.datasource = { ...draft.datasource, resource_revision: 889 };
+      if (variant === "receipt")
+        draft.semantic_context_ref = { ...draft.semantic_context_ref, receipt_hash: hash("f") };
+      if (variant === "unpublished-source")
+        draft.physical_bindings = draft.physical_bindings.map((b) => ({
+          ...b,
+          table_name: "other_table",
+        }));
+      if (variant === "aggregate")
+        draft.metrics = draft.metrics.map((m) => ({ ...m, aggregation: "count" }));
+      if (variant === "fanout")
+        draft.relationships = draft.relationships.map((r) => ({
+          ...r,
+          analysis: { ...r.analysis, fanout_closed: false },
+        }));
+      input.semantic_query_context = await buildSemanticQueryContext(draft);
+      await expect(buildPostgresqlPeriodComparisonCandidate(input)).rejects.toThrow();
+    },
+  );
+});
 
 describe("grouped request-derived authority", () => {
   it.each([false, true])(

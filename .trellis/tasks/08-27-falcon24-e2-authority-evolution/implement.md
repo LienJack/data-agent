@@ -1830,6 +1830,10 @@ Diagnostic/Q1/C1任一正式首次失败必须写既有 authority支持的 immut
     原通用形态诊断拆为SELECT/CTE/期间JOIN检查点，6个新RED反例转PASS；Platform207、Worker101及Platform typecheck通过。
     live348表不变，Web/Worker/OpenSandbox/browser/auth和55490转发清理，scratch停机保留；临时capability删除。
     见 [形态断点与防复发](research/complex-b7f2c2be-structural-checkpoints.md)。下一步先补可证明的比较SQL骨架，非再次只为观察而跑模型。
+  - [x] 比较SQL骨架：当前SemanticQueryContext经原发布/物理/AST证明后提供模型输入，结构字段固定而结果仍待真实查询；
+    无分类/同表分类/认证关联分类采用同一语义编译，完整分类TABLE交给Analysis。保留原错误候选，不在失败后自动替换。
+    Platform五文件297项、Worker三文件48项与两包typecheck通过，Trellis/diff/Biome通过；
+    完成scoped commit后新clean build，不记作复杂题PASS。原失败SQL具体原因仍未知，没有用模板伪造历史修复证明。
   再继续上述 F5 / F7；不另跑 child 历史六问，也不复用 core4 PASS。
 
 **F6 READY 轮次恢复边界（2026-08-30，历史）**

@@ -308,6 +308,10 @@ describe("direct run-bound provider retry policy", () => {
       "Repeated outputs of the same METRIC require the accepted comparison proof",
     );
     expect(prompt).not.toContain("projects only date_trunc");
+    expect(prompt).toContain("period_comparison_candidate");
+    expect(prompt).toContain("copy sql, parameters, result_columns and time_window unchanged");
+    expect(prompt).toContain("not an answer or execution authorization");
+    expect(prompt).toContain("A template cannot override an unresolved user requirement");
   });
 
   it("explains calendar alignment separately from comparison coverage and missing data", () => {

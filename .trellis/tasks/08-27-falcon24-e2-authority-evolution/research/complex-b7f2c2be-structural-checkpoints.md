@@ -24,7 +24,7 @@ A1 Run baf01044-8d3f-8b4a-8861-d4fde0c9562c FAILED/74events；SemanticQueryConte
 |---|---|---|---|
 | P0 | Runtime | 精确无值SELECT/CTE/PERIOD_JOIN诊断、共享原修复白名单，解析保留旧码 | DONE |
 | P0 | Tests | 6个新结构反例先RED后PASS，错误只有diagnostic_code，原接受边界不变 | DONE |
-| P0 | Architecture | 从已批准请求语义提供经原证明校验的SQL骨架，避免模型猜严格语法 | TODO |
+| P0 | Architecture | 从已批准请求语义提供经原证明校验的SQL骨架，避免模型猜严格语法 | IMPLEMENTED；待新Run证明 |
 | P0 | Evidence | 原失败不可重放，不借助Root文本臆测Specialist SQL | DONE |
 
 ## 4. Systematic Expansion
