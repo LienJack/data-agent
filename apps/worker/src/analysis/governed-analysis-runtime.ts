@@ -9,6 +9,7 @@ import {
   buildArtifactWorkspaceChartDocumentV3,
   buildProductTeamArtifactDocument,
   computeArtifactWorkspaceChartDatasetV3Hash,
+  DERIVED_ANALYSIS_CHART_NULLABLE_TRANSFORM_VERSION,
   type ProductTeamArtifactDocument,
   type QueryEvidenceSemanticBinding,
   type ResearchBriefV3Payload,
@@ -683,7 +684,7 @@ export async function assembleAnalysisPublication(input: {
           derived_evidence_ref: node.evidence.reference,
         },
         provenance: {
-          transform_version: "derived-analysis-chart@1.0.0",
+          transform_version: DERIVED_ANALYSIS_CHART_NULLABLE_TRANSFORM_VERSION,
           dataset_hash: `sha256:${"0".repeat(64)}`,
           semantic_context: input.context.semantic_context_binding,
           algorithm_version: node.runtime.algorithm_version,

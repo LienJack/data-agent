@@ -1709,6 +1709,11 @@ Diagnostic/Q1/C1任一正式首次失败必须写既有 authority支持的 immut
     契约两正例及runtime四正/反例先RED；修复后Contracts43/43、Worker92/92、两包typecheck/build与6文件Biome通过。
     13类来源漂移、未接受来源和Metric升级均执行前拒绝；两role真实Arrow保留NULL，staged chart parser保留role。
     无模型调用、无新方法/新Run/live写入。V3图表NULL、具体方法/oracle、全量时间窗及跨Run闭包仍待后续小项。
+  - [x] V3缺失观测闭包：显式derived-analysis-chart@1.1.0允许LINE/BAR/HORIZONTAL_BAR的NULL并保留月份，每measure须有真实值。
+    旧1.0 golden hash固定，旧版NULL/其他七类图的NULL/全空measure/非法数值/旧hash篡改均拒绝；原行数/字节限制不变。
+    Platform趋势不删行、不把未知delta填0，Worker三role staged chart及Web各measure断点回归通过。
+    新Contracts预期行为8项、Platform1项、Worker3项先RED；修复后Contracts36/36、Platform19/19、Worker52/52、Web18/18，
+    四包typecheck、Contracts build通过；本项不新增方法、模型Run、live写入或正式PASS。
 - [ ] 所需能力离线闭合后最终clean build/full unit/fresh scratch，再fresh E17正式15回合从L1。当前ACTIVE，live E16 FAILED。
 
 **F6 READY 轮次恢复边界（2026-08-30，历史）**

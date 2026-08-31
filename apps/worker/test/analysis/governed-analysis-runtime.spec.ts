@@ -819,13 +819,17 @@ describe("generic governed analysis runtime", () => {
                 key: "revenue",
                 label_zh: "收入",
                 data_type: "NUMBER",
-                nullable: false,
+                nullable: true,
                 semantic_object_id: "metric.revenue",
                 semantic_role: role,
               },
             ],
-            rows: [{ month: "2024-01-01", revenue: 42 }],
-            total_rows: 1,
+            rows: [
+              { month: "2024-01-01", revenue: 42 },
+              { month: "2024-02-01", revenue: null },
+              { month: "2024-03-01", revenue: 45 },
+            ],
+            total_rows: 3,
           },
         }),
       );
@@ -847,6 +851,12 @@ describe("generic governed analysis runtime", () => {
               { key: "month", label: "月份", data_type: "STRING" },
               { key: "revenue", label: "收入", data_type: "NUMBER" },
             ],
+            rows: [
+              { month: "2024-01-01", revenue: 42 },
+              { month: "2024-02-01", revenue: null },
+              { month: "2024-03-01", revenue: 45 },
+            ],
+            total_rows: 3,
           },
         },
       });

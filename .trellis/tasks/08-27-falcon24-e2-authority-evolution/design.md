@@ -1645,3 +1645,12 @@ ResultContract 表列保留 `FORMULA/REQUEST_DERIVED` 原角色，仅允许 NUMB
 仅这些已证明的直接投影对象ID可进入结果lineage；metric_refs、dimension_refs、Skill capabilities仍来自原Published AnalysisContext。
 REQUEST_DERIVED的解释依赖必须包含在当前节点原指标/维度选择内。缺证据、换角色/列、跨Context/Run或试图选其为Metric均拒绝。
 继续使用原Publisher和staged chart读路径；不引入方法fallback或新的语义发布对象。nullable V3图表与具体分析方法另行闭合。
+
+### 25.23 Analysis V3 缺失观测不能被删行或补零
+
+同比真实缺失值须经同一受治理图表链保留。新增 `derived-analysis-chart@1.1.0`，仅LINE/BAR/HORIZONTAL_BAR允许NULL y，
+每个measure至少一个真实观测；这不是统计样本充分性证明。其他图类保持finite-number要求，所有行/字节/绑定限制不变。
+旧1.0非空文档原hash可读，document和preview均拒绝旧版本NULL y。两个producer明确采用新版本，不改写任何历史。
+Platform趋势points逐点投影，保留缺失月份与absolute_delta=NULL；全空序列不发图。Worker保存原直接投影全部行，
+Web继续各measure分图与invalidType=break。NULL/行顺序/值进入同一dataset hash；补零、删行或换序不能沿用旧凭据。
+先RED回归后focused验证；本项不新增方法、不调用模型、不激活live E17，业务能力与四层正式门禁仍待后续闭合。

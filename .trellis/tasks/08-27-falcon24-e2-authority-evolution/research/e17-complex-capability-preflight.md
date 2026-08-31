@@ -68,3 +68,13 @@ Contracts43/43、Worker92/92、两包typecheck/build通过；13类authority drif
 真实Arrow fixture保留原角色与NULL；staged chart parser三role读取回归通过。没有模型Run、数据库写入或新方法注册。
 进一步审计确认 `ArtifactWorkspaceChartProjectionV3` 当前拒绝任何y=NULL，而同比有真实缺失同期值；须独立闭合V3空值图表，
 不改旧V2文档、不补零、不丢月份，也不能先把数据方法记作可正式执行。
+
+## 第四个小项：V3空值投影贯通
+
+新transform1.1保留LINE/BAR/HORIZONTAL_BAR的真实NULL及完整行，每个measure至少一个真实值，统计推断样本条件仍由具体方法验证。
+旧1.0非空golden hash保持，NULL不得放入旧版document/preview；七种其他图类维持严格完整数值。Platform旧趋势投影的删行和
+delta补零同时消除，全空序列不发图；Worker及Web完整行/NULL/断点验证通过，来源、oracle和hash链不变。
+
+Contracts36/36、Platform19/19、Worker52/52、Web18/18，四包typecheck及Contracts build通过。先观察8个新行为Contracts失败、
+1个Platform失败和3个Worker失败再修复；旧hash取自修改前实现并固定。无模型调用、数据库写入或正式验收。
+下一项仍为具体生产方法与独立oracle，不因图表可解析就把Analysis/跨Run业务验收记为已通过。

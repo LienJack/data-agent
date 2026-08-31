@@ -21,6 +21,7 @@ export const QUERY_EVIDENCE_CHART_TRANSFORM_VERSION = "query-evidence-chart@1.0.
 export const QUERY_EVIDENCE_CHART_NULLABLE_TRANSFORM_VERSION = "query-evidence-chart@1.1.0";
 export const ARTIFACT_WORKSPACE_RENDERER_VERSION_V3 = "artifact-workspace-renderer@3.0.0";
 export const DERIVED_ANALYSIS_CHART_TRANSFORM_VERSION = "derived-analysis-chart@1.0.0";
+export const DERIVED_ANALYSIS_CHART_NULLABLE_TRANSFORM_VERSION = "derived-analysis-chart@1.1.0";
 export const ARTIFACT_WORKSPACE_EXPORTER_VERSION = "artifact-workspace-exporter@1.0.0";
 export const SPREADSHEET_FORMULA_POLICY_VERSION = "spreadsheet-formula-neutralization@1.0.0";
 
@@ -463,8 +464,10 @@ export const artifactWorkspaceChartProjectionV3Schema = z
     ) {
       ctx.addIssue({ code: "custom", message: "CHART_DATA_LIMIT_EXCEEDED" });
     }
+    const allowsMissing = ["LINE", "BAR", "HORIZONTAL_BAR"].includes(projection.chart_type);
     for (const [rowIndex, row] of projection.table.rows.entries()) {
       for (const key of numericKeys) {
+        if (allowsMissing && row[key] === null) continue;
         if (typeof row[key] !== "number" || !Number.isFinite(row[key])) {
           ctx.addIssue({
             code: "custom",
@@ -485,13 +488,24 @@ export const artifactWorkspaceChartProjectionV3Schema = z
         });
       }
     }
+    if (
+      allowsMissing &&
+      projection.y_keys.some(
+        (key) => !projection.table.rows.some((row) => typeof row[key] === "number"),
+      )
+    ) {
+      ctx.addIssue({ code: "custom", message: "CHART_V3_MEASURE_HAS_NO_OBSERVATIONS" });
+    }
     if (new TextEncoder().encode(canonicalizeJson(projection)).byteLength > 512 * 1024) {
       ctx.addIssue({ code: "custom", message: "CHART_DATA_LIMIT_EXCEEDED" });
     }
   });
 
 const artifactWorkspaceChartProvenanceV3Schema = z.strictObject({
-  transform_version: z.literal(DERIVED_ANALYSIS_CHART_TRANSFORM_VERSION),
+  transform_version: z.enum([
+    DERIVED_ANALYSIS_CHART_TRANSFORM_VERSION,
+    DERIVED_ANALYSIS_CHART_NULLABLE_TRANSFORM_VERSION,
+  ]),
   dataset_hash: contentHashSchema,
   semantic_context: artifactWorkspaceSemanticContextIdentitySchema,
   algorithm_version: z.string().min(1).max(128),
@@ -501,6 +515,27 @@ const artifactWorkspaceChartProvenanceV3Schema = z.strictObject({
   agent_image: z.string().trim().min(1).max(1_024),
   operator_image: z.string().trim().min(1).max(1_024),
 });
+
+function verifyChartV3NullableTransform(
+  document: {
+    readonly projection: z.infer<typeof artifactWorkspaceChartProjectionV3Schema>;
+    readonly provenance: z.infer<typeof artifactWorkspaceChartProvenanceV3Schema>;
+  },
+  ctx: z.RefinementCtx,
+) {
+  if (
+    document.provenance.transform_version === DERIVED_ANALYSIS_CHART_TRANSFORM_VERSION &&
+    document.projection.table.rows.some((row) =>
+      document.projection.y_keys.some((key) => row[key] === null),
+    )
+  ) {
+    ctx.addIssue({
+      code: "custom",
+      message: "CHART_V3_NULLABLE_TRANSFORM_REQUIRED",
+      path: ["provenance", "transform_version"],
+    });
+  }
+}
 
 export const artifactWorkspaceChartDocumentV3Schema = z
   .strictObject({
@@ -514,6 +549,7 @@ export const artifactWorkspaceChartDocumentV3Schema = z
     projection: artifactWorkspaceChartProjectionV3Schema,
   })
   .superRefine((document, ctx) => {
+    verifyChartV3NullableTransform(document, ctx);
     const sources = [
       ...document.source_refs.query_evidence_refs,
       document.source_refs.derived_evidence_ref,
@@ -696,23 +732,25 @@ export const artifactPreviewResultV2Schema = z.strictObject({
   }),
 });
 
-export const artifactPreviewResultV3Schema = z.strictObject({
-  schema_version: z.literal("artifact-preview-result@3.0.0"),
-  source_ref: artifactReferenceFor("ArtifactWorkspaceDocument"),
-  renderer_version: z.literal(ARTIFACT_WORKSPACE_RENDERER_VERSION_V3),
-  source_refs: z.strictObject({
-    query_evidence_refs: z.array(artifactReferenceFor("QueryEvidence")).min(1).max(16),
-    derived_evidence_ref: artifactReferenceFor("DerivedAnalysisEvidence"),
-  }),
-  provenance: artifactWorkspaceChartProvenanceV3Schema,
-  projection: artifactWorkspaceChartProjectionV3Schema,
-  viewport: z.strictObject({
-    offset: z.number().int().nonnegative(),
-    limit: z.number().int().positive().max(2_000),
-    total_rows: z.number().int().nonnegative().nullable(),
-    truncated: z.boolean(),
-  }),
-});
+export const artifactPreviewResultV3Schema = z
+  .strictObject({
+    schema_version: z.literal("artifact-preview-result@3.0.0"),
+    source_ref: artifactReferenceFor("ArtifactWorkspaceDocument"),
+    renderer_version: z.literal(ARTIFACT_WORKSPACE_RENDERER_VERSION_V3),
+    source_refs: z.strictObject({
+      query_evidence_refs: z.array(artifactReferenceFor("QueryEvidence")).min(1).max(16),
+      derived_evidence_ref: artifactReferenceFor("DerivedAnalysisEvidence"),
+    }),
+    provenance: artifactWorkspaceChartProvenanceV3Schema,
+    projection: artifactWorkspaceChartProjectionV3Schema,
+    viewport: z.strictObject({
+      offset: z.number().int().nonnegative(),
+      limit: z.number().int().positive().max(2_000),
+      total_rows: z.number().int().nonnegative().nullable(),
+      truncated: z.boolean(),
+    }),
+  })
+  .superRefine(verifyChartV3NullableTransform);
 
 export const artifactPreviewResultSchema = z.discriminatedUnion("schema_version", [
   artifactPreviewResultV1Schema,

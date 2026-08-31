@@ -569,9 +569,58 @@ issueCapabilityDeliveryReceipt(
 - `ArtifactWorkspaceDocument` V2 Chart 只能由已提交的同 Scope/Run `QueryEvidence` 确定性派生；它是公开 companion，不得替换专职任务验收使用的 `output_ref`。
 - Chart document 必须原子携带完整 bounded dataset（LINE ≤100、BAR ≤30、PIE ≤12，`total_rows === rows.length`），并把 source ref、transform version、dataset hash 与 Resolved Context package/receipt identity 纳入 document hash。
 - PostgreSQL commit 必须在有效 Worker fence 下重验 exact source revision/hash；VChart spec、Provider/模型 JSON、客户端行或 Tool output 都不是 Artifact authority。
-- Preview 只返回 strict V1/V2 projection。V2 dataset/hash/document hash 任一不一致时失败关闭，不得回退到 `document_json` 或 raw Tool output。
+- Preview 只返回 strict V1/V2/V3 projection。V2/V3 dataset/hash/document hash 任一不一致时失败关闭，不得回退到 `document_json` 或 raw Tool output。
 - `query-evidence-chart@1.1.0` 保留 LINE/BAR 中缺失观测的行与 NULL，不因某个同比序列缺值删除整个时期。至少两个时期含真实数值；PIE 必须完整且非负，不得丢弃缺失类别后计算占比。历史 `@1.0.0` 文档及 hash 保持可读。
 - nullable chart 的 dataset hash 包含 NULL，NULL → 0 或丢行均是内容变更；Web 使用 `invalidType=break`，不补零、不跨缺口连线，等价表保留完整受限数据集。
+
+### Scenario: Analysis V3 缺失观测与版本化投影
+
+#### 1. Scope / Trigger
+
+已验收 Analysis 的直接结果包含 NULL（例如无同期覆盖或零分母），经 Worker/Platform → V3 document → preview → Web 展示。
+图表可显示数据不代表样本足以统计推断；分析方法、独立 oracle 和发布 gate 仍分别验证。
+
+#### 2. Signatures
+
+`artifactWorkspaceChartProjectionV3Schema`、`build/verifyArtifactWorkspaceChartDocumentV3(input)`、
+`artifactPreviewResultV3Schema` 共用严格投影；两个生产 producer 使用 `DERIVED_ANALYSIS_CHART_NULLABLE_TRANSFORM_VERSION`。
+
+#### 3. Contracts
+
+`derived-analysis-chart@1.1.0` 允许 LINE/BAR/HORIZONTAL_BAR 的 y=NULL，每个 y measure 至少有一个实际数值；
+保留原来的最少一行、类型绑定、行数/字节上限和完整 dataset。其他图类仍要求所有 y/bounds 为 finite number。
+历史 `@1.0.0` 仅保留原非空 y 语义与原 hash，无字段默认值/隐式升级。document 与 preview 都拒绝旧版本携带 NULL y。
+趋势投影逐点 map 并保留 absolute_delta=NULL，不删缺失月份、不填0；全空序列不生成图表。
+
+#### 4. Validation & Error Matrix
+
+| 条件 | 结果 |
+| --- | --- |
+| @1.0.0 + y=NULL | `CHART_V3_NULLABLE_TRANSFORM_REQUIRED` |
+| 允许缺失的图类某个 y 全空 | `CHART_V3_MEASURE_HAS_NO_OBSERVATIONS` |
+| 其他图类 y/bounds=NULL，字符串/Boolean/NaN/Infinity | strict schema 拒绝，不强制转数值 |
+| 超界或 total_rows 与完整行数不符 | `CHART_DATA_LIMIT_EXCEEDED` |
+| 补0、删行、换值或换序但沿用旧 hash | `ARTIFACT_WORKSPACE_CHART_DATASET_HASH_MISMATCH` |
+
+#### 5. Good / Base / Bad Cases
+
+Good：本期全部12月、同期仅6月有值时保留12行，逐 measure 分图且缺口断开。
+Base：旧版本一行非空图表及 hash 仍原样可读。Bad：把6个缺失同期补0、删掉整个月或把有效旧图重新封为新版历史。
+
+#### 6. Tests Required
+
+Contracts 验证三种 nullable 图类、七种严格图类、旧 golden hash、版本降级、全空 measure、非法值和篡改；
+Platform 验证原始 points/delta 与 preview 相等；Worker staged chart 三角色保留 NULL；Web 验证解析后的三个图类
+每个 panel 保留完整数据、`invalidType=break` 与正确横向轴，不修改来源。
+
+#### 7. Wrong vs Correct
+
+Wrong：`points.filter(p => p.value !== null).map(p => ({ value: p.value, delta: p.absolute_delta ?? 0 }))`。
+Correct：`points.map(p => ({ period: p.period_start, value: p.value, delta: p.absolute_delta }))`，
+由新 transform 封存所有行与 NULL，Web 只按已验证投影显示。
+
+### Governed table presentation and formula identity
+
 - TABLE column 可携带可选 `display={kind:TEMPORAL, logical_type, granularity, timezone}`。QueryEvidence 的显示元数据只能从已校验 semantic binding 派生，DATETIME 必须匹配 time window 的维度与显式时区；缺少该证据时保留原字符串，禁止浏览器本地时区或字符串猜测。DATE 是日历日期，不做时区偏移。
 - `projectQueryEvidenceTablePresentation` 与 `formatArtifactTableCell` 是表格、Root ARTIFACT_FACTS 正文和图表横轴的共同呈现入口。只增加显示元数据/格式化文本，不更改 QueryEvidence rows、原始数值、source ref 或旧 document hash；chart companion 的新增显示元数据由新 document/dataset hash 封存。
 - 已发布独立公式使用 QueryEvidence `semantic_role=FORMULA`（NUMBER、非空 formula_hash、aggregate=null），由发布 AST 与

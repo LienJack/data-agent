@@ -5,11 +5,12 @@ import {
   type ArtifactWorkspaceTableProjection,
   analysisCompletionReceiptPayloadSchema,
   analysisProgramPayloadSchema,
-  artifactReferenceSchema,
-  artifactReferenceIdentity,
   artifactReferenceFor,
+  artifactReferenceIdentity,
+  artifactReferenceSchema,
   buildArtifactWorkspaceChartDocumentV3,
   computeL2ResearchEnvelopeContentHash,
+  DERIVED_ANALYSIS_CHART_NULLABLE_TRANSFORM_VERSION,
   type DerivedAnalysisEvidencePayload,
   type DeterministicAnalysisRunProjection,
   derivedAnalysisEvidencePayloadSchema,
@@ -44,18 +45,13 @@ function chartProjection(
 ): ArtifactWorkspaceChartProjectionV3 | null {
   const result = evidence.result;
   if (result.result_kind === "TREND_CHANGE") {
-    const rows = result.points.flatMap((point) =>
-      point.value === null
-        ? []
-        : [
-            {
-              period_start: point.period_start,
-              value: point.value,
-              absolute_delta: point.absolute_delta ?? 0,
-            },
-          ],
-    );
-    if (rows.length === 0 || rows.length > 512) return null;
+    const rows = result.points.map((point) => ({
+      period_start: point.period_start,
+      value: point.value,
+      absolute_delta: point.absolute_delta,
+    }));
+    if (rows.length === 0 || rows.length > 512 || rows.every((row) => row.value === null))
+      return null;
     return {
       kind: "CHART",
       chart_type: "LINE",
@@ -226,7 +222,7 @@ export async function buildDerivedAnalysisChartDocument(input: {
       derived_evidence_ref: evidenceRef,
     },
     provenance: {
-      transform_version: "derived-analysis-chart@1.0.0",
+      transform_version: DERIVED_ANALYSIS_CHART_NULLABLE_TRANSFORM_VERSION,
       dataset_hash: `sha256:${"0".repeat(64)}`,
       semantic_context: input.semantic_context,
       algorithm_version: evidence.algorithm_version,

@@ -36,7 +36,10 @@ function ref<const T extends ArtifactReference["artifact_type"]>(
 }
 
 async function researchDocument(
-  payload: AnalysisProgramPayload | DerivedAnalysisEvidencePayload | AnalysisCompletionReceiptPayload,
+  payload:
+    | AnalysisProgramPayload
+    | DerivedAnalysisEvidencePayload
+    | AnalysisCompletionReceiptPayload,
   suffix: number,
   schemaVersion: string,
 ) {
@@ -225,6 +228,92 @@ async function fixture(result?: DerivedAnalysisEvidencePayload["result"]) {
 }
 
 describe("Derived analysis projection", () => {
+  it("preserves missing trend periods and unknown deltas in both chart and preview", async () => {
+    const points = [
+      {
+        period_start: "2026-01-01T00:00:00.000Z",
+        value: 10,
+        absolute_delta: null,
+        relative_delta: null,
+      },
+      {
+        period_start: "2026-02-01T00:00:00.000Z",
+        value: null,
+        absolute_delta: null,
+        relative_delta: null,
+      },
+      {
+        period_start: "2026-03-01T00:00:00.000Z",
+        value: 12,
+        absolute_delta: null,
+        relative_delta: null,
+      },
+    ];
+    const input = await fixture({
+      result_kind: "TREND_CHANGE",
+      points,
+      first_value: 10,
+      last_value: 12,
+    });
+    const chart = await buildDerivedAnalysisChartDocument({
+      document_ref: ref("ArtifactWorkspaceDocument", 12),
+      evidence_document: input.evidenceDocument,
+      semantic_context: {
+        package_id: id(13),
+        package_hash: hash("3"),
+        receipt_id: id(14),
+        receipt_hash: hash("4"),
+      },
+    });
+    if (!chart) throw new Error("expected chart");
+    const expected = points.map(({ period_start, value, absolute_delta }) => ({
+      period_start,
+      value,
+      absolute_delta,
+    }));
+    expect(chart.provenance.transform_version).toBe("derived-analysis-chart@1.1.0");
+    expect(chart.projection.table).toMatchObject({ rows: expected, total_rows: 3 });
+    const preview = await projectArtifactDocument(chart, chart.document_ref, {
+      offset: 0,
+      limit: 100,
+    });
+    expect(preview.projection).toEqual(chart.projection);
+    expect(input.evidence.result).toEqual({
+      result_kind: "TREND_CHANGE",
+      points,
+      first_value: 10,
+      last_value: 12,
+    });
+  });
+
+  it("does not publish a trend chart when every value is missing", async () => {
+    const input = await fixture({
+      result_kind: "TREND_CHANGE",
+      points: [
+        {
+          period_start: "2026-01-01T00:00:00.000Z",
+          value: null,
+          absolute_delta: null,
+          relative_delta: null,
+        },
+      ],
+      first_value: null,
+      last_value: null,
+    });
+    await expect(
+      buildDerivedAnalysisChartDocument({
+        document_ref: ref("ArtifactWorkspaceDocument", 12),
+        evidence_document: input.evidenceDocument,
+        semantic_context: {
+          package_id: id(13),
+          package_hash: hash("3"),
+          receipt_id: id(14),
+          receipt_hash: hash("4"),
+        },
+      }),
+    ).resolves.toBeNull();
+  });
+
   it("seals a V3 chart and public preview to the same accepted evidence", async () => {
     const input = await fixture();
     const chart = await buildDerivedAnalysisChartDocument({

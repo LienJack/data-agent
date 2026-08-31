@@ -1,4 +1,8 @@
-import type { ArtifactPreviewResultV2, ArtifactPreviewResultV3 } from "@data-agent/contracts";
+import {
+  type ArtifactPreviewResultV2,
+  type ArtifactPreviewResultV3,
+  artifactWorkspaceChartProjectionV3Schema,
+} from "@data-agent/contracts";
 import { describe, expect, it } from "vitest";
 import {
   toGovernedVChartPanels,
@@ -31,6 +35,49 @@ function projection(chartType: "LINE" | "BAR" | "PIE"): ArtifactPreviewResultV2[
 }
 
 describe("governed VChart spec mapper", () => {
+  it.each(["LINE", "BAR", "HORIZONTAL_BAR"] as const)(
+    "preserves NULL and every period in validated V3 %s panels",
+    (chart_type) => {
+      const source = artifactWorkspaceChartProjectionV3Schema.parse({
+        ...projection("LINE"),
+        chart_type,
+        lower_bound_key: null,
+        upper_bound_key: null,
+        series_key: null,
+        evidence_level: "L2_OBSERVATION",
+        y_keys: ["order_count", "prior"],
+        table: {
+          ...projection("LINE").table,
+          columns: [
+            ...projection("LINE").table.columns,
+            { key: "prior", label: "同期", data_type: "NUMBER" },
+          ],
+          rows: [
+            { month: "2026-01", order_count: 41, prior: 40 },
+            { month: "2026-02", order_count: 73, prior: null },
+            { month: "2026-03", order_count: 63, prior: 70 },
+          ],
+          total_rows: 3,
+        },
+      });
+      const original = structuredClone(source);
+      const panels = toGovernedVChartPanels(source);
+      expect(panels).toHaveLength(2);
+      for (const { spec } of panels) {
+        expect(spec).toMatchObject({
+          invalidType: "break",
+          data: [{ values: original.table.rows }],
+        });
+      }
+      expect(panels[1]?.spec).toMatchObject(
+        chart_type === "HORIZONTAL_BAR"
+          ? { xField: "prior", yField: "month", direction: "horizontal" }
+          : { xField: "month", yField: "prior" },
+      );
+      expect(source).toEqual(original);
+    },
+  );
+
   it.each(["LINE", "BAR"] as const)(
     "renders all %s measures on separate named axes without mixing amount and ratio",
     (chartType) => {
