@@ -87,3 +87,12 @@ CHART_DATASET并通过原applicability，不调整任何方法预算。输出逐
 
 23个新测试覆盖角色/NULL/精确映射、列序/别名/行序/DATETIME、来源与发布能力漂移和非法形态；连同原编译/投影/发布回归83/83，
 Worker typecheck/build通过。本次仅新增编译叶子，没有production注册或真实模型Run；独立oracle和现有生产composition接线紧接着执行。
+
+## 第六个小项：月度多结果独立oracle
+
+用原QueryEvidence/实际Arrow计算描述性期望，再比对全部RESULT/TABLE/CHART以及来源、字节数、hash与ref；不读取模型计算来生成期望。
+测试正例为手写已知数值，32项覆盖重新封hash的篡改、填零Arrow、零分母端点、不能跨缺失月相减和有限输入的运算溢出。
+FULL严格限于固定描述性合同，不授予统计/因果或material-change阈值结论；implementation hash包含oracle模块摘要和执行规则。
+
+新32项加原编译/投影/发布/叙述回归共117/117，Worker typecheck/build、4文件Biome通过。只把原时间窗函数抽出供Brief与oracle复用，
+旧单指标方法与规则未改。没有生产注册、模型调用或数据库写入；继续接唯一production composition，然后再证明真实执行链。

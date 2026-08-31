@@ -1665,3 +1665,8 @@ Host只向模型提供Schema与计算规则，不提供已算答案；独立orac
 
 当前先闭合输入/ResultContract/执行说明与23个离线测试。独立oracle与production接线为紧接着的小项；在其通过前不注册新生产入口。
 全量时间范围、渠道×人群、多输入与跨Run报告仍保持待完成，不能用此一维方法冒充全部复杂Analysis已支持。
+
+独立oracle小项现已完成：重验原12月QueryEvidence/Arrow，从源值重算全部描述性字段，与RESULT/TABLE/CHART整体精确比较；
+即使错误输出重新封hash也不能通过。拒绝额外自由文本结论和因果声明，FULL只覆盖固定描述性合同；不产生material-change阈值结论。
+实现hash绑定oracle模块内容和执行规则，原Brief与oracle共用未改变的时间窗归一化。32项oracle回归连同原路径共117项通过；
+仍没有production方法注册或真实模型Run，下一步在唯一composition接线并验证，不能直接记为业务通过。

@@ -1717,6 +1717,10 @@ Diagnostic/Q1/C1任一正式首次失败必须写既有 authority支持的 immut
   - [x] 月度多结果方法的输入/输出契约：exact12月、单MONTH维度、2–4个NUMBER结果，各列保留source/role/NULL；
     只授权原Metric的CHART_DATASET，Host规则声明描述性比较，不注入预计算答案。新23项及原编译/投影/发布回归共83/83，
     Worker typecheck/build通过。尚未切换production注册；接续独立oracle和唯一生产composition，再验证真实执行链。
+  - [x] 月度多结果独立oracle：源QueryEvidence/真实Arrow重算，逐字段核对完整RESULT/TABLE/CHART及bytes/hash/ref；
+    重封hash后的错误数值/排序/补零/换列/额外总结/因果声明拒绝；零端点、不能跨缺口、有限输入运算溢出闭合。
+    新32项oracle回归与原路径共117/117，Worker typecheck/build和4文件Biome通过。时间窗函数只抽取复用，规则未改。
+    仍未注册production方法，未创建Run或触碰live；下一小项为现有唯一composition接线。
 - [ ] 所需能力离线闭合后最终clean build/full unit/fresh scratch，再fresh E17正式15回合从L1。当前ACTIVE，live E16 FAILED。
 
 **F6 READY 轮次恢复边界（2026-08-30，历史）**

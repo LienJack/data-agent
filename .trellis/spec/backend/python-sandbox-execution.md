@@ -289,6 +289,8 @@ Correct：`metric_ids`仍选原发布指标，Host仅把exact来源证明得到�
 `compileMonthlyComparisonPlan({context,query_evidence_ref,query_evidence_document})` →
 `{result_contract,required_operator_obligations:[],shape,execution_contract}`；
 method ID为`published-monthly-multi-measure-comparison@1`，ResultContract为`monthly-multi-measure-comparison.result`。
+`createMonthlyComparisonOracle(context).evaluate({node,governed_inputs,sandbox_outputs,sandbox_receipt})`独立验算；
+`resolveAnalysisEvidenceTimeWindow(binding,context)`是原Brief与oracle共用的时间窗归一化，不改变原规则。
 
 ### 3. Contracts
 
@@ -299,12 +301,18 @@ method ID为`published-monthly-multi-measure-comparison@1`，ResultContract为`m
 - 每个measure独立JSON字段：观测/缺失数、极值、最低/最高3点、完整窗口首尾值/变化、最多3个相邻月下降；值与序数不得跨measure混算。
 - 缺失或零分母导致undefined时保留NULL；不可移动窗口端点或跨缺口相减。排序同值按月份升序。`claim_strength=DESCRIPTIVE`。
 - execution_contract只含Host规则、JSON Schema和source列名，不含行或预计算答案。无显著性检验、因果结论、自由文本事实或未声明结果字段。
+- Oracle重验Context/原QueryEvidence/实际Arrow与原合同；只从源行做独立Host算术，不把模型结果、表或图当期望值输入。
+  完整RESULT/TABLE/CHART内容分别与期望相等；scope/run、内容bytes/hash/ref、method/Metric/窗口、无算子义务必须同时闭合。
+- `GENERATED_ANALYSIS.oracle_scope=FULL`只覆盖这里声明的描述性字段和原始表图，不覆盖因果或统计推断；`material_change=false`，
+  不凭描述性差值启用需要阈值的分支。缺失/零分母保留undefined限制。implementation hash绑定实际oracle模块内容摘要与执行规则。
 
 ### 4. Validation & Error Matrix
 
 来源/发布能力/公式/维度/时区漂移 → `MONTHLY_COMPARISON_AUTHORITY_INVALID`；
 列/role/行数或值/月份不符 → `MONTHLY_COMPARISON_{SHAPE|VALUE|WINDOW}_INVALID`或原QueryEvidence拒绝码；
 比例来源依赖缺失 → `ANALYSIS_PROGRAM_RESULT_SOURCE_AUTHORITY_INVALID`。拒绝后不得退回单序列方法或自动丢列/丢行。
+Oracle的scope/contract/output/input漂移 → `MONTHLY_COMPARISON_ORACLE_*_INVALID`；RESULT/TABLE/CHART与源期望不同 →
+`MONTHLY_COMPARISON_ORACLE_{RESULT|TABLE|CHART}_MISMATCH`；有限输入运算溢出 → `MONTHLY_COMPARISON_ORACLE_NUMERIC_RANGE_INVALID`。
 
 ### 5. Good / Base / Bad Cases
 
@@ -316,6 +324,8 @@ Bad：拼接不同窗口、把先后两个非空月假装相邻月、把ROI均�
 
 角色/NULL/显式映射/不扩大Metric；行序、列序、别名、DATETIME；Context/Release/Schema/Scope/能力/公式/维度/时区漂移；
 缺月、重复月、空时间、全空measure、非法值、单measure、多维和未选择比例依赖。后续oracle须逐数值、表/图和hash闭包反例。
+Oracle测试必须用手写已知值作为正例，不调用oracle算法生成自己的测试期望；覆盖重新封hash后的错误数值/计数/同值排序/
+换列/补零/跨缺口/额外总结/因果声明，真实Arrow的类型正确但数值漂移，以及零端点、中间缺失和溢出。
 
 ### 7. Wrong vs Correct
 
