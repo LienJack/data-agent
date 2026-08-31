@@ -1913,6 +1913,14 @@ Diagnostic/Q1/C1任一正式首次失败必须写既有 authority支持的 immut
     见 [完整空响应复盘](research/complex-d36893ad-root-empty-response.md)；下一步新clean build/fresh scratch验证A/B，
     不拼接本轮或历史core4 PASS，也不声称正式15题已通过。
 
+  - f6614a06新scratch A1/A2/B1/B2业务及同Run UI通过（73/72/92/79 Trace节点）；
+    A3/B3各四次完整空白Root响应，known FAILED/checkpoint/单次调用边界正确，但无Subagent，整体FAIL。
+    现仅分离历史显示答案与Root输出协议：agent/text逐条JSON观察包装，保留原内容/角色/来源/顺序/Task hash，
+    不再充当assistant输出示例；原user及当前观察不改，新增字节计入原预算。93项focused、Worker typecheck、
+    两条实际冻结Task离线hash/round-trip验证通过；模型空白因果仍待新构建实测。
+    live348表不变，临时服务和浏览器关闭、55504转发取消、scratch卷保留；
+    见 [历史显示边界复盘](research/complex-f6614a06-history-presentation.md)，formal15尚未开始。
+
 **F6 READY 轮次恢复边界（2026-08-30，历史）**
 
 > 以下为历史记录；当前 forward recovery 已到 E16 FAILED，下一 fresh epoch 为 E17，见上一节。

@@ -80,6 +80,11 @@ Root turn 0..3 (AUTO)
   Root 依据冻结目录纠正 native call，不重新查询已有证据；最后回合产出最终证据仍只走既有确定性答案验收。
 - `ROOT_HARNESS@1` is the only Q&A executor. V1/V2/`LEGACY_FIXED@1` leases return `ROOT_AGENT_LEASE_VERSION_UNSUPPORTED` and never fall back。
 - Root v3 ProviderTask commit 必须消费 exact EffectiveConfig conversation receipt 与冻结的 `visible_message_refs`；历史 `START_L2_RESEARCH` lease 没有 refs 时只允许在 live Conversation version 仍等于 command version 的条件下保留无摘要 replay。两条分支共用同一个 RPC，不存在 legacy fallback writer 或第二套上下文权威。
+- ProviderTask 的历史 `agent/text` 是面向用户的已渲染答案，不是 Root 的原始 JSON/Tool 响应。
+  Root 请求将其逐条包装成明确标注的 untrusted history JSON（wire role=`user`），原 role、content、message/run id、hash 全量保留；
+  不得作为 assistant few-shot 输出示例、指令或当前 Run accepted Artifact。历史 user 与当前 user 原文、相对顺序不变，
+  当前 Run 观察/feedback 仍在历史之后。冻结 Task/selection/hash/引用不改、不摘要丢弃，包装字节计入原 trusted input budget。
+  first-turn、三轮指代/口径纠正、伪协议/指令转义、来源和 Task 不变、当前观察与消息上限必须回归。
 - Conversation summary 的确定性 UUID helper 由 `data_agent_provider_invocation_rpc_owner` 在 Security Definer 边界调用；该 owner 只获得 `extensions` schema lookup，`data_agent_backend` 不获得同类直接权限。
 
 ## 4. Frozen V2 Product Profiles
