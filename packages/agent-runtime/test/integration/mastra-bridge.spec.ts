@@ -155,6 +155,155 @@ const validProviderUsage = {
 };
 
 describe("Mastra execution bridge integration", () => {
+  it.each([
+    { name: "native tool with no text", tool: true, text: "", valid: true },
+    {
+      name: "strict JSON final",
+      tool: false,
+      text: '{"summary":"facts","confidence":1}',
+      valid: true,
+    },
+    { name: "empty final", tool: false, text: "", valid: false },
+    { name: "plain final", tool: false, text: "private-invalid-answer", valid: false },
+    {
+      name: "fenced final",
+      tool: false,
+      text: '```json\n{"summary":"facts","confidence":1}\n```',
+      valid: false,
+    },
+    {
+      name: "extra field",
+      tool: false,
+      text: '{"summary":"facts","confidence":1,"extra":true}',
+      valid: false,
+    },
+  ])(
+    "constrains DeepSeek AUTO transport to JSON without forcing a tool ($name)",
+    async ({ tool, text, valid }) => {
+      const binding = getModelProviderBinding("deepseek");
+      const warning = vi.spyOn(console, "warn").mockImplementation(() => {});
+      let marked = false;
+      let calls = 0;
+      const bodies: Record<string, unknown>[] = [];
+      const request = await makeInvocation(binding, {
+        tool_allowlist: ["semantic-query@1"],
+        max_tool_calls: 1,
+      });
+      const original = JSON.stringify(request);
+      try {
+        const bridge = createMastraModelExecutionBridgeForTesting({
+          credential_resolver: { resolve: async () => "offline-placeholder-credential" },
+          tool_registry: new ServerOwnedToolRegistry([
+            {
+              tool_name: "semantic-query@1",
+              description: "Return governed evidence when needed.",
+              input_schema: z.strictObject({ metric: z.string() }),
+            },
+          ]),
+          response_schema_registry: responseSchemaRegistry,
+          input_token_counter: trustedInputTokenCounter,
+          tool_choice_policy: "AUTO",
+          runtime_model_factory: (resolved, credential) =>
+            createProviderRuntimeModel(resolved, credential, {
+              fetch: async (_url, init) => {
+                expect(marked).toBe(true);
+                calls += 1;
+                bodies.push(JSON.parse(String(init?.body)));
+                const common = {
+                  id: "offline-auto-json",
+                  object: "chat.completion.chunk",
+                  created: 1,
+                  model: binding.default_model_id,
+                };
+                const delta = tool
+                  ? {
+                      tool_calls: [
+                        {
+                          index: 0,
+                          id: "native-auto-call",
+                          type: "function",
+                          function: {
+                            name: "semantic-query_v1",
+                            arguments: '{"metric":"revenue"}',
+                          },
+                        },
+                      ],
+                    }
+                  : { content: text };
+                return new Response(
+                  [
+                    `data: ${JSON.stringify({ ...common, choices: [{ index: 0, delta, finish_reason: null }] })}\n\n`,
+                    `data: ${JSON.stringify({ ...common, choices: [{ index: 0, delta: {}, finish_reason: tool ? "tool_calls" : "stop" }], usage: { prompt_tokens: 8, completion_tokens: 5, total_tokens: 13 } })}\n\n`,
+                    "data: [DONE]\n\n",
+                  ].join(""),
+                  { headers: { "content-type": "text/event-stream" } },
+                );
+              },
+            }),
+        });
+        const events = [];
+        for await (const event of new MastraModelProviderAdapter({
+          bridge,
+          dispatch_marker: {
+            mark_dispatched: async () => {
+              marked = true;
+            },
+          },
+          authorization: "LEGACY_TEST_ONLY",
+        }).stream(request))
+          events.push(event);
+        expect(calls).toBe(1);
+        expect(bodies[0]).toMatchObject({
+          model: binding.default_model_id,
+          response_format: { type: "json_object" },
+          tool_choice: "auto",
+          thinking: { type: "disabled" },
+          max_tokens: 100,
+        });
+        expect(bodies[0]?.tools).toHaveLength(1);
+        expect(bodies[0]?.messages).toEqual([
+          { role: "system", content: "Return JSON." },
+          ...request.messages,
+        ]);
+        // AUTO transmits the syntax prefix, not a second generated answer/schema
+        // pass; the existing byte ceiling already reserves the full response schema.
+        expect(Buffer.byteLength(JSON.stringify(responseSchema.toJSONSchema()))).toBeGreaterThan(
+          Buffer.byteLength("Return JSON."),
+        );
+        expect(JSON.stringify(request)).toBe(original);
+        expect(events.at(-1)).toMatchObject(
+          valid
+            ? { event_type: "COMPLETED" }
+            : {
+                event_type: "FAILED",
+                reason_code: "MODEL_STREAM_PROTOCOL_VIOLATION",
+                retryable: false,
+              },
+        );
+        expect(events.filter((e) => e.event_type === "TOOL_CALL_CANDIDATE")).toHaveLength(
+          tool ? 1 : 0,
+        );
+        if (tool)
+          expect(events).toContainEqual(
+            expect.objectContaining({
+              event_type: "TOOL_CALL_CANDIDATE",
+              tool_call_id: "native-auto-call",
+              tool_name: "semantic-query@1",
+              arguments: { metric: "revenue" },
+            }),
+          );
+        else if (valid)
+          expect(events.at(-1)).toMatchObject({
+            output_text: '{"confidence":1,"summary":"facts"}',
+          });
+        if (!valid) expect(warning).toHaveBeenCalledTimes(1);
+        expect(JSON.stringify(warning.mock.calls)).not.toContain("private-invalid-answer");
+      } finally {
+        warning.mockRestore();
+      }
+    },
+  );
+
   it("keeps the real AI SDK doStream call suspended until durable dispatch marking completes", async () => {
     const binding = getModelProviderBinding("openai");
     let streamCalls = 0;

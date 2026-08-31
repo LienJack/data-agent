@@ -37,6 +37,10 @@ Root turn 0..3 (AUTO)
 - AUTO 且有可选工具时不启用 Mastra `structuredOutput`；若实际没有 native Tool Call，必须严格解析完整 `fullOutput.text`
   为 JSON，再用同一注册 Response Schema 验证/规范化。不得读取未生成的 `fullOutput.object`、剥除 Markdown/prose，
   或通过伪 Tool Call 包装最终答案。REQUIRED/无可用工具的 structured-output 路径不变。
+- DeepSeek AUTO 的有工具分支在原 SDK `doStream/doGenerate` 输入上设置 JSON 语法 responseFormat，
+  由固定 SDK 发送 `response_format:json_object`，工具仍为 auto；不启用 Mastra 独立格式化/二次生成。
+  SDK 会前置固定 `Return JSON.`，原冻结消息/工具保持不变；原 token upper-bound 已保留完整 Response Schema 字节。
+  JSON mode 不等于业务/Schema 正确：空文本、未知字段、Markdown、非法引用仍按原规则失败，不补写响应或重放调用。
 - Root system message 从实际 `rootAgentFinalAnswerOutputSchema` 派生完整 JSON Schema，不能只给 `sections:[...]` 占位形状。
   Schema 进入原 message projection/hash/token preflight；不另设模型输出或答案权威。
 - 每个正常 Root turn 在冻结历史、当前接受证据与反馈之后追加 server-owned 协议提醒：native delegation 或严格

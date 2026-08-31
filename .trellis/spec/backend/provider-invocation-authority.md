@@ -126,6 +126,10 @@ return committed.protectedResponse;
 ### Contracts
 
 - Provider、Profile、Model、上下文预算和超时仍由服务端冻结；浏览器、模型输出和调用方不得覆盖。
+- DeepSeek 的 server-owned AUTO+tools 使用原 SDK JSON mode，仅约束文本语法，不强制工具、注入新业务信息或增加调用。
+  `json_object` 由固定 SDK 从 `responseFormat:{type:"json"}` 产生；固定 `Return JSON.` prefix 必须在真实 SDK 离线 wire 测试中锁定。
+  不剥离 fence/prose、不兜底重写 JSON、不接受空内容；原 Response Schema 与 dispatcher marker/终态/不重放边界不变。
+  REQUIRED、零工具和其他 Provider 保持原行为；不能由用户 payload 开关这项部署策略。
 - 凭据只从服务端环境解析，不写入数据库、Artifact、Event、日志或浏览器投影。
 - 调用请求必须绑定 exact Scope、Run、Attempt、Model 与响应 Schema，并在边界解析所有 Provider 事件。
 - 不读取模型认证状态，不创建 Intent/Permit/Dispatch/Usage 权威记录，也不执行积分、额度或扣费步骤。

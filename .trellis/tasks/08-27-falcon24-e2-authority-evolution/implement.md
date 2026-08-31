@@ -1892,6 +1892,9 @@ Diagnostic/Q1/C1任一正式首次失败必须写既有 authority支持的 immut
     OpenSandbox同版本117源码文件迁至NAS同机控制面，强制占用端口探针及原双沙箱/算子/零残留探针通过，均无模型。
     源348表不变，旧本机服务/两浏览器关闭、scratch卷保留；不改模型预算、Oracle或production isolation HOLD。
     见 [NAS控制面复盘](research/complex-8cc4d933-sandbox-colocation.md)，后续从新clean build/fresh scratch继续。
+  - 针对重复 Root AUTO 非JSON，真实固定 SDK 离线 wire 的6项先RED，现只对DeepSeek AUTO有工具请求开启json_object语法约束；
+    native tool仍auto，原schema/失败/marker/一次调用/预算不变。Agent Runtime82+Worker46项、两包typecheck通过；
+    见 [Root JSON传输复盘](research/complex-8cc4d933-root-json-transport.md)，不声称旧失败或新复杂题已通过。
 
 **F6 READY 轮次恢复边界（2026-08-30，历史）**
 

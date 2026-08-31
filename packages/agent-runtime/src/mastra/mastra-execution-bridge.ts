@@ -383,6 +383,20 @@ function structuredOutputProviderOptions(
   return undefined;
 }
 
+/** JSON syntax constraint only; AUTO still returns native calls or original text. */
+function withAutoJsonResponse(model: ReturnType<typeof createProviderRuntimeModel>) {
+  return {
+    specificationVersion: model.specificationVersion,
+    provider: model.provider,
+    modelId: model.modelId,
+    supportedUrls: model.supportedUrls,
+    doGenerate: (options: Parameters<typeof model.doGenerate>[0]) =>
+      model.doGenerate({ ...options, responseFormat: { type: "json" } }),
+    doStream: (options: Parameters<typeof model.doStream>[0]) =>
+      model.doStream({ ...options, responseFormat: { type: "json" } }),
+  };
+}
+
 function canonicalizeStructuredOutput(
   responseSchema: RegisteredServerModelResponseSchema,
   input: unknown,
@@ -500,7 +514,16 @@ class MastraExecutionBridge implements ModelExecutionBridge {
       );
     }
 
-    const model = this.#runtimeModelFactory(binding, credential);
+    const runtimeModel = this.#runtimeModelFactory(binding, credential);
+    const usesToolCalling = descriptors.length > 0;
+    // DeepSeek AUTO needs JSON mode without Mastra's separate object parsing or
+    // formatting pass. The original SDK sends json_object and retains tool_choice
+    // auto. The pinned SDK adds only its standard "Return JSON." syntax prefix;
+    // original messages/tools, credentials, responses and call budgets are retained.
+    const model =
+      binding.provider === "deepseek" && usesToolCalling && this.#serverToolChoicePolicy === "AUTO"
+        ? withAutoJsonResponse(runtimeModel)
+        : runtimeModel;
     const agent = new Agent({
       id: `model-provider-${input.request.request_id}`,
       name: "Data Agent Model Provider Adapter",
@@ -510,7 +533,6 @@ class MastraExecutionBridge implements ModelExecutionBridge {
       maxRetries: 0,
     });
     const providerOptions = structuredOutputProviderOptions(binding);
-    const usesToolCalling = descriptors.length > 0;
     const commonExecutionOptions = {
       abortSignal: input.signal,
       activeTools: [...canonicalToolNameByProviderName.keys()],
@@ -658,8 +680,8 @@ class MastraExecutionBridge implements ModelExecutionBridge {
     if (usesToolCalling && observedToolCalls > 0) {
       outputText = fullOutput.text ?? "";
     } else if (usesToolCalling && this.#serverToolChoicePolicy === "AUTO") {
-      // AUTO deliberately omits Mastra structuredOutput so native tools remain
-      // optional. Its no-tool branch therefore has text, not a parsed object.
+      // AUTO omits Mastra structuredOutput: the no-tool branch has original text,
+      // not a parsed object, even when the provider transport uses JSON mode.
       let candidate: unknown;
       try {
         candidate = JSON.parse(fullOutput.text ?? "");
