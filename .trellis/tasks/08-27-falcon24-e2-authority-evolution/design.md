@@ -1688,3 +1688,11 @@ Program1.1/envelope1.1表达；Compiler必须从原accepted QueryEvidence重验R
 原有窗编译仍产生旧Program1.0/Host2.0，2.1候选的有窗结果与2.0完全相同；旧封包golden hash保留。Hash domain随显式版本，
 原Wire/publisher读取新增精确tuple，不增加数据库写入口或修改历史。Host提供approved_time_window，模型不从coverage猜日期。
 此小项只解除范围契约断裂；渠道形态/独立oracle、分群多输入与跨Run报告仍须继续完成，不激活live E17或记为真实业务PASS。
+
+### 25.26 分类多结果描述性方法
+
+限定1–2个STRING/atomic分类、1–4个NUMBER结果、1–200行，原Metric≤3且原CHART_DATASET/applicability不变。每个完整tuple唯一，
+nullable元数据与实际空值区分；观察表保留原顺序/角色/NULL/全部分类。bar.grouped用第一个分类作x、第二个原分类作series，
+不虚构复合源列。各measure给出计数/极值/最低最高3组，rank以原行号消除同值歧义；不合计或平均比率、不宣称增长或因果。
+Host规则不含预计算值；现阶段只增加方法叶子和22个测试，连同现有编译/发布等75项通过，Worker typecheck/build通过。
+独立oracle/生产注册随后闭合；混单位/粒度、多输入、月×渠道变化与跨Run报告仍待后续处理，不以此方法兜底任意问题。

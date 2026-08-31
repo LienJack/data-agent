@@ -1734,6 +1734,9 @@ Diagnostic/Q1/C1任一正式首次失败必须写既有 authority支持的 immut
   - [x] 真实来源nullable前置纠正：cc9同比12个月DATETIME列元数据nullable=true，实际非空；按值验证而非拒绝元数据。
     DATE/DATETIME两个正例先RED，修复后4文件84/84、Worker typecheck/build及2文件Biome通过；实际NULL/重复/缺月仍拒绝。
     专用scratch55475只读检查同一原QueryEvidence shape由拒绝变为PASS，0模型/0权威写入；不视作完整方法或新Run通过。
+  - [x] 分类方法叶子契约：1–2分类/1–4结果/≤200行，完整tuple/原列/NULL/行序与原Metric能力不变；描述性排名与原表图。
+    新22项及原编译/发布等5文件75/75、Worker typecheck/build、3文件Biome通过。测试最初因方法模块缺失失败，
+    ratio fixture补齐原SUM_BEFORE_RATIO/NULL声明；没有放宽原来源schema。独立oracle与production接线接续，未调用模型或写库。
 - [ ] 所需能力离线闭合后最终clean build/full unit/fresh scratch，再fresh E17正式15回合从L1。当前ACTIVE，live E16 FAILED。
 
 **F6 READY 轮次恢复边界（2026-08-30，历史）**

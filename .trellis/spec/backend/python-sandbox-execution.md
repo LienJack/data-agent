@@ -390,3 +390,48 @@ null传递、候选版本门禁、来源/Context/Run/Release/Schema漂移、擅�
 
 Wrong：`requested_time_window = binding.time_window ?? metric.time_domain`。
 Correct：`requested_time_window = resolveAnalysisEvidenceTimeWindow(binding, context)`，显式null保留且由原接受输入证明。
+
+## Scenario: 分类多结果的有界描述性比较
+
+### 1. Scope / Trigger
+
+已接受QueryEvidence有1–2个STRING/atomic分类维度和1–4个NUMBER结果列，1–200行；全量或已接受的显式窗口均可。
+这里只定义方法叶子；生产启用须完成独立oracle和唯一composition接线。
+
+### 2. Signatures
+
+`compileCategoryComparisonPlan({context,query_evidence_ref,query_evidence_document})`返回`result_contract/shape/execution_contract`及空算子义务。
+method=`published-category-multi-measure-comparison@1`，contract=`category-multi-measure-comparison.result`。
+`categoryComparisonMeasureSchema`规定原列、观测/缺失数、极值和最低/最高各最多3个`{source_row_index,group,value}`。
+
+### 3. Contracts
+
+- 完整分类tuple必须唯一且实际非空；nullable元数据原样保留。含分隔符的分类不能靠字符串拼接判断相同组。
+- 原Metric1–3个且与Context精确一致，原公式、groupable维度和CHART_DATASET/applicability全部不变；不同单位/粒度/空值政策不能混算。
+- FORMULA/REQUEST_DERIVED只进入已证明的DIRECT来源投影，不成为Metric。全部source列/角色/NULL/行序保留，不重新分组或平均比例。
+- 有窗时验证原Metric时间维度/时区/日历；无窗保持null。结果grain为分类而非时间，不能凭这一方法计算增长或趋势。
+- chart为`bar.grouped@1`，x取第一个来源分类，第二个分类原字段作series；每个measure仍独立。不可省掉第二分类或编造组合列。
+- execution_contract只含字段与计算规则，不含行/预计算答案。排名同值按原始零基行号；group须包含原行的所有分类。
+  `claim_strength=DESCRIPTIVE`，无统计、因果、跨期增长或自由文本事实；继续原publisher和预算。
+
+### 4. Validation & Error Matrix
+
+来源/发布Metric/capability/维度/单位/粒度/空值政策漂移 → `CATEGORY_COMPARISON_AUTHORITY_INVALID`；
+超200行、空输入、时间维度、未知role或重复tuple → `CATEGORY_COMPARISON_SHAPE_INVALID`；
+实际NULL/空分类、非法数值或整列无观测 → `CATEGORY_COMPARISON_VALUE_INVALID`；派生来源仍走原authority拒绝码。
+
+### 5. Good / Base / Bad Cases
+
+Good：4渠道×2人群分别展示投入、收入与已接受ROI，零分母NULL保留。
+Base：只有渠道时series=null，来源显式时间窗不变。
+Bad：把每个渠道的人群行合并成一点，或将4个ROI求平均后称总ROI。
+
+### 6. Tests Required
+
+1/2维×两比例role、NULL元数据/实际NULL、原始行序及含分隔符的tuple；精确有窗/全量；原授权漂移、混单位/粒度/空值政策、
+空输入、超行数、重复tuple、全空measure、时间维度/未知role。独立oracle后续必须覆盖全部结果字段、排名/表/图与Arrow篡改。
+
+### 7. Wrong vs Correct
+
+Wrong：`key = channel + "|" + audience`。
+Correct：`key = JSON.stringify([channel, audience])`，输出仍分别保留两个原始分类字段。

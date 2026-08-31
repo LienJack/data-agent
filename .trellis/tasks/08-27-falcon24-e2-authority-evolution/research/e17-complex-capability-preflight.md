@@ -125,3 +125,10 @@ nullable=true。同比Run `9f17195a-11d5-86ac-be35-2f25f4123abc` 的原QueryEvid
 同一只读原输入shape复核PASS；实际空时间/重复/缺月仍拒绝。没有构造新Context、模型Run、receipt或数据库写入，不是完整Analysis验收。
 ROAS/净ROI仍为4渠道、2个原currency Metric及一个FORMULA/REQUEST_DERIVED，time_window=null；两原Metric相同grain、单位、时区，
 均有CHART_DATASET。后续分类方法必须按真实值判空，保留这些原角色/NULL和方法权限。
+
+## 分类比较方法叶子
+
+按上述真实形态新增1–2维/1–4结果/≤200行分类比较契约，原Metric1–3个并通过原applicability；无混单位/粒度兜底。
+完整tuple不合并，原始行序及NULL保留，第二分类直接作series；描述性极值/计数/各3个排名以原行号打破同值，禁止比率均值/自由事实。
+新22项加原编译/发布共75/75、Worker typecheck/build及3文件Biome通过。初始模块缺失RED；fixture须完整声明原ratio聚合与零分母规则，
+未修改原来源schema。没有生产注册、oracle、模型Run或数据库写入；继续独立oracle和生产接线。
