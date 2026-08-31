@@ -19,6 +19,29 @@ export const MODEL_EXECUTION_REASON_CODES = [
 
 export type ModelExecutionReasonCode = (typeof MODEL_EXECUTION_REASON_CODES)[number];
 
+export const MODEL_PROTOCOL_STAGES = [
+  "TOOL_REGISTRY_INVALID",
+  "TOOL_NAME_MAPPING_INVALID",
+  "TOOL_ARGUMENTS_INVALID",
+  "RESPONSE_REGISTRY_INVALID",
+  "RESPONSE_SCHEMA_UNREGISTERED",
+  "STRUCTURED_OUTPUT_REJECTED",
+  "RESPONSE_SCHEMA_MISMATCH",
+  "RESPONSE_NOT_JSON",
+  "RESPONSE_CANONICALIZATION_FAILED",
+  "AUTO_RESPONSE_INVALID_JSON",
+  "INVALID_CHUNK",
+  "AFTER_COMPLETION",
+  "DUPLICATE_DISPATCH",
+  "DATA_BEFORE_DISPATCH",
+  "TOOL_BEFORE_DISPATCH",
+  "DUPLICATE_TOOL_ID",
+  "COMPLETION_BEFORE_DISPATCH",
+  "MISSING_COMPLETION",
+  "UNKNOWN",
+] as const;
+export type ModelProtocolStage = (typeof MODEL_PROTOCOL_STAGES)[number];
+
 /**
  * The message is diagnostic-only and never copied into public stream events.
  * Public callers receive the stable code and retryability bit.
@@ -30,6 +53,11 @@ export class MastraExecutionError extends Error {
     readonly code: ModelExecutionReasonCode,
     readonly retryable: boolean,
     message: string,
+    readonly protocol_stage?: ModelProtocolStage,
+    readonly protocol_issues?: readonly {
+      readonly code: string;
+      readonly path: readonly PropertyKey[];
+    }[],
   ) {
     super(message);
   }

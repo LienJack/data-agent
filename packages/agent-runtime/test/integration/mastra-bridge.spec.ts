@@ -2,7 +2,7 @@ import {
   type AuthoritativeModelProviderInvocation,
   authorizeModelProviderInvocation,
 } from "@data-agent/contracts";
-import { describe, expect, it } from "vitest";
+import { describe, expect, it, vi } from "vitest";
 import { z } from "zod";
 import {
   createMastraModelExecutionBridgeForTesting,
@@ -768,52 +768,68 @@ describe("Mastra execution bridge integration", () => {
     { name: "trailing prose", text: '{"summary":"ok","confidence":1} done', valid: false },
     { name: "markdown fence", text: '```json\n{"summary":"ok","confidence":1}\n```', valid: false },
     { name: "empty", text: "", valid: false },
-  ])("validates an AUTO no-tool response from text ($name)", async ({ text, valid }) => {
-    const binding = getModelProviderBinding("openai");
-    const bridge = createMastraModelExecutionBridgeForTesting({
-      credential_resolver: { resolve: async () => "offline-placeholder-credential" },
-      tool_registry: new ServerOwnedToolRegistry([
-        {
-          tool_name: "semantic-query@1",
-          description: "Produce a governed query candidate only when needed.",
-          input_schema: z.strictObject({ metric: z.string() }),
-        },
-      ]),
-      response_schema_registry: responseSchemaRegistry,
-      input_token_counter: trustedInputTokenCounter,
-      tool_choice_policy: "AUTO",
-      runtime_model_factory: () =>
-        createOfflineStructuredModel(binding, {
-          output_text: text,
-          usage: validProviderUsage,
-        }),
-    });
-    const events = [];
-    for await (const event of new MastraModelProviderAdapter({
-      bridge,
-      dispatch_marker: { mark_dispatched: async () => undefined },
-      authorization: "LEGACY_TEST_ONLY",
-    }).stream(
-      await makeInvocation(binding, {
-        tool_allowlist: ["semantic-query@1"],
-        max_tool_calls: 1,
-      }),
-    )) {
-      events.push(event);
-    }
-    expect(events.filter((event) => event.event_type === "TOOL_CALL_CANDIDATE")).toEqual([]);
-    expect(events.at(-1)).toMatchObject(
-      valid
-        ? {
-            event_type: "COMPLETED",
-            output_text: '{"confidence":1,"summary":"accepted facts"}',
-          }
-        : {
-            event_type: "FAILED",
-            reason_code: "MODEL_STREAM_PROTOCOL_VIOLATION",
-            retryable: false,
+  ])("validates an AUTO no-tool response from text ($name)", async ({ name, text, valid }) => {
+    const warning = vi.spyOn(console, "warn").mockImplementation(() => {});
+    try {
+      const binding = getModelProviderBinding("openai");
+      const bridge = createMastraModelExecutionBridgeForTesting({
+        credential_resolver: { resolve: async () => "offline-placeholder-credential" },
+        tool_registry: new ServerOwnedToolRegistry([
+          {
+            tool_name: "semantic-query@1",
+            description: "Produce a governed query candidate only when needed.",
+            input_schema: z.strictObject({ metric: z.string() }),
           },
-    );
+        ]),
+        response_schema_registry: responseSchemaRegistry,
+        input_token_counter: trustedInputTokenCounter,
+        tool_choice_policy: "AUTO",
+        runtime_model_factory: () =>
+          createOfflineStructuredModel(binding, {
+            output_text: text,
+            usage: validProviderUsage,
+          }),
+      });
+      const events = [];
+      for await (const event of new MastraModelProviderAdapter({
+        bridge,
+        dispatch_marker: { mark_dispatched: async () => undefined },
+        authorization: "LEGACY_TEST_ONLY",
+      }).stream(
+        await makeInvocation(binding, {
+          tool_allowlist: ["semantic-query@1"],
+          max_tool_calls: 1,
+        }),
+      )) {
+        events.push(event);
+      }
+      expect(events.filter((event) => event.event_type === "TOOL_CALL_CANDIDATE")).toEqual([]);
+      if (valid) expect(warning).not.toHaveBeenCalled();
+      else {
+        expect(warning).toHaveBeenCalledTimes(1);
+        expect(JSON.parse(String(warning.mock.calls[0]?.[0]))).toMatchObject({
+          stage: ["wrong schema", "extra field"].includes(name)
+            ? "RESPONSE_SCHEMA_MISMATCH"
+            : "AUTO_RESPONSE_INVALID_JSON",
+          dispatch_marked: true,
+        });
+        expect(String(warning.mock.calls[0]?.[0])).not.toContain(text || "private-empty-value");
+      }
+      expect(events.at(-1)).toMatchObject(
+        valid
+          ? {
+              event_type: "COMPLETED",
+              output_text: '{"confidence":1,"summary":"accepted facts"}',
+            }
+          : {
+              event_type: "FAILED",
+              reason_code: "MODEL_STREAM_PROTOCOL_VIOLATION",
+              retryable: false,
+            },
+      );
+    } finally {
+      warning.mockRestore();
+    }
   });
 
   it.each([

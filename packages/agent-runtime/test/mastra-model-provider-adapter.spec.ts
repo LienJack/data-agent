@@ -3,7 +3,7 @@ import {
   authorizeModelProviderInvocation,
   type ModelProviderEvent,
 } from "@data-agent/contracts";
-import { describe, expect, it } from "vitest";
+import { describe, expect, it, vi } from "vitest";
 import type { ModelExecutionBridge, ModelExecutionChunk } from "../src/mastra/execution-bridge.js";
 import { MastraModelProviderAdapter } from "../src/mastra/model-provider-adapter.js";
 import { makeAvailableProfile, modelFixtureIds, modelFixtureScope } from "./model-fixtures.js";
@@ -92,6 +92,49 @@ async function collect(
 }
 
 describe("MastraModelProviderAdapter", () => {
+  it.each([false, true])(
+    "keeps one fail-closed terminal with a raw-free diagnostic (sink throws: %s)",
+    async (sinkThrows) => {
+      const warning = vi.spyOn(console, "warn").mockImplementation(() => {
+        if (sinkThrows) throw new Error("private log sink failure");
+      });
+      try {
+        const invocation = await makeInvocation();
+        const events = await collect(
+          createAdapter(
+            bridgeFrom([
+              {
+                chunk_type: "TEXT_DELTA",
+                delta: 99,
+                "secret-key": "private response",
+              } as unknown as ModelExecutionChunk,
+            ]),
+          ),
+          invocation,
+        );
+        expect(events.map((event) => event.event_type)).toEqual(["STARTED", "FAILED"]);
+        expect(events.at(-1)).toMatchObject({
+          retryable: false,
+          delivery_certainty: "DISPATCHED_OUTCOME_UNKNOWN",
+        });
+        expect(warning).toHaveBeenCalledTimes(1);
+        const logged = JSON.parse(String(warning.mock.calls[0]?.[0]));
+        expect(logged).toMatchObject({
+          event: "model_stream_protocol_diagnostic",
+          run_id: invocation.run_id,
+          request_id: invocation.request_id,
+          stage: "INVALID_CHUNK",
+          dispatch_marked: true,
+        });
+        expect(logged.issues).toContainEqual({ code: "invalid_type", path: ["delta"] });
+        expect(JSON.stringify(logged)).not.toMatch(/private|secret|99/);
+        expect(JSON.stringify(events)).not.toContain("protocol_diagnostic");
+      } finally {
+        warning.mockRestore();
+      }
+    },
+  );
+
   it("emits correlated, strictly increasing events with one terminal", async () => {
     const invocation = await makeInvocation({
       tool_allowlist: ["semantic-query@1"],

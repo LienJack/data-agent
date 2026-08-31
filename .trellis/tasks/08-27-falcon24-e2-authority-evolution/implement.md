@@ -1801,6 +1801,9 @@ Diagnostic/Q1/C1任一正式首次失败必须写既有 authority支持的 immut
 - [x] 10816最终稿NAS clean/populated、347业务表不变与rollback安全验证通过，附加intent/query hash由commit RPC重算；
   Contracts10、Semantic185、Worker629、Platform8、migration12项及4包typecheck通过。live未迁移，测试资源停机保留。
 - [ ] 新clean build/scratch验证完整L4A/B及后续正式15回合，
+  816d6a0e新scratch A1独立业务与QA/Trace73节点通过；A2首Root调用协议失败/5events，未进入Semantic。
+  frozen历史3条存在，但不能记为检索修复的端到端证明。已补raw-free adapter阶段诊断，不放宽schema或重试；
+  live348表不变，临时服务/browser/auth/capability清理、scratch停机保留，见 [协议断点](research/complex-816d6a0e-root-protocol.md)。
   再继续上述 F5 / F7；不另跑 child 历史六问，也不复用 core4 PASS。
 
 **F6 READY 轮次恢复边界（2026-08-30，历史）**

@@ -112,6 +112,17 @@ return committed.protectedResponse;
 
 ## Scenario: 生产模型轻量直连
 
+### Raw-free protocol diagnostics (2026-08-31)
+
+- 所有调用路径共用的 Mastra adapter 可在 `MODEL_STREAM_PROTOCOL_VIOLATION` 时记录固定 stage 和有界 schema issue。
+  区分 AUTO 无工具非 JSON、Response Schema 不匹配、Mastra structured validation、非法 chunk/重复调用/缺终态等阶段。
+- 只允许 server-owned request/Run/schema identity、dispatch 布尔值、固定 stage/code/path；未知路径替换为 `$field`。
+  issue ≤8、path ≤12、index 0–63；不记录 prompt/response/tool 参数、实际值、未知键、headers、URL、Secret 或任意 error message。
+- 私有日志不进入公共 Event/Artifact，不授予证据或重试权限。日志写入失败仍输出原有唯一 FAILED/OUTCOME_UNKNOWN；
+  不改变 schema、delivery certainty、dispatch/terminal、业务验收或任何调用预算。
+- 没有 stage 的历史失败只能报告“协议原因未确定”，不得凭新诊断追认旧失败的具体原因。
+- Required tests：stage 分类、真实 adapter/bridge 生产路径、伪造 stage/未知路径/超长结构/抛异常 getter 脱敏、日志 sink 失败及终态不变。
+
 ### Contracts
 
 - Provider、Profile、Model、上下文预算和超时仍由服务端冻结；浏览器、模型输出和调用方不得覆盖。

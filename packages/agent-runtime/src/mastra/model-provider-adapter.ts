@@ -14,6 +14,7 @@ import {
   type ModelExecutionChunk,
   modelExecutionChunkSchema,
 } from "./execution-bridge.js";
+import { modelProtocolDiagnostic } from "./protocol-diagnostic.js";
 
 export interface ModelProviderAdapterClock {
   now(): Date;
@@ -280,6 +281,8 @@ export class MastraModelProviderAdapter implements ModelProviderPort {
             "MODEL_STREAM_PROTOCOL_VIOLATION",
             false,
             "Model Execution Bridge 返回了无效事件。",
+            "INVALID_CHUNK",
+            chunkResult.error.issues,
           );
         }
         const chunk = chunkResult.data;
@@ -288,6 +291,7 @@ export class MastraModelProviderAdapter implements ModelProviderPort {
             "MODEL_STREAM_PROTOCOL_VIOLATION",
             false,
             "Model Stream 在完成标记后仍产生事件。",
+            "AFTER_COMPLETION",
           );
         }
 
@@ -298,6 +302,7 @@ export class MastraModelProviderAdapter implements ModelProviderPort {
                 "MODEL_STREAM_PROTOCOL_VIOLATION",
                 false,
                 "Model Execution Bridge 重复声明 dispatch suspension。",
+                "DUPLICATE_DISPATCH",
               );
             }
             await this.#dispatchMarker.mark_dispatched(input);
@@ -311,6 +316,7 @@ export class MastraModelProviderAdapter implements ModelProviderPort {
                 "MODEL_STREAM_PROTOCOL_VIOLATION",
                 false,
                 "Provider 数据不能出现在 durable dispatch marker 之前。",
+                "DATA_BEFORE_DISPATCH",
               );
             }
             yield nextSequenceEvent(input, this.#clock, sequence, {
@@ -325,6 +331,7 @@ export class MastraModelProviderAdapter implements ModelProviderPort {
                 "MODEL_STREAM_PROTOCOL_VIOLATION",
                 false,
                 "Provider Tool Candidate 不能出现在 durable dispatch marker 之前。",
+                "TOOL_BEFORE_DISPATCH",
               );
             }
             if (!input.tool_allowlist.includes(chunk.tool_name)) {
@@ -340,6 +347,7 @@ export class MastraModelProviderAdapter implements ModelProviderPort {
                 "MODEL_STREAM_PROTOCOL_VIOLATION",
                 false,
                 "Model Stream 不允许重复 Tool Call ID。",
+                "DUPLICATE_TOOL_ID",
               );
             }
             observedToolCallIds.add(chunk.tool_call_id);
@@ -369,6 +377,7 @@ export class MastraModelProviderAdapter implements ModelProviderPort {
                 "MODEL_STREAM_PROTOCOL_VIOLATION",
                 false,
                 "Provider completion 不能出现在 durable dispatch marker 之前。",
+                "COMPLETION_BEFORE_DISPATCH",
               );
             }
             completion = chunk;
@@ -381,6 +390,7 @@ export class MastraModelProviderAdapter implements ModelProviderPort {
           "MODEL_STREAM_PROTOCOL_VIOLATION",
           false,
           "Model Stream 未产生完成标记。",
+          "MISSING_COMPLETION",
         );
       }
 
@@ -430,6 +440,24 @@ export class MastraModelProviderAdapter implements ModelProviderPort {
               "Model Provider 调用超过授权超时预算。",
             )
           : error;
+      const diagnostic = modelProtocolDiagnostic(normalizedError);
+      if (diagnostic) {
+        // Diagnostics must not alter failure semantics even if the log sink fails.
+        try {
+          console.warn(
+            JSON.stringify({
+              event: "model_stream_protocol_diagnostic",
+              request_id: input.request_id,
+              run_id: input.run_id,
+              response_schema_version: input.response_schema_version,
+              dispatch_marked: dispatchMarked,
+              ...diagnostic,
+            }),
+          );
+        } catch {
+          /* Terminal handling remains authoritative. */
+        }
+      }
       const terminalEvent = failedEvent(
         input,
         this.#clock,

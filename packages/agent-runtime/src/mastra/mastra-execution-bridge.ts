@@ -135,6 +135,7 @@ function resolveTools(
       "MODEL_STREAM_PROTOCOL_VIOLATION",
       false,
       "Model Tool Registry 配置无效。",
+      "TOOL_REGISTRY_INVALID",
     );
   }
 
@@ -152,6 +153,7 @@ function resolveTools(
         "MODEL_STREAM_PROTOCOL_VIOLATION",
         false,
         "Server Tool 无法映射为唯一的 Provider-safe Tool Name。",
+        "TOOL_NAME_MAPPING_INVALID",
       );
     }
     canonicalToolNameByProviderName.set(providerToolName, descriptor.tool_name);
@@ -258,6 +260,8 @@ function parseToolArguments(input: unknown): z.infer<ReturnType<typeof z.json>> 
       "MODEL_STREAM_PROTOCOL_VIOLATION",
       false,
       "Mastra Tool Call Arguments 不是 JSON。",
+      "TOOL_ARGUMENTS_INVALID",
+      parsed.error.issues,
     );
   }
   return parsed.data;
@@ -300,6 +304,7 @@ function resolveResponseSchema(
       "MODEL_STREAM_PROTOCOL_VIOLATION",
       false,
       "Server Response Schema Registry 配置无效。",
+      "RESPONSE_REGISTRY_INVALID",
     );
   }
   if (!responseSchema) {
@@ -307,6 +312,7 @@ function resolveResponseSchema(
       "MODEL_STREAM_PROTOCOL_VIOLATION",
       false,
       "Model Request 引用了未注册的 Response Schema Version。",
+      "RESPONSE_SCHEMA_UNREGISTERED",
     );
   }
   return responseSchema;
@@ -387,6 +393,8 @@ function canonicalizeStructuredOutput(
       "MODEL_STREAM_PROTOCOL_VIOLATION",
       false,
       "Mastra Structured Output 不匹配服务端 Response Schema。",
+      "RESPONSE_SCHEMA_MISMATCH",
+      structuredResult.error.issues,
     );
   }
 
@@ -396,6 +404,8 @@ function canonicalizeStructuredOutput(
       "MODEL_STREAM_PROTOCOL_VIOLATION",
       false,
       "Mastra Structured Output 不是可规范化 JSON。",
+      "RESPONSE_NOT_JSON",
+      jsonResult.error.issues,
     );
   }
   try {
@@ -405,6 +415,7 @@ function canonicalizeStructuredOutput(
       "MODEL_STREAM_PROTOCOL_VIOLATION",
       false,
       "Mastra Structured Output 无法规范化。",
+      "RESPONSE_CANONICALIZATION_FAILED",
     );
   }
 }
@@ -598,6 +609,7 @@ class MastraExecutionBridge implements ModelExecutionBridge {
                 "MODEL_STREAM_PROTOCOL_VIOLATION",
                 false,
                 "Mastra Structured Output 未通过服务端 Schema 校验。",
+                "STRUCTURED_OUTPUT_REJECTED",
               );
             }
             // Preserve the opaque error object for the private adapter so it can
@@ -617,6 +629,7 @@ class MastraExecutionBridge implements ModelExecutionBridge {
           "MODEL_STREAM_PROTOCOL_VIOLATION",
           false,
           "Mastra Structured Output 未通过服务端 Schema 校验。",
+          "STRUCTURED_OUTPUT_REJECTED",
         );
       }
       throw error;
@@ -627,6 +640,7 @@ class MastraExecutionBridge implements ModelExecutionBridge {
           "MODEL_STREAM_PROTOCOL_VIOLATION",
           false,
           "Mastra Structured Output 未通过服务端 Schema 校验。",
+          "STRUCTURED_OUTPUT_REJECTED",
         );
       }
       throw fullOutput.error;
@@ -654,6 +668,7 @@ class MastraExecutionBridge implements ModelExecutionBridge {
           "MODEL_STREAM_PROTOCOL_VIOLATION",
           false,
           "AUTO 无工具响应必须是完整 JSON。",
+          "AUTO_RESPONSE_INVALID_JSON",
         );
       }
       outputText = canonicalizeStructuredOutput(responseSchema, candidate);
