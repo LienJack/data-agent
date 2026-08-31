@@ -698,7 +698,7 @@ export async function assembleAnalysisPublication(input: {
       title: "受治理数据分析",
       sections: [
         {
-          heading: "业务问题",
+          heading: "分析任务",
           body_text: input.question,
           source_refs: [],
         },
