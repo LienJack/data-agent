@@ -80,6 +80,8 @@ Data Agent 前端组件只格式化已经在边界解析完成的领域投影。
 - Artifact 表格与图表横轴复用 Contracts 的 `formatArtifactTableCell`，仅消费 server 派生并解析的 column display；月份按显式时区/粒度展示，NULL 保留为空，原值不改写且表格保留原值提示。不得从字符串/列名猜测日期、金额币种或百分比，也不使用浏览器默认时区解释业务月份。
 - 多 measure LINE/BAR（含横向/贡献图）按 `y_keys` 逐项渲染命名分图，显式说明独立纵轴；不能把多 measure 数组作为 VChart 单条曲线的 yField，也不能把金额与比率静默放在同一数轴。仅真正的 `series_key` 启用系列图例，不展示内部默认 `line_N`。组件必须统一释放所有图实例，任一分图失败时不得声称整体 READY。
 - 图表运行时是动态 client leaf；loading/error/empty 均有文本状态，`prefers-reduced-motion` 下不得依赖动画传递信息，effect 必须释放第三方实例。
+- V3显式`facet_key`按原始分类值分面，再逐measure分图；保留原series、行序和NULL，不拼接或修改源列。面板名显示原分类标签/值，
+  JSON tuple仅作稳定UI key；完整等价表不筛掉其他组。新分面须由`derived-analysis-chart@1.2.0`边界校验，不能从列名猜维度。
 - 答案入口 Trace 验证必须在滚动后等待真实点击命中目标按钮；异步 Artifact 渲染和返回答案时的平滑定位可能再次改变位置。桌面、Run 切换和窄屏 smoke 共用同一可点击等待，持续遮挡失败关闭；禁止隐藏 Composer、强制点击或直接用 Trace URL 绕过入口。
 - Q&A 活动身份必须区分 Root/Analysis/Semantic/Text2SQL/Report；未知 Profile 显示原标识，不得默认成 Report。Run 完成后遗留的非终态任务不得显示为运行中或伪造完成：有同任务失败 Tool 时保留失败，否则展示缺少完成证据的中断状态。QA gate 同时核验可见 Agent 标签、角色、终态和必需的已完成 Profile，不能仅检查 spinner。
 

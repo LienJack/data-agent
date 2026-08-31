@@ -3,6 +3,47 @@ import { describe, expect, it } from "vitest";
 import GovernedVChart from "@/components/workbench/governed-vchart";
 
 describe("GovernedVChart measure panels", () => {
+  it("names each source facet and keeps the initial render state pending", () => {
+    const markup = renderToStaticMarkup(
+      <GovernedVChart
+        projection={{
+          kind: "CHART",
+          chart_type: "LINE",
+          title: "渠道趋势",
+          description: null,
+          unit: null,
+          x_key: "month",
+          y_keys: ["value"],
+          series_key: "channel",
+          facet_key: "audience",
+          lower_bound_key: null,
+          upper_bound_key: null,
+          evidence_level: "L2_OBSERVATION",
+          legend: { visible: true },
+          table: {
+            kind: "TABLE",
+            columns: [
+              { key: "month", label: "月份", data_type: "STRING" },
+              { key: "value", label: "收入", data_type: "NUMBER" },
+              { key: "channel", label: "渠道", data_type: "STRING" },
+              { key: "audience", label: "客群", data_type: "STRING" },
+            ],
+            rows: [
+              { month: "2024-01", value: 100, channel: "Email", audience: "新客" },
+              { month: "2024-01", value: 200, channel: "Email", audience: "老客" },
+            ],
+            total_rows: 2,
+          },
+        }}
+      />,
+    );
+    expect(markup).toContain("客群：新客");
+    expect(markup).toContain("客群：老客");
+    expect(markup).toContain("按指标与原始分类分图");
+    expect(markup).toContain('data-chart-render-state="PENDING"');
+    expect(markup).not.toContain('data-chart-render-state="READY"');
+  });
+
   it("renders each named measure and declares independent vertical axes", () => {
     const markup = renderToStaticMarkup(
       <GovernedVChart

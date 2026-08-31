@@ -35,6 +35,64 @@ function projection(chartType: "LINE" | "BAR" | "PIE"): ArtifactPreviewResultV2[
 }
 
 describe("governed VChart spec mapper", () => {
+  it("partitions each measure by an explicit source facet without merging series or changing rows", () => {
+    const source = artifactWorkspaceChartProjectionV3Schema.parse({
+      ...projection("LINE"),
+      lower_bound_key: null,
+      upper_bound_key: null,
+      series_key: "channel",
+      facet_key: "audience",
+      evidence_level: "L2_OBSERVATION",
+      legend: { visible: true },
+      y_keys: ["order_count", "rate"],
+      table: {
+        kind: "TABLE",
+        columns: [
+          ...projection("LINE").table.columns,
+          { key: "rate", label: "回报率", data_type: "NUMBER" },
+          { key: "channel", label: "渠道", data_type: "STRING" },
+          { key: "audience", label: "客群", data_type: "STRING" },
+        ],
+        rows: [
+          { month: "2026-01", order_count: 41, rate: 0.2, channel: "Email|App", audience: "新客" },
+          { month: "2026-01", order_count: 73, rate: 0.3, channel: "Email", audience: "App|新客" },
+          { month: "2026-02", order_count: 45, rate: null, channel: "Email|App", audience: "新客" },
+          { month: "2026-02", order_count: 79, rate: 0.1, channel: "Email", audience: "App|新客" },
+        ],
+        total_rows: 4,
+      },
+    });
+    const original = structuredClone(source);
+    const panels = toGovernedVChartPanels(source);
+    expect(panels).toHaveLength(4);
+    expect(new Set(panels.map(({ key }) => key)).size).toBe(4);
+    expect(panels.map(({ label }) => label)).toEqual([
+      "订单量 — 客群：新客",
+      "回报率 — 客群：新客",
+      "订单量 — 客群：App|新客",
+      "回报率 — 客群：App|新客",
+    ]);
+    for (const [index, panel] of panels.entries()) {
+      expect(panel.spec).toMatchObject({
+        seriesField: "channel",
+        invalidType: "break",
+        legends: { visible: true },
+        data: [
+          {
+            values: [
+              original.table.rows[index < 2 ? 0 : 1],
+              original.table.rows[index < 2 ? 2 : 3],
+            ],
+          },
+        ],
+      });
+    }
+    expect(source).toEqual(original);
+    expect(() => toGovernedVChartSpec({ ...source, y_keys: ["rate"] })).toThrow(
+      "VCHART_FACETS_REQUIRE_PANELS",
+    );
+  });
+
   it.each(["LINE", "BAR", "HORIZONTAL_BAR"] as const)(
     "preserves NULL and every period in validated V3 %s panels",
     (chart_type) => {

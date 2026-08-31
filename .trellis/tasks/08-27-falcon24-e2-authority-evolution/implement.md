@@ -1742,6 +1742,10 @@ Diagnostic/Q1/C1任一正式首次失败必须写既有 authority支持的 immut
     初始oracle模块缺失RED；分类30项（含生产selector）与原路径10文件共185/185，Worker typecheck/build通过；
     真实Arrow到表图、两级分类与NULL、叙述数值保留。公共helper仅复用字节/ref/JSON检查且进入实现摘要，没有复用业务算法。
     这是离线组件验证，stub receipt不是真实Sandbox证据；0模型/0数据库写入，月份×分类、混单位/多输入和跨Run闭包继续处理。
+  - [x] 显式分类分面读取契约：V3 facet_key/transform1.2封原字段身份与全表；旧1.0/1.1拒绝新字段，原golden hash保持。
+    Web按原分类再按measure分图，series/NULL/源行不变，不造复合源列；标签/独立轴/PENDING有静态回归。
+    初始6项新版本行为RED；Contracts53/53、Web26/26，Contracts/Web/Worker/Platform typecheck及Contracts build通过。
+    仅读取与映射，生产publisher/Trace接线仍待完成；没有浏览器E2E、模型或库写入，live E17未激活。
 - [ ] 所需能力离线闭合后最终clean build/full unit/fresh scratch，再fresh E17正式15回合从L1。当前ACTIVE，live E16 FAILED。
 
 **F6 READY 轮次恢复边界（2026-08-30，历史）**

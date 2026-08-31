@@ -1702,3 +1702,11 @@ Host规则不含预计算值；现阶段只增加方法叶子和22个测试，�
 production按原分类形态运行完整编译器，exact method/skill/contract与Host执行规则匹配；不改Root/预算/原publisher。
 月度与分类只抽取公共字节/ref/JSON闭包，两个oracle各自计算业务期望；实现摘要绑定叶子和公共模块。10文件185/185及Worker typecheck/build通过，
 包括真实Arrow投影、两级分类/NULL、叙述与旧方法回归。这是离线组件证明，没有真实Sandbox/模型Run或数据库写入；继续剩余复杂形态。
+
+### 25.27 月×分类×分类的显式分面
+
+现有chart只有x+series，直接把三维来源画成两维会混合客群。增加V3可选facet_key，显式指向第二原始分类；不用复合虚构源列、
+不筛掉原表、不开第二publisher。新transform1.2封完整原表和facet身份；旧1.0/1.1拒绝新字段，未带字段的旧hash保持。
+UI仅按原分类值分区再按measure分图，series/NULL/顺序不变；最多16分面，原全表行/字节限制不增加，无观测分面不伪造曲线。
+当前完成Contracts读取与Web确定性映射，53项Contracts/26项Web及四包typecheck通过；最初6个新版本行为RED。
+没有真实浏览器/模型/数据库写入。接续现有publisher/Trace producer-consumer闭包，然后月度分群方法与oracle；此项不是业务门禁PASS。

@@ -446,3 +446,5 @@ Bad：把每个渠道的人群行合并成一点，或将4个ROI求平均后称�
 
 Wrong：`key = channel + "|" + audience`。
 Correct：`key = JSON.stringify([channel, audience])`，输出仍分别保留两个原始分类字段。
+
+图表原始分类分面的完整契约见 [受治理分析图表](./governed-analysis-charts.md)。

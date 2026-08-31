@@ -9,6 +9,29 @@ type ChartProjection =
 export function toGovernedVChartPanels(
   projection: ChartProjection,
 ): readonly { key: string; label: string | null; spec: ISpec }[] {
+  if ("facet_key" in projection && projection.facet_key !== undefined) {
+    const { facet_key: facetKey, ...unfaceted } = projection;
+    const label =
+      projection.table.columns.find((column) => column.key === facetKey)?.label ?? facetKey;
+    const groups = new Map<string, typeof projection.table.rows>();
+    for (const row of projection.table.rows) {
+      const value = row[facetKey];
+      if (typeof value !== "string") throw new TypeError("VCHART_FACET_VALUE_INVALID");
+      const rows = groups.get(value) ?? [];
+      rows.push(row);
+      groups.set(value, rows);
+    }
+    return [...groups].flatMap(([value, rows]) =>
+      toGovernedVChartPanels({
+        ...unfaceted,
+        table: { ...projection.table, rows, total_rows: rows.length },
+      }).map((panel) => ({
+        ...panel,
+        key: JSON.stringify([facetKey, value, panel.key]),
+        label: `${panel.label ? `${panel.label} — ` : ""}${label}：${value}`,
+      })),
+    );
+  }
   if (
     ["LINE", "BAR", "HORIZONTAL_BAR", "SIGNED_CONTRIBUTION"].includes(projection.chart_type) &&
     projection.y_keys.length > 1
@@ -23,6 +46,8 @@ export function toGovernedVChartPanels(
 }
 
 export function toGovernedVChartSpec(projection: ChartProjection): ISpec {
+  if ("facet_key" in projection && projection.facet_key !== undefined)
+    throw new TypeError("VCHART_FACETS_REQUIRE_PANELS");
   const values = projection.table.rows.map((row) =>
     Object.fromEntries(
       projection.table.columns.map((column) => [

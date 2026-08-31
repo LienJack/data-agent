@@ -97,11 +97,127 @@ function preview(document: ReturnType<typeof draft>) {
     source_refs: document.source_refs,
     provenance: document.provenance,
     projection: document.projection,
-    viewport: { offset: 0, limit: 100, total_rows: 3, truncated: false },
+    viewport: {
+      offset: 0,
+      limit: 100,
+      total_rows: document.projection.table.total_rows,
+      truncated: false,
+    },
   };
 }
 
 describe("Analysis V3 versioned missing observations", () => {
+  function faceted() {
+    const source = projection();
+    const rows: ArtifactWorkspaceChartProjectionV3["table"]["rows"] = source.table.rows.flatMap(
+      (row) => [
+        { ...row, channel: "Email", audience: "新客" },
+        { ...row, channel: "Email", audience: "老客" },
+      ],
+    );
+    return {
+      ...source,
+      series_key: "channel",
+      facet_key: "audience",
+      table: {
+        ...source.table,
+        columns: [
+          ...source.table.columns,
+          { key: "channel", label: "渠道", data_type: "STRING" as const },
+          { key: "audience", label: "客群", data_type: "STRING" as const },
+        ],
+        rows,
+        total_rows: 6,
+      },
+    };
+  }
+
+  it.each(["LINE", "BAR", "HORIZONTAL_BAR"] as const)(
+    "seals explicit %s source facets in a new transform without changing original rows",
+    async (chart_type) => {
+      const source = faceted();
+      source.chart_type = chart_type;
+      const sealed = await buildArtifactWorkspaceChartDocumentV3(
+        draft(source, "derived-analysis-chart@1.2.0"),
+      );
+      expect(sealed.projection).toEqual(source);
+      await expect(verifyArtifactWorkspaceChartDocumentV3(sealed)).resolves.toEqual(sealed);
+      expect(artifactPreviewResultSchema.parse(preview(sealed)).projection).toEqual(source);
+    },
+  );
+
+  it.each(["derived-analysis-chart@1.0.0", "derived-analysis-chart@1.1.0"])(
+    "does not silently accept facets in historical transform %s",
+    async (version) => {
+      const source = draft(faceted(), version);
+      await expect(buildArtifactWorkspaceChartDocumentV3(source)).rejects.toThrow(
+        "CHART_V3_FACET_TRANSFORM_REQUIRED",
+      );
+      expect(() => artifactPreviewResultSchema.parse(preview(source))).toThrow(
+        "CHART_V3_FACET_TRANSFORM_REQUIRED",
+      );
+    },
+  );
+
+  it.each([
+    "missing",
+    "numeric",
+    "same-axis",
+    "same-series",
+    "null",
+    "empty",
+    "too-many",
+    "type",
+    "no-observation",
+  ])("rejects invalid facet bindings/values: %s", (kind) => {
+    const source = faceted();
+    if (kind === "missing") source.facet_key = "missing";
+    if (kind === "numeric") source.facet_key = "current";
+    if (kind === "same-axis") source.facet_key = "month";
+    if (kind === "same-series") source.facet_key = "channel";
+    if (kind === "null" || kind === "empty")
+      source.table.rows = source.table.rows.map((row, index) =>
+        index === 0 ? { ...row, audience: kind === "null" ? null : "" } : row,
+      );
+    if (kind === "too-many") {
+      const first = source.table.rows[0];
+      if (!first) throw new Error("TEST_ROW_REQUIRED");
+      source.table.rows = Array.from({ length: 17 }, (_, index) => ({
+        ...first,
+        audience: String(index),
+        channel: "Email",
+      }));
+      source.table.total_rows = 17;
+    }
+    if (kind === "type") source.chart_type = "SCATTER";
+    if (kind === "no-observation")
+      source.table.rows = source.table.rows.map((row) =>
+        row.audience === "新客" ? { ...row, current: null } : row,
+      );
+    expect(artifactWorkspaceChartProjectionV3Schema.safeParse(source).success).toBe(false);
+  });
+
+  it.each(["remove-facet", "replace-facet", "change-group"])(
+    "binds facet identity in dataset hash: %s",
+    async (kind) => {
+      const sealed = await buildArtifactWorkspaceChartDocumentV3(
+        draft(faceted(), "derived-analysis-chart@1.2.0"),
+      );
+      const changed = structuredClone(sealed);
+      if (kind === "remove-facet") delete (changed.projection as { facet_key?: string }).facet_key;
+      if (kind === "replace-facet")
+        Object.assign(changed.projection, { facet_key: "channel", series_key: "audience" });
+      if (kind === "change-group")
+        changed.projection.table.rows = changed.projection.table.rows.map((row) => ({
+          ...row,
+          audience: "其他",
+        }));
+      await expect(verifyArtifactWorkspaceChartDocumentV3(changed)).rejects.toThrow(
+        "ARTIFACT_WORKSPACE_CHART_DATASET_HASH_MISMATCH",
+      );
+    },
+  );
+
   it("keeps a legacy non-null document byte-for-byte hash compatible", async () => {
     const sealed = await buildArtifactWorkspaceChartDocumentV3(
       draft(projection("LINE", false), "derived-analysis-chart@1.0.0"),

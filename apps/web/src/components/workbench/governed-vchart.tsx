@@ -53,7 +53,9 @@ export default function GovernedVChart({
     >
       {panels.length > 1 ? (
         <p className="mb-3 text-xs text-[var(--color-text-muted)]">
-          按指标分图，各图使用独立纵轴。
+          {"facet_key" in projection && projection.facet_key !== undefined
+            ? "按指标与原始分类分图，各图使用独立纵轴。"
+            : "按指标分图，各图使用独立纵轴。"}
         </p>
       ) : null}
       {panels.map((panel) => (

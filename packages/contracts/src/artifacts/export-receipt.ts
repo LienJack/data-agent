@@ -22,6 +22,7 @@ export const QUERY_EVIDENCE_CHART_NULLABLE_TRANSFORM_VERSION = "query-evidence-c
 export const ARTIFACT_WORKSPACE_RENDERER_VERSION_V3 = "artifact-workspace-renderer@3.0.0";
 export const DERIVED_ANALYSIS_CHART_TRANSFORM_VERSION = "derived-analysis-chart@1.0.0";
 export const DERIVED_ANALYSIS_CHART_NULLABLE_TRANSFORM_VERSION = "derived-analysis-chart@1.1.0";
+export const DERIVED_ANALYSIS_CHART_FACET_TRANSFORM_VERSION = "derived-analysis-chart@1.2.0";
 export const ARTIFACT_WORKSPACE_EXPORTER_VERSION = "artifact-workspace-exporter@1.0.0";
 export const SPREADSHEET_FORMULA_POLICY_VERSION = "spreadsheet-formula-neutralization@1.0.0";
 
@@ -424,6 +425,7 @@ export const artifactWorkspaceChartProjectionV3Schema = z
     lower_bound_key: columnKeySchema.nullable(),
     upper_bound_key: columnKeySchema.nullable(),
     series_key: columnKeySchema.nullable(),
+    facet_key: columnKeySchema.optional(),
     legend: z.strictObject({ visible: z.boolean() }),
     evidence_level: z.enum(["L2_OBSERVATION", "L4_DISCOVERY", "L5_CERTIFIED"]),
     table: artifactWorkspaceTableProjectionSchema,
@@ -496,6 +498,36 @@ export const artifactWorkspaceChartProjectionV3Schema = z
     ) {
       ctx.addIssue({ code: "custom", message: "CHART_V3_MEASURE_HAS_NO_OBSERVATIONS" });
     }
+    if (projection.facet_key !== undefined) {
+      const facetKey = projection.facet_key;
+      const facets = new Map<string, typeof projection.table.rows>();
+      if (
+        !allowsMissing ||
+        columns.get(facetKey)?.data_type !== "STRING" ||
+        facetKey === projection.x_key ||
+        facetKey === projection.series_key ||
+        numericKeys.includes(facetKey)
+      )
+        ctx.addIssue({ code: "custom", message: "CHART_V3_FACET_BINDING_INVALID" });
+      for (const row of projection.table.rows) {
+        const value = row[facetKey];
+        if (typeof value !== "string" || value.trim().length === 0 || value.length > 256) {
+          ctx.addIssue({ code: "custom", message: "CHART_V3_FACET_VALUE_INVALID" });
+          continue;
+        }
+        const group = facets.get(value) ?? [];
+        group.push(row);
+        facets.set(value, group);
+      }
+      if (facets.size > 16)
+        ctx.addIssue({ code: "custom", message: "CHART_V3_FACET_LIMIT_EXCEEDED" });
+      if (
+        [...facets.values()].some((rows) =>
+          projection.y_keys.some((key) => !rows.some((row) => typeof row[key] === "number")),
+        )
+      )
+        ctx.addIssue({ code: "custom", message: "CHART_V3_FACET_MEASURE_HAS_NO_OBSERVATIONS" });
+    }
     if (new TextEncoder().encode(canonicalizeJson(projection)).byteLength > 512 * 1024) {
       ctx.addIssue({ code: "custom", message: "CHART_DATA_LIMIT_EXCEEDED" });
     }
@@ -505,6 +537,7 @@ const artifactWorkspaceChartProvenanceV3Schema = z.strictObject({
   transform_version: z.enum([
     DERIVED_ANALYSIS_CHART_TRANSFORM_VERSION,
     DERIVED_ANALYSIS_CHART_NULLABLE_TRANSFORM_VERSION,
+    DERIVED_ANALYSIS_CHART_FACET_TRANSFORM_VERSION,
   ]),
   dataset_hash: contentHashSchema,
   semantic_context: artifactWorkspaceSemanticContextIdentitySchema,
@@ -516,13 +549,23 @@ const artifactWorkspaceChartProvenanceV3Schema = z.strictObject({
   operator_image: z.string().trim().min(1).max(1_024),
 });
 
-function verifyChartV3NullableTransform(
+function verifyChartV3Transform(
   document: {
     readonly projection: z.infer<typeof artifactWorkspaceChartProjectionV3Schema>;
     readonly provenance: z.infer<typeof artifactWorkspaceChartProvenanceV3Schema>;
   },
   ctx: z.RefinementCtx,
 ) {
+  if (
+    document.projection.facet_key !== undefined &&
+    document.provenance.transform_version !== DERIVED_ANALYSIS_CHART_FACET_TRANSFORM_VERSION
+  ) {
+    ctx.addIssue({
+      code: "custom",
+      message: "CHART_V3_FACET_TRANSFORM_REQUIRED",
+      path: ["provenance", "transform_version"],
+    });
+  }
   if (
     document.provenance.transform_version === DERIVED_ANALYSIS_CHART_TRANSFORM_VERSION &&
     document.projection.table.rows.some((row) =>
@@ -549,7 +592,7 @@ export const artifactWorkspaceChartDocumentV3Schema = z
     projection: artifactWorkspaceChartProjectionV3Schema,
   })
   .superRefine((document, ctx) => {
-    verifyChartV3NullableTransform(document, ctx);
+    verifyChartV3Transform(document, ctx);
     const sources = [
       ...document.source_refs.query_evidence_refs,
       document.source_refs.derived_evidence_ref,
@@ -577,6 +620,7 @@ export async function computeArtifactWorkspaceChartDatasetV3Hash(input: unknown)
     lower_bound_key: projection.lower_bound_key,
     upper_bound_key: projection.upper_bound_key,
     series_key: projection.series_key,
+    ...(projection.facet_key !== undefined ? { facet_key: projection.facet_key } : {}),
     unit: projection.unit,
     columns: projection.table.columns,
     rows: projection.table.rows,
@@ -750,7 +794,7 @@ export const artifactPreviewResultV3Schema = z
       truncated: z.boolean(),
     }),
   })
-  .superRefine(verifyChartV3NullableTransform);
+  .superRefine(verifyChartV3Transform);
 
 export const artifactPreviewResultSchema = z.discriminatedUnion("schema_version", [
   artifactPreviewResultV1Schema,

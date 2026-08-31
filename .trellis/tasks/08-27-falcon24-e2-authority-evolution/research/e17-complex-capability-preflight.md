@@ -143,3 +143,10 @@ exact method/skill/contract与Host规则必须匹配；原single-series统计与
 初始RED是新oracle模块不存在；实现后先154/154，再加入生产接线回归共10文件185/185、Worker typecheck/build通过。
 分类30项含真实Arrow投影、1/2分类×FORMULA/REQUEST_DERIVED、NULL/叙述保留及生产selector；fixture的stub Sandbox receipt只用于unit边界，
 不是服务/执行/数据库回执。无模型Run、无权威写入；当前尚不能据此启动正式E17，剩余月份×分类、混单位/多输入和跨Run报告继续闭合。
+
+## 月度分群的三维显示前置
+
+旧图表x+series不足以保存月×渠道×客群身份。新V3 facet_key明确引用原分类，transform1.2封hash，完整原表不变；不造复合source、
+不改变统计/来源授权。Web按原分类再按measure分区显示，原series/NULL/顺序保持，最多16分面且原全表限制不增加。
+初始6项新版本行为RED，随后Contracts53/53、Web26/26、四包typecheck、Contracts build通过；旧非空golden hash不变。
+这只是读取/显示契约和静态组件证据；尚无producer/Trace接线、新方法、真实浏览器/模型或数据库写入。下一小项沿原publisher补齐。
