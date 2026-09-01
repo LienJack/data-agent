@@ -2241,5 +2241,9 @@ B3 Run `807a1d26-29c5-888e-98ce-627283a72780` 已真实走 Semantic/Text2SQL/Ana
 - [x] 将前向非计分 profile 版本化为 `complex-l4-semantic-defined@4.2.0`：A2/B3 显式要求 Analysis 交接；B3 允许清晰标注的待验证假设，
   仍禁止因果与持续趋势断言。其余四题、proof、Oracle、预算和 UI 标准不变。
 - [x] Trellis validate、diff check 与 scoped docs commit。
-- [ ] 审计并关闭 `f02d610a` 现场，核对 live E16 零漂移；新 clean build/fresh physical scratch 从 A1 重跑六题，不拼本轮结果。
+- [x] 审计并关闭 `f02d610a` 现场，核对 live E16 零漂移；新 clean build/fresh physical scratch 从 A1 重跑六题，不拼本轮结果。
 - [ ] 六题闭合后继续 F5/F7 版本化 15 回合、同 Run QA/Trace、authority、浏览器页面与最终清理。
+
+`f02d610a` live after audit 对 348 张表的 fingerprint 与 before 逐表一致，authority 仍为 E16；Worker 停机前 exact build 且最后周期 IDLE。
+本轮两个 browser/auth、Web/Worker、55526 forward 与 scratch container 已关闭，volume 只作停止 checkpoint 保留；NAS 普通数据库 healthy，
+OrbStack 仍为 0。receipt 为 `complex-f02d610a-after.json` 与 `complex-f02d610a-runtime-cleanup.json`。
