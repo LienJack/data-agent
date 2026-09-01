@@ -851,3 +851,18 @@ Structured Output以顶层`invalid_type`被拒绝，随后原Root回合预算耗
   task hash、预算、usage、protected response、Explanation记录和恢复校验保持原权威。
 - **AC-FL-AFINAL-01** TDD须证明受约束FINAL使用JSON_TEXT、不同约束互不污染且改变task hash、无约束FINAL仍为Structured Output，
   TOOL/空白/超长约束零调用拒绝；随后新clean build/fresh physical scratch必须从A1重跑六题并通过同Run业务/QA/Trace。
+
+### 22.8 Root 到 Analysis 的冗余输入收窄
+
+`ce2a488d` fresh scratch 的 A1 已真实形成 SemanticQueryContext、SqlArtifact、12行 QueryEvidence 与折线图。Root 随后两次都选择
+`governed-analysis-agent`，Profile、输出类型与用途正确，但同时传入 QueryEvidence 和该 Profile 不接受的 SemanticQueryContext；两次均在
+Catalog admission 前以 `ROOT_AGENT_PROVIDED_UNSUPPORTED_INPUT_ARTIFACT` 被拒，最终耗尽四个 Root 正常回合。旧 Run 保持不可变，不能重提。
+
+- **R-FL-RNARROW-01** Root Harness 只可删除同一委派中目标 Profile 不支持的冗余 input refs，并且收窄后至少保留一个原调用中已经存在、
+  且由该 Profile 明确接受的 exact ref；不得补造、替换、跨 Run 复制或把全无效输入收窄为空输入。
+- **R-FL-RNARROW-02** Profile、objective、`output_usage`、requested output types、预算、tool call identity 与受支持 ref 的字节和顺序全部保持；
+  不增加模型调用、Root turn、工具调用或权限。收窄后仍完整执行原 Catalog、accepted Artifact、scope/hash 与 admission 校验。
+- **R-FL-RNARROW-03** 不支持输出、未知 Profile、全无效输入、未验收引用及任何权限/hash/outcome 错误继续失败关闭；本规则不是 Host 路由、
+  业务计划器或 Analysis 输入扩权。受保护 ProviderResponse 保留原调用，admission receipt 记录实际收窄后的引用。
+- **AC-FL-RNARROW-01** TDD须证明 QueryEvidence+SemanticQueryContext 对只接受 QueryEvidence 的 Analysis 收窄为 exact QueryEvidence，原参数不变；
+  仅 SemanticQueryContext 仍拒绝。完成 focused/full validation 与 scoped commit 后，必须用新 clean build/fresh physical scratch 从 A1 重跑六题。

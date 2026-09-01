@@ -2138,3 +2138,16 @@ Analysis Artifact，失败Run未重提；live before/after 348表一致且仍E16
 本项不增加模型重试或Host替换。Worker聚焦26、受影响dispatcher/Analysis 72、官方unit 101与Agent Runtime JSON transport 51项全部PASS；
 两个包typecheck/build、owned Biome、Trellis validate及diff check通过。scoped commit后必须用新clean build/fresh物理scratch从A1重跑六题；
 本轮A1/A2不计入新epoch。
+
+`ce2a488d` clean build/full unit/fresh E17 scratch 的 A1 Run `605a3f62-4ee1-8a45-98a6-31e55d179053` 保留 FAILED：
+Semantic 与 Text2SQL 已提交 SemanticQueryContext、SqlArtifact、12行 QueryEvidence 和折线图；Root 后两回合均正确选择 Analysis，
+但都额外携带 Analysis 不接受的 SemanticQueryContext，Catalog 在 admission 前拒绝并耗尽四回合。没有 Analysis Artifact，旧 Run 未重提。
+
+- [x] 只用 protected response 的结构字段、tool/profile/ref 类型和 checkpoint reason code 定位失败；未公开模型原文或工具 objective。
+- [x] TDD先RED证明混合有效/冗余输入仍被整体拒绝；GREEN 后 Harness 只在至少保留一个受支持 exact ref 时删除冗余不支持 ref，
+  全无效输入仍以原错误拒绝，Provider原参数对象不变。
+- [x] Agent Runtime unit 193、integration 46、security 67、contract 32，Worker Root/dispatcher/team focused 168、official unit 101，
+  workspace 单并发 unit gate 15/15 全部通过；两个包 typecheck/build、owned Biome、Trellis validate 与 diff check 通过。
+- [x] 创建 scoped commit。
+- [ ] 停止当前 Web/Worker/浏览器和旧 scratch，核对 live E16 零漂移；新 clean force build/fresh物理scratch从A1重跑六题，不拼接 ce2a488d 的
+  Semantic/Text2SQL 前缀。六题闭合后继续 F5/F7 15回合、同Run QA/Trace、authority 与最终清理。

@@ -1911,3 +1911,22 @@ verified summary literal + original two-field schema
 `RECENT_COMPLETE_PERIODS + AGGREGATE_RATIO` 多操作引用的 Metric/Dimension ID 做全集 membership 自检。Host 不生成 operation、
 不追加 ID、不改变 strict schema/预算/重试/Oracle，也不把 Published ROAS 当净 ROI。该 change-set 会产生新 release/hash，只能在新 scratch
 通过未来受治理 successor 链路；当前复杂预检不为降低题目另建 publisher，不修改旧 release、旧 Run 或 live E16。
+
+## 35. Root 委派输入的单调收窄
+
+Root Provider 的受保护响应仍是原始事实，Harness 在把原生 tool call 转为候选决策时先验证冻结 Catalog，再对每个调用执行单调收窄：
+
+```text
+original input refs
+  -> lookup exact selected Profile in verified frozen catalog
+  -> keep refs whose artifact_type is in accepted_input_artifact_types
+  -> apply only when kept count is between 1 and original count - 1
+  -> strict Root decision/catalog validation
+  -> accepted Artifact verification and normal admission receipt
+```
+
+因此 Analysis 的 `[QueryEvidence, SemanticQueryContext]` 可变为 `[QueryEvidence]`，但 `[SemanticQueryContext]` 不会变成空输入并继续执行。
+算法不读取问题、题号、objective、数据值或历史回答，不选择 Profile，也不改变输出、用途、预算、引用身份和顺序；权限集合只减不增。
+未知 Profile、无受支持引用、错误输出类型、未验收/跨 Run 引用仍走原失败关闭与有界 verifier feedback。原 ProviderResponseArtifact 与实际
+delegation receipt 分别保留修复前调用和修复后受理输入，恢复时不重放 Provider 调用。新构建/fresh scratch 必须证明 Analysis 真正执行并由原
+Oracle/Publisher 验收；Harness 单测不计业务 PASS。

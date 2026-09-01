@@ -68,9 +68,14 @@ Root turn 0..3 (AUTO)
 - Multiple calls in one turn are allowed only when each call already has every required accepted input and can execute independently. Their parallel execution is a performance optimization, not a Host business planner。
 - Host validates only the current calls: frozen Card/Profile, scope, budget, accepted inputs, datasource/schema/release binding, SQL/Sandbox safety, idempotency and recovery. Host never selects a subsequent business capability。
 - Provider output is normalized through the strict Root Harness. Mixed text/tool output, unknown tools, unknown Profiles and catalog hash mismatch fail closed。
-- 仅 Root Provider 已完成、在本地 Catalog 校验且尚未 admission 时的
-  `ROOT_AGENT_PROVIDED_UNSUPPORTED_INPUT_ARTIFACT` / `ROOT_AGENT_REQUESTED_UNSUPPORTED_OUTPUT_ARTIFACT`
-  可成为普通下一回合的结构化 verifier feedback。原失败调用不执行；Host 不删改参数、不代选 Profile、不扩大输入类型。
+- Root Provider 已完成后、Catalog admission 之前，Harness 可对同一调用做一次确定性的**输入收窄**：仅当原调用至少包含一个
+  目标 Profile 明确接受的 Artifact 时，删除同批多带的、不受该 Profile 支持的 Artifact reference；保留引用的 exact bytes、顺序与身份不变。
+  该收窄不改变 Profile、objective、`output_usage`、输出类型或预算，不增加 Provider/Root 回合，也不授予新输入类型；收窄后的调用仍须通过
+  原 strict Catalog 校验、accepted Artifact 校验与 admission。若原调用没有任何受支持输入，仍以
+  `ROOT_AGENT_PROVIDED_UNSUPPORTED_INPUT_ARTIFACT` 失败关闭，Host 不得把空输入冒充合法委派。
+- 仅完成上述收窄后仍失败的 `ROOT_AGENT_PROVIDED_UNSUPPORTED_INPUT_ARTIFACT`，以及
+  `ROOT_AGENT_REQUESTED_UNSUPPORTED_OUTPUT_ARTIFACT`，可成为普通下一回合的结构化 verifier feedback。原失败调用不执行；Host 不代选 Profile、
+  不补造引用、不扩大输入或输出类型。
   只保存固定 reason_code，已验收输入/观察原样保留；先 checkpoint `turn_index+1`，持久化失败不调用下一回合。
   纠正消耗原四回合预算，耗尽保存终态及最后反馈；恢复从下一 index 继续，绝不重放已拒绝 Provider 调用。
   另仅允许已提交的完整空/非 JSON 纯文本拒绝 `PROVIDER_RESPONSE_REJECTED` 进入同一 checkpoint/四回合反馈路径；

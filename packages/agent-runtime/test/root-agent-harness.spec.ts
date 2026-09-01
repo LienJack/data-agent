@@ -102,7 +102,7 @@ describe("Root Agent Harness", () => {
     expect(message).toContain("retain the user's explicit or inherited time restriction");
   });
 
-  it("rejects Analysis's extra Semantic input and accepts a new call with only the exact QueryEvidence", async () => {
+  it("narrows Analysis's redundant Semantic input to the supported QueryEvidence", async () => {
     const frozenCatalog = await catalog(["governed-analysis-agent"], ["QueryEvidence"]);
     const query = {
       artifact_id: id(6),
@@ -146,16 +146,17 @@ describe("Root Agent Harness", () => {
           },
         ],
       });
-    await expect(normalize(args, "rejected-analysis")).rejects.toMatchObject({
-      code: "ROOT_AGENT_PROVIDED_UNSUPPORTED_INPUT_ARTIFACT",
-    });
-    await expect(
-      normalize({ ...args, input_artifact_refs: [query] }, "corrected-analysis"),
-    ).resolves.toMatchObject({
+    await expect(normalize(args, "narrowed-analysis")).resolves.toMatchObject({
       kind: "TOOL_CALLS",
-      tool_calls: [{ tool_call_id: "corrected-analysis", input_artifact_refs: [query] }],
+      tool_calls: [{ tool_call_id: "narrowed-analysis", input_artifact_refs: [query] }],
     });
     expect(args.input_artifact_refs).toEqual([query, semantic]);
+
+    await expect(
+      normalize({ ...args, input_artifact_refs: [semantic] }, "unsupported-analysis"),
+    ).rejects.toMatchObject({
+      code: "ROOT_AGENT_PROVIDED_UNSUPPORTED_INPUT_ARTIFACT",
+    });
   });
 
   it("repairs only catalog Artifact types through the next normal native call", async () => {

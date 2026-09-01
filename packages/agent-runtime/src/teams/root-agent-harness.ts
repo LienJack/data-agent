@@ -79,6 +79,27 @@ export class RootAgentHarnessError extends Error {
   }
 }
 
+function narrowRedundantUnsupportedInputs(
+  input: z.infer<typeof delegateToSubagentArgumentsSchema>,
+  catalog: SubagentCapabilityCatalogSnapshot,
+) {
+  const profile = catalog.items.find(
+    ({ profile_ref: profileRef }) => profileRef.profile_id === input.profile_id,
+  );
+  if (!profile || input.input_artifact_refs.length === 0) return input;
+
+  const acceptedTypes = new Set(profile.discovery.accepted_input_artifact_types);
+  const supported = input.input_artifact_refs.filter(({ artifact_type: artifactType }) =>
+    acceptedTypes.has(artifactType),
+  );
+  if (supported.length === 0 || supported.length === input.input_artifact_refs.length) return input;
+
+  return delegateToSubagentArgumentsSchema.parse({
+    ...input,
+    input_artifact_refs: supported,
+  });
+}
+
 export async function buildRootAgentSystemMessage(
   catalogInput: SubagentCapabilityCatalogSnapshot,
 ): Promise<string> {
@@ -144,6 +165,15 @@ export async function normalizeRootAgentProviderTurn(input: {
   readonly output_text: string;
   readonly tool_calls: readonly unknown[];
 }): Promise<RootAgentDecisionCandidate> {
+  let catalog: SubagentCapabilityCatalogSnapshot;
+  try {
+    catalog = await verifySubagentCapabilityCatalogSnapshot(input.catalog);
+  } catch {
+    throw new RootAgentHarnessError(
+      "ROOT_AGENT_DECISION_REJECTED",
+      "Root Agent decision did not close over the frozen capability catalog.",
+    );
+  }
   let candidate: unknown;
   if (input.tool_calls.length > 0) {
     try {
@@ -159,14 +189,17 @@ export async function normalizeRootAgentProviderTurn(input: {
           throw new TypeError("ROOT_AGENT_TOOL_NOT_ALLOWED");
         }
         const providerArguments = rootAgentDelegationToolArgumentsSchema.parse(call.arguments);
-        const argumentsValue = delegateToSubagentArgumentsSchema.parse({
-          profile_id: providerArguments.profile_id,
-          objective: providerArguments.objective,
-          output_usage: providerArguments.output_usage,
-          requested_artifact_types: providerArguments.requested_artifact_types,
-          input_artifact_refs: providerArguments.input_artifact_refs,
-          requested_budget: providerArguments.requested_budget,
-        });
+        const argumentsValue = narrowRedundantUnsupportedInputs(
+          delegateToSubagentArgumentsSchema.parse({
+            profile_id: providerArguments.profile_id,
+            objective: providerArguments.objective,
+            output_usage: providerArguments.output_usage,
+            requested_artifact_types: providerArguments.requested_artifact_types,
+            input_artifact_refs: providerArguments.input_artifact_refs,
+            requested_budget: providerArguments.requested_budget,
+          }),
+          catalog,
+        );
         calls.push({
           tool_name: DELEGATE_TO_SUBAGENT_TOOL_NAME,
           tool_call_id: call.tool_call_id,
@@ -178,7 +211,7 @@ export async function normalizeRootAgentProviderTurn(input: {
         kind: "TOOL_CALLS",
         scope: input.scope,
         run_id: input.run_id,
-        catalog_snapshot_hash: input.catalog.snapshot_hash,
+        catalog_snapshot_hash: catalog.snapshot_hash,
         tool_calls: calls,
         public_summary: "Selected governed Subagent capabilities for the requested objective.",
       };
@@ -211,14 +244,12 @@ export async function normalizeRootAgentProviderTurn(input: {
       ...finalAnswer.data,
       scope: input.scope,
       run_id: input.run_id,
-      catalog_snapshot_hash: input.catalog.snapshot_hash,
+      catalog_snapshot_hash: catalog.snapshot_hash,
     };
   }
 
   try {
-    return deepFreeze(
-      await validateRootAgentDecisionAgainstCatalog({ candidate, catalog: input.catalog }),
-    );
+    return deepFreeze(await validateRootAgentDecisionAgainstCatalog({ candidate, catalog }));
   } catch (error) {
     if (error instanceof RootAgentHarnessError) throw error;
     if (
