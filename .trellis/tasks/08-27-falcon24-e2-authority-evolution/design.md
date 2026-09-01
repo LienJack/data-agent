@@ -1873,8 +1873,10 @@ receipt closure 和 close 检查完全相同。immutable attestation 保留既�
 冻结检索证据显示 mandatory closure 是渠道、目标人群和订单收入；营销收入/投入仅是 optional recall，营销事实日期维度已被裁剪。
 这不是 Text2SQL、Python 或数据结果错误，而是发布词典把无限定“收入”绑定订单收入、又没有可直接命中的营销月份名称。
 
-前向修复只改发布语义：订单收入去掉泛化“收入”别名，营销收入 Metric/Formula 增加“营销收入”，营销事实日期维度增加“营销日期/营销月份”。
-新版 B3 显式说“完整的营销月份”，并把它定义为营销表现事实日期所在自然月。Semantic provider 仍从冻结 catalog 选择成员；提示仅要求
+前向源码修复调整下一次 successor ChangeSet 的语义：订单收入去掉泛化“收入”别名，营销收入 Metric/Formula 增加“营销收入”，营销事实日期维度增加“营销日期/营销月份”。
+但 E5+ Finalizer 只 retained 当前 generation 2；源码变化不会进入 E17 active projection。新 scratch 必须先回读 active executable projection，
+不得把 ChangeSet 单测或 E17 activation 当作新别名已发布。generation 3 尚未由唯一 successor authority 发布时，新版 B3 直接引用 generation 2
+已有的“营销归因收入”与 `blinkit_marketing_performance date`，并在 request scope 内解释自然月。Semantic provider 仍从冻结 catalog 选择成员；提示仅要求
 `RECENT_COMPLETE_PERIODS + AGGREGATE_RATIO` 多操作引用的 Metric/Dimension ID 做全集 membership 自检。Host 不生成 operation、
 不追加 ID、不改变 strict schema/预算/重试/Oracle，也不把 Published ROAS 当净 ROI。该 change-set 会产生新 release/hash，只能在新 scratch
-通过原认证/激活链路；旧 release、旧 Run 和 live E16 不回写。
+通过未来受治理 successor 链路；当前复杂预检不为降低题目另建 publisher，不修改旧 release、旧 Run 或 live E16。

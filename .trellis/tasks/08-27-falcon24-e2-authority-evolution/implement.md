@@ -2113,3 +2113,10 @@ FAILED，零 Semantic/SQL/Analysis Artifact，未重提。冻结检索证明无�
 重新 clean build/fresh scratch，从 A1 重跑六题，不拼接本轮五个 PASS。
 组件验证：change-set/provider 聚焦 22/22、Worker official unit 101/101、Worker typecheck/build、5 个 owned TypeScript Biome、
 Trellis task validate 与 `git diff --check` 均通过；这些仍不是新 B3 业务 PASS。
+
+`05944523` clean build/full unit/fresh E17 scratch 后的 active projection 回读发现：E17 Finalizer 正确走 retained-semantic 分支，generation 2
+仍保留旧 aliases；源码 catalog 新别名没有发布。因而暂停模型门禁，不把 activation ACTIVE 冒充术语发布。按用户允许降低题目歧义的边界，
+B3 改为直接引用 generation 2 的“营销归因收入”与 `blinkit_marketing_performance date`。零模型、只读重编译已同时选中渠道、目标人群、
+营销投入、营销归因收入和营销事实时间维度；provider call=0、authority write=0。见
+[active release readback](research/complex-05944523-active-release-readback.md)。下一步仍须在同一 build/fresh scratch 从 A1 重跑六题，
+不能把该检索 probe 或 `d6484404` 五个 PASS 拼入业务结果。

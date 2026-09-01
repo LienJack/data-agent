@@ -744,8 +744,9 @@ ROAS 始终以实际已发布 AST 为准：当前是 `CASE WHEN SUM(spend)=0 THE
 
 依据用户允许明确术语/公式、降低歧义的授权，新B3验收文案为：
 
-`比较数据中最近两个完整的营销月份（“营销月份”指营销表现事实日期所在的自然月），以较早月为基期、较晚月为本期。沿用刚才的净ROI口径，先汇总每个渠道的投入和营销收入，
-筛选总投入增加且净ROI下降的渠道，再按目标人群展示这些渠道两个月的投入、营销收入和净ROI，说明可能原因和下一步建议。`
+`比较数据中最近两个完整的营销表现自然月：时间字段使用已发布维度“blinkit_marketing_performance date”，每个月指该字段所在的自然月；本题的收入指标使用已发布的“营销归因收入”。
+以较早月为基期、较晚月为本期，沿用刚才的净ROI口径，先汇总每个渠道的营销投入和营销归因收入，筛选总营销投入增加且净ROI下降的渠道，
+再按目标人群展示这些渠道两个月的营销投入、营销归因收入和净ROI，说明可能原因和下一步建议。`
 
 “完整月”仍由当前发布的时间前沿与Semantic request-scoped窗口决定，不按本机日期或覆盖min/max猜测。
 净ROI为(聚合收入−聚合投入)/NULLIF(聚合投入,0)，先聚合再相除；下降指净ROI差额<0，不是平均组内增速。
@@ -793,8 +794,13 @@ B3 唯一 Run `fdd08691-e2b0-805c-8fec-8b6030add4e0` 四次停在 Semantic provi
   定义为营销表现事实日期所在的自然月。其他事实表时间维度不得共享该营销别名。
 - **R-FL-TERM-03** 多个 request-scoped operations 的 Semantic 输出必须把全部 operation 引用的 Metric/Dimension ID 做并集后放入 selected 集合；
   Host 仍不补成员、不读取题面路由、不替换公式。净 ROI 不得复用 Published ROAS，仍是 `SUBTRACT_DENOMINATOR + SUM_BEFORE_RATIO + NULL`。
+- **R-FL-TERM-04** E5+ Finalizer 是 retained-semantic rollover，不会发布源码 catalog 的新别名。每个新 scratch 必须从 active executable projection
+  回读 exact aliases/Release；源码 ChangeSet 测试不能冒充已发布语义。generation 3 尚未通过唯一 successor authority 发布前，B3 只使用当前
+  generation 2 已发布的“营销归因收入”与 `blinkit_marketing_performance date`，把术语含义写在 request-scoped 题面中；不得修改 gen2 或另建 publisher。
 - **AC-FL-TERM-01** change-set 与 provider prompt 聚焦测试先 RED 后 GREEN；新 clean build/fresh physical scratch 必须从 A1 重跑六题，
   B3 真实形成 Semantic -> Text2SQL -> Analysis、独立 source/stage/business Oracle 与同 Run 浏览器 Trace 后才算闭合。
+- **AC-FL-TERM-02** 新题面在当前 generation 2 上执行零模型、只读检索，必须同时选中渠道、目标人群、营销投入、营销归因收入与营销事实时间维度；
+  该 probe 只证明检索输入闭包，不替代 B3 Provider/SQL/Analysis 或正式四层 PASS。
 
 ### 22.4 NAS OpenSandbox 数据面闭包
 

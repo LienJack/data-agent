@@ -87,3 +87,56 @@ final>=248、每库>=60%、DEMO 10/10、db14 32/32、db24 17/17、Holdout>=4/5�
 - B1 的 exact ready 不得低于 B0，READY 总数不得回退；ambiguity misselection、cross-release hit 与 unauthorized hit 必须为零。
 - B2_GOVERNED_RETRIEVAL 在 M2 NO-GO 期间只能是 `DEFERRED / M2_GATE_NO_GO`，不能标记 PASS 或构造第三条运行时代码。
 - Summary builder 重算 comparison 与 hash；未知字段、scope/workspace 换绑、计数不闭合、非零安全计数或 hash 漂移全部失败关闭。
+
+## Scenario: Retained Epoch 不能证明新语义已发布
+
+### 1. Scope / Trigger
+
+- 当 Falcon E5+ Finalizer 与源码 semantic catalog/ChangeSet 同时变化时触发。
+- 目的：防止把新 build 中的别名单测或 `terminal=ACTIVE` 误报成 active Semantic Release 已改变。
+
+### 2. Signatures
+
+- 输入环境：`FALCON24_AUTHORITY_EPOCH=E5+`、`FALCON24_STAGING_ID`、exact Web/Worker build identity。
+- Finalizer 输出：`falcon24-authority-finalization-result@2.0.0.retained_semantic_authority`。
+- 权威读回：`semantic.semantic_active_pointer -> semantic.semantic_source_release -> semantic.semantic_executable_projection.projection_payload`。
+
+### 3. Contracts
+
+- E5+ 是 retained-semantic rollover：Semantic Release ID/generation/digest 与三个 projection refs 必须保持 exact current。
+- 源码 catalog 变化只影响未来 ChangeSet；没有新 successor release/readback，就不是已发布事实。
+- 验收题可引用 active projection 的 exact aliases，并在 request scope 内解释口径；不能修改旧 release 或创建旁路 publisher。
+
+### 4. Validation & Error Matrix
+
+- Finalizer 返回 ACTIVE，但 projection aliases 与源码不同 -> 记录 `RETAINED_SEMANTIC_SOURCE_NOT_PUBLISHED` 边界，禁止宣称术语发布，暂停模型门禁。
+- active release/ref/digest 在 retained rollover 后变化 -> `RETAINED_SEMANTIC_READBACK_MISMATCH`，失败关闭。
+- 题面所需 Metric/Dimension 未被只读检索选中 -> 不提交 Provider Run，先改用 active exact term 或走受治理 successor。
+- 试图原地更新 gen2 projection -> 禁止。
+
+### 5. Good/Base/Bad Cases
+
+- Good：回读 gen2 不变；题面引用其 exact aliases；零模型检索选中全部所需对象后再运行。
+- Base：catalog 源码含未来别名，但报告明确它尚未发布。
+- Bad：只凭 ChangeSet 单测与 E17 ACTIVE 声称新别名已进入 production read port。
+
+### 6. Tests Required
+
+- Finalizer 单测：E5+ 不调用 ChangeSet/compiler/publisher，readback refs exact retained。
+- Scratch 集成：active executable projection aliases 与 Finalizer 返回 ref/digest 一致。
+- Gate probe：Provider 调用前，以 exact conversation intent 只读编译并断言所需 Metric/Dimension 全部 selected；不把 probe 计为业务 PASS。
+
+### 7. Wrong vs Correct
+
+#### Wrong
+
+```text
+catalog test GREEN + E17 ACTIVE => 新别名已发布
+```
+
+#### Correct
+
+```text
+active projection readback 不含新别名 => E17 retained gen2
+=> 使用 gen2 exact term 做 request-scoped 预检，或另走唯一受治理 successor
+```
