@@ -11,6 +11,7 @@ import {
   resolveAnalysisResultSourceObjects,
   verifyAcceptedAnalysisQueryEvidence,
 } from "./analysis-result-source-authority.js";
+import { CATEGORY_COMPARISON_PREPARATION_REFERENCE } from "./category-comparison-preparation-reference.js";
 import { buildDescriptiveResultContract } from "./descriptive-result-contract.js";
 
 export const CATEGORY_COMPARISON_METHOD_ID = "published-category-multi-measure-comparison@1";
@@ -214,6 +215,7 @@ export async function compileCategoryComparisonPlan(input: CategoryComparisonInp
     execution_contract: Object.freeze({
       method_id: CATEGORY_COMPARISON_METHOD_ID,
       claim_strength: "DESCRIPTIVE" as const,
+      source_columns: columns.map((column) => column.key),
       dimension_columns: dimensionColumns,
       measure_fields: measureFields,
       measure_schema: z.toJSONSchema(categoryComparisonMeasureSchema),
@@ -225,11 +227,13 @@ export async function compileCategoryComparisonPlan(input: CategoryComparisonInp
         upper_bound_field: null,
       },
       rules: [
+        "Use preparation_reference as the data-free reference implementation of these descriptive rules. Copy its function into your actual python_cell. Call prepare_category_comparison with the exact bound input DataFrame and a configuration dict copying only source_columns, dimension_columns and measure_fields. Do not copy schemas, rules or preparation_reference into that dict. Assign the returned dict to a named result symbol and construct the table from result['observations'] with exactly source_columns. Do not independently reimplement or reorder the ranking algorithm. The reference is not pre-executed output and does not replace Cell policy, Publisher or FULL Oracle checks.",
         "observations contains every accepted row in its original row order and exactly its original source columns/values/NULLs. Never regroup, drop a row or dimension, fill NULL, aggregate measures together, sum ratios or average ratios.",
         "For each measure field use only its source_column. observed_count excludes NULL and missing_count counts NULL; minimum and maximum use observed values. lowest/highest contain up to three observations sorted by value ascending/descending, ties by source_row_index ascending (zero-based original input row index).",
         "Each ranked observation is {source_row_index,group,value}; group contains every dimension_columns key with that exact source row value. Two-dimension identities are complete tuples, never the first category alone. Do not merge groups or invent a composite source column.",
         "claim_strength must equal DESCRIPTIVE. No free-form summary, extra fields, temporal growth, inferential significance or causal claims. Use the existing result/table/chart publisher once and the exact supplied chart_bindings with bar.grouped@1; each y measure remains independent.",
       ],
+      preparation_reference: CATEGORY_COMPARISON_PREPARATION_REFERENCE,
     }),
   });
 }

@@ -2098,3 +2098,9 @@ scratch容器停机、volume保留。既有同文件8-operator宽测试因当前
 Semantic set canonicalization修复验证：Contracts semantic suite 31、Worker dispatcher/production tools 107、Agent Runtime JSON transport 51项
 全部PASS，三包typecheck/build、4个owned TypeScript Biome、diff与Trellis validate通过；工作区unit gate以既有单并发模式15/15任务通过。
 默认并发的首次宽跑因CPU争用出现多包计时型超时，单并发同测试无失败；未据此放宽timeout或修改无关测试。组件通过仍不计B3业务PASS。
+
+`abb1e38c` 新构建/scratch 的 A1/A2/A3 已在同一会话中完成独立业务、QA/Trace与刷新；B1唯一Run
+`1b7b5940-38be-839a-9ed7-fc50eb64de56` 保留FAILED。Semantic/Text2SQL及四渠道数值正确，Analysis仅把两个`highest`数组的正确成员
+以错误顺序发布，FULL Oracle按原行独立重算后拒绝，未重提。前向修复为分类方法增加无数据Python准备参考，不放宽Oracle、不修补输出、
+不增加预算；focused 55、Worker typecheck/build、Biome/diff及bundled Python实算通过。见
+[B1 分类排名复盘](research/complex-abb1e38c-category-ranking-reference.md)。提交后重新clean build/fresh scratch，从A1重跑六题。

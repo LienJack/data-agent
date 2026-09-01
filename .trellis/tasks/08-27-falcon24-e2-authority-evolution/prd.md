@@ -791,3 +791,11 @@ NAS Docker 临时 Sandbox endpoint；两次 Analysis side effect 超时后 Run �
   不是旧执行器、模型降级、Authority 替代或 production isolation 证明。
 - **AC-FL-SBX-01** 从 Worker 所在主机运行正式无模型 runtime probe，报告 exact endpoint mode，完成双 Sandbox、Cell、Operator、
   receipt、session close，且管理 API/NAS Docker residual 均为零。新 clean build/fresh scratch 仍须从 A1 重跑六题。
+
+### 22.4 分类比较稳定排名闭包
+
+`abb1e38c` 的 B1 已证明 Semantic 与 Text2SQL 数值正确，但 Analysis 发布的 `highest` 成员集合未按值稳定降序，原 FULL Oracle 正确拒绝。
+分类描述性方法可像既有月度面板一样携带无数据 Python 参考实现，只定义原合同的计数、极值和稳定排序；不得携带来源行或预计算答案。
+Agent 仍执行真实 Cell，原 Sandbox/Publisher/FULL Oracle/修复预算不变，Host 不得修补错误成员或数值。新 build 必须从 A1 重跑六题；
+旧 A 组三题和 B1 失败均保持不可变。组件修复记录见
+[B1 分类排名复盘](research/complex-abb1e38c-category-ranking-reference.md)。

@@ -97,7 +97,23 @@ describe("published category comparison planning", () => {
       });
       expect(plan.execution_contract.claim_strength).toBe("DESCRIPTIVE");
       expect(plan.required_operator_obligations).toEqual([]);
+      expect(plan.execution_contract.source_columns).toEqual([
+        "channel",
+        ...(two ? ["audience"] : []),
+        "spend",
+        "revenue",
+        "return_rate",
+      ]);
+      expect(plan.execution_contract.preparation_reference).toContain(
+        "def prepare_category_comparison(input_frame, contract):",
+      );
+      expect(plan.execution_contract.rules[0]).toContain(
+        "Do not independently reimplement or reorder the ranking algorithm",
+      );
       expect(JSON.stringify(plan.execution_contract)).not.toContain('"spend":100');
+      expect(plan.execution_contract.preparation_reference).not.toMatch(
+        /Email|Social Media|falcon|\.to_csv\(|open\(/u,
+      );
       expect(plan.shape.rows[0]?.channel).toBe("Email");
       expect(plan.shape.rows.at(-1)?.return_rate).toBeNull();
     },

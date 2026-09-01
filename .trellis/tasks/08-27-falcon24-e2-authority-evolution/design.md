@@ -1856,3 +1856,13 @@ OpenSandbox 管理面和 Sandbox 数据面分开判断。`DIRECT` 仅适用于 W
 正式 runtime probe 接受两种显式布尔值并在报告中分别输出 `DIRECT`/`SERVER_PROXY`，其余双沙箱隔离、Cell policy、Operator binding、
 receipt closure 和 close 检查完全相同。immutable attestation 保留既有本地 DIRECT 证据；NAS SERVER_PROXY probe 只证明当前拓扑可执行。
 任何旧失败 Run 保持不可变，配置修复后仍通过新 clean build/fresh scratch 从 A1 前向验证业务四层。
+
+## 31. 分类比较无数据准备参考
+
+`CATEGORY_COMPARISON_PREPARATION_REFERENCE` 与月度面板参考使用同一权威边界：它是 execution contract 中的数据无关算法说明，
+不是 Host 执行器或 Oracle 期望来源。模型把函数复制到实际 Cell，并只传 `source_columns/dimension_columns/measure_fields`；
+函数在派生 DataFrame 上保留原行和完整分类 tuple，把数值转为 JSON-native finite float，再以 `(value, source_row_index)` 升序或
+`(-value, source_row_index)` 降序构造 top-3。Publisher 与独立 Oracle 仍逐字节重验 RESULT/TABLE/CHART。
+
+该修复只消除“模型重复实现固定排序算法”的非业务难度，不改变 Semantic membership、Text2SQL、公式、Analysis 来源或自然语言结论；
+错误成员、错误值、漏组、重排 observations 仍失败关闭。`abb1e38c` B1 失败与 A 组三题不进入新 build 计分。

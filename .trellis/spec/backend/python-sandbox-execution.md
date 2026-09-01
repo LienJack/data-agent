@@ -421,8 +421,11 @@ method=`published-category-multi-measure-comparison@1`，contract=`category-mult
 - FORMULA/REQUEST_DERIVED只进入已证明的DIRECT来源投影，不成为Metric。全部source列/角色/NULL/行序保留，不重新分组或平均比例。
 - 有窗时验证原Metric时间维度/时区/日历；无窗保持null。结果grain为分类而非时间，不能凭这一方法计算增长或趋势。
 - chart为`bar.grouped@1`，x取第一个来源分类，第二个分类原字段作series；每个measure仍独立。不可省掉第二分类或编造组合列。
-- execution_contract只含字段与计算规则，不含行/预计算答案。排名同值按原始零基行号；group须包含原行的所有分类。
-  `claim_strength=DESCRIPTIVE`，无统计、因果、跨期增长或自由文本事实；继续原publisher和预算。
+- execution_contract只含字段、计算规则及无数据Python参考实现，不含行/预计算答案。`preparation_reference`只给出原固定描述性
+  计数/极值/稳定排名公式，Agent仍提交实际Cell源码并经过原Sandbox、Publisher和FULL Oracle；Host不执行参考、不替换结果、
+  不增加修复预算。配置只复制`source_columns/dimension_columns/measure_fields`，原DataFrame只读，分类tuple和原行序不变。
+  排名同值按原始零基行号；group须包含原行的所有分类。`claim_strength=DESCRIPTIVE`，无统计、因果、跨期增长或自由文本事实；
+  继续原publisher和预算。
 - Oracle重验原QueryEvidence与真实Arrow、Scope/Run/Context/Release/Schema、method/contract/窗口/Metric/维度以及空算子义务，
   从原始行独立重算每项计数/极值/排名；RESULT/TABLE/CHART完整精确相等，重新封hash不豁免内容检查。
   FULL仅覆盖固定描述性合同，`material_change=false`；coverage按全部measure真实观测数计算，缺失数显式保留。
@@ -445,7 +448,8 @@ Bad：把每个渠道的人群行合并成一点，或将4个ROI求平均后称�
 
 ### 6. Tests Required
 
-1/2维×两比例role、NULL元数据/实际NULL、原始行序及含分隔符的tuple；精确有窗/全量；原授权漂移、混单位/粒度/空值政策、
+1/2维×两比例role、NULL元数据/实际NULL、原始行序及含分隔符的tuple；无数据参考须覆盖稳定升降序、同值原行号、完整tuple、
+原DataFrame不变和JSON-native数值，并在真实Agent镜像执行后由独立Oracle逐字段比对；精确有窗/全量；原授权漂移、混单位/粒度/空值政策、
 空输入、超行数、重复tuple、全空measure、时间维度/未知role。oracle用手写已知值正例，覆盖全部结果字段、同值排名/缺失group/
 补零/额外事实/因果、完整表图绑定与重新封hash、类型正确但篡改值的Arrow。真实投影保留两个分类与NULL，叙述保留受验值。
 生产选择更换问题文字仍不变；匹配规则及oracle通过，缺规则/错绑定拒绝。stub Sandbox receipt仅是unit边界fixture，不是执行回执。
