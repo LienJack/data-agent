@@ -115,13 +115,7 @@ export async function compileCategoryComparisonPlan(input: CategoryComparisonInp
   }
   if (measures.some((column) => rows.every((row) => row[column.output_name] === null)))
     return fail("VALUE");
-  const metricIds = [
-    ...new Set(
-      measures
-        .filter((column) => column.semantic_role === "METRIC")
-        .map((column) => column.semantic_object_id),
-    ),
-  ].sort();
+  const metricIds = [...new Set(context.metrics.map((metric) => metric.metric_ref.node_id))].sort();
   const dimensionIds = dimensions.map((column) => column.semantic_object_id);
   const metrics = metricIds.map(
     (id) => context.metrics.find((metric) => metric.metric_ref.node_id === id) ?? fail("AUTHORITY"),

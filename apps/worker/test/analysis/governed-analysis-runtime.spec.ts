@@ -13,6 +13,7 @@ import { resolveAnalysisResultSourceObjects } from "../../src/analysis/analysis-
 import type { AnalysisArtifactCommitPort } from "../../src/analysis/executor.js";
 import {
   createGovernedAnalysisRuntime,
+  governedAnalysisRuntimeInternals,
   projectStagedAnalysisChart,
 } from "../../src/analysis/governed-analysis-runtime.js";
 import { buildGovernedResultProjections } from "../../src/analysis/governed-result-projection.js";
@@ -569,6 +570,80 @@ async function harness(input?: {
 }
 
 describe("generic governed analysis runtime", () => {
+  it("narrows formula-only evidence to its exact published supporting metrics", () => {
+    const binding = {
+      columns: [
+        {
+          semantic_role: "DIMENSION",
+          semantic_object_id: "dimension.marketing-channel",
+          physical_sources: [],
+        },
+        {
+          semantic_role: "FORMULA",
+          semantic_object_id: "formula.marketing-spend",
+          physical_sources: [{ relation_name: "marketing", column_name: "spend" }],
+        },
+        {
+          semantic_role: "FORMULA",
+          semantic_object_id: "formula.marketing-revenue",
+          physical_sources: [{ relation_name: "marketing", column_name: "revenue" }],
+        },
+        {
+          semantic_role: "FORMULA",
+          semantic_object_id: "formula.marketing-roas",
+          physical_sources: [
+            { relation_name: "marketing", column_name: "spend" },
+            { relation_name: "marketing", column_name: "revenue" },
+          ],
+        },
+      ],
+    } as never;
+    const semanticContext = {
+      package: {
+        retrieval_receipt: {
+          selected_object_ids: [
+            "metric.marketing-spend",
+            "metric.marketing-revenue",
+            "metric.order-revenue",
+          ],
+        },
+        mandatory_closure: { object_ids: [] },
+        route_decision: { selected_metric_id: "metric.order-revenue" },
+      },
+    } as never;
+    const catalog = {
+      executable: {
+        metrics: [
+          {
+            metric_id: "metric.marketing-spend",
+            table_id: "marketing",
+            dependency_column_ids: ["marketing.spend"],
+            formula: { formula_id: "formula.marketing-spend" },
+          },
+          {
+            metric_id: "metric.marketing-revenue",
+            table_id: "marketing",
+            dependency_column_ids: ["marketing.revenue"],
+            formula: { formula_id: "formula.marketing-revenue" },
+          },
+          {
+            metric_id: "metric.order-revenue",
+            table_id: "orders",
+            dependency_column_ids: ["orders.total"],
+            formula: { formula_id: "formula.order-revenue" },
+          },
+        ],
+      },
+    } as never;
+    expect(
+      governedAnalysisRuntimeInternals.requestedAnalysisMetricIds({
+        binding,
+        semantic_context: semanticContext,
+        catalog,
+      }),
+    ).toEqual(["metric.marketing-revenue", "metric.marketing-spend"]);
+  });
+
   it("identifies an omitted result dimension as a plan mismatch, not invalid source evidence", async () => {
     const test = await harness({ inputRole: "REQUEST_DERIVED", omitTimeDimension: true });
     await expect(test.runtime.analyze(test.command)).rejects.toThrow(

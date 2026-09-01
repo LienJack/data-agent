@@ -632,7 +632,7 @@ Q&A Agent 页面、轨迹页、浏览器恢复、门禁 authority、无人值班
 
 场景 B 固定在另一个浏览器窗口内的同一个 Conversation 中顺序提交：
 
-1. `各营销渠道的总投入、营销收入和ROAS表现如何？给出渠道对比图。`
+1. `各营销渠道的总投入、营销归因收入和ROAS表现如何？给出渠道对比图。`
 2. `我说的回报不是ROAS，改成净ROI，也就是扣除投入后的回报率，再按渠道重算。`
 3. `只看投入增长但净ROI下降的渠道，再按目标人群拆开，说明可能原因和下一步建议。`
 
@@ -821,3 +821,18 @@ NAS Docker 临时 Sandbox endpoint；两次 Analysis side effect 超时后 Run �
 Agent 仍执行真实 Cell，原 Sandbox/Publisher/FULL Oracle/修复预算不变，Host 不得修补错误成员或数值。新 build 必须从 A1 重跑六题；
 旧 A 组三题和 B1 失败均保持不可变。组件修复记录见
 [B1 分类排名复盘](research/complex-abb1e38c-category-ranking-reference.md)。
+
+### 22.6 Formula-only Analysis Metric 权威收敛
+
+`f55990b0a2` 的 A1/A2/A3 已完成独立业务与同 Run QA/Trace；B1 唯一 Run
+`21da02cb-8b29-8648-aa6a-95fbe56a6cb3` 的 Semantic/Text2SQL 已产出4渠道正确表、SQL与图，随后 Analysis 以
+`CATEGORY_COMPARISON_AUTHORITY_INVALID` 失败。QueryEvidence把投入、营销归因收入和ROAS都保留为合法FORMULA；旧Analysis编译只读取
+METRIC列，空集合触发selected closure fallback，把无关`metric.order_revenue`也带入，随后精确Context检查正确拒绝。
+
+- **R-FL-FMA-01** FORMULA列不得改写成METRIC；Analysis只从accepted binding的canonical Formula与精确物理来源反查同一retrieval closure内
+  已有Published Metric，生成最小`requested_metric_ids`。无关召回Metric必须裁剪，无法收敛时失败关闭。
+- **R-FL-FMA-02** category/monthly/monthly-panel planner只消费已编译的精确AnalysisContext作为Metric capability集合；FORMULA与
+  REQUEST_DERIVED仍仅是DIRECT数据来源，不新增Skill、单位、粒度、维度或统计权威。
+- **R-FL-FMA-03** B1使用当前已发布术语“营销归因收入”降低歧义；这不是新语义发布，也不改变ROAS/净ROI口径。
+- **AC-FL-FMA-01** 聚焦测试必须覆盖Formula-only营销结果、额外订单收入召回裁剪、FORMULA角色保留以及三类planner原有authority漂移拒绝。
+  scoped commit后必须新clean build/fresh physical scratch从A1重跑六题；本轮A组三个PASS与失败B1不可拼接。

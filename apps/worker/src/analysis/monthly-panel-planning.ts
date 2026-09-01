@@ -194,13 +194,7 @@ export async function compileMonthlyPanelPlan(input: MonthlyPanelInput) {
   )
     return fail("VALUE");
 
-  const metricIds = [
-    ...new Set(
-      measures
-        .filter((column) => column.semantic_role === "METRIC")
-        .map((column) => column.semantic_object_id),
-    ),
-  ].sort();
+  const metricIds = [...new Set(context.metrics.map((metric) => metric.metric_ref.node_id))].sort();
   const dimensionIds = [
     time.semantic_object_id,
     ...categories.map((column) => column.semantic_object_id),

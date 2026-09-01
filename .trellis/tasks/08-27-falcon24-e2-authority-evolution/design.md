@@ -1867,6 +1867,16 @@ receipt closure 和 close 检查完全相同。immutable attestation 保留既�
 该修复只消除“模型重复实现固定排序算法”的非业务难度，不改变 Semantic membership、Text2SQL、公式、Analysis 来源或自然语言结论；
 错误成员、错误值、漏组、重排 observations 仍失败关闭。`abb1e38c` B1 失败与 A 组三题不进入新 build 计分。
 
+## 33. Formula-only QueryEvidence 的能力权威收敛
+
+QueryEvidence的FORMULA身份是Text2SQL已验证的发布公式/物理绑定，不是Metric。Analysis Context编译新增纯authority投影：先取直接METRIC列；
+若不存在，再从FORMULA列的canonical Formula ID与`relation_name + column_name`来源集合，匹配Semantic closure内Metric的发布Formula及完整
+dependency columns，输出排序后的最小Metric ID集合。route/retrieval中无关Metric不进入Context；空集合拒绝，不回退全选。
+
+planner不再从结果列角色重复猜Metric，而使用上述编译后AnalysisContext的精确Metric集合做formula hash、allowed dimension、CHART_DATASET、
+单位、粒度、空值与applicability验证。ResultContract表列、lineage和materialization仍保留FORMULA/REQUEST_DERIVED原角色；该投影不读取题面、
+题号或数据值，不创建Metric、不修改Release、不授予额外Skill。任何canonical Formula、物理来源、selected closure或Context漂移仍失败关闭。
+
 ## 32. 营销术语与完整月选择闭包
 
 `d6484404` 的 B3 在 Semantic transport canonicalization 之后仍四次出现顶层集合第 1 项的 strict custom 拒绝。

@@ -418,6 +418,9 @@ method=`published-category-multi-measure-comparison@1`，contract=`category-mult
 
 - 完整分类tuple必须唯一且实际非空；nullable元数据原样保留。含分隔符的分类不能靠字符串拼接判断相同组。
 - 原Metric1–3个且与Context精确一致，原公式、groupable维度和CHART_DATASET/applicability全部不变；不同单位/粒度/空值政策不能混算。
+  当accepted QueryEvidence只有FORMULA数值列时，Analysis Context编译器只可从这些列的已验证canonical Formula或精确物理依赖，
+  反查retrieval closure内已有Published Metric作为Skill/capability权威；无关召回Metric必须裁剪。结果列仍是FORMULA，禁止role promotion、
+  题面路由或用Formula ID授予Metric能力；无法得到至少一个精确支撑Metric时失败关闭。
 - FORMULA/REQUEST_DERIVED只进入已证明的DIRECT来源投影，不成为Metric。全部source列/角色/NULL/行序保留，不重新分组或平均比例。
 - 有窗时验证原Metric时间维度/时区/日历；无窗保持null。结果grain为分类而非时间，不能凭这一方法计算增长或趋势。
 - chart为`bar.grouped@1`，x取第一个来源分类，第二个分类原字段作series；每个measure仍独立。不可省掉第二分类或编造组合列。

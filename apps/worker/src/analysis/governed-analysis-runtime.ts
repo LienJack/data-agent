@@ -87,6 +87,85 @@ function exactReference(left: ArtifactReference, right: ArtifactReference): bool
   return artifactReferenceIdentity(left) === artifactReferenceIdentity(right);
 }
 
+function dependencyIdentity(tableId: string, columnId: string): string {
+  const relation = tableId.split(".").at(-1);
+  const column = columnId
+    .replace(/^column\./u, "")
+    .split(".")
+    .at(-1);
+  if (!relation || !column) throw new TypeError("GOVERNED_ANALYSIS_METRIC_DEPENDENCY_INVALID");
+  return `${relation}\0${column}`;
+}
+
+/**
+ * Resolve only the Published Metrics that authorize analysis of the accepted result columns.
+ * FORMULA columns remain data-only FORMULA columns; their exact published formula/dependency
+ * closure merely identifies the existing Metric capabilities that may analyze those values.
+ */
+function requestedAnalysisMetricIds(input: {
+  readonly binding: QueryEvidenceSemanticBinding;
+  readonly semantic_context: GovernedAnalysisCommand["semantic_context"];
+  readonly catalog: {
+    readonly executable: {
+      readonly metrics: readonly {
+        readonly metric_id: string;
+        readonly table_id: string;
+        readonly dependency_column_ids: readonly string[];
+        readonly formula: { readonly formula_id: string } | null;
+      }[];
+    };
+  };
+}): readonly string[] {
+  const requested = new Set(
+    input.binding.columns
+      .filter(({ semantic_role: role }) => role === "METRIC")
+      .map(({ semantic_object_id: id }) => id),
+  );
+  // A direct Metric binding is already the narrowest capability authority. FORMULA and
+  // REQUEST_DERIVED siblings remain data-only and cannot enlarge that set.
+  if (requested.size > 0) return [...requested].sort();
+  const packageDocument = input.semantic_context.package;
+  const selected = new Set([
+    ...packageDocument.retrieval_receipt.selected_object_ids,
+    ...packageDocument.mandatory_closure.object_ids,
+    ...(packageDocument.route_decision.selected_metric_id
+      ? [packageDocument.route_decision.selected_metric_id]
+      : []),
+  ]);
+  const formulaIds = new Set(
+    input.binding.columns
+      .filter(({ semantic_role: role }) => role === "FORMULA")
+      .map(({ semantic_object_id: id }) => id),
+  );
+  for (const column of input.binding.columns) {
+    if (column.semantic_role !== "REQUEST_DERIVED") continue;
+    const derivation = column.request_derivation;
+    if (!derivation) throw new TypeError("GOVERNED_ANALYSIS_REQUEST_DERIVATION_INVALID");
+    for (const objectId of derivation.interpretation.source_object_ids) {
+      if (selected.has(objectId)) requested.add(objectId);
+    }
+  }
+  const formulaSources = new Set(
+    input.binding.columns
+      .filter(({ semantic_role: role }) => role === "FORMULA")
+      .flatMap(({ physical_sources: sources }) =>
+        sources.map(({ relation_name: relation, column_name: column }) => `${relation}\0${column}`),
+      ),
+  );
+  for (const metric of input.catalog.executable.metrics) {
+    if (!selected.has(metric.metric_id)) continue;
+    const canonicalFormulaSelected =
+      metric.formula !== null && formulaIds.has(metric.formula.formula_id);
+    const dependencies = metric.dependency_column_ids.map((columnId) =>
+      dependencyIdentity(metric.table_id, columnId),
+    );
+    const allDependenciesBound =
+      dependencies.length > 0 && dependencies.every((identity) => formulaSources.has(identity));
+    if (canonicalFormulaSelected || allDependenciesBound) requested.add(metric.metric_id);
+  }
+  return [...requested].sort();
+}
+
 async function resolveQueryEvidence(input: {
   readonly authority: ProductTeamAnalysisArtifactAuthority;
   readonly capability: unknown;
@@ -279,9 +358,14 @@ export function createGovernedAnalysisRuntime(input: {
             package: command.semantic_context.package,
           }),
         );
-        const requestedMetricIds = evidence.binding.columns
-          .filter(({ semantic_role: role }) => role === "METRIC")
-          .map(({ semantic_object_id: id }) => id);
+        const requestedMetricIds = requestedAnalysisMetricIds({
+          binding: evidence.binding,
+          semantic_context: command.semantic_context,
+          catalog,
+        });
+        if (requestedMetricIds.length === 0) {
+          throw new TypeError("GOVERNED_ANALYSIS_METRIC_AUTHORITY_UNRESOLVED");
+        }
         const context = await (input.compile_context ?? compilePublishedAnalysisContext)({
           run_id: command.lease.run_id,
           semantic_context: command.semantic_context,
@@ -773,4 +857,5 @@ export async function assembleAnalysisPublication(input: {
 export const governedAnalysisRuntimeInternals = Object.freeze({
   publishedChartSchema,
   projectStagedAnalysisChart,
+  requestedAnalysisMetricIds,
 });

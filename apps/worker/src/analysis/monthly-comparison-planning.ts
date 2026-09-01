@@ -190,13 +190,7 @@ export async function compileMonthlyComparisonPlan(input: MonthlyComparisonInput
     )
       return fail("AUTHORITY");
   }
-  const metricIds = [
-    ...new Set(
-      shape.measures
-        .filter((column) => column.semantic_role === "METRIC")
-        .map((column) => column.semantic_object_id),
-    ),
-  ];
+  const metricIds = [...new Set(context.metrics.map((metric) => metric.metric_ref.node_id))];
   const metrics = metricIds.map(
     (id) => context.metrics.find((metric) => metric.metric_ref.node_id === id) ?? fail("AUTHORITY"),
   );

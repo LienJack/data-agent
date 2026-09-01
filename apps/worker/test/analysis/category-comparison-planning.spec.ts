@@ -119,6 +119,59 @@ describe("published category comparison planning", () => {
     },
   );
 
+  it("keeps formula result roles while using the exact supporting Metric authority", async () => {
+    const input = await inputFor();
+    if (
+      input.query_evidence_document.projection.kind !== "TABLE" ||
+      input.query_evidence_document.provenance?.kind !== "GOVERNED_QUERY_RESULT"
+    )
+      throw new Error("TEST_QUERY_REQUIRED");
+    const { binding_hash: _bindingHash, ...binding } =
+      input.query_evidence_document.provenance.semantic_binding;
+    const formulaByOutput = new Map([
+      ["spend", "formula.spend"],
+      ["revenue", "formula.revenue"],
+    ]);
+    const semanticBinding = await buildQueryEvidenceSemanticBinding({
+      ...binding,
+      columns: binding.columns.map((column) => {
+        const formulaId = formulaByOutput.get(column.output_name);
+        return formulaId
+          ? {
+              ...column,
+              semantic_role: "FORMULA" as const,
+              semantic_object_id: formulaId,
+              aggregate: null,
+            }
+          : column;
+      }),
+    });
+    const document = await buildProductTeamArtifactDocument({
+      ...input.query_evidence_document,
+      provenance: {
+        ...input.query_evidence_document.provenance,
+        semantic_binding: semanticBinding,
+      },
+    });
+    if (document.artifact_ref.artifact_type !== "QueryEvidence")
+      throw new Error("TEST_QUERY_REQUIRED");
+    const plan = await compileCategoryComparisonPlan({
+      ...input,
+      query_evidence_ref: document.artifact_ref,
+      query_evidence_document: document,
+    });
+    expect(plan.result_contract.metric_bindings.map((item) => item.semantic_metric_id)).toEqual([
+      "metric.revenue",
+      "metric.spend",
+    ]);
+    expect(plan.result_contract.tables[0]?.columns.map((column) => column.semantic_role)).toEqual([
+      "DIMENSION",
+      "FORMULA",
+      "FORMULA",
+      "FORMULA",
+    ]);
+  });
+
   it("preserves an exact accepted bounded window without adding a time grouping", async () => {
     const input = await inputFor();
     const draft = structuredClone(input.query_evidence_document);

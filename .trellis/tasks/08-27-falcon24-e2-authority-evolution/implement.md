@@ -2120,3 +2120,9 @@ B3 改为直接引用 generation 2 的“营销归因收入”与 `blinkit_marke
 营销投入、营销归因收入和营销事实时间维度；provider call=0、authority write=0。见
 [active release readback](research/complex-05944523-active-release-readback.md)。下一步仍须在同一 build/fresh scratch 从 A1 重跑六题，
 不能把该检索 probe 或 `d6484404` 五个 PASS 拼入业务结果。
+
+`f55990b0a2` 同一build/scratch的A1/A2/A3完成独立source/stage/business与同Run QA/Trace（73/76/81节点）；B1唯一Run
+`21da02cb-8b29-8648-aa6a-95fbe56a6cb3` 在Semantic/Text2SQL正确产出4渠道结果后，因三个结果列均为FORMULA而触发
+`CATEGORY_COMPARISON_AUTHORITY_INVALID`，未进入Analysis且未重提。前向实现从accepted Formula canonical ID/精确物理依赖收敛原Published
+Metric capability，裁剪无关订单收入；三类planner消费编译后的精确Context但保留FORMULA角色。聚焦117/117先GREEN；完成官方验证与
+scoped commit后必须新clean build/fresh scratch从A1重跑六题，本轮A组三个PASS不计入新epoch。
