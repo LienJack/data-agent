@@ -392,17 +392,28 @@ describe("direct run-bound provider retry policy", () => {
     expect(prompt).toContain("TEAM_SEMANTIC_COMPARISON_WINDOW_REQUIRED");
     expect(prompt).toContain("Never invent a default duration");
     expect(prompt).toContain("SUBTRACT_DENOMINATOR for net ROI");
-    expect(prompt).toContain(
-      "Sort every selected_*_ids and candidate_ids array by ascending exact ID string",
-    );
-    expect(prompt).toContain("not by query order, semantic role, or importance");
+    expect(prompt).toContain("The Host canonicalizes only the ordering of these set-like arrays");
+    expect(prompt).toContain("never adds, removes, or substitutes an ID");
+    expect(
+      directRunBoundProviderDispatcherInternals.semanticQuerySelectionProviderResponseSchema.parse({
+        schema_version: "semantic-query-selection-intent@1.0.0",
+        answer_scope: "DATA_RESULT_REQUIRED",
+        selected_metric_ids: ["metric.z", "metric.a"],
+        selected_dimension_ids: [],
+        selected_formula_ids: [],
+        selected_relationship_ids: [],
+        selected_time_domain_ids: [],
+        selected_quality_constraint_ids: [],
+        unresolved_ambiguities: [],
+      }).selected_metric_ids,
+    ).toEqual(["metric.a", "metric.z"]);
     expect(prompt).toContain("must not create, update, approve, or imply a Published formula");
     expect(prompt).toContain("do not expose index or governance lookup failures");
   });
 
   it("can request clarification without inventing candidates or claiming global absence", () => {
     const prompt = directRunBoundProviderDispatcherInternals.semanticSpecialistSystemPrompt("{}");
-    expect(prompt).toContain("zero or at least two unique sorted candidate_ids");
+    expect(prompt).toContain("zero or at least two unique candidate_ids");
     expect(prompt).toContain("no safe mapping for a required part of the request");
     expect(prompt).toContain("do not invent unrelated candidates");
     expect(prompt).toContain("does not prove global absence or missing database rows");

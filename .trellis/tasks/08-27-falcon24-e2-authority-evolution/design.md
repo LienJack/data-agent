@@ -1828,7 +1828,7 @@ server-owned schema + JSON_TEXT
   -> canonical JSON -> protected response -> existing Semantic Host validation
 ```
 
-该模式只改变传输表示，不改变 schema 或语义 Authority。不得剥 fence、截取第一个对象、删除尾随 prose、补字段、排序模型数组、
+该模式只改变传输表示，不改变语义 Authority。不得剥 fence、截取第一个对象、删除尾随 prose、补字段、修改集合成员、
 重放调用或在失败后伪造 candidate。空白/非JSON可沿用完整响应 known rejection；合法 JSON 但错 schema 仍是协议失败。
 delivery mode 不进入 request contract，用户/模型无法覆盖；工具调用、Text2SQL、Analysis、Report 和其他 schema 保持原模式。
 
@@ -1838,10 +1838,14 @@ exact canonical schema instruction、错 schema/非JSON/空白拒绝和 raw-free
 clean build/fresh scratch 从 A1 重跑全链，单测与旧构建 PASS 都不计业务 PASS。
 
 `82aed231` 证明 exact JSON Schema 解决了字段/嵌套形状，但 B3 的多维选择连续四次落在
-`canonicalIdsSchema` 的数组第2项 refinement：JSON Schema 本身不能表达完整字符串升序，原提示中的“sorted”又不足以阻止模型按题目顺序
-排列时间、渠道和人群。前向提示因此把 canonical order 定义为 JavaScript 默认完整字符串升序，并给出维度 ID 例子；该提示在冻结
-Semantic evidence 之前、同一 server-owned system message 中发送。Host 继续对原文执行原 strict schema，不调用 `.sort()`、不删除重复项、
-不读取题号，也不把失败响应恢复成 candidate。这个变化只补 refinement 的可执行传输说明，不改变 Semantic 选择、SQL、公式或业务答案。
+`canonicalIdsSchema` 的数组第2项 refinement：JSON Schema 本身不能表达完整字符串升序。`94c10171` 再次增加提示后，`a43cc9f2`
+虽在同一构建通过 A1/A2/A3/B1/B2，B3 四次仍以相同 refinement 失败，证明排序提示不是可靠的语义传输合同。
+
+前向实现把 Semantic selection 分为两个边界：provider-only response schema 先用同一 `versionIdentifierSchema` 验证每个 ID、拒绝重复项，
+随后只按 JavaScript 默认字符串顺序规范化 selected/candidate 集合及 ambiguity 集合；再执行与最终 intent 相同的非空、操作唯一、操作引用
+已选 primitive 等跨字段约束。最终 `semanticQuerySelectionIntentSchema` 仍要求原 canonical 顺序，并在生产 team tool 中再次 strict parse。
+该规范化不得增删、替换 ID，不得增删 operation/ambiguity，不读取题号、自然语言或发布目录，也不补任何公式、窗口、关系或答案；Semantic
+仍负责真实 membership 与 request-scoped operation，Text2SQL 仍只消费最终严格产物。换言之，Host 只拥有集合序列化，不拥有语义选择。
 
 ### 22.3 NAS OpenSandbox endpoint mode
 

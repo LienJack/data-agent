@@ -167,6 +167,10 @@ return committed.protectedResponse;
   `json_object` 语法约束后要求模型从自然语言猜嵌套类型。该 schema instruction 与原业务 system instruction 均进入 trusted UTF-8 upper
   bound；registry 保留 exact canonical bytes，模型、用户与题库不能提供或覆盖 schema。返回值仍按完整原文严格验证，不允许利用 schema
   instruction 增加 Host coercion、默认值或 repair。
+- Semantic selection 的 selected/candidate/ambiguity ID 数组是 set-like provider 表示。其 exact provider schema 先用原强 ID schema
+  验证并拒绝重复项，再只按 JavaScript 默认字符串顺序确定性规范化数组；随后执行与最终 intent 相同的跨字段约束，且 production team tool
+  必须再次通过原 canonical intent strict schema。Host 不得增删/替换 ID、operation 或 ambiguity，不得读取题面决定 membership，也不得把
+  该窄 canonicalization 扩展到自由文本、SQL、公式、窗口或其他 response schema。
 - `JSON_TEXT` 是 build-bound 服务端部署策略，不进入用户请求或模型输出。Trusted token upper bound 仍按完整注册 schema 计算；
   dispatch marker、usage、known empty/invalid JSON 分类、protected response commit 与不重放边界不变。私有协议诊断只记录固定
   `JSON_TEXT_RESPONSE_INVALID_JSON` stage 与有界计数，不能记录原文或反向授予成功。
@@ -188,4 +192,6 @@ return committed.protectedResponse;
 - Agent Runtime 离线真实 SDK wire 测试覆盖 server-owned `JSON_TEXT` 的一次 DeepSeek fetch、`json_object`、零 tools、strict PASS、
   exact canonical schema system instruction、schema mismatch、空白与非 JSON；默认 schema 仍走 Structured Output，用户请求不能选择
   delivery mode 或提供 schema instruction。
+- Contracts/Worker 测试覆盖 Semantic provider set canonicalization、final strict reparse、重复/非法 ID、未知字段、空 intent 与 operation
+  未绑定失败关闭，并证明实际 registry 使用 provider-only schema。
 - 真实运行证明调用前后持久 Intent/Permit 行数不增加，且公开 Event 不出现 Root/Specialist 生命周期。

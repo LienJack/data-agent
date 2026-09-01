@@ -43,21 +43,40 @@ const semanticQuerySchemaSnapshotReferenceSchema = versionedResourceReferenceSch
   semantic_generation: positiveRevisionSchema,
 });
 
-const canonicalIdsSchema = (max: number) =>
+const uniqueIdsSchema = (max: number) =>
   z
     .array(versionIdentifierSchema)
     .max(max)
     .superRefine((values, ctx) => {
       values.forEach((value, index) => {
-        if (index > 0 && value <= (values[index - 1] ?? "")) {
+        if (values.indexOf(value) !== index) {
           ctx.addIssue({
             code: "custom",
-            message: "Semantic query ids must be unique and canonically sorted.",
+            message: "Semantic query ids must be unique.",
             path: [index],
           });
         }
       });
     });
+
+const canonicalIdsSchema = (max: number) =>
+  uniqueIdsSchema(max).superRefine((values, ctx) => {
+    values.forEach((value, index) => {
+      if (index > 0 && value < (values[index - 1] ?? "")) {
+        ctx.addIssue({
+          code: "custom",
+          message: "Semantic query ids must be canonically sorted.",
+          path: [index],
+        });
+      }
+    });
+  });
+
+// Provider selection arrays are mathematical sets. Canonicalize only their
+// representation before the final strict artifact schema validates them. This
+// never adds, removes, or substitutes a provider-selected semantic object.
+const canonicalizingIdsSchema = (max: number) =>
+  uniqueIdsSchema(max).overwrite((values) => [...values].sort());
 
 export const semanticRequestScopedOperatorSchema = z.discriminatedUnion("kind", [
   z.strictObject({
@@ -142,80 +161,125 @@ export const semanticQueryAmbiguitySchema = z.strictObject({
   }),
 });
 
-const semanticQuerySelectionIntentDraftSchema = z
-  .strictObject({
-    schema_version: z.literal("semantic-query-selection-intent@1.0.0"),
-    answer_scope: semanticQueryAnswerScopeSchema,
-    selected_metric_ids: canonicalIdsSchema(64),
-    selected_dimension_ids: canonicalIdsSchema(64),
-    selected_formula_ids: canonicalIdsSchema(64),
-    selected_relationship_ids: canonicalIdsSchema(128),
-    selected_time_domain_ids: canonicalIdsSchema(64),
-    selected_quality_constraint_ids: canonicalIdsSchema(64),
-    unresolved_ambiguities: z.array(semanticQueryAmbiguitySchema).max(16),
-    request_scoped_operations: z.array(semanticRequestScopedOperationSchema).max(16).optional(),
-  })
-  .superRefine((intent, ctx) => {
-    const selectedCount =
-      intent.selected_metric_ids.length +
-      intent.selected_dimension_ids.length +
-      intent.selected_formula_ids.length +
-      intent.selected_relationship_ids.length +
-      intent.selected_time_domain_ids.length +
-      intent.selected_quality_constraint_ids.length;
-    if (selectedCount === 0 && intent.unresolved_ambiguities.length === 0) {
+const semanticQuerySelectionIntentShape = {
+  schema_version: z.literal("semantic-query-selection-intent@1.0.0"),
+  answer_scope: semanticQueryAnswerScopeSchema,
+  selected_metric_ids: canonicalIdsSchema(64),
+  selected_dimension_ids: canonicalIdsSchema(64),
+  selected_formula_ids: canonicalIdsSchema(64),
+  selected_relationship_ids: canonicalIdsSchema(128),
+  selected_time_domain_ids: canonicalIdsSchema(64),
+  selected_quality_constraint_ids: canonicalIdsSchema(64),
+  unresolved_ambiguities: z.array(semanticQueryAmbiguitySchema).max(16),
+  request_scoped_operations: z.array(semanticRequestScopedOperationSchema).max(16).optional(),
+};
+
+const semanticQuerySelectionIntentObjectSchema = z.strictObject(semanticQuerySelectionIntentShape);
+type SemanticQuerySelectionIntentShape = z.infer<typeof semanticQuerySelectionIntentObjectSchema>;
+
+function addSemanticQuerySelectionIntentIssues(
+  intent: SemanticQuerySelectionIntentShape,
+  ctx: z.RefinementCtx,
+): void {
+  const selectedCount =
+    intent.selected_metric_ids.length +
+    intent.selected_dimension_ids.length +
+    intent.selected_formula_ids.length +
+    intent.selected_relationship_ids.length +
+    intent.selected_time_domain_ids.length +
+    intent.selected_quality_constraint_ids.length;
+  if (selectedCount === 0 && intent.unresolved_ambiguities.length === 0) {
+    ctx.addIssue({
+      code: "custom",
+      message: "Semantic query selection intent cannot be empty.",
+    });
+  }
+  const ambiguityKeys = intent.unresolved_ambiguities.map(
+    (ambiguity) => `${ambiguity.object_kind}:${ambiguity.candidate_ids.join("\0")}`,
+  );
+  ambiguityKeys.forEach((key, index) => {
+    if (index > 0 && key <= (ambiguityKeys[index - 1] ?? "")) {
       ctx.addIssue({
         code: "custom",
-        message: "Semantic query selection intent cannot be empty.",
+        message: "Semantic query ambiguities must be unique and canonically sorted.",
+        path: ["unresolved_ambiguities", index],
       });
     }
-    const ambiguityKeys = intent.unresolved_ambiguities.map(
-      (ambiguity) => `${ambiguity.object_kind}:${ambiguity.candidate_ids.join("\0")}`,
-    );
-    ambiguityKeys.forEach((key, index) => {
-      if (index > 0 && key <= (ambiguityKeys[index - 1] ?? "")) {
-        ctx.addIssue({
-          code: "custom",
-          message: "Semantic query ambiguities must be unique and canonically sorted.",
-          path: ["unresolved_ambiguities", index],
-        });
-      }
-    });
-    const operationKeys = (intent.request_scoped_operations ?? []).map((operation) =>
-      JSON.stringify(operation),
-    );
-    operationKeys.forEach((key, index) => {
-      if (operationKeys.indexOf(key) !== index) {
-        ctx.addIssue({
-          code: "custom",
-          message:
-            "Request-scoped operations must be unique; the Host canonicalizes interpretations.",
-          path: ["request_scoped_operations", index],
-        });
-      }
-    });
-    (intent.request_scoped_operations ?? []).forEach((operation, index) => {
-      const operator = operation.operator;
-      const metricIds =
-        operator.kind !== "AGGREGATE_RATIO"
-          ? [operator.metric_id]
-          : [operator.numerator_metric_id, operator.denominator_metric_id];
-      const dimensionIds = operator.kind !== "AGGREGATE_RATIO" ? [operator.time_dimension_id] : [];
-      if (
-        metricIds.some((id) => !intent.selected_metric_ids.includes(id)) ||
-        dimensionIds.some((id) => !intent.selected_dimension_ids.includes(id))
-      ) {
-        ctx.addIssue({
-          code: "custom",
-          message: "Request-scoped operations must bind selected governed primitives.",
-          path: ["request_scoped_operations", index],
-        });
-      }
-    });
   });
+  const operationKeys = (intent.request_scoped_operations ?? []).map((operation) =>
+    JSON.stringify(operation),
+  );
+  operationKeys.forEach((key, index) => {
+    if (operationKeys.indexOf(key) !== index) {
+      ctx.addIssue({
+        code: "custom",
+        message:
+          "Request-scoped operations must be unique; the Host canonicalizes interpretations.",
+        path: ["request_scoped_operations", index],
+      });
+    }
+  });
+  (intent.request_scoped_operations ?? []).forEach((operation, index) => {
+    const operator = operation.operator;
+    const metricIds =
+      operator.kind !== "AGGREGATE_RATIO"
+        ? [operator.metric_id]
+        : [operator.numerator_metric_id, operator.denominator_metric_id];
+    const dimensionIds = operator.kind !== "AGGREGATE_RATIO" ? [operator.time_dimension_id] : [];
+    if (
+      metricIds.some((id) => !intent.selected_metric_ids.includes(id)) ||
+      dimensionIds.some((id) => !intent.selected_dimension_ids.includes(id))
+    ) {
+      ctx.addIssue({
+        code: "custom",
+        message: "Request-scoped operations must bind selected governed primitives.",
+        path: ["request_scoped_operations", index],
+      });
+    }
+  });
+}
+
+const semanticQuerySelectionIntentDraftSchema =
+  semanticQuerySelectionIntentObjectSchema.superRefine(addSemanticQuerySelectionIntentIssues);
 
 export const semanticQuerySelectionIntentSchema = semanticQuerySelectionIntentDraftSchema;
 export type SemanticQuerySelectionIntent = z.infer<typeof semanticQuerySelectionIntentSchema>;
+
+const semanticQueryProviderAmbiguitySchema = z.strictObject({
+  object_kind: semanticQueryObjectKindSchema,
+  candidate_ids: canonicalizingIdsSchema(32).refine((ids) => ids.length !== 1, {
+    message: "Unresolved semantic selection needs zero or at least two candidates.",
+  }),
+});
+
+const semanticQueryProviderAmbiguitiesSchema = z
+  .array(semanticQueryProviderAmbiguitySchema)
+  .max(16)
+  .overwrite((ambiguities) =>
+    [...ambiguities].sort((left, right) => {
+      const leftKey = `${left.object_kind}:${left.candidate_ids.join("\0")}`;
+      const rightKey = `${right.object_kind}:${right.candidate_ids.join("\0")}`;
+      return leftKey < rightKey ? -1 : leftKey > rightKey ? 1 : 0;
+    }),
+  );
+
+/**
+ * Provider-only boundary for JSON_TEXT delivery. It canonicalizes set ordering
+ * without repairing semantic membership, then applies the same cross-field
+ * invariants as the final immutable selection intent.
+ */
+export const semanticQuerySelectionProviderResponseSchema = z
+  .strictObject({
+    ...semanticQuerySelectionIntentShape,
+    selected_metric_ids: canonicalizingIdsSchema(64),
+    selected_dimension_ids: canonicalizingIdsSchema(64),
+    selected_formula_ids: canonicalizingIdsSchema(64),
+    selected_relationship_ids: canonicalizingIdsSchema(128),
+    selected_time_domain_ids: canonicalizingIdsSchema(64),
+    selected_quality_constraint_ids: canonicalizingIdsSchema(64),
+    unresolved_ambiguities: semanticQueryProviderAmbiguitiesSchema,
+  })
+  .superRefine(addSemanticQuerySelectionIntentIssues);
 
 export interface ResolvedSemanticRequestTimeWindow {
   readonly dimension_id: string;

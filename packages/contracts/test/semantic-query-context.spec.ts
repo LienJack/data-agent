@@ -5,6 +5,7 @@ import {
   resolveSemanticComparisonTimeWindows,
   resolveSemanticRequestTimeWindow,
   semanticQuerySelectionIntentSchema,
+  semanticQuerySelectionProviderResponseSchema,
   verifySemanticQueryContext,
 } from "../src/artifacts/index.js";
 
@@ -190,6 +191,96 @@ function contextInput() {
 }
 
 describe("SemanticQueryContext", () => {
+  it("canonicalizes provider-owned set ordering without repairing membership", () => {
+    const providerResponse = {
+      schema_version: "semantic-query-selection-intent@1.0.0",
+      answer_scope: "DATA_RESULT_REQUIRED",
+      selected_metric_ids: ["metric.marketing_spend", "metric.marketing_revenue"],
+      selected_dimension_ids: [
+        "dimension.target_audience",
+        "dimension.marketing_month",
+        "dimension.marketing_channel",
+      ],
+      selected_formula_ids: [],
+      selected_relationship_ids: [],
+      selected_time_domain_ids: [],
+      selected_quality_constraint_ids: [],
+      unresolved_ambiguities: [
+        { object_kind: "TIME", candidate_ids: ["time.z", "time.a"] },
+        {
+          object_kind: "DIMENSION",
+          candidate_ids: ["dimension.z", "dimension.a"],
+        },
+      ],
+      request_scoped_operations: [
+        {
+          requested_term: "净ROI",
+          operator: {
+            kind: "AGGREGATE_RATIO",
+            numerator_metric_id: "metric.marketing_revenue",
+            denominator_metric_id: "metric.marketing_spend",
+            numerator_adjustment: "SUBTRACT_DENOMINATOR",
+            aggregation: "SUM_BEFORE_RATIO",
+            zero_denominator: "NULL",
+          },
+        },
+      ],
+    };
+
+    expect(semanticQuerySelectionIntentSchema.safeParse(providerResponse).success).toBe(false);
+    const canonical = semanticQuerySelectionProviderResponseSchema.parse(providerResponse);
+    expect(canonical.selected_metric_ids).toEqual([
+      "metric.marketing_revenue",
+      "metric.marketing_spend",
+    ]);
+    expect(canonical.selected_dimension_ids).toEqual([
+      "dimension.marketing_channel",
+      "dimension.marketing_month",
+      "dimension.target_audience",
+    ]);
+    expect(canonical.unresolved_ambiguities).toEqual([
+      {
+        object_kind: "DIMENSION",
+        candidate_ids: ["dimension.a", "dimension.z"],
+      },
+      { object_kind: "TIME", candidate_ids: ["time.a", "time.z"] },
+    ]);
+    expect(semanticQuerySelectionIntentSchema.parse(canonical)).toEqual(canonical);
+    expect(
+      semanticQuerySelectionProviderResponseSchema.safeParse({
+        ...providerResponse,
+        selected_metric_ids: ["metric.marketing_revenue", "metric.marketing_revenue"],
+      }).success,
+    ).toBe(false);
+    expect(
+      semanticQuerySelectionProviderResponseSchema.safeParse({
+        ...providerResponse,
+        selected_metric_ids: [],
+        selected_dimension_ids: [],
+        unresolved_ambiguities: [],
+        request_scoped_operations: undefined,
+      }).success,
+    ).toBe(false);
+    expect(
+      semanticQuerySelectionProviderResponseSchema.safeParse({
+        ...providerResponse,
+        selected_metric_ids: ["metric.marketing_spend"],
+      }).success,
+    ).toBe(false);
+    expect(
+      semanticQuerySelectionProviderResponseSchema.safeParse({
+        ...providerResponse,
+        model_commentary: "repair this response",
+      }).success,
+    ).toBe(false);
+    expect(
+      semanticQuerySelectionProviderResponseSchema.safeParse({
+        ...providerResponse,
+        selected_metric_ids: ["metric id is invalid"],
+      }).success,
+    ).toBe(false);
+  });
+
   it("represents a required semantic mapping with no safe candidate as unresolved", async () => {
     const ambiguity = { object_kind: "DIMENSION", candidate_ids: [] };
     const intent = semanticQuerySelectionIntentSchema.parse({

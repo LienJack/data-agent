@@ -767,14 +767,18 @@ ROAS 始终以实际已发布 AST 为准：当前是 `CASE WHEN SUM(spend)=0 THE
   不改变 marker、usage、response protection、Oracle、Semantic/Text2SQL/Analysis authority 或 live 数据。
 - **R-FL-JSON-04** `JSON_TEXT` 的 system instructions 必须包含 registry 由同一 Zod schema 生成的 exact canonical JSON Schema；该字节串
   纳入 trusted input upper bound。禁止自然语言近似 schema、客户端 schema、模型自报 schema、默认填充或类型强制转换。
-- **R-FL-JSON-05** strict schema 中由 refinement 约束的 set-like ID 数组必须在 Semantic system instructions 中明确为完整 ID 字符串
-  升序、去重；顺序不按题目提及、语义角色或重要性。Host 仍拒绝而不排序模型输出，不把该提示变成候选修补。
+- **R-FL-JSON-05** Semantic provider response 对 set-like ID 数组先验证 exact ID 与唯一性，再由 Host 仅按完整 ID 字符串确定性排序；
+  ambiguity 的 candidate 与集合本身同样规范化。Host 不得增删/替换成员、操作或歧义，不得读取题面决定 membership；规范化结果必须再通过
+  原 final strict intent schema。排序是无语义的序列化闭包，不是候选修补或业务路由。
 - **AC-FL-JSON-01** 离线真实 SDK wire 覆盖一次请求、`json_object`、零 tools、strict PASS 与空白/非JSON/错schema拒绝；新 clean
   build/fresh scratch 的 B3 必须真实形成 Semantic -> Text2SQL -> Analysis 后，才证明修复有效。
 - **AC-FL-JSON-02** `b4a237db` 新构建首题 Run 的四个 Semantic 调用全部到达 JSON schema mismatch、零业务 Artifact；该失败不可重提，
   只能由再一个 clean build/fresh scratch 从 A1 前向证明 canonical schema instruction 闭包。
 - **AC-FL-JSON-03** `82aed231` fresh scratch 的 A1/A2/A3/B1/B2 均完成独立业务与同 Run QA/Trace；B3 四次均在
   set-like ID 数组第 2 项的 canonical-order refinement 失败，零 Semantic/SQL/Analysis。新 build 必须从 A1 重跑六题，不能把前五题拼入。
+- **AC-FL-JSON-04** provider-only schema 必须证明乱序但成员合法的 selected/candidate/ambiguity 集合确定性规范化后通过 final strict schema；
+  重复 ID、未知字段、非法 ID、空 intent、跨字段未绑定仍失败关闭。新 build 的 B3 必须真实形成 Semantic -> Text2SQL -> Analysis，
+  单测或 `a43cc9f2` 前五题不能替代业务证明。
 
 ### 22.3 NAS OpenSandbox 数据面闭包
 

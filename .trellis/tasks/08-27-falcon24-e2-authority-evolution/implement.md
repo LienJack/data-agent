@@ -2067,6 +2067,13 @@ live348表after与before完全相同；本轮Web/Worker/OpenSandbox及4个browse
 - [x] `94c10171` A1唯一Run `818af266-7161-877d-8801-725d3ff609bc` 的Semantic/Text2SQL/QueryEvidence成功；本机Worker错用
   DIRECT而不能访问NAS临时Sandbox endpoint，两次Analysis side effect超时后FAILED。SERVER_PROXY简化探针及正式双沙箱/Cell/Operator/
   receipt probe均PASS，管理API与NAS Docker residual=0；旧Run不重提。见 [NAS代理复盘](research/complex-94c10171-opensandbox-proxy.md)。
+- [x] `a43cc9f2` clean force build 8/8（0 cache）、full unit 15/15、attestation PASS；fresh NAS scratch 55512完成10816、
+  347业务表、9表70列121445行、独立认证与E17 scratch-only activation；SERVER_PROXY真实投入业务运行，live仍E16且前后348表一致。
+- [x] 同一build/scratch的A1/A2/A3/B1/B2依次完成真实Semantic/Text2SQL/Analysis、独立来源/阶段/业务复核与同Run QA/Trace；B3唯一Run
+  `ff20e734-2ad0-8166-94de-07af61678358` 四次Semantic均在set-like ID数组第2项custom refinement失败，零业务Artifact且未重提。
+- [x] provider-only canonicalization聚焦TDD先RED：乱序集合在final strict schema拒绝；实现后只排序已验证且唯一的ID/ambiguity集合，
+  复用全部跨字段约束并再次由final strict schema验证。Worker registry已绑定该schema，prompt不再要求模型承担无语义排序；成员/操作/公式
+  不修补。见 [B3集合序列化复盘](research/complex-a43cc9f2-semantic-set-canonicalization.md)。
 - [ ] 新 scoped commit 后重新 clean force build/fresh scratch，以 SERVER_PROXY 从A1重跑六题；不拼接 `82aed231` 前五题或
   `94c10171` Semantic/Text2SQL前缀，B3业务通过后复用同 Run验 QA/Trace。
 - [ ] 六题预检闭合后继续 F5/F7 版本化15回合、authority、页面与最终清理；只有全部 AC 才 COMPLETE。
@@ -2087,3 +2094,7 @@ NAS endpoint mode修复验证：新增静态合同先RED后GREEN；修改后的�
 stateful symbols、Operator registry/result、单回执closure和session close，管理API与NAS Docker residual均为0。owned TypeScript Biome、
 focused test、diff与Trellis validate PASS；`94c10171` live before/after 348表一致且仍E16，旧Web/Worker/browser/SSH转发精确关闭，
 scratch容器停机、volume保留。既有同文件8-operator宽测试因当前manifest已有12项仍独立失败，未借本修复改写无关历史断言。
+
+Semantic set canonicalization修复验证：Contracts semantic suite 31、Worker dispatcher/production tools 107、Agent Runtime JSON transport 51项
+全部PASS，三包typecheck/build、4个owned TypeScript Biome、diff与Trellis validate通过；工作区unit gate以既有单并发模式15/15任务通过。
+默认并发的首次宽跑因CPU争用出现多包计时型超时，单并发同测试无失败；未据此放宽timeout或修改无关测试。组件通过仍不计B3业务PASS。
