@@ -1985,3 +1985,18 @@ method registry IDs、Metric/Dimension IDs、time/comparison window、parameters
 
 该设计删除的是同一计算的重复执行请求，不把条件未触发伪装成成功，不改变Executor的critical HOLD、Oracle、Explanation或Authority语义，
 也不从题目或数据值选择能力。旧A2与stage保持不可变；修复提交后仍须新clean build/fresh scratch从A1重跑六题。
+
+## 39. B3 完整面板先行的协作边界
+
+`2217ff9c` B3 已接受同时包含 `RECENT_COMPLETE_PERIODS`、`AGGREGATE_RATIO`、月份、渠道与目标人群的当前 Run
+SemanticQueryContext；六个 Text2SQL candidate 分别停在 request derivation binding、ratio query/group shape 与 resolved time window
+校验，compile 前零 datasource I/O。现有 aggregate-ratio proof 本来就支持多个直接 Dimension 分组，但只接受 exact resolved window 的
+单层直聚合，不接受 SQL 内先筛渠道的 CTE/HAVING/额外 predicate。旧题面的业务顺序和 SQL 执行顺序混写，是此次候选漂移的直接诱因。
+
+前向 `4.1.0` 采用两段式合同：Semantic 仍封存全部操作和对象；Text2SQL 只负责完整
+`month × channel × audience × {spend,revenue,net_roi}` 当前 Run 事实面板及对应图；Root 在 accepted QueryEvidence 后才做渠道层汇总筛选，
+并保留入选渠道的全部人群。父渠道净 ROI 从父级 SUM revenue/SUM spend 重算，禁止平均子组比例。若没有入选渠道就返回空集合，不能改窗口。
+
+这一变化只明确能力顺序，不把 B3 改成单月/单分类，也不新增 Host SQL、答案生成、关键词路由、Formula、publisher、repair 或 call budget。
+原 proof、来源、窗口、zero-denominator、完整面板 Oracle、history binding 与同 Run UI 标准不变。旧 `4.0.0` Run 和 hashes 不改写；
+scoped commit 后必须新 build/fresh scratch 从 A1 重跑六题。

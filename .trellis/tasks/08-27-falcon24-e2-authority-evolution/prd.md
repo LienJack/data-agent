@@ -902,3 +902,34 @@ Catalog admission 前以 `ROOT_AGENT_PROVIDED_UNSUPPORTED_INPUT_ARTIFACT` 被拒
   `FINAL_ANSWER_EVIDENCE` 结束，不为未请求的分析预留回合。Semantic 或 Text2SQL 缺失、当前 Run 来源错误、公式/窗口/分组错误仍失败。
 - **R-FL-BFACT-03** 只降低额外分析与自由叙事要求；SQL、数值、公式、时间窗、history binding、Artifact lineage、一次提交、同 Run QA/Trace
   和 live authority 零漂移要求不降低。必须用新 clean build/fresh物理scratch从A1重跑六题，不拼接 `4b26b01e` 的 A组三个 PASS。
+
+### 22.11 B3 完整事实面板先行
+
+`2217ff9c` clean build/fresh E17 scratch 已在同一冻结 epoch 连续通过 A1/A2/A3/B1/B2。B3 唯一 Run
+`54be4db1-e8b2-8485-a1e3-6333d3607f36` 接受了当前 Run 的 `SemanticQueryContext`，其中同时封存
+`RECENT_COMPLETE_PERIODS`、`AGGREGATE_RATIO`、营销月份、渠道、目标人群、营销投入和营销归因收入；随后三个 Text2SQL task
+的六个候选全部在 compile 前失败关闭，终态 `ROOT_AGENT_TURN_BUDGET_EXHAUSTED`，没有 SqlArtifact、QueryEvidence 或答案。
+冻结诊断只读取 reason code、Profile/Artifact ref 和安全事件摘要，未读取 Provider 原文。
+
+原 `4.0.0` 题面把“先筛渠道、再拆人群”写在 Text2SQL 事实要求之前，模型据此反复生成 SQL 内筛选、额外 query shape、错分组或错窗口候选；
+而现有 `AGGREGATE_RATIO` 证明子集只接受一个 exact complete-month 窗口内的直接聚合，并允许把月份、渠道、目标人群全部作为分组维度。
+这是执行顺序歧义，不需要放宽证明器、发布新公式或修改 active generation 2。
+
+依据用户已授权在多次失败时明确语义术语/公式，前向非计分 profile 版本化为 `complex-l4-semantic-defined@4.1.0`，B3 文案为：
+
+`继续使用上两题的渠道范围和请求级净ROI口径。比较数据中最近两个完整的营销表现自然月：时间字段使用已发布维度
+“blinkit_marketing_performance date”，收入使用已发布的“营销归因收入”。由 Semantic 解析 RECENT_COMPLETE_PERIODS +
+AGGREGATE_RATIO；Text2SQL 先按营销月份、渠道、目标人群输出完整的两月分组事实面板，每组包含营销投入、营销归因收入和
+先汇总后相除的净ROI，并给出完整面板对比图。SQL阶段不要筛选渠道、不要只返回入选人群，也不要使用历史答案预选。
+最终回答再依据当前Run完整面板，在渠道层分别汇总两个自然月，筛出本期总营销投入增加且净ROI下降的渠道，并列出这些渠道的
+全部目标人群两月事实；若无符合渠道则如实报告。只报告数据差异和口径，不做原因、因果或建议分析。`
+
+- **R-FL-BPANEL-01** 复杂度不降为单维或单月：Semantic 必须保留双月、渠道、目标人群、两个源 Metric 和请求级净 ROI；Text2SQL
+  必须返回完整 `month × channel × audience` 面板，不能在 SQL 内 CTE/HAVING/额外过滤、预选渠道或裁掉未入选组。
+- **R-FL-BPANEL-02** 渠道层筛选只能发生在完整当前 Run QueryEvidence 可见之后；渠道净 ROI 必须先分别汇总收入/投入再相除，不能平均
+  人群净 ROI。历史 B1/B2 回答只绑定连续意图，不是 B3 数值证据。
+- **R-FL-BPANEL-03** 原 `4.0.0`、失败 Run 和六个 candidate hash 保持不可变。`4.1.0` 不增加 Root/Text2SQL repair、模型调用、权限、
+  Formula 或 publisher；公式、窗口、source Oracle、图、同 Run QA/Trace 和 live authority 标准不降低。
+- **AC-FL-BPANEL-01** 完成 scoped docs commit 后，关闭旧现场并证明 live E16 零漂移；用新 clean build/fresh physical scratch 从 A1
+  连续重跑六题。只有 B3 同一 Run 的 SemanticQueryContext、SqlArtifact、完整 QueryEvidence、独立 source/business Oracle、答案和 Trace
+  全部通过，才算六题预检闭合；不得拼接 `2217ff9c` 的五个 PASS。

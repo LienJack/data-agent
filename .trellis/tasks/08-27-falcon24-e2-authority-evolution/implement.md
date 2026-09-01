@@ -2208,3 +2208,17 @@ A2 Run `89e2cd42-d58f-88bf-acdb-09ab13246368`保留FAILED：Semantic/Text2SQL/48
 - [x] 创建scoped commit。
 - [ ] 审计并关闭`a58533a4`现场，核对live E16零漂移；新clean build/fresh physical scratch从A1重跑六题，不拼本轮A1或A2前缀。
 - [ ] 六题闭合后继续F5/F7版本化15回合、同Run QA/Trace、authority、浏览器页面和最终清理。
+
+`2217ff9c` clean build/fresh E17 scratch 已在同一 frozen epoch 连续完成 A1/A2/A3/B1/B2 的业务、QA/Trace 与刷新。
+B3 唯一 Run `54be4db1-e8b2-8485-a1e3-6333d3607f36` 接受当前 Run SemanticQueryContext 后，三个 Text2SQL task 的六个候选
+依次在 `QUERY_EVIDENCE_REQUEST_DERIVATION_BINDING_INVALID`、`TEXT2SQL_RATIO_QUERY_SHAPE_REJECTED`、
+`TEXT2SQL_RATIO_GROUP_REJECTED` 与 `TEXT2SQL_REQUEST_TIME_WINDOW_MISMATCH` 失败关闭；无 SqlArtifact/QueryEvidence，最终
+`ROOT_AGENT_TURN_BUDGET_EXHAUSTED`。原 Run 未重提，旧五题不拼接。
+
+- [x] 只读结构诊断确认 active Semantic、物理 binding、双月 window 与请求级净 ROI 已完整进入 Context；问题是题面诱导 SQL 内先筛，
+  与 aggregate-ratio 只接受完整直聚合面板的证明子集冲突，不是余额、发布权威、数据库或权限故障。
+- [x] 按用户授权将非计分 B3 前向版本化为 `complex-l4-semantic-defined@4.1.0`：保留双月、渠道、目标人群和净 ROI，明确
+  Text2SQL 先返回完整 `month × channel × audience` 面板，Root 再基于当前 Run 事实做渠道层筛选；不放宽 proof 或增加预算。
+- [x] Trellis validate、diff check 通过；本项由 scoped docs commit 完成。随后审计/关闭 `2217ff9c` 现场，证明 live E16 零漂移。
+- [ ] 新 clean build/fresh physical scratch 从 A1 连续重跑六题；B3 同 Run完整面板、source/business Oracle、答案、QA/Trace 通过后，
+  才进入 F5/F7 正式15回合。
