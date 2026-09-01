@@ -2280,5 +2280,9 @@ B3 Run `b721daf0-620b-8205-ba2a-c154b309bbef` 已确认 `4.3.0` 将正确日期�
 - [x] 前向版本化 `complex-l4-semantic-defined@4.4.0`：B3 明确32行六列面板及请求级 `net_roi`；A2 明确唯一 Analysis task/stage 与一次
   发布两类必需图。其余题、proof、Oracle、权限、预算和 UI 标准不变。
 - [x] Trellis validate、diff check 与 scoped docs commit。
-- [ ] 审计并关闭 `a35b67b5` 现场，证明 live E16 零漂移；新 clean build/fresh scratch 从 A1 重跑六题，不拼本轮局部 PASS。
+- [x] 审计并关闭 `a35b67b5` 现场，证明 live E16 零漂移；新 clean build/fresh scratch 从 A1 重跑六题，不拼本轮局部 PASS。
 - [ ] 六题闭合后继续 F5/F7 版本化 15 回合、同 Run QA/Trace、authority、浏览器页面与最终清理。
+
+`a35b67b5` live after audit 的348张表 fingerprint 与 before 逐表一致，authority 仍为 E16；Worker 停机前为 exact build 且最后周期
+IDLE。本轮两个 browser/auth、Web/Worker、55528 forward 与 scratch container 已关闭，volume 只作停止 checkpoint 保留；NAS 普通
+PostgreSQL/Neo4j healthy，OrbStack 为0。receipt 为 `complex-a35b67b5-after.json` 与 `complex-a35b67b5-runtime-cleanup.json`。
