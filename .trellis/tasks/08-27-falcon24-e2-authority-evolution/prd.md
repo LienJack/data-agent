@@ -962,3 +962,29 @@ QueryEvidence 完成答案，没有委派 Analysis，因而没有受验 Stage、
   `4.2.0` 不修改生产分析方法、SQL proof、公式、权限、publisher、repair 或模型预算。
 - **AC-FL-AHANDOFF-01** 关闭 `f02d610a` 现场并证明 live E16 零漂移后，用新 clean build/fresh physical scratch 从 A1 重跑六题；
   不拼接本轮 A1/B1/B2 或 A2/B3 的部分事实。六题全部完成独立 source/stage/business Oracle 和同 Run QA/Trace 后才进入 F5/F7。
+
+### 22.13 B3 精确公开时间维度必须进入冻结检索闭包
+
+`a7d34c53` 的 `4.2.0` 同一 frozen build/scratch 已连续通过 A1/A2/A3/B1/B2；A2 按新合同真实完成 Analysis、48 行面板、两图和同 Run
+UI。B3 Run `978479c0-63e6-805f-9537-86766d5be830` 的首次 Semantic 委派为 `MODEL_STREAM_PROTOCOL_VIOLATION`，随后三次均以
+`TEAM_SEMANTIC_SELECTION_OUTSIDE_FROZEN_CLOSURE` 失败，零 Artifact、SQL 或 Analysis，最终 `ROOT_AGENT_TURN_BUDGET_EXHAUSTED`。
+
+当前 Run 的 intent/retrieval hash 正确，但 `4.2.0` 把此前成功题面中的公开维度名“blinkit_marketing_performance date”缩写为
+“已发布营销日期”。冻结检索集合因此只有渠道、目标人群、投入与收入，没有 `contains.column.blinkit_marketing_performance.date` 或
+`dimension.runtime_time_blinkit_marketing_performance_date`；对照 `f02d610a` 成功 B3，这两项都曾由精确公开名选入。Semantic 尝试选择闭包外
+时间对象被正确拒绝，不能放宽 frozen-closure 防火墙。
+
+前向非计分 profile 版本化为 `complex-l4-semantic-defined@4.3.0`。A1/A2/A3/B1/B2 与 `4.2.0` 完全相同；B3 只恢复精确公开名称：
+
+`继续使用上两题的渠道范围和请求级净ROI口径。比较数据中最近两个完整的营销表现自然月：时间字段使用已发布维度
+“blinkit_marketing_performance date”，收入使用已发布的“营销归因收入”。由 Semantic 解析 RECENT_COMPLETE_PERIODS +
+AGGREGATE_RATIO；Text2SQL 先输出完整 month × channel × audience 两月事实面板，SQL阶段不得预筛。随后必须交给 Analysis Agent，
+从完整当前Run面板按渠道重新汇总并筛出本期投入增加且净ROI下降的渠道，列出入选渠道的全部目标人群事实。以渠道筛选为主要结论；
+Analysis可同时报告其他受验分类轴。只作描述性比较，任何可能原因或下一步必须明确标为待验证假设，禁止因果或持续趋势断言。`
+
+- **R-FL-TIME-CLOSURE-01** 题面只使用 active generation 2 的公开对象名，不携带内部 node ID、物理 SQL、结果值或 Host 注入；Semantic 仍须
+  从冻结目录解析并提交 Context。精确名称必须使日期列与唯一营销日期维度进入 retrieval receipt，不能依赖 Agent 越界补选。
+- **R-FL-TIME-CLOSURE-02** `4.3.0` 不改变 `4.2.0` 的 Analysis 必需交接、32 行完整面板、渠道主筛选、假设边界、proof、预算或 UI 标准。
+  旧 `4.2.0` Run 与前五题 PASS 保持历史，不能拼接。
+- **AC-FL-TIME-CLOSURE-01** scoped docs commit 后审计并关闭 `a7d34c53`；新 clean build/fresh physical scratch 从 A1 连续重跑六题。
+  B3 只有当前 Run retrieval/Context、完整 QueryEvidence、Analysis Stage、source/business Oracle、答案和 QA/Trace 全部通过才闭合预检。

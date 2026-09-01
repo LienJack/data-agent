@@ -2247,3 +2247,17 @@ B3 Run `807a1d26-29c5-888e-98ce-627283a72780` 已真实走 Semantic/Text2SQL/Ana
 `f02d610a` live after audit 对 348 张表的 fingerprint 与 before 逐表一致，authority 仍为 E16；Worker 停机前 exact build 且最后周期 IDLE。
 本轮两个 browser/auth、Web/Worker、55526 forward 与 scratch container 已关闭，volume 只作停止 checkpoint 保留；NAS 普通数据库 healthy，
 OrbStack 仍为 0。receipt 为 `complex-f02d610a-after.json` 与 `complex-f02d610a-runtime-cleanup.json`。
+
+`a7d34c53` clean build/full unit/fresh E17 scratch 的 A1/A2/A3/B1/B2 已连续完成独立 source/stage/business Oracle 与同 Run QA/Trace；
+Trace 节点分别为 73/76/80/73/73。A2 按 `4.2.0` 真实走 Semantic/Text2SQL/Analysis、48 行完整面板和两张必需图，修复目标已获运行证明。
+
+B3 唯一 Run `978479c0-63e6-805f-9537-86766d5be830` 首次 Semantic 为 stream protocol violation，随后三次均因选择冻结闭包外对象失败；
+零 Artifact，终态 FAILED，未做业务/UI 验收。intent/retrieval hash 正确，但当前冻结 selection 漏掉营销日期列和营销日期维度；对照成功
+`f02d610a`，原因是 `4.2.0` 将精确公开维度名缩写为泛称。
+
+- [x] 只读 safe event、ProviderTask intent receipt 与上一成功 B3 selection 对照，确认不是余额、数据库、发布权威或 Semantic 防火墙缺陷。
+- [x] 前向版本化 `complex-l4-semantic-defined@4.3.0`：只恢复公开维度名“blinkit_marketing_performance date”，保留 `4.2.0` 的
+  Analysis 交接、完整面板、描述性假设边界和全部 proof。
+- [x] Trellis validate、diff check 与 scoped docs commit。
+- [ ] 审计并关闭 `a7d34c53` 现场，证明 live E16 零漂移；新 clean build/fresh scratch 从 A1 重跑六题，不拼前五题。
+- [ ] 六题闭合后继续 F5/F7 版本化 15 回合、同 Run QA/Trace、authority、浏览器页面与最终清理。

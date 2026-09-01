@@ -2014,3 +2014,15 @@ clearly-labeled hypotheses；假设不能升级为因果、持续趋势或确定
 这不是按题目关键词新增 Host 路由，也不改变编译器、Executor、方法选择、Oracle、Publisher 或答案后处理。方法仍由当前 Run 的受验源形状和
 operator obligations 选择；父比例仍按 SUM-before-ratio，完整窗口/分组/来源 proof 不变。旧 Run、Stage、Artifact 与 profile 保持不可变；
 新 profile 必须在新 frozen build/fresh scratch 从 A1 完整重跑，禁止跨 epoch 合成 PASS。
+
+## 41. 公开维度名驱动冻结检索，不允许 Specialist 越界补选
+
+`a7d34c53` B3 的 ProviderTask/semantic receipt 证明 conversation/history 与 intent hash 均正确；断点发生在检索和 Semantic 之间。
+`4.2.0` 的泛称“已发布营销日期”未选中营销事实日期列或 runtime time Dimension，而成功的 `f02d610a` 题面使用完整公开名
+“blinkit_marketing_performance date”时，两者都在 frozen selection 内。Semantic 后续选择日期对象被 mandatory closure 拒绝是预期安全行为。
+
+`4.3.0` 仅恢复 catalog 中用户可见的精确维度标题，使 retrieval query 在 Root 委派前冻结正确对象；不把内部 ID、SQL、列 binding 或结果值
+写入题目，不由 Host 扩充 selected object IDs，也不改变 Semantic schema。Text2SQL 的完整面板先行和 Analysis 的渠道主 rollup 顺序保持
+`4.2.0`。因此验证必须同时检查 intent/retrieval hashes、selected date column/dimension、current Run Context 和后续完整业务链，不能只看最终答案。
+
+失败 Run 不重提。scoped commit 后关闭旧 epoch，以新 build/generation、fresh scratch 和新 Conversation 从 A1 重跑，旧五题不计入新 PASS。
