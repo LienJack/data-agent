@@ -2286,3 +2286,16 @@ B3 Run `b721daf0-620b-8205-ba2a-c154b309bbef` 已确认 `4.3.0` 将正确日期�
 `a35b67b5` live after audit 的348张表 fingerprint 与 before 逐表一致，authority 仍为 E16；Worker 停机前为 exact build 且最后周期
 IDLE。本轮两个 browser/auth、Web/Worker、55528 forward 与 scratch container 已关闭，volume 只作停止 checkpoint 保留；NAS 普通
 PostgreSQL/Neo4j healthy，OrbStack 为0。receipt 为 `complex-a35b67b5-after.json` 与 `complex-a35b67b5-runtime-cleanup.json`。
+
+`e5dc68c8` clean force build 8/8、workspace 单并发 full unit 15/15、fresh E17 physical scratch、certification/activation 和
+SERVER_PROXY 无模型探针通过。`complex-l4-semantic-defined@4.4.0` 六题在同一 baseline 连续闭合：
+
+- [x] A1/A2/A3 Run 为 `8a0a153a-34ad-8fd8-95aa-bbd4d84e919e`、`9ebdec0e-a934-8977-b3e3-34c4b5924745`、
+  `7e194e22-595a-8171-9019-63c2d49f950b`；A2 单 Analysis Stage、48行面板和两类图通过。
+- [x] B1/B2/B3 Run 为 `7d7c6ab4-c999-8be3-88c2-d34052ba7232`、`bf920b92-c9b0-8dcd-892e-bf8627147643`、
+  `ea240149-cb75-8f66-bb60-bd449d5da022`；B3 六列32行面板、单 Stage、SMS 与四类人群通过。
+- [x] 六题各自 source/stage/business Oracle 与同 Run QA/Trace/刷新通过，Trace 节点为73/76/80/73/73/98；这是
+  `formal_gate_pass=false` 的非计分预检，不是15回合 authority PASS。
+- [x] 记录六题冻结证据，Trellis validate、diff check 后创建 scoped docs commit。
+- [ ] 关闭 `e5dc68c8` 现场并证明 live E16 零漂移；以新 HEAD clean force build/fresh physical scratch 建立版本化正式 manifest/attempt，
+  从 L1-01 严格执行15回合，业务通过后才做同 Run QA/Trace；全部通过后前向激活 E17、完成 F7 authority/页面/资源最终清理。

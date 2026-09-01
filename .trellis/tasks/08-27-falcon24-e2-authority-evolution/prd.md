@@ -1020,3 +1020,22 @@ Analysis可同时报告其他受验分类轴。只作描述性比较，任何可
   live authority 或 UI 标准。
 - **AC-FL-44-01** 关闭 `a35b67b5` 并证明 live E16 零漂移后，以新 clean build/fresh physical scratch 从 A1 重跑六题；六题同 epoch
   全部完成独立 source/stage/business Oracle 和同 Run QA/Trace 后才进入 F5/F7。
+
+### 22.15 `4.4.0` 六题同纪元闭合，正式门禁仍须新权威
+
+`e5dc68c8` clean force build、full unit gate 与 fresh E17 physical scratch 已在同一个冻结 baseline 上连续完成 A1/A2/A3/B1/B2/B3。
+六个 Run 分别为 `8a0a153a-34ad-8fd8-95aa-bbd4d84e919e`、`9ebdec0e-a934-8977-b3e3-34c4b5924745`、
+`7e194e22-595a-8171-9019-63c2d49f950b`、`7d7c6ab4-c999-8be3-88c2-d34052ba7232`、
+`bf920b92-c9b0-8dcd-892e-bf8627147643` 与 `ea240149-cb75-8f66-bb60-bd449d5da022`；全部完成独立 source/stage/business
+Oracle，并在业务通过后复用同 Run 打开答案入口 Trace、全部节点/Artifact 详情和刷新恢复，节点数依次为 73/76/80/73/73/98。
+
+A2 现在只有一个受治理 Analysis task/stage，并在同一 stage 一次发布两类必需图。B3 冻结精确日期列/维度及两个请求解释，Text2SQL 返回
+32 行、`month/channel/target_audience/spend/revenue/net_roi` 六个绑定；单个 Analysis stage 从完整面板重算，渠道主筛选唯一为 `SMS`，
+保留四类目标人群，并只输出明确标注的待验证假设。详情见
+[六题闭合证据](research/complex-e5dc68c8-six-turn-closure.md)。
+
+- **AC-FL-44-01** 已满足，但这六题是 `formal_gate_pass=false` 的非计分预检，不能改写为 §20 的 15 回合正式 PASS。
+- **R-FL-FORMAL-FRESH-01** 记录本节会形成新 HEAD；F5/F7 必须从该新 HEAD 重新 clean build、fresh 专用物理 scratch 和 fresh
+  four-layer attempt 开始，禁止复用 `e5dc68c8` 的 build、baseline、Conversation、Run 或 Artifact。
+- **R-FL-FORMAL-VERSION-01** 正式 15 回合沿用 §20 的 5/2/2/6 层级和一次性 authority，同时把本节已经验证的公开公式、请求级术语、
+  完整面板与单 Analysis Stage 合同写入新的版本化 manifest；不得把非计分 profile 或旧 manifest hash 冒充新 authority。

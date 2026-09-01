@@ -2043,3 +2043,19 @@ QueryEvidence、一个 Analysis Stage/Report，在该 stage 内同时完成整�
 
 新 epoch 必须从 A1 重跑。B3 要同时证明 frozen selection、双 interpretation、六列 QueryEvidence、单 Analysis Stage、32行 source/stage
 Oracle 和同 Run UI；A2 要证明单 Stage 与恰好两类必需图。旧 epoch 的局部 PASS 只用于回归定位。
+
+## 43. 六题预检闭合后的正式门禁切换
+
+`e5dc68c8` 的六题非计分 profile 已在同一 clean build/fresh physical scratch 内闭合。A、B 两个 Conversation 分别保持单一
+Conversation ID，六个 Run 都完成独立业务 Oracle 后才浏览答案与 Trace；73/76/80/73/73/98 个节点全部打开并在刷新后保持 exact Run。
+B3 的完整32行六列面板、当前请求净 ROI、单 Analysis Stage、`SMS` 渠道主筛选和四类人群是正式题面可复用的已验证业务合同，
+但其 Run 与 receipt 不是 four-layer authority 行。
+
+正式切换采用新的冻结闭包，而不是在运行中的非计分 scratch 上“升格”：先提交本证据形成新 HEAD，再 force build/full gate，创建 fresh
+NAS 专用物理 scratch、fresh E17 scratch activation 和唯一 four-layer attempt。正式 manifest 保留原 5/2/2/6、层间首败停止、一个回合一次
+composer、business 先于 UI/Trace、L4 两个固定 Conversation；只版本化已经批准和预检过的自然语言定义：已发布 ROAS 的实际 AST、请求级净 ROI、
+精确营销日期维度、完整面板、单 Analysis Stage 和描述性假设边界。manifest 不注入 SQL、内部对象 ID 或结果值。
+
+正式 15 回合仍不能组合预检 PASS。每个正式 turn 必须由 gate authority claim 当前 ordinal，绑定同一个 formal build/baseline/release/profile，
+terminal 后写 deterministic business receipt；只有 business PASS 才打开同 Run QA/Trace 并 finalize。全部 turn PASS 后才能通过前向恢复流程把
+live E16 激活为 E17，随后做 production-port readback、390px smoke、live/protected-history 审计和资源清理。
