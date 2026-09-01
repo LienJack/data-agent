@@ -836,3 +836,18 @@ METRIC列，空集合触发selected closure fallback，把无关`metric.order_re
 - **R-FL-FMA-03** B1使用当前已发布术语“营销归因收入”降低歧义；这不是新语义发布，也不改变ROAS/净ROI口径。
 - **AC-FL-FMA-01** 聚焦测试必须覆盖Formula-only营销结果、额外订单收入召回裁剪、FORMULA角色保留以及三类planner原有authority漂移拒绝。
   scoped commit后必须新clean build/fresh physical scratch从A1重跑六题；本轮A组三个PASS与失败B1不可拼接。
+
+### 22.7 受验经营摘要的单调用传输闭包
+
+`362c7e96` fresh scratch 的 A1/A2 已完成独立业务与同 Run QA/Trace；A3 的第二次正常 Analysis 委派已形成正确48行分群同比
+QueryEvidence、受验双节点Program，并完成第一个节点。第二个节点在原FULL Oracle之后生成精确`final_summary_constraint`，但零工具
+Structured Output以顶层`invalid_type`被拒绝，随后原Root回合预算耗尽。失败Run保持不可变，不把已完成节点或历史A1/A2拼成PASS。
+
+- **R-FL-AFINAL-01** 只有内部Executor在原FULL Oracle后生成合法`final_summary_constraint`时，request-isolated Analysis FINAL schema
+  才固定为`JSON_TEXT`；无约束Analysis FINAL仍使用默认Structured Output。
+- **R-FL-AFINAL-02** 仍只允许原一次DeepSeek零工具JSON-mode调用。完整原文必须依次通过JSON解析、同一两字段literal strict schema与
+  executor逐字复验；禁止第二次模型调用、Host替换、提取、修补、默认值或宽松类型转换。
+- **R-FL-AFINAL-03** delivery mode、literal schema和canonical schema instruction均由服务端生成，用户、题库、模型与Run payload不可选择；
+  task hash、预算、usage、protected response、Explanation记录和恢复校验保持原权威。
+- **AC-FL-AFINAL-01** TDD须证明受约束FINAL使用JSON_TEXT、不同约束互不污染且改变task hash、无约束FINAL仍为Structured Output，
+  TOOL/空白/超长约束零调用拒绝；随后新clean build/fresh physical scratch必须从A1重跑六题并通过同Run业务/QA/Trace。

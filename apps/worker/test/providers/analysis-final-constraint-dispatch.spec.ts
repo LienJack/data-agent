@@ -104,6 +104,9 @@ describe("Host-owned per-request final constraint", () => {
     expect(first[0].task_ref.content_hash).not.toEqual(second[0].task_ref.content_hash);
     expect(first[0].budget).toEqual(second[0].budget);
     expect(first[0].tool_allowlist).toEqual([]);
+    expect(first[1].delivery_mode).toBe("JSON_TEXT");
+    expect(second[1].delivery_mode).toBe("JSON_TEXT");
+    expect(legacy[1].delivery_mode).toBe("STRUCTURED_OUTPUT");
     expect(z.toJSONSchema(first[1].schema)).toMatchObject({
       properties: { summary_zh: { const: "本轮受验文本A。" } },
       additionalProperties: false,

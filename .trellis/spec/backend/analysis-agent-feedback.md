@@ -50,7 +50,8 @@
   分组面板冒充整体趋势、只发一张混合图、删减分组、重新排名或增加第三张图。Oracle逐项重算result并验证每张表/图及哈希。
   两月ratio rollup没有该同比映射，继续使用原单图合同；选择只依据封存角色/源形状，不按题目文字、列名或测试编号。
 - Executor把上述文本作为服务端`final_summary_constraint`交给原一次FINAL调用：当前请求Zod将原`summary_zh`收窄为精确literal，
-  该约束进入dispatch task hash，不修改共享registry或外部请求Schema版本。模型响应必须逐字匹配；不得后台替换不符的响应。
+  该约束进入dispatch task hash，不修改共享registry或外部请求Schema版本。该request-isolated schema由Host固定为`JSON_TEXT`，仍只发
+  原一次零工具JSON-mode调用；完整原文必须经`JSON.parse`和同一literal strict schema。模型响应必须逐字匹配；不得后台替换不符的响应。
   新响应在recordExplanation前检查；恢复时原explanation hash通过后仍重验约束，不调用模型改写历史。
   原stage/Oracle/Explanation/Authority链和预算不变；其他合同保持原两字段解释。此模式证明事实展示，不宣称自由语言推理通过。
 
@@ -85,6 +86,7 @@ Bad：修复Cell成功后继续开放Python，允许重复转换、重算或用t
 - 月度完整聚合序列原样保留、跨年/非对称NULL/多个正增长月；错误contract、超12行/超预算仍省略，其他collections不泄漏。
   生产Oracle成功后进入同一FINAL投影；保留原stage hash的离线输入复现不是原自然语言答案修复或新业务PASS。
 - 精确文本的接收/拒绝、原不受限协议兼容、非法TOOL约束零调用、per-request registry互不污染、约束改变task hash；
+  受约束FINAL固定JSON_TEXT、无约束FINAL仍为Structured Output，且不增加Provider调用、turn、token或恢复预算；
   多月正负/空值/0、别名与时区不改角色、单位不推断、分组排名和百分点贡献、源/contract/Run/数据篡改拒绝。
 - 分群同比双图：12行整体趋势、最差月完整分组投影的别名/顺序/NULL；合同固定3表2图；漏图、额外图、错误数据symbol、行筛选、
   图表数据重算、同比排名/贡献篡改和表图哈希不一致均拒绝。无比较映射及两月ratio面板保持原单图回归。

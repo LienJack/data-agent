@@ -2126,3 +2126,15 @@ B3 改为直接引用 generation 2 的“营销归因收入”与 `blinkit_marke
 `CATEGORY_COMPARISON_AUTHORITY_INVALID`，未进入Analysis且未重提。前向实现从accepted Formula canonical ID/精确物理依赖收敛原Published
 Metric capability，裁剪无关订单收入；三类planner消费编译后的精确Context但保留FORMULA角色。聚焦117/117先GREEN；完成官方验证与
 scoped commit后必须新clean build/fresh scratch从A1重跑六题，本轮A组三个PASS不计入新epoch。
+
+`362c7e96` 新构建/scratch 的 A1/A2 分别以Run `95a12be2-4dea-8384-a48f-815f4f17f057`、
+`9efeb574-8589-86ca-8a2a-d41bd0d16e48` 完成独立业务与同Run QA/Trace。A3唯一Run
+`79a82d53-432a-8475-ad1c-64a9cdd89449` 保留FAILED：首个Analysis Program时间窗拒绝后，Root在原预算内正常委派第二个受验双节点Program；
+第一个节点完成，第二节点FULL Oracle后FINAL响应以顶层`invalid_type`触发`RESPONSE_SCHEMA_MISMATCH`，随后Root预算耗尽。没有提交原子
+Analysis Artifact，失败Run未重提；live before/after 348表一致且仍E16，临时Web/Worker/browser/SSH转发已关闭。
+
+聚焦测试先RED证明带literal的request-isolated registry仍是Structured Output，再仅为合法内部`final_summary_constraint`固定JSON_TEXT；
+不同literal继续改变task hash且schema互不污染，无约束FINAL仍为Structured Output，非法TOOL/空白/超长约束零Provider调用拒绝。
+本项不增加模型重试或Host替换。Worker聚焦26、受影响dispatcher/Analysis 72、官方unit 101与Agent Runtime JSON transport 51项全部PASS；
+两个包typecheck/build、owned Biome、Trellis validate及diff check通过。scoped commit后必须用新clean build/fresh物理scratch从A1重跑六题；
+本轮A1/A2不计入新epoch。

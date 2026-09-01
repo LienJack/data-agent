@@ -1877,6 +1877,27 @@ planner不再从结果列角色重复猜Metric，而使用上述编译后Analysi
 单位、粒度、空值与applicability验证。ResultContract表列、lineage和materialization仍保留FORMULA/REQUEST_DERIVED原角色；该投影不读取题面、
 题号或数据值，不创建Metric、不修改Release、不授予额外Skill。任何canonical Formula、物理来源、selected closure或Context漂移仍失败关闭。
 
+## 34. Analysis FINAL literal 的 JSON 文本交付
+
+月度与分群合同在FULL Oracle后已有唯一服务端事实摘要；Executor把它作为`final_summary_constraint`收窄原
+`analysis-agent-final@1.0.0`两字段schema。`362c7e96` A3证明literal收窄本身不能保证DeepSeek Structured Output返回顶层对象。
+
+Dispatcher仅在该内部约束存在且FINAL阶段合法时创建request-isolated registry descriptor，并把delivery mode固定为`JSON_TEXT`：
+
+```text
+verified summary literal + original two-field schema
+  -> request-isolated Zod literal schema + canonical JSON Schema instruction
+  -> one DeepSeek json_object request, tool_choice=none
+  -> JSON.parse complete original text
+  -> same literal strict schema + canonicalize
+  -> protected response
+  -> executor exact literal assertion -> Explanation authority
+```
+
+无约束Analysis FINAL继续走原Structured Output；共享registry不变。该设计不增加Provider调用、Root/Analysis回合、token、repair或恢复预算，
+也不将服务端文本当作模型响应。空白、非JSON、额外字段、错类型或literal不匹配仍失败关闭；恢复路径继续校验原Explanation hash和literal，
+不重放历史调用。真实业务证明必须用修复提交后的新构建和fresh物理scratch从A1开始，旧失败Run与旧PASS均不拼接。
+
 ## 32. 营销术语与完整月选择闭包
 
 `d6484404` 的 B3 在 Semantic transport canonicalization 之后仍四次出现顶层集合第 1 项的 strict custom 拒绝。

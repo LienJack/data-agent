@@ -160,7 +160,8 @@ return committed.protectedResponse;
   不剥离 fence/prose、不兜底重写 JSON、不接受空内容；原 Response Schema 与 dispatcher marker/终态/不重放边界不变。
   REQUIRED 和其他 Provider 默认保持原行为；不能由用户 payload 开关这项部署策略。
 - 零工具调用默认继续使用 Mastra Structured Output。只有 server-owned `ServerModelResponseSchemaRegistry` 对 exact schema version
-  固定 `delivery_mode=JSON_TEXT` 时，才允许同一次调用使用原 SDK JSON mode；当前仅 Semantic selection schema 启用。原始完整文本必须
+  固定 `delivery_mode=JSON_TEXT` 时，才允许同一次调用使用原 SDK JSON mode；当前 Semantic selection schema 以及带内部
+  `final_summary_constraint` 的 request-isolated Analysis FINAL schema 启用。原始完整文本必须
   先 `JSON.parse`，再通过同一个注册 Zod strict schema 并 canonicalize；空白、非 JSON、Markdown fence、尾随 prose、错类型、额外字段和
   schema mismatch 全部失败关闭。禁止提取局部 JSON、修补模型文本、增加 Provider 调用、跳过 schema 或把该模式用于工具调用。
 - `JSON_TEXT` 必须把 registry 从同一 Zod schema 确定性生成的 canonical JSON Schema 原样加入该次服务端 system instructions；不能只发
@@ -181,7 +182,8 @@ return committed.protectedResponse;
 - 直连结果不是 SQL、Evidence 或业务结论权威。数据问题仍必须先走只读 Sandbox，并提交 QueryEvidence；
   通用问答输出只能作为 Run 的公开回答投影。
 - Analysis FINAL可携带内部Executor在原Oracle后生成的`final_summary_constraint`，不是浏览器或模型提供的Schema。
-  仅对该调用建立原两字段响应的literal收窄，约束内容进入task hash；共享registry、其他请求及旧响应协议不变。
+  仅对该调用建立原两字段响应的literal收窄并固定`JSON_TEXT`交付，约束内容进入task hash；共享registry、无约束Analysis请求及
+  其他响应协议不变。该交付仍只发原一次零工具JSON-mode调用，完整原文须通过同一literal Zod strict schema。
   TOOL阶段、空白/超长约束在网络前拒绝；不能把不匹配的模型文本替换成服务端文本后伪称原响应。
   业务来源/解释接收和恢复仍由 [Analysis反馈契约](./analysis-agent-feedback.md) 及原阶段权威验证。
 
@@ -192,6 +194,8 @@ return committed.protectedResponse;
 - Agent Runtime 离线真实 SDK wire 测试覆盖 server-owned `JSON_TEXT` 的一次 DeepSeek fetch、`json_object`、零 tools、strict PASS、
   exact canonical schema system instruction、schema mismatch、空白与非 JSON；默认 schema 仍走 Structured Output，用户请求不能选择
   delivery mode 或提供 schema instruction。
+- Worker测试证明只有带合法内部约束的Analysis FINAL建立request-isolated literal schema并使用`JSON_TEXT`；无约束FINAL仍走默认
+  Structured Output，TOOL/空白/超长约束在Provider调用前拒绝，两个约束互不污染且改变task hash。
 - Contracts/Worker 测试覆盖 Semantic provider set canonicalization、final strict reparse、重复/非法 ID、未知字段、空 intent 与 operation
   未绑定失败关闭，并证明实际 registry 使用 provider-only schema。
 - 真实运行证明调用前后持久 Intent/Permit 行数不增加，且公开 Event 不出现 Root/Specialist 生命周期。

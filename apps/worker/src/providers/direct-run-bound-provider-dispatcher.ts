@@ -442,6 +442,7 @@ export function createDirectRunBoundProviderDispatcher(input: {
             {
               response_schema_version: ANALYSIS_AGENT_FINAL_RESPONSE_SCHEMA_VERSION,
               schema: analysisFinalResponseSchema(analysisAgent.final_summary_constraint),
+              delivery_mode: "JSON_TEXT",
             },
           ]);
         } catch {
