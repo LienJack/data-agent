@@ -2259,5 +2259,9 @@ B3 唯一 Run `978479c0-63e6-805f-9537-86766d5be830` 首次 Semantic 为 stream 
 - [x] 前向版本化 `complex-l4-semantic-defined@4.3.0`：只恢复公开维度名“blinkit_marketing_performance date”，保留 `4.2.0` 的
   Analysis 交接、完整面板、描述性假设边界和全部 proof。
 - [x] Trellis validate、diff check 与 scoped docs commit。
-- [ ] 审计并关闭 `a7d34c53` 现场，证明 live E16 零漂移；新 clean build/fresh scratch 从 A1 重跑六题，不拼前五题。
+- [x] 审计并关闭 `a7d34c53` 现场，证明 live E16 零漂移；新 clean build/fresh scratch 从 A1 重跑六题，不拼前五题。
 - [ ] 六题闭合后继续 F5/F7 版本化 15 回合、同 Run QA/Trace、authority、浏览器页面与最终清理。
+
+`a7d34c53` live after audit 的 348 张表 fingerprint 与 before 逐表一致，authority 仍为 E16；Worker 停机前 exact build 且 IDLE。
+本轮两个 browser/auth、Web/Worker、55527 forward 与 scratch container 已关闭，volume 只作停止 checkpoint 保留；普通 NAS 数据库 healthy，
+OrbStack 为 0。receipt 为 `complex-a7d34c53-after.json` 与 `complex-a7d34c53-runtime-cleanup.json`。
