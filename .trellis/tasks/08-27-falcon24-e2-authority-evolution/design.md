@@ -1949,3 +1949,26 @@ accepted Analysis delegation
 该变化不延长 Root 四回合、不增加 Analysis repair/provider/tool 次数，也不改变 task 自报的 600 秒上限；实际执行仍取部署、Run、task 与取消信号
 中更早生效的边界。Side Effect 内部已产生但未完成 child acceptance 的 staged/committed Artifact 不会出现在 Root accepted output ref 中；
 后续新委派不得把它当作恢复 receipt。新 build/fresh scratch 必须从 A1 重验，真实证明 A3 在一次 Analysis 委派内完成原子 acceptance。
+
+## 37. B 组事实型公式协作预检
+
+`4b26b01e` B1 证明 active release、Semantic 和 Text2SQL 可以形成正确的发布 ROAS 结果，但自由表述使 Root 连续三次尝试 Semantic 后才接受
+Context，最后一次 Text2SQL 又被标成 continuation，四回合内没有 FINAL。前向预检不改变 Harness、预算或 active release，而把用户已经授权的
+术语/公式边界直接写进 B 组题面：
+
+```text
+published Formula/Metric/Dimension names or request-only operator definition
+  -> Semantic resolves exact active IDs, formula AST and request-scoped interpretation
+  -> Text2SQL consumes exact SemanticQueryContext
+  -> current-Run SqlArtifact + QueryEvidence + governed chart
+  -> FINAL_ANSWER_EVIDENCE (no unrequested Analysis)
+```
+
+B1锚定 `formula.marketing_roas`；B2锚定同一收入/投入Metric并要求 `AGGREGATE_RATIO` 的 REQUEST_ONLY/NONE 解释；B3同时锚定
+`blinkit_marketing_performance date`、营销归因收入、RECENT_COMPLETE_PERIODS 与该请求级净 ROI。题面不会携带物理列、SQL、结果值或隐藏 ID 集，
+Semantic 仍必须从冻结 active catalog 解析并提交 Context，Text2SQL 仍必须按 Context 编译和执行。Host 不做关键词路由、不生成答案、
+不将历史回答作为证据。
+
+该变化只删除未请求的统计分析、原因推断和管理建议，不减少事实复杂度：B3仍包含双月、渠道筛选、目标人群分组和请求级比例。
+独立 Oracle 继续从物理源重新聚合；图、history binding、同 Run QA/Trace 和 live E16 审计保持原标准。A 组三题继续证明
+Semantic→Text2SQL→Analysis，B 组三题专门证明 Semantic→Text2SQL 的公式/术语协作，两者不得跨 Run 或跨 build 拼接。

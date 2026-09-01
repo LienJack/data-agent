@@ -880,3 +880,25 @@ Catalog admission 前以 `ROOT_AGENT_PROVIDED_UNSUPPORTED_INPUT_ARTIFACT` 被拒
 - **R-FL-STIME-03** 总 Run abort、显式更小部署 deadline、任务 deadline、fence 与取消继续优先；真正超过新 deadline 仍必须 abort、无 receipt、失败关闭。
 - **AC-FL-STIME-01** TDD须锁定默认 180 秒和显式覆盖；Worker official unit、typecheck/build、Biome、Trellis/diff 与 scoped commit 通过后，
   必须再用新 clean build/fresh物理scratch从A1重跑六题，不能拼接 `5d7a80dd` 的 A1/A2。
+
+### 22.10 B 组预检收敛为 Semantic + Text2SQL 事实闭包
+
+`4b26b01e` fresh scratch 的 A1/A2/A3 已连续通过独立业务、QA 和 Trace。B1 唯一 Run
+`cf4a62f5-046c-8641-91a1-2d4392fb7d5f` 保留 FAILED：Root 前两次 Semantic 委派均在受治理 catalog tool 执行中失败，
+第三次才接受 SemanticQueryContext；第四回合 Text2SQL 正确提交 SqlArtifact、4 行 QueryEvidence 和渠道图，但把输出标为
+`CONTINUATION_INPUT`，随后 Root 四回合耗尽，答案为空。独立源数据 Oracle 已证明四渠道投入、营销归因收入和已发布 ROAS 全部正确；
+失败不能计 PASS，也不重提。
+
+依据用户已明确授权“多次不过时可降低难度，去语义层定义公式或术语，主要证明语义层+Text2SQL Agent 协作”，下一版
+`complex-l4-semantic-defined@4.0.0` 只收敛非计分 B 组预检题面；A 组三题、正式 §20 的 15 回合门禁、来源/安全/Oracle/同 Run UI 均不变：
+
+1. `使用已发布公式“营销ROAS”（formula.marketing_roas；按渠道先汇总营销归因收入与营销投入，汇总投入为0时结果为0，否则以汇总收入÷汇总投入计算），由 Semantic 解释该发布公式、Text2SQL 按渠道输出总营销投入、营销归因收入和ROAS并给出渠道对比图。本题不要求额外统计分析或因果解释。`
+2. `沿用同一渠道范围，把回报改为请求级“净ROI”：先按渠道分别汇总营销归因收入和营销投入，再计算（汇总收入－汇总投入）÷汇总投入。由 Semantic 形成 REQUEST_ONLY/NONE 口径、Text2SQL 重算并给出渠道对比图；不要复用ROAS列，本题不要求额外统计分析或因果解释。`
+3. `比较数据中最近两个完整的营销表现自然月：时间字段使用已发布维度“blinkit_marketing_performance date”，收入使用已发布的“营销归因收入”；以较早月为基期、较晚月为本期，沿用请求级净ROI，筛选总营销投入增加且净ROI下降的渠道，再按目标人群列出这些渠道两个月的营销投入、营销归因收入和净ROI并给出对比图。由 Semantic 解析 RECENT_COMPLETE_PERIODS + AGGREGATE_RATIO，Text2SQL 完成事实表与图；只报告数据差异和口径，不做原因、因果或建议分析。`
+
+- **R-FL-BFACT-01** 上述题面只能引用 active generation 2 已有的 Formula/Metric/Dimension 和请求级 operator；不得发布新公式、
+  修改 retained release、由 Host 填 ID 或另建第二套语义权威。ROAS 仍按已发布 AST，净 ROI 仍为 REQUEST_ONLY/NONE + REQUEST_DERIVED。
+- **R-FL-BFACT-02** B1/B2/B3 的预期完成链是动态 `Semantic -> Text2SQL -> FINAL_ANSWER`；QueryEvidence 与图能完整回答时必须以
+  `FINAL_ANSWER_EVIDENCE` 结束，不为未请求的分析预留回合。Semantic 或 Text2SQL 缺失、当前 Run 来源错误、公式/窗口/分组错误仍失败。
+- **R-FL-BFACT-03** 只降低额外分析与自由叙事要求；SQL、数值、公式、时间窗、history binding、Artifact lineage、一次提交、同 Run QA/Trace
+  和 live authority 零漂移要求不降低。必须用新 clean build/fresh物理scratch从A1重跑六题，不拼接 `4b26b01e` 的 A组三个 PASS。

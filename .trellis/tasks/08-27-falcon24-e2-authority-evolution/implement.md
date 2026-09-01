@@ -2167,3 +2167,17 @@ A3 Run `e5c84cff-6291-85ce-969e-27bc9b1057e5` 保留 FAILED：Semantic/Text2SQL 
   Trellis task validate 与 `git diff --check` 通过。显式 90 秒 override 仍生效，未增加 Root 回合、模型预算或业务 Oracle 难度。
 - [x] 创建 scoped commit。
 - [ ] 审计并关闭 `5d7a80dd` 现场；新 clean build/fresh物理scratch从A1重跑六题，不拼 A1/A2。
+
+`4b26b01e` clean build/full unit/fresh E17 scratch 的 A1/A2/A3 已连续通过独立 source/stage/business 与同 Run QA/Trace，
+节点数分别为 73/76/76；A3 单次 Analysis 已正常返回 accepted output，证明 180 秒 Side Effect 前向修复有效。
+
+B1 唯一 Run `cf4a62f5-046c-8641-91a1-2d4392fb7d5f` 保留 FAILED：前两次 Semantic catalog tool 失败，第三次接受
+SemanticQueryContext，第四回合 Text2SQL 提交正确 SqlArtifact、4 行 QueryEvidence 和渠道图但声明 `CONTINUATION_INPUT`，随后 Root
+budget exhausted、答案为空。独立源数据 Oracle 对 App/Email/SMS/Social Media 的投入、营销归因收入和 ROAS 全部 PASS；这些正确前缀不计题目 PASS。
+live before/after 348 表一致且仍 E16，Web/Worker/browser/55521 已关闭，scratch volume 保留，Sandbox residual=0。
+
+- [x] 仅读取 ProviderResponse 的 native tool/profile/ref 类型、hash、公开 team task 状态与 reason code；未公开模型 objective/原文。
+- [x] 按用户授权将下一版非计分 B 组预检收敛为已发布术语/公式 + Semantic→Text2SQL 事实表/图，不要求额外 Analysis、原因或建议；
+  A 组三题和正式15回合门禁不变，来源/公式/Oracle/UI/authority标准不降。
+- [x] Trellis task validate 与 `git diff --check` 通过，创建 scoped docs commit；随后新 clean build/fresh物理scratch从A1重跑六题，
+  不拼本轮 A1/A2/A3。
