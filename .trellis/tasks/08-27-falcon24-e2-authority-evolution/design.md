@@ -2026,3 +2026,20 @@ operator obligations 选择；父比例仍按 SUM-before-ratio，完整窗口/�
 `4.2.0`。因此验证必须同时检查 intent/retrieval hashes、selected date column/dimension、current Run Context 和后续完整业务链，不能只看最终答案。
 
 失败 Run 不重提。scoped commit 后关闭旧 epoch，以新 build/generation、fresh scratch 和新 Conversation 从 A1 重跑，旧五题不计入新 PASS。
+
+## 42. 请求派生输出列与单 Stage 编排是同一问题合同的两个边界
+
+`a35b67b5` B3 证明 retrieval 闭包已经修复：精确公开日期名同时冻结了 physical date column 和唯一营销日期 Dimension，Semantic 也在当前
+Run 生成了正确的时间窗口与净 ROI request interpretation。Text2SQL 的候选 shape 却只有五列。Compiler 拒绝它不是偶发模型错误，而是
+QueryEvidence 合同要求每个 request derivation 有同 Context hash 的 `REQUEST_DERIVED` 输出 binding；题面只说“事实面板”而未列出净 ROI，
+使模型稳定遗漏该列。
+
+`4.4.0` 因此把完整面板的逻辑 schema 写成六列，并明确 `net_roi` 是当前请求级 SUM-before-ratio 派生值。这不注入 SQL 或结果值，Semantic
+仍拥有 operator，Text2SQL 仍必须通过现有 compiler/proof。Analysis 之后从32行子组面板重新做父渠道汇总，不能平均子组比例。
+
+A2 的四个重复 Analysis Stage 则说明“必须交给 Analysis”仍不足以约束一次问题交接。`4.4.0` 将 A2 定义为单 task/single stage：一个 accepted
+QueryEvidence、一个 Analysis Stage/Report，在该 stage 内同时完成整体月份排名、客户类型贡献和两类图发布。重复 stage、重复答案或重复图不能
+靠后处理折叠为 PASS。该约束只影响非计分题面及验收器，不新增 Host 路由、方法、Publisher 或额度。
+
+新 epoch 必须从 A1 重跑。B3 要同时证明 frozen selection、双 interpretation、六列 QueryEvidence、单 Analysis Stage、32行 source/stage
+Oracle 和同 Run UI；A2 要证明单 Stage 与恰好两类必需图。旧 epoch 的局部 PASS 只用于回归定位。

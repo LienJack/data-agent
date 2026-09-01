@@ -988,3 +988,35 @@ Analysis可同时报告其他受验分类轴。只作描述性比较，任何可
   旧 `4.2.0` Run 与前五题 PASS 保持历史，不能拼接。
 - **AC-FL-TIME-CLOSURE-01** scoped docs commit 后审计并关闭 `a7d34c53`；新 clean build/fresh physical scratch 从 A1 连续重跑六题。
   B3 只有当前 Run retrieval/Context、完整 QueryEvidence、Analysis Stage、source/business Oracle、答案和 QA/Trace 全部通过才闭合预检。
+
+### 22.14 请求派生列与单 Analysis Stage 必须由题面显式约束
+
+`a35b67b5` 的 `4.3.0` 已证明精确公开维度名修复有效：B3 Run `b721daf0-620b-8205-ba2a-c154b309bbef` 的 frozen selection
+同时包含营销事实日期列与 `dimension.runtime_time_blinkit_marketing_performance_date`，当前 Run SemanticQueryContext 也正确产生
+`RECENT_COMPLETE_PERIODS` 和请求级 `AGGREGATE_RATIO` 两个 interpretation。失败转移到 Text2SQL compile：三次候选都只输出月份、渠道、目标人群、
+投入和收入五列，遗漏与 request derivation 对应的 `net_roi` 输出绑定，因而被 `QUERY_EVIDENCE_REQUEST_DERIVATION_BINDING_INVALID`
+正确拒绝；零 SQL 执行、QueryEvidence 或 Analysis。
+
+同一 epoch 的 A2 Run `0eaaaa1b-8842-8b4e-a4b8-d3799657ad1f` 虽然当前 Run 事实正确，却把一个问题拆成四个 Analysis task/stage，
+重复答案与图表，违反一次交接和恰好两类必需图的业务合同。A1、B1、B2 已完成独立业务及同 Run UI 验收，但都只保留为诊断证据，不能跨 epoch
+拼成 PASS。前向非计分 profile 版本化为 `complex-l4-semantic-defined@4.4.0`；A1/A3/B1/B2 不变：
+
+- A2：`沿用上一题最近12个完整月的同比窗口。由 Semantic 保留订单收入、订单月份、客户类型和同比口径，Text2SQL 输出完整的12个月 ×
+  客户类型同比事实面板；随后只委派一个受治理 Analysis task，并在同一个 Analysis Stage 内一次完成整体同比下降最大的3个月、各客户类型对
+  整体同比变化的贡献，同时一次发布整体同比趋势图和客户类型对比图。不得拆成多个 Analysis task/Stage，不得重复发布同一分析或图；不能只返回
+  48行原始表格，也不能用历史答案替代当前Run证据。`
+- B3：`继续使用上两题的渠道范围和请求级净ROI口径。比较数据中最近两个完整的营销表现自然月：时间字段使用已发布维度
+  “blinkit_marketing_performance date”，收入使用已发布的“营销归因收入”。由 Semantic 解析 RECENT_COMPLETE_PERIODS +
+  AGGREGATE_RATIO；Text2SQL 必须输出完整 month × channel × audience 两月事实面板，共32行，每行包含营销投入、营销归因收入和按该分组
+  先汇总后相除的请求级净ROI，SQL阶段不得预筛。随后只委派一个受治理 Analysis task，从完整当前Run面板按渠道重新汇总并筛出本期投入增加且
+  净ROI下降的渠道，列出入选渠道的全部目标人群事实。以渠道筛选为主要结论；Analysis可同时报告其他受验分类轴。只作描述性比较，任何可能原因
+  或下一步必须明确标为待验证假设，禁止因果或持续趋势断言。`
+
+- **R-FL-EXPLICIT-BINDING-01** B3 的 QueryEvidence 必须含 `month/channel/target_audience/spend/revenue/net_roi` 六个受验绑定；
+  `net_roi` 必须引用当前 SemanticQueryContext 的 REQUEST_ONLY interpretation。不能删掉派生列、把它伪装成已发布公式或由 Host 补列。
+- **R-FL-SINGLE-STAGE-01** A2 只允许一个当前 Run Analysis task/stage，一次发布两类必需图；不得将多个重复 Stage/Report/Chart 合并为 PASS。
+  B3 同样只允许一次 Analysis 交接，父渠道比例仍从完整32行面板按 SUM-before-ratio 重算。
+- **R-FL-44-SCOPE-01** `4.4.0` 只澄清已有语义/编译/编排合同，不改变 frozen closure、编译器、SQL proof、方法实现、模型预算、Oracle、权限、
+  live authority 或 UI 标准。
+- **AC-FL-44-01** 关闭 `a35b67b5` 并证明 live E16 零漂移后，以新 clean build/fresh physical scratch 从 A1 重跑六题；六题同 epoch
+  全部完成独立 source/stage/business Oracle 和同 Run QA/Trace 后才进入 F5/F7。

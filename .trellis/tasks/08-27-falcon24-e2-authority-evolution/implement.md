@@ -2265,3 +2265,20 @@ B3 唯一 Run `978479c0-63e6-805f-9537-86766d5be830` 首次 Semantic 为 stream 
 `a7d34c53` live after audit 的 348 张表 fingerprint 与 before 逐表一致，authority 仍为 E16；Worker 停机前 exact build 且 IDLE。
 本轮两个 browser/auth、Web/Worker、55527 forward 与 scratch container 已关闭，volume 只作停止 checkpoint 保留；普通 NAS 数据库 healthy，
 OrbStack 为 0。receipt 为 `complex-a7d34c53-after.json` 与 `complex-a7d34c53-runtime-cleanup.json`。
+
+`a35b67b5` clean build/full unit/fresh E17 scratch 已执行 `4.3.0`。A1、B1、B2 分别完成独立 source/stage/business Oracle 与同 Run
+QA/Trace；B2 Run `3dc175e8-ad69-8a6c-86d2-3e843811a839` 的四渠道 QueryEvidence 与数据库逐项一致，单 Analysis Stage、两图和73个
+Trace节点均通过。A2 Run `0eaaaa1b-8842-8b4e-a4b8-d3799657ad1f` 产品事实正确但拆成四个重复 Analysis task/stage 与八张图，业务拒绝，
+所以 A3 未提交。
+
+B3 Run `b721daf0-620b-8205-ba2a-c154b309bbef` 已确认 `4.3.0` 将正确日期列/维度纳入 frozen selection，Semantic 双 interpretation
+正确；三个 Text2SQL 候选稳定遗漏请求级 `net_roi` 输出列，以 `QUERY_EVIDENCE_REQUEST_DERIVATION_BINDING_INVALID` 在 compile 阶段失败，
+零 datasource execution/QueryEvidence/Analysis，最终 turn budget exhausted。
+
+- [x] 只读保存当前 Run frozen intent/retrieval、Semantic Context、74个事件及三次五列候选拒绝证据，确认日期闭包修复有效且新断点为 request
+  derivation output binding。
+- [x] 前向版本化 `complex-l4-semantic-defined@4.4.0`：B3 明确32行六列面板及请求级 `net_roi`；A2 明确唯一 Analysis task/stage 与一次
+  发布两类必需图。其余题、proof、Oracle、权限、预算和 UI 标准不变。
+- [x] Trellis validate、diff check 与 scoped docs commit。
+- [ ] 审计并关闭 `a35b67b5` 现场，证明 live E16 零漂移；新 clean build/fresh scratch 从 A1 重跑六题，不拼本轮局部 PASS。
+- [ ] 六题闭合后继续 F5/F7 版本化 15 回合、同 Run QA/Trace、authority、浏览器页面与最终清理。
