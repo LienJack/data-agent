@@ -2181,3 +2181,16 @@ live before/after 348 表一致且仍 E16，Web/Worker/browser/55521 已关闭�
   A 组三题和正式15回合门禁不变，来源/公式/Oracle/UI/authority标准不降。
 - [x] Trellis task validate 与 `git diff --check` 通过，创建 scoped docs commit；随后新 clean build/fresh物理scratch从A1重跑六题，
   不拼本轮 A1/A2/A3。
+
+`03a5a2be` clean build/full unit/fresh E17 scratch 已在同一 frozen build 连续完成 A1/A2/A3/B1/B2 的独立业务、QA/Trace 与刷新。
+B1 真实证明已发布营销 ROAS 的 Semantic→Text2SQL 协作；B2 真实证明请求级净 ROI 的 `REQUEST_ONLY/NONE` 解释、当前 Run 重算、
+无 ROAS 结果列复用及四渠道精确源表 Oracle。B3 唯一 Run `2855437c-4431-8646-8e47-f5e89d0fc174` 在 Root 首次调用即收到
+DeepSeek 402，5 events、0 Specialist、0 Artifact，保留 immutable FAILED 且未重提。官方无模型余额探针返回
+`is_available=false`，故当前进入非终态 `ACTIVE/WAITING_EXTERNAL`，不是门禁 PASS 或任务终止。见
+[03a5a2be Provider 等待 checkpoint](research/complex-03a5a2be-provider-wait-checkpoint.md)。
+
+- [x] live before/after 348 表 fingerprint 完全一致且仍 E16；Web/Worker、浏览器/auth、55523 与 scratch container 已关闭，
+  volume 作为 checkpoint 保留，普通 NAS 数据库 healthy，OrbStack 未启动，Sandbox residual=0。
+- [x] 独立 backlog、失败分类、恢复边界和唯一恢复步骤已固化；等待期间不创建 Run、不调用模型、不写 gate/authority。
+- [ ] 按 `5m -> 15m -> 30m` 无模型探针复查；首次 `is_available=true` 后从新 clean build/fresh physical scratch 的 A1 重跑六题，
+  不拼本轮五个 PASS；六题闭合后继续 F5/F7 15 回合正式门禁。
