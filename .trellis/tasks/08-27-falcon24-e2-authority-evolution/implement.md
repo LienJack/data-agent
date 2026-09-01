@@ -2228,3 +2228,18 @@ B3 唯一 Run `54be4db1-e8b2-8485-a1e3-6333d3607f36` 接受当前 Run SemanticQu
 OrbStack仍为0。审计与清理receipt分别为 `complex-2217ff9c-after.json` 和 `complex-2217ff9c-runtime-cleanup.json`。
 
 - [x] `2217ff9c` frozen epoch 安全收口完成，无 live authority 写入或临时运行残留。
+
+`f02d610a` clean build/full unit/fresh E17 scratch 已执行 `4.1.0` 六题前缀。A1、B1、B2 分别完成独立 source/business Oracle、
+同 Run QA/Trace 与刷新。A2 Run `32110f83-ac3a-8594-b38e-014537158d9e` 虽 SUCCEEDED 且 48 行事实、整体重组和最差三个月
+Oracle 正确，但只走 Semantic/Text2SQL，缺 Analysis Stage、Report 与两张图，故本题 gate FAIL，不提交 A3。
+
+B3 Run `807a1d26-29c5-888e-98ce-627283a72780` 已真实走 Semantic/Text2SQL/Analysis；32 行完整面板、独立源 Oracle、stage result
+零差异，渠道主筛选唯一为 `SMS`，四类目标人群均保留。答案同时输出目标人群轴空筛选与明确标注的待验证假设/下一步，和 `4.1.0`
+“不做原因或建议”文案冲突，因此当前题面仍不签 business/UI PASS。
+
+- [x] 只读独立复算确认 B3 QueryEvidence、Analysis 输入、受验 Stage 输出和 selected axes 零差异；不是 Semantic/Text2SQL、公式或数据故障。
+- [x] 将前向非计分 profile 版本化为 `complex-l4-semantic-defined@4.2.0`：A2/B3 显式要求 Analysis 交接；B3 允许清晰标注的待验证假设，
+  仍禁止因果与持续趋势断言。其余四题、proof、Oracle、预算和 UI 标准不变。
+- [x] Trellis validate、diff check 与 scoped docs commit。
+- [ ] 审计并关闭 `f02d610a` 现场，核对 live E16 零漂移；新 clean build/fresh physical scratch 从 A1 重跑六题，不拼本轮结果。
+- [ ] 六题闭合后继续 F5/F7 版本化 15 回合、同 Run QA/Trace、authority、浏览器页面与最终清理。

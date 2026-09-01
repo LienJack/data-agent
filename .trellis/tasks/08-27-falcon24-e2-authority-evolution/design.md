@@ -2000,3 +2000,17 @@ SemanticQueryContext；六个 Text2SQL candidate 分别停在 request derivation
 这一变化只明确能力顺序，不把 B3 改成单月/单分类，也不新增 Host SQL、答案生成、关键词路由、Formula、publisher、repair 或 call budget。
 原 proof、来源、窗口、zero-denominator、完整面板 Oracle、history binding 与同 Run UI 标准不变。旧 `4.0.0` Run 和 hashes 不改写；
 scoped commit 后必须新 build/fresh scratch 从 A1 重跑六题。
+
+## 40. Analysis 必需交接与标准输出契约
+
+`f02d610a` 证明两个相反但同源的题面歧义。A2 的 48 行完整事实和答案数值正确，却因题面只描述“拆开看看”而允许 Root 在
+QueryEvidence 后直接结束，绕过已有 `monthly_panel` Analysis 与两图 Publisher。B3 则真实进入 `ratio_rollup` Analysis；Host 受验输出按所有
+已选分类轴做父级筛选，并在事实后生成明确受限的 hypotheses/next steps。`4.1.0` 把任何原因或建议都判失败，会把标准受验输出误判为业务错误。
+
+`4.2.0` 只调整编排合同。A2 在 Text2SQL 完整面板后显式要求 Analysis Agent、整体同比排名、客户类型贡献和两张既有确定性图；B3 在完整
+双月面板后显式要求 Analysis Agent，以渠道 rollup 为主验收，同时允许受验方法报告其他分类轴。B3 的叙述分为 observed facts、口径和
+clearly-labeled hypotheses；假设不能升级为因果、持续趋势或确定建议。Root 直接原表总结对 A2/B3 都失败，B1/B2 仍保持事实问答短链。
+
+这不是按题目关键词新增 Host 路由，也不改变编译器、Executor、方法选择、Oracle、Publisher 或答案后处理。方法仍由当前 Run 的受验源形状和
+operator obligations 选择；父比例仍按 SUM-before-ratio，完整窗口/分组/来源 proof 不变。旧 Run、Stage、Artifact 与 profile 保持不可变；
+新 profile 必须在新 frozen build/fresh scratch 从 A1 完整重跑，禁止跨 epoch 合成 PASS。

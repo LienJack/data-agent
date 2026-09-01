@@ -933,3 +933,32 @@ AGGREGATE_RATIO；Text2SQL 先按营销月份、渠道、目标人群输出完�
 - **AC-FL-BPANEL-01** 完成 scoped docs commit 后，关闭旧现场并证明 live E16 零漂移；用新 clean build/fresh physical scratch 从 A1
   连续重跑六题。只有 B3 同一 Run 的 SemanticQueryContext、SqlArtifact、完整 QueryEvidence、独立 source/business Oracle、答案和 Trace
   全部通过，才算六题预检闭合；不得拼接 `2217ff9c` 的五个 PASS。
+
+### 22.12 A2/B3 的 Analysis 交接与描述性边界
+
+`f02d610a` clean build/fresh E17 scratch 的 A1、B1、B2 已完成独立业务 Oracle 和同 Run QA/Trace。A2 Run
+`32110f83-ac3a-8594-b38e-014537158d9e` 的 Semantic、Text2SQL、48 行月度客户类型面板和独立源 Oracle 全部正确，但 Root 直接用
+QueryEvidence 完成答案，没有委派 Analysis，因而没有受验 Stage、AnalysisReport 或两张确定性图。B3 Run
+`807a1d26-29c5-888e-98ce-627283a72780` 已真实完成 `Semantic -> Text2SQL -> Analysis`，32 行完整双月面板、渠道筛选
+`SMS`、全部四类人群、stage result 与独立 Oracle 均零差异；输出另含按目标人群轴的空筛选和明确标注的待验证假设/下一步。
+
+两题都没有产品数据或公式错误。前者是题面未把 Analysis 作为必需交接，后者是 `4.1.0` 禁止任何原因/建议的文案与已验收
+`ratio_rollup` 方法的标准描述性结尾不一致。依据用户允许明确语义术语和降低反复失败的叙事难度，前向非计分 profile 版本化为
+`complex-l4-semantic-defined@4.2.0`；其余四题不变：
+
+- A2：`沿用上一题最近12个完整月的同比窗口。由 Semantic 保留订单收入、订单月份、客户类型和同比口径，Text2SQL 输出完整的
+  12个月 × 客户类型同比事实面板；随后必须交给 Analysis Agent，计算整体同比下降最大的3个月及各客户类型对整体同比变化的贡献，
+  并发布整体同比趋势图和客户类型对比图。不能只返回48行原始表格，也不能用历史答案替代当前Run证据。`
+- B3：`继续使用上两题的渠道范围和请求级净ROI口径。比较最近两个完整的营销表现自然月：Semantic 解析已发布营销日期、营销归因收入、
+  RECENT_COMPLETE_PERIODS + AGGREGATE_RATIO；Text2SQL 先输出完整 month × channel × audience 两月事实面板，SQL阶段不得预筛。
+  随后必须交给 Analysis Agent，从完整当前Run面板按渠道重新汇总并筛出本期投入增加且净ROI下降的渠道，列出入选渠道的全部目标人群事实。
+  以渠道筛选为主要结论；Analysis可同时报告其他受验分类轴。只作描述性比较，任何可能原因或下一步必须明确标为待验证假设，禁止因果或持续趋势断言。`
+
+- **R-FL-AHANDOFF-01** A2/B3 必须在同一 Run 形成当前 SemanticQueryContext、SqlArtifact、QueryEvidence、受验 Analysis Stage、
+  AnalysisReport 和所需图；Root 直接总结原始表不满足这两题。B1/B2 仍允许 `Semantic -> Text2SQL -> FINAL_ANSWER`，不得统一强塞 Analysis。
+- **R-FL-AHANDOFF-02** A2 必须保留 48 行完整面板、整体重组与三个月排名，并发布恰好两类必需图。B3 必须保留 32 行完整面板、
+  父渠道先汇总再相除和入选渠道全部子组；额外分类轴只能补充，不能替代渠道主结论。
+- **R-FL-AHANDOFF-03** “待验证假设”不是因果证明。答案必须把事实、口径与假设分区，不能声称持续趋势、根因或确定性建议。
+  `4.2.0` 不修改生产分析方法、SQL proof、公式、权限、publisher、repair 或模型预算。
+- **AC-FL-AHANDOFF-01** 关闭 `f02d610a` 现场并证明 live E16 零漂移后，用新 clean build/fresh physical scratch 从 A1 重跑六题；
+  不拼接本轮 A1/B1/B2 或 A2/B3 的部分事实。六题全部完成独立 source/stage/business Oracle 和同 Run QA/Trace 后才进入 F5/F7。
