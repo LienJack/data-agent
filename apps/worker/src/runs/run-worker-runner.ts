@@ -365,7 +365,7 @@ export function createRunWorkerRunner(dependencies: RunWorkerRunnerDependencies)
   const timing = workerRuntimeTimingSchema.parse({
     execution_timeout_ms: dependencies.execution_timeout_ms ?? 300_000,
     heartbeat_interval_ms: dependencies.heartbeat_interval_ms ?? 15_000,
-    side_effect_timeout_ms: dependencies.side_effect_timeout_ms ?? 60_000,
+    side_effect_timeout_ms: dependencies.side_effect_timeout_ms ?? 180_000,
   });
 
   async function readProjection(lease: RunWorkLease): Promise<PortResult<RunProjectionRecord>> {

@@ -866,3 +866,17 @@ Catalog admission 前以 `ROOT_AGENT_PROVIDED_UNSUPPORTED_INPUT_ARTIFACT` 被拒
   业务计划器或 Analysis 输入扩权。受保护 ProviderResponse 保留原调用，admission receipt 记录实际收窄后的引用。
 - **AC-FL-RNARROW-01** TDD须证明 QueryEvidence+SemanticQueryContext 对只接受 QueryEvidence 的 Analysis 收窄为 exact QueryEvidence，原参数不变；
   仅 SemanticQueryContext 仍拒绝。完成 focused/full validation 与 scoped commit 后，必须用新 clean build/fresh physical scratch 从 A1 重跑六题。
+
+### 22.9 多节点 Analysis 的 Side Effect 时间闭包
+
+`5d7a80dd` fresh scratch 的 A1/A2 已完成独立业务与同 Run QA/Trace。A3 重新形成 48 行正确分组同比证据；第一次 Analysis 在默认
+60 秒 Side Effect deadline 到达时已生成部分受治理产物，但没有返回完成 receipt，Root 收到 `RUN_SIDE_EFFECT_TIMEOUT`。第二次正常 Analysis
+委派随后以 orchestration failure 结束，最终耗尽四个 Root 回合。Run 保持 FAILED；未验收 Analysis Artifact 不计答案或 PASS。
+
+- **R-FL-STIME-01** Worker 默认总 Run execution 仍为 300 秒，默认单 Side Effect deadline 调整为 180 秒；部署仍可在原 10–900,000ms
+  合同内显式收窄或覆盖。programmatic runner fallback 与 daemon 默认必须一致。
+- **R-FL-STIME-02** 调整只给同一次已准入 Side Effect 足够的完成窗口；不得扩大冻结 Root/Profile/task 预算，不增加 Provider/Analysis 调用、
+  repair 次数或权限，也不得把超时后的未验收 Artifact 变为 accepted observation。
+- **R-FL-STIME-03** 总 Run abort、显式更小部署 deadline、任务 deadline、fence 与取消继续优先；真正超过新 deadline 仍必须 abort、无 receipt、失败关闭。
+- **AC-FL-STIME-01** TDD须锁定默认 180 秒和显式覆盖；Worker official unit、typecheck/build、Biome、Trellis/diff 与 scoped commit 通过后，
+  必须再用新 clean build/fresh物理scratch从A1重跑六题，不能拼接 `5d7a80dd` 的 A1/A2。

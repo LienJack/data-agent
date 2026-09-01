@@ -86,6 +86,10 @@ Root turn 0..3 (AUTO)
   MODEL_RESPONSE_EMPTY/MODEL_RESPONSE_INVALID_JSON 不得恢复。
   Root 依据冻结目录纠正 native call，不重新查询已有证据；最后回合产出最终证据仍只走既有确定性答案验收。
 - `ROOT_HARNESS@1` is the only Q&A executor. V1/V2/`LEGACY_FIXED@1` leases return `ROOT_AGENT_LEASE_VERSION_UNSUPPORTED` and never fall back。
+- Worker 的通用 Run execution 默认总时限保持 300 秒；单个持久化 Side Effect 默认时限为 180 秒（部署可在既有 10–900,000ms
+  合同内显式覆盖），使一次受治理的多节点 Analysis 能在同一正常委派内完成。该值不改变 Root/Profile/task 的冻结预算、不增加模型调用、
+  修复回合或工具权限；总 Run abort、显式更小部署值和 task deadline 仍优先。Side Effect 超时不提交 receipt，已生成但未通过 child acceptance 的
+  Artifact 不能成为 Root accepted observation，也不能被后续答案或正式门禁计分。
 - Root v3 ProviderTask commit 必须消费 exact EffectiveConfig conversation receipt 与冻结的 `visible_message_refs`；历史 `START_L2_RESEARCH` lease 没有 refs 时只允许在 live Conversation version 仍等于 command version 的条件下保留无摘要 replay。两条分支共用同一个 RPC，不存在 legacy fallback writer 或第二套上下文权威。
 - ProviderTask 的历史 `agent/text` 是面向用户的已渲染答案，不是 Root 的原始 JSON/Tool 响应。
   Root 请求将其逐条包装成明确标注的 untrusted history JSON（wire role=`user`），原 role、content、message/run id、hash 全量保留；

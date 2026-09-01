@@ -22,7 +22,7 @@ const workerEnvironmentSchema = z
     lease_duration_ms: z.coerce.number().int().min(5_000).max(900_000).default(30_000),
     heartbeat_interval_ms: z.coerce.number().int().min(10).max(300_000).default(10_000),
     execution_timeout_ms: z.coerce.number().int().min(10).max(3_600_000).default(300_000),
-    side_effect_timeout_ms: z.coerce.number().int().min(10).max(900_000).default(60_000),
+    side_effect_timeout_ms: z.coerce.number().int().min(10).max(900_000).default(180_000),
     health_port: z.coerce.number().int().min(1_024).max(65_535).default(9_091),
     research_authority_capability_ids: z
       .custom<ResearchAuthorityCapabilityIds>()

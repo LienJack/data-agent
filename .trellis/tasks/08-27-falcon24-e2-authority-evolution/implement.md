@@ -2151,3 +2151,19 @@ Semantic 与 Text2SQL 已提交 SemanticQueryContext、SqlArtifact、12行 Query
 - [x] 创建 scoped commit。
 - [ ] 停止当前 Web/Worker/浏览器和旧 scratch，核对 live E16 零漂移；新 clean force build/fresh物理scratch从A1重跑六题，不拼接 ce2a488d 的
   Semantic/Text2SQL 前缀。六题闭合后继续 F5/F7 15回合、同Run QA/Trace、authority 与最终清理。
+
+`5d7a80dd` clean force build 8/8、workspace unit 15/15、fresh物理scratch 55520、数据集/认证/E17 scratch-only activation 与
+SERVER_PROXY 无模型探针闭合。A1 Run `3a1e6807-169f-8877-82f5-b85feebe3a66`、A2 Run
+`6d06e45d-aeea-83d0-9f64-284588482f50` 均完成 Semantic→Text2SQL→Analysis、独立 source/stage/business Oracle 和同 Run
+QA/Trace（73/80 节点），证明 Root 输入收窄有效。
+
+A3 Run `e5c84cff-6291-85ce-969e-27bc9b1057e5` 保留 FAILED：Semantic/Text2SQL 重新提交正确 48 行证据；第一次 Analysis 在默认
+60 秒 Side Effect deadline 以 `RUN_SIDE_EFFECT_TIMEOUT` 返回 FAILED observation，第二次正常委派以
+`GOVERNED_ANALYSIS_ORCHESTRATION_FAILED` 结束，最终 Root budget exhausted。数据库中可观察到未被 child acceptance 接受的 Analysis/图表，
+但 Root observation 没有 output_ref，答案为空，未计 PASS、未重提。
+
+- [x] TDD先RED证明 daemon 默认仍为 60 秒；默认与 programmatic runner fallback 调整为 180 秒后GREEN，并锁定显式90秒覆盖仍生效。
+- [x] Worker daemon/runner focused 47、official unit 101 全部 PASS；Worker typecheck/build、3 个 owned TypeScript Biome、
+  Trellis task validate 与 `git diff --check` 通过。显式 90 秒 override 仍生效，未增加 Root 回合、模型预算或业务 Oracle 难度。
+- [x] 创建 scoped commit。
+- [ ] 审计并关闭 `5d7a80dd` 现场；新 clean build/fresh物理scratch从A1重跑六题，不拼 A1/A2。

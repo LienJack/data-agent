@@ -1930,3 +1930,22 @@ original input refs
 未知 Profile、无受支持引用、错误输出类型、未验收/跨 Run 引用仍走原失败关闭与有界 verifier feedback。原 ProviderResponseArtifact 与实际
 delegation receipt 分别保留修复前调用和修复后受理输入，恢复时不重放 Provider 调用。新构建/fresh scratch 必须证明 Analysis 真正执行并由原
 Oracle/Publisher 验收；Harness 单测不计业务 PASS。
+
+## 36. Run Side Effect 的分层 deadline
+
+Worker 的 Run 总执行 deadline 与单 Side Effect deadline 是两层不同边界。总执行默认 300 秒，负责终止整个 lease execution；单 Side Effect
+默认从 60 秒调整为 180 秒，允许一次 Analysis 委派内的多节点 Provider、Sandbox、Oracle 与 Publisher 正常闭合，同时仍给总 Run 留出终止边界。
+部署显式 `WORKER_SIDE_EFFECT_TIMEOUT_MS` 继续按原 10–900,000ms schema 解析；没有新增题目、Profile 或模型可选开关。
+
+```text
+accepted Analysis delegation
+  -> one executeSideEffectOnce identity
+  -> 180s default effect deadline (or explicit deployment override)
+  -> existing AbortSignal + task/run/fence checks
+  -> completed output -> immutable receipt -> child acceptance
+  -> timeout/error -> no receipt and FAILED observation
+```
+
+该变化不延长 Root 四回合、不增加 Analysis repair/provider/tool 次数，也不改变 task 自报的 600 秒上限；实际执行仍取部署、Run、task 与取消信号
+中更早生效的边界。Side Effect 内部已产生但未完成 child acceptance 的 staged/committed Artifact 不会出现在 Root accepted output ref 中；
+后续新委派不得把它当作恢复 receipt。新 build/fresh scratch 必须从 A1 重验，真实证明 A3 在一次 Analysis 委派内完成原子 acceptance。

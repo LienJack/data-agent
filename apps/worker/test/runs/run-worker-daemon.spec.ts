@@ -59,6 +59,8 @@ describe("Run Worker daemon", () => {
       poll_interval_ms: 1_000,
       lease_duration_ms: 30_000,
       heartbeat_interval_ms: 10_000,
+      execution_timeout_ms: 300_000,
+      side_effect_timeout_ms: 180_000,
       health_port: 9_091,
       research_authority_capability_ids: null,
     });
@@ -66,6 +68,10 @@ describe("Run Worker daemon", () => {
     expect(() =>
       parseRunWorkerEnvironment(environment({ WORKER_HEARTBEAT_INTERVAL_MS: "12000" })),
     ).toThrow(/Heartbeat/i);
+    expect(
+      parseRunWorkerEnvironment(environment({ WORKER_SIDE_EFFECT_TIMEOUT_MS: "90000" }))
+        .side_effect_timeout_ms,
+    ).toBe(90_000);
 
     expect(
       parseRunWorkerEnvironment(
