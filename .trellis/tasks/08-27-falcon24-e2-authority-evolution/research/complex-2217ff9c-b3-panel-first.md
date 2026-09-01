@@ -36,3 +36,10 @@ SQL、参数值或 Secret。
 旧 `4.0.0`、失败 Run 与 candidate hash 不改写。这个 docs/profile 版本不增加模型调用、repair、权限、Formula、publisher 或 Host SQL，
 也不降低 source/business Oracle、图、history binding、同 Run QA/Trace 与 live E16 零漂移要求。scoped commit 后必须关闭旧现场，
 用新 clean build/fresh physical scratch 从 A1 重跑六题；`2217ff9c` 的五个 PASS 不能拼接。
+
+## 安全收口
+
+live after audit 对 348 张表逐表重算 fingerprint，和 `complex-2217ff9c-before.json` 完全一致，authority epoch 仍为 E16。
+Worker 停机前 build 为 `sha256:74fc00dd94cfac692791680578522d74a86d453bc9dbded55e56c3d41a9e96ad` 且最后周期 `IDLE`。
+两个本轮 browser/auth、Web/Worker、55525 SSH forward 与 scratch container 已精确关闭；
+`data-agent-falcon24-e17-2217ff9c-pgdata` 仅作为停止的 checkpoint 保留。普通 NAS PostgreSQL/Neo4j healthy，OrbStack 未启动。

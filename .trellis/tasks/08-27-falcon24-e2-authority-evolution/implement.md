@@ -2222,3 +2222,9 @@ B3 唯一 Run `54be4db1-e8b2-8485-a1e3-6333d3607f36` 接受当前 Run SemanticQu
 - [x] Trellis validate、diff check 通过；本项由 scoped docs commit 完成。随后审计/关闭 `2217ff9c` 现场，证明 live E16 零漂移。
 - [ ] 新 clean build/fresh physical scratch 从 A1 连续重跑六题；B3 同 Run完整面板、source/business Oracle、答案、QA/Trace 通过后，
   才进入 F5/F7 正式15回合。
+
+`2217ff9c` 现场现已关闭：live after audit 的348张表fingerprint与before逐表一致，authority仍为E16；Worker停机前为exact build且IDLE。
+本轮两个browser/auth、Web/Worker、55525 forward与scratch container已关闭，volume保留checkpoint；NAS普通PostgreSQL/Neo4j healthy，
+OrbStack仍为0。审计与清理receipt分别为 `complex-2217ff9c-after.json` 和 `complex-2217ff9c-runtime-cleanup.json`。
+
+- [x] `2217ff9c` frozen epoch 安全收口完成，无 live authority 写入或临时运行残留。
