@@ -2297,5 +2297,9 @@ SERVER_PROXY 无模型探针通过。`complex-l4-semantic-defined@4.4.0` 六题�
 - [x] 六题各自 source/stage/business Oracle 与同 Run QA/Trace/刷新通过，Trace 节点为73/76/80/73/73/98；这是
   `formal_gate_pass=false` 的非计分预检，不是15回合 authority PASS。
 - [x] 记录六题冻结证据，Trellis validate、diff check 后创建 scoped docs commit。
-- [ ] 关闭 `e5dc68c8` 现场并证明 live E16 零漂移；以新 HEAD clean force build/fresh physical scratch 建立版本化正式 manifest/attempt，
-  从 L1-01 严格执行15回合，业务通过后才做同 Run QA/Trace；全部通过后前向激活 E17、完成 F7 authority/页面/资源最终清理。
+- [x] 关闭 `e5dc68c8` 现场并证明 live E16 零漂移：after audit 的348张表 fingerprint与before逐表一致且authority仍E16；
+  Worker停机前为exact build/IDLE。两个browser/auth、Web/Worker、55529 forward与scratch container已关闭，volume保留checkpoint；
+  普通NAS PostgreSQL/Neo4j healthy，OrbStack为0，receipt为 `complex-e5dc68c8-after.json` 与
+  `complex-e5dc68c8-runtime-cleanup.json`。
+- [ ] 以新 HEAD clean force build/fresh physical scratch 建立版本化正式 manifest/attempt，从 L1-01 严格执行15回合，业务通过后才做
+  同 Run QA/Trace；全部通过后前向激活 E17、完成 F7 authority/页面/资源最终清理。
