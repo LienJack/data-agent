@@ -148,6 +148,38 @@ describe("Falcon24 governed semantic change set", () => {
         grain: { grain_id: "grain.order" },
       },
     });
+    const orderRevenueAssertion = first.change_set.assertions.find(
+      ({ canonical_key }) => canonical_key === "metric.order_revenue",
+    );
+    expect(
+      (
+        orderRevenueAssertion?.assertion_payload.metric as
+          | { aliases?: readonly string[] }
+          | undefined
+      )?.aliases,
+    ).not.toContain("收入");
+    expect(
+      first.change_set.assertions.find(
+        ({ canonical_key }) => canonical_key === "metric.marketing_revenue",
+      )?.assertion_payload,
+    ).toMatchObject({
+      metric: { aliases: expect.arrayContaining(["营销收入", "营销归因收入"]) },
+    });
+    expect(
+      first.change_set.assertions.find(
+        ({ canonical_key }) => canonical_key === "formula.marketing_revenue",
+      )?.assertion_payload,
+    ).toMatchObject({
+      formula: { aliases: expect.arrayContaining(["营销收入", "营销归因收入"]) },
+    });
+    expect(
+      first.change_set.assertions.find(
+        ({ canonical_key }) =>
+          canonical_key === "dimension.runtime_time_blinkit_marketing_performance_date",
+      )?.assertion_payload,
+    ).toMatchObject({
+      dimension: { aliases: expect.arrayContaining(["营销日期", "营销月份"]) },
+    });
     expect(
       first.change_set.assertions.find(
         ({ canonical_key }) => canonical_key === "metric.low_rating_rate",

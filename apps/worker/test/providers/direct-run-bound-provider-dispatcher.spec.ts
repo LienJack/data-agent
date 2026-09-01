@@ -392,6 +392,9 @@ describe("direct run-bound provider retry policy", () => {
     expect(prompt).toContain("TEAM_SEMANTIC_COMPARISON_WINDOW_REQUIRED");
     expect(prompt).toContain("Never invent a default duration");
     expect(prompt).toContain("SUBTRACT_DENOMINATOR for net ROI");
+    expect(prompt).toContain("union across every request_scoped_operations entry");
+    expect(prompt).toContain("RECENT_COMPLETE_PERIODS + AGGREGATE_RATIO");
+    expect(prompt).toContain("Do not substitute a Published ROAS formula for net ROI");
     expect(prompt).toContain("The Host canonicalizes only the ordering of these set-like arrays");
     expect(prompt).toContain("never adds, removes, or substitutes an ID");
     expect(

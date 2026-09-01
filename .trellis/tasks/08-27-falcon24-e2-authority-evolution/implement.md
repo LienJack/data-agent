@@ -2104,3 +2104,12 @@ Semantic set canonicalization修复验证：Contracts semantic suite 31、Worker
 以错误顺序发布，FULL Oracle按原行独立重算后拒绝，未重提。前向修复为分类方法增加无数据Python准备参考，不放宽Oracle、不修补输出、
 不增加预算；focused 55、Worker typecheck/build、Biome/diff及bundled Python实算通过。见
 [B1 分类排名复盘](research/complex-abb1e38c-category-ranking-reference.md)。提交后重新clean build/fresh scratch，从A1重跑六题。
+
+`d6484404` 新构建/scratch 的 A1/A2/A3/B1/B2 已完成独立来源、阶段、业务及同 Run QA/Trace；B2 真实走过 Semantic、Text2SQL、
+NAS OpenSandbox Analysis 与新分类准备参考。B3 唯一 Run `fdd08691-e2b0-805c-8fec-8b6030add4e0` 四次 Semantic strict schema 拒绝后
+FAILED，零 Semantic/SQL/Analysis Artifact，未重提。冻结检索证明无限定“收入”命中订单收入、营销事实日期维度被裁剪。
+前向修复已以 RED→GREEN 聚焦测试锁定营销收入/订单收入词典拆分、营销月份维度别名及多 operation membership 自检；Host schema、成员、
+预算和 Oracle 不放宽。见 [d6484404 Semantic 术语闭包复盘](research/complex-d6484404-semantic-term-closure.md)。完成 scoped commit 后必须
+重新 clean build/fresh scratch，从 A1 重跑六题，不拼接本轮五个 PASS。
+组件验证：change-set/provider 聚焦 22/22、Worker official unit 101/101、Worker typecheck/build、5 个 owned TypeScript Biome、
+Trellis task validate 与 `git diff --check` 均通过；这些仍不是新 B3 业务 PASS。

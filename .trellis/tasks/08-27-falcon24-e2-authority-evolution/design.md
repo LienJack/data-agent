@@ -1866,3 +1866,15 @@ receipt closure 和 close 检查完全相同。immutable attestation 保留既�
 
 该修复只消除“模型重复实现固定排序算法”的非业务难度，不改变 Semantic membership、Text2SQL、公式、Analysis 来源或自然语言结论；
 错误成员、错误值、漏组、重排 observations 仍失败关闭。`abb1e38c` B1 失败与 A 组三题不进入新 build 计分。
+
+## 32. 营销术语与完整月选择闭包
+
+`d6484404` 的 B3 在 Semantic transport canonicalization 之后仍四次出现顶层集合第 1 项的 strict custom 拒绝。
+冻结检索证据显示 mandatory closure 是渠道、目标人群和订单收入；营销收入/投入仅是 optional recall，营销事实日期维度已被裁剪。
+这不是 Text2SQL、Python 或数据结果错误，而是发布词典把无限定“收入”绑定订单收入、又没有可直接命中的营销月份名称。
+
+前向修复只改发布语义：订单收入去掉泛化“收入”别名，营销收入 Metric/Formula 增加“营销收入”，营销事实日期维度增加“营销日期/营销月份”。
+新版 B3 显式说“完整的营销月份”，并把它定义为营销表现事实日期所在自然月。Semantic provider 仍从冻结 catalog 选择成员；提示仅要求
+`RECENT_COMPLETE_PERIODS + AGGREGATE_RATIO` 多操作引用的 Metric/Dimension ID 做全集 membership 自检。Host 不生成 operation、
+不追加 ID、不改变 strict schema/预算/重试/Oracle，也不把 Published ROAS 当净 ROI。该 change-set 会产生新 release/hash，只能在新 scratch
+通过原认证/激活链路；旧 release、旧 Run 和 live E16 不回写。

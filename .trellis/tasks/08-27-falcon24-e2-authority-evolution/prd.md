@@ -744,7 +744,7 @@ ROAS 始终以实际已发布 AST 为准：当前是 `CASE WHEN SUM(spend)=0 THE
 
 依据用户允许明确术语/公式、降低歧义的授权，新B3验收文案为：
 
-`比较最近两个完整月，以较早月为基期、较晚月为本期。沿用刚才的净ROI口径，先汇总每个渠道的投入和营销收入，
+`比较数据中最近两个完整的营销月份（“营销月份”指营销表现事实日期所在的自然月），以较早月为基期、较晚月为本期。沿用刚才的净ROI口径，先汇总每个渠道的投入和营销收入，
 筛选总投入增加且净ROI下降的渠道，再按目标人群展示这些渠道两个月的投入、营销收入和净ROI，说明可能原因和下一步建议。`
 
 “完整月”仍由当前发布的时间前沿与Semantic request-scoped窗口决定，不按本机日期或覆盖min/max猜测。
@@ -780,7 +780,23 @@ ROAS 始终以实际已发布 AST 为准：当前是 `CASE WHEN SUM(spend)=0 THE
   重复 ID、未知字段、非法 ID、空 intent、跨字段未绑定仍失败关闭。新 build 的 B3 必须真实形成 Semantic -> Text2SQL -> Analysis，
   单测或 `a43cc9f2` 前五题不能替代业务证明。
 
-### 22.3 NAS OpenSandbox 数据面闭包
+### 22.3 Semantic 业务术语与时间维度闭包
+
+`d6484404` fresh scratch 的 A1/A2/A3/B1/B2 已完成独立来源、阶段、业务和同 Run QA/Trace；B2 真实使用分类准备参考后通过。
+B3 唯一 Run `fdd08691-e2b0-805c-8fec-8b6030add4e0` 四次停在 Semantic provider strict schema，零业务 Artifact，未重提。
+该 Run 的冻结检索把泛化别名“收入”强命中 `metric.order_revenue`，而 `metric.marketing_revenue` 只有“营销归因收入”别名；
+营销事实时间维度只有技术名且被裁剪。因而“营销收入 + 最近两个完整月”没有形成可选的营销指标/月份原语闭包。
+
+- **R-FL-TERM-01** `metric/formula.marketing_revenue` 同时发布“营销收入”和“营销归因收入”；`metric.order_revenue` 只保留“订单收入”，
+  不再把无业务限定的“收入”冒充订单收入。
+- **R-FL-TERM-02** `dimension.runtime_time_blinkit_marketing_performance_date` 发布“营销日期”和“营销月份”；B3 题面显式使用“营销月份”并
+  定义为营销表现事实日期所在的自然月。其他事实表时间维度不得共享该营销别名。
+- **R-FL-TERM-03** 多个 request-scoped operations 的 Semantic 输出必须把全部 operation 引用的 Metric/Dimension ID 做并集后放入 selected 集合；
+  Host 仍不补成员、不读取题面路由、不替换公式。净 ROI 不得复用 Published ROAS，仍是 `SUBTRACT_DENOMINATOR + SUM_BEFORE_RATIO + NULL`。
+- **AC-FL-TERM-01** change-set 与 provider prompt 聚焦测试先 RED 后 GREEN；新 clean build/fresh physical scratch 必须从 A1 重跑六题，
+  B3 真实形成 Semantic -> Text2SQL -> Analysis、独立 source/stage/business Oracle 与同 Run 浏览器 Trace 后才算闭合。
+
+### 22.4 NAS OpenSandbox 数据面闭包
 
 `94c10171` fresh scratch 的 A1 已形成 Semantic 与 Text2SQL/QueryEvidence，但本机 Worker 使用 DIRECT endpoint mode 时无法访问
 NAS Docker 临时 Sandbox endpoint；两次 Analysis side effect 超时后 Run 失败。管理 API health 成功不能证明该数据面可达。
@@ -792,7 +808,7 @@ NAS Docker 临时 Sandbox endpoint；两次 Analysis side effect 超时后 Run �
 - **AC-FL-SBX-01** 从 Worker 所在主机运行正式无模型 runtime probe，报告 exact endpoint mode，完成双 Sandbox、Cell、Operator、
   receipt、session close，且管理 API/NAS Docker residual 均为零。新 clean build/fresh scratch 仍须从 A1 重跑六题。
 
-### 22.4 分类比较稳定排名闭包
+### 22.5 分类比较稳定排名闭包
 
 `abb1e38c` 的 B1 已证明 Semantic 与 Text2SQL 数值正确，但 Analysis 发布的 `highest` 成员集合未按值稳定降序，原 FULL Oracle 正确拒绝。
 分类描述性方法可像既有月度面板一样携带无数据 Python 参考实现，只定义原合同的计数、极值和稳定排序；不得携带来源行或预计算答案。

@@ -182,11 +182,15 @@ export async function buildFalcon24SemanticChangeSet(input: {
     const tableId = timeColumnId.slice(0, separator);
     const columnId = timeColumnId.slice(separator + 1);
     const dimensionId = `dimension.runtime_time_${tableId}_${columnId}`;
+    const businessAliases =
+      tableId === "blinkit_marketing_performance" && columnId === "date"
+        ? ["营销日期", "营销月份"]
+        : [];
     await add("DIMENSION", dimensionId, {
       dimension: {
         dimension_id: dimensionId,
         name: `${tableId} ${columnId}`,
-        aliases: [`${tableId} ${columnId}`],
+        aliases: [`${tableId} ${columnId}`, ...businessAliases].sort(),
         table_id: tableId,
         column_id: timeColumnId,
         grain: {
