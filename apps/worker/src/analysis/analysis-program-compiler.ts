@@ -119,6 +119,51 @@ const candidateNodeV2Schema = z
     }
   });
 
+type CandidateNodeV2 = z.infer<typeof candidateNodeV2Schema>;
+
+function candidateExecutionIdentity(node: CandidateNodeV2): string {
+  return canonicalizeJson({
+    method_registry_entry_ids: node.method_registry_entry_ids,
+    metric_ids: node.metric_ids,
+    dimension_ids: node.dimension_ids,
+    time_window: node.time_window,
+    comparison_window: node.comparison_window,
+    parameters: node.parameters,
+    operator_obligations: node.operator_obligations,
+  });
+}
+
+function collapseExactDuplicateConditionalLeaves(
+  nodes: readonly CandidateNodeV2[],
+): readonly CandidateNodeV2[] {
+  const byId = new Map(nodes.map((node) => [node.node_id, node] as const));
+  return nodes.filter((node) => {
+    if (
+      node.activation_rule.kind === "ALWAYS" ||
+      node.dependency_node_ids.length !== 1 ||
+      node.dependency_node_ids[0] !== node.activation_rule.source_node_id
+    ) {
+      return true;
+    }
+    const source = byId.get(node.activation_rule.source_node_id);
+    if (
+      source?.activation_rule.kind !== "ALWAYS" ||
+      source.criticality !== node.criticality ||
+      candidateExecutionIdentity(source) !== candidateExecutionIdentity(node)
+    ) {
+      return true;
+    }
+    const hasDependent = nodes.some(
+      (candidate) =>
+        candidate.node_id !== node.node_id &&
+        (candidate.dependency_node_ids.includes(node.node_id) ||
+          (candidate.activation_rule.kind !== "ALWAYS" &&
+            candidate.activation_rule.source_node_id === node.node_id)),
+    );
+    return hasDependent;
+  });
+}
+
 const analysisProgramCandidateV2Schema = z
   .strictObject({
     schema_version: z.enum([
@@ -199,7 +244,7 @@ export async function compileAnalysisProgramCandidate(input: {
             criticality: "CRITICAL" as const,
           },
         ]
-      : candidate.nodes;
+      : collapseExactDuplicateConditionalLeaves(candidate.nodes);
   const allAcceptedInput = candidateNodes.some((node) => node.time_window === null);
   if (allAcceptedInput) {
     try {

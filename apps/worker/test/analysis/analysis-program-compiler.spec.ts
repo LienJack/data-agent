@@ -487,6 +487,7 @@ describe("generic analysis program host compiler", () => {
         {
           ...first,
           node_id: "monthly-revenue-explanation",
+          method_registry_entry_ids: ["published-monthly-explanation@1"],
           dependency_node_ids: [first.node_id],
           activation_rule: {
             kind: "MATERIAL_CHANGE" as const,
@@ -508,7 +509,15 @@ describe("generic analysis program host compiler", () => {
         },
       },
       candidate,
-      method_registry: methodRegistry(input),
+      method_registry: [
+        ...methodRegistry(input),
+        {
+          method_id: "published-monthly-explanation@1",
+          skill_id: "open-python-analysis@1" as const,
+          result_contract: input.result_contract,
+          required_operator_obligations: [],
+        },
+      ],
     });
 
     expect(program.nodes.map(({ node_id: nodeId }) => nodeId)).toEqual([
@@ -517,6 +526,113 @@ describe("generic analysis program host compiler", () => {
     ]);
     expect(program.nodes[1]?.dependency_node_ids).toEqual(["monthly-revenue-trend"]);
     expect(program.nodes[0]?.method_registry_entry_ids).toEqual(["published-monthly-trend@1"]);
+    expect(program.nodes[1]?.method_registry_entry_ids).toEqual([
+      "published-monthly-explanation@1",
+    ]);
+  });
+
+  it("collapses an exact duplicate terminal conditional node onto its identical predecessor", async () => {
+    const input = await fixture();
+    const base = await candidateV2(input);
+    const first = base.nodes[0];
+    if (!first) throw new TypeError("TEST_ANALYSIS_NODE_MISSING");
+    const candidate = {
+      ...base,
+      nodes: [
+        first,
+        {
+          ...first,
+          node_id: "monthly-revenue-duplicate",
+          dependency_node_ids: [first.node_id],
+          activation_rule: {
+            kind: "MATERIAL_CHANGE" as const,
+            source_node_id: first.node_id,
+            policy_threshold_id: "material-change.default",
+          },
+        },
+      ],
+    };
+
+    const program = await compileAnalysisProgramCandidate({
+      ...input,
+      brief: {
+        ...input.brief,
+        budget: {
+          ...input.brief.budget,
+          max_steps: 2,
+          max_sql_executions: 2,
+          max_sandbox_executions: 2,
+        },
+      },
+      candidate,
+      method_registry: methodRegistry(input),
+    });
+
+    expect(program.nodes.map(({ node_id: nodeId }) => nodeId)).toEqual(["monthly-revenue-trend"]);
+    expect(program.budget).toMatchObject({
+      max_steps: 1,
+      max_sql_executions: 1,
+      max_sandbox_executions: 1,
+    });
+  });
+
+  it("keeps an exact duplicate conditional node when a later node depends on it", async () => {
+    const input = await fixture();
+    const base = await candidateV2(input);
+    const first = base.nodes[0];
+    if (!first) throw new TypeError("TEST_ANALYSIS_NODE_MISSING");
+    const duplicate = {
+      ...first,
+      node_id: "monthly-revenue-duplicate",
+      dependency_node_ids: [first.node_id],
+      activation_rule: {
+        kind: "MATERIAL_CHANGE" as const,
+        source_node_id: first.node_id,
+        policy_threshold_id: "material-change.default",
+      },
+    };
+    const candidate = {
+      ...base,
+      nodes: [
+        first,
+        duplicate,
+        {
+          ...first,
+          node_id: "monthly-revenue-explanation",
+          method_registry_entry_ids: ["published-monthly-explanation@1"],
+          dependency_node_ids: [duplicate.node_id],
+        },
+      ],
+    };
+
+    const program = await compileAnalysisProgramCandidate({
+      ...input,
+      brief: {
+        ...input.brief,
+        budget: {
+          ...input.brief.budget,
+          max_steps: 3,
+          max_sql_executions: 3,
+          max_sandbox_executions: 3,
+        },
+      },
+      candidate,
+      method_registry: [
+        ...methodRegistry(input),
+        {
+          method_id: "published-monthly-explanation@1",
+          skill_id: "open-python-analysis@1" as const,
+          result_contract: input.result_contract,
+          required_operator_obligations: [],
+        },
+      ],
+    });
+
+    expect(program.nodes.map(({ node_id: nodeId }) => nodeId)).toEqual([
+      "monthly-revenue-trend",
+      "monthly-revenue-duplicate",
+      "monthly-revenue-explanation",
+    ]);
   });
 
   it("rejects missing dependencies, duplicate nodes, unpublished methods, and operator rewrites", async () => {

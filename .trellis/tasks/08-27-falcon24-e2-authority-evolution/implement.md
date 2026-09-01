@@ -2194,3 +2194,17 @@ DeepSeek 402，5 events、0 Specialist、0 Artifact，保留 immutable FAILED �
 - [x] 独立 backlog、失败分类、恢复边界和唯一恢复步骤已固化；等待期间不创建 Run、不调用模型、不写 gate/authority。
 - [ ] 按 `5m -> 15m -> 30m` 无模型探针复查；首次 `is_available=true` 后从新 clean build/fresh physical scratch 的 A1 重跑六题，
   不拼本轮五个 PASS；六题闭合后继续 F5/F7 15 回合正式门禁。
+
+充值后官方余额探针恢复可用；`a58533a4` clean build/full unit/fresh E17 scratch已重新启动六题。A1 Run
+`81fb7414-52d1-86df-9f0f-42caa7c7d594`完成Semantic→Text2SQL→Analysis、业务Oracle和同Run QA/Trace。
+A2 Run `89e2cd42-d58f-88bf-acdb-09ab13246368`保留FAILED：Semantic/Text2SQL/48行证据与首个Analysis节点FULL Oracle均正确，
+第二个关键`MATERIAL_CHANGE`节点与首节点执行身份完全相同，因`material_change=false`未激活后被旧Executor归为dependency failure，
+原子stage在Explanation后终态HOLD且未提交authority。
+
+- [x] PostgreSQL只读结构审计排除余额、stage TTL、Sandbox、Publisher、Oracle、Explanation和Root预算；旧Run/stage不重提、不提交。
+- [x] compiler聚焦TDD先RED 1/11，再仅折叠精确重复的直接条件叶；不同method与有后继的重复节点保持原DAG，12/12 GREEN。
+- [x] 受影响Analysis回归49/49、Worker official unit 101/101、typecheck/build、owned Biome、workspace单并发unit gate
+  15/15（14 cache）、Trellis validate与diff check通过。
+- [x] 创建scoped commit。
+- [ ] 审计并关闭`a58533a4`现场，核对live E16零漂移；新clean build/fresh physical scratch从A1重跑六题，不拼本轮A1或A2前缀。
+- [ ] 六题闭合后继续F5/F7版本化15回合、同Run QA/Trace、authority、浏览器页面和最终清理。

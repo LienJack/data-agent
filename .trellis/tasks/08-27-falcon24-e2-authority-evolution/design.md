@@ -1972,3 +1972,16 @@ Semantic 仍必须从冻结 active catalog 解析并提交 Context，Text2SQL �
 该变化只删除未请求的统计分析、原因推断和管理建议，不减少事实复杂度：B3仍包含双月、渠道筛选、目标人群分组和请求级比例。
 独立 Oracle 继续从物理源重新聚合；图、history binding、同 Run QA/Trace 和 live E16 审计保持原标准。A 组三题继续证明
 Semantic→Text2SQL→Analysis，B 组三题专门证明 Semantic→Text2SQL 的公式/术语协作，两者不得跨 Run 或跨 build 拼接。
+
+## 38. Analysis 精确重复条件叶的编译收敛
+
+`a58533a4` A2已经形成正确Semantic Context、SQL、48行QueryEvidence以及首个Analysis节点的FULL Oracle PASS，
+但模型候选DAG又声明了一个与首节点执行身份完全相同的关键`MATERIAL_CHANGE`叶节点。首节点受验结果为
+`material_change=false`，旧Executor将次节点归为dependency failure，导致整个原子stage在Explanation之后终态HOLD。
+
+修复发生在Host compiler、任何Cell或stage创建之前：只删除唯一依赖等于activation source、source为`ALWAYS`、同criticality、
+method registry IDs、Metric/Dimension IDs、time/comparison window、parameters与operator obligations的canonical JSON全部相同，且没有任何
+后继依赖/activation引用的条件叶。Program budget按保留节点重算。不同方法/合同/参数/窗口/义务、非叶和真实条件能力节点继续保留。
+
+该设计删除的是同一计算的重复执行请求，不把条件未触发伪装成成功，不改变Executor的critical HOLD、Oracle、Explanation或Authority语义，
+也不从题目或数据值选择能力。旧A2与stage保持不可变；修复提交后仍须新clean build/fresh scratch从A1重跑六题。

@@ -4,6 +4,7 @@
 
 修改`analysis-agent-prompt.ts`、`analysis-tool-loop.ts`或`executor.ts`的模型输入、错误反馈和Oracle后解释时适用。
 根运行契约仍是[Python Sandbox执行](./python-sandbox-execution.md)，不新增发布或事实权威。
+`analysis-program-compiler.ts`把模型候选DAG编译为受验Program时也适用，尤其是条件节点的结构去重。
 
 ## 2. Signatures
 
@@ -13,6 +14,7 @@
 - `buildAnalysisFinalMessages({ objective, result_summary, metric_units, ... })`：Oracle后的唯一解释上下文。
 - `buildVerifiedMonthlySummary`：原FULL Oracle后、原当前Run Context/QueryEvidence/contract重新绑定的同比事实展示。
 - `analysisFinalResponseSchema` / `assertAnalysisFinalSummary`：当前请求的原两字段响应收窄和接收/恢复校验。
+- `collapseExactDuplicateConditionalLeaves(nodes)`：仅删除与直接`ALWAYS`前序执行身份完全相同、同criticality、仅依赖该前序且无人依赖的条件叶节点。
 
 ## 3. Contracts
 
@@ -54,6 +56,11 @@
   原一次零工具JSON-mode调用；完整原文必须经`JSON.parse`和同一literal strict schema。模型响应必须逐字匹配；不得后台替换不符的响应。
   新响应在recordExplanation前检查；恢复时原explanation hash通过后仍重验约束，不调用模型改写历史。
   原stage/Oracle/Explanation/Authority链和预算不变；其他合同保持原两字段解释。此模式证明事实展示，不宣称自由语言推理通过。
+- V2 Analysis Program候选的条件节点不得重复前序的相同执行。Host只在以下条件全部成立时折叠：节点不是`ALWAYS`；恰好一个
+  `dependency_node_id`且同时是activation source；source为`ALWAYS`；criticality相同；method registry IDs、Metric IDs、Dimension IDs、
+  两个时间窗、parameters和operator obligations的canonical JSON完全相同；且没有后继依赖或activation引用该节点。折叠后Program budget
+  必须按保留节点数重算。不同方法/参数/窗口/义务、非直接依赖、不同criticality和非叶节点必须保留并走原graph/program gate。
+  该规则只删除同一计算的冗余重执行，不把`SKIPPED`改写成`SUCCEEDED`，不放宽critical terminal HOLD，也不提交stage或生成业务事实。
 
 ## 4. Validation & Error Matrix
 
@@ -64,12 +71,18 @@
 | 未知/带行数据的其他消息 | 不按以上规则投影；保留原有受界identifier策略 |
 | `ANALYSIS_RESULT_TABLE_TYPE_UNSUPPORTED` | 只反馈DataFrame或稳定built-in dict rows；只允许一条成功修复Cell后重新发布 |
 | 修复Cell后再次请求`python_cell` | 工具不暴露；当前状态只允许`publish_analysis_result` |
+| 精确重复的直接条件叶节点 | 编译时删除；budget按剩余节点重算 |
+| 重复节点被后继引用，或执行身份任一字段不同 | 不删除；由原DAG gate与Executor处理 |
 
 ## 5. Good / Base / Bad Cases
 
 Good：first=null、last=20时只说明首端缺失，整体变化未定义。
 Base：first=0、last=20时绝对变化20，相对变化未定义，两个端点均存在。
 Bad：根据一个全局限制码写“两端均缺失”，或为了继续运行把坏日期变成NaT。
+
+Good：`ALWAYS A -> MATERIAL_CHANGE B`中B与A执行身份完全相同且B是叶节点，只编译A。
+Base：B使用不同published method或有后继C时，A/B（及C）全部保留。
+Bad：把未触发的关键B伪记成功，或仅因method相同就忽略不同时间窗/参数/算子义务。
 
 Good：表symbol被拒后，用一条Cell保留原行/值/NULL/顺序并改为合法容器，随后立即重新发布。
 Base：重新发布仍不满足Publisher时按原`PUBLISH_SYMBOL_CONTRACT`预算终止。
@@ -90,6 +103,8 @@ Bad：修复Cell成功后继续开放Python，允许重复转换、重算或用t
   多月正负/空值/0、别名与时区不改角色、单位不推断、分组排名和百分点贡献、源/contract/Run/数据篡改拒绝。
 - 分群同比双图：12行整体趋势、最差月完整分组投影的别名/顺序/NULL；合同固定3表2图；漏图、额外图、错误数据symbol、行筛选、
   图表数据重算、同比排名/贡献篡改和表图哈希不一致均拒绝。无比较映射及两月ratio面板保持原单图回归。
+- Analysis Program compiler：精确重复条件叶先RED后GREEN且仅保留前序、budget降为1；不同method的条件节点保留；有后继依赖的精确重复
+  条件节点保留；原missing dependency、cycle、unpublished method和operator rewrite拒绝继续通过。
 
 ## 7. Wrong vs Correct
 
@@ -98,3 +113,6 @@ Correct：分别读first_value和last_value，说明实际缺失端；若仅摘�
 
 Wrong：Publisher拒绝 → 修复Cell成功 → 仍允许`python_cell | publish_analysis_result`。
 Correct：Publisher拒绝 → `CELL_REQUIRED`只允许一条成功修复Cell → `PUBLISH_REQUIRED`只允许原Publisher重验。
+
+Wrong：条件未触发 → 把关键重复节点记为dependency failure → 整个已受验stage终态HOLD。
+Correct：只在候选编译阶段删除满足全部结构条件的重复叶；真实条件能力节点仍由Executor按原规则失败关闭。
