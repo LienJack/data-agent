@@ -37,9 +37,6 @@ const profile = (optional("ANALYSIS_SANDBOX_PROBE_PROFILE") ??
 const agentImage = required("ANALYSIS_SANDBOX_PROBE_AGENT_IMAGE");
 const operatorImage = required("ANALYSIS_SANDBOX_PROBE_OPERATOR_IMAGE");
 const useServerProxy = requiredBoolean("ANALYSIS_SANDBOX_USE_SERVER_PROXY");
-if (useServerProxy) {
-  throw new Error("OPENSANDBOX_LOCAL_PROBE_DIRECT_ENDPOINT_REQUIRED");
-}
 const runtime = createOpenSandboxAnalysisRuntime({
   config: {
     domain: required("ANALYSIS_SANDBOX_SERVER_DOMAIN"),
@@ -70,7 +67,7 @@ const report: Record<string, unknown> = {
   agent_image: agentImage,
   operator_image: operatorImage,
   registry_digest: REGISTRY_DIGEST,
-  endpoint_mode: "DIRECT",
+  endpoint_mode: useServerProxy ? "SERVER_PROXY" : "DIRECT",
   use_server_proxy: useServerProxy,
   checks: {},
 };

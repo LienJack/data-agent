@@ -1842,3 +1842,13 @@ clean build/fresh scratch 从 A1 重跑全链，单测与旧构建 PASS 都不�
 排列时间、渠道和人群。前向提示因此把 canonical order 定义为 JavaScript 默认完整字符串升序，并给出维度 ID 例子；该提示在冻结
 Semantic evidence 之前、同一 server-owned system message 中发送。Host 继续对原文执行原 strict schema，不调用 `.sort()`、不删除重复项、
 不读取题号，也不把失败响应恢复成 candidate。这个变化只补 refinement 的可执行传输说明，不改变 Semantic 选择、SQL、公式或业务答案。
+
+### 22.3 NAS OpenSandbox endpoint mode
+
+OpenSandbox 管理面和 Sandbox 数据面分开判断。`DIRECT` 仅适用于 Worker 可访问 Docker 临时发布 endpoint 的拓扑；当 Worker 在 Mac、
+控制服务与 Docker 在 NAS，且 SSH 只转发管理 API 时，Worker 固定使用 `SERVER_PROXY`，由同一 OpenSandbox server 代理 ready/execd 请求。
+该选择是 server-owned deployment config，不进入 Run、题库或 Agent contract，运行中不 fallback。
+
+正式 runtime probe 接受两种显式布尔值并在报告中分别输出 `DIRECT`/`SERVER_PROXY`，其余双沙箱隔离、Cell policy、Operator binding、
+receipt closure 和 close 检查完全相同。immutable attestation 保留既有本地 DIRECT 证据；NAS SERVER_PROXY probe 只证明当前拓扑可执行。
+任何旧失败 Run 保持不可变，配置修复后仍通过新 clean build/fresh scratch 从 A1 前向验证业务四层。

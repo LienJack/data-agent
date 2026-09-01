@@ -25,8 +25,9 @@ OpenSandbox 的 Docker 后端、SSH 转发、NAS 运行位置改变时适用。
 1. 在 NAS 控制服务的 venv、源码 overlay、Docker 环境中运行
    `scripts/verify-opensandbox-host-ports.py`：占用端口必须拒绝，随后空闲端口可选，耗尽必须失败关闭。
    该探针只验证当前主机；部署位置还须通过 NAS 进程、socket 和启动配置证明。
-2. 从 Worker 所在主机运行原 `scripts/verify-opensandbox-analysis-runtime.ts`，证明 direct endpoint：
-   两个不同 Sandbox、Agent 不包含 Operator 包、Cell policy 正/反例、状态符号、算子输出及回执闭合。
+2. 从 Worker 所在主机运行原 `scripts/verify-opensandbox-analysis-runtime.ts`，并让 endpoint mode 与真实网络拓扑一致：
+   Worker 可访问 Docker 临时映射端口时使用 `DIRECT`；本机 Worker 只经 SSH 访问 NAS 控制 API、不能访问 NAS 临时端口时必须使用
+   `SERVER_PROXY`。两种模式都须证明两个不同 Sandbox、Agent 不包含 Operator 包、Cell policy 正/反例、状态符号、算子输出及回执闭合。
 3. 前后按管理标签列举 Sandbox，均须为零；审计 API/端口、进程归属和无模型调用。
 4. 改动运行环境后的下一次问答使用新冻结执行记录。业务来源 Oracle、同 Run UI/Trace、完整四层门禁另验，
    无模型探针 PASS 不计为业务题 PASS。
@@ -37,5 +38,9 @@ OpenSandbox 的 Docker 后端、SSH 转发、NAS 运行位置改变时适用。
 `Bind for 0.0.0.0:51022 failed: port is already allocated`，继而 `ANALYSIS_SANDBOX_STARTUP_FAILED`。
 控制服务当时在 Mac，容器在 NAS。迁移相同 117 文件至 NAS 后，上述端口探针及原双沙箱 runtime probe 通过，
 前后 Sandbox 数为零。原 A1 仍为 FAILED；不把同次后续 Root 格式错误解释成基础设施修复后已解决。
+
+`94c10171` scratch A1 的 Semantic 与 Text2SQL 已成功，但本机 Worker 错用 `DIRECT` 后无法连接 NAS 临时 Sandbox endpoint，
+两次 Analysis side effect 超时并耗尽 turn budget。相同 build/image/runtime 改用 `SERVER_PROXY` 的无模型真实探针已完成建沙箱、Cell、
+关闭和零残留。原 A1 仍为 FAILED；修复后的新 build 必须从 A1 重跑，不得将该探针计为业务 PASS。
 
 相关：[Python 执行权威](./python-sandbox-execution.md)、[本地运行模式](./local-runtime-modes.md)。

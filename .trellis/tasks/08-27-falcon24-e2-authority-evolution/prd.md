@@ -775,3 +775,15 @@ ROAS 始终以实际已发布 AST 为准：当前是 `CASE WHEN SUM(spend)=0 THE
   只能由再一个 clean build/fresh scratch 从 A1 前向证明 canonical schema instruction 闭包。
 - **AC-FL-JSON-03** `82aed231` fresh scratch 的 A1/A2/A3/B1/B2 均完成独立业务与同 Run QA/Trace；B3 四次均在
   set-like ID 数组第 2 项的 canonical-order refinement 失败，零 Semantic/SQL/Analysis。新 build 必须从 A1 重跑六题，不能把前五题拼入。
+
+### 22.3 NAS OpenSandbox 数据面闭包
+
+`94c10171` fresh scratch 的 A1 已形成 Semantic 与 Text2SQL/QueryEvidence，但本机 Worker 使用 DIRECT endpoint mode 时无法访问
+NAS Docker 临时 Sandbox endpoint；两次 Analysis side effect 超时后 Run 失败。管理 API health 成功不能证明该数据面可达。
+
+- **R-FL-SBX-01** OpenSandbox endpoint mode 必须由 Worker 到 Sandbox 数据面的真实可达性决定：同机或临时端口可达用 DIRECT；
+  本机 Worker 只经 SSH 访问 NAS 管理 API 时用 SERVER_PROXY。不得以题目、模型输出或失败后 fallback 动态选择。
+- **R-FL-SBX-02** 两种模式必须复用同一 runtime、镜像、Cell policy、Operator registry、receipt closure 与清理契约；SERVER_PROXY
+  不是旧执行器、模型降级、Authority 替代或 production isolation 证明。
+- **AC-FL-SBX-01** 从 Worker 所在主机运行正式无模型 runtime probe，报告 exact endpoint mode，完成双 Sandbox、Cell、Operator、
+  receipt、session close，且管理 API/NAS Docker residual 均为零。新 clean build/fresh scratch 仍须从 A1 重跑六题。

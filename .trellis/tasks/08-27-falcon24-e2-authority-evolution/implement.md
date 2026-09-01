@@ -2062,7 +2062,13 @@ live348表after与before完全相同；本轮Web/Worker/OpenSandbox及4个browse
   `RESPONSE_SCHEMA_MISMATCH`，诊断为一个 set-like ID 字段的第2项 custom refinement；零Semantic/SQL/Analysis Artifact，未重提。
 - [x] 聚焦TDD先RED 1/17，再把 canonical ID order 明确定义为完整ID字符串升序、非题目/角色/重要性顺序；Host strict parse、
   原数组和失败关闭不变。见 [B3 canonical selection order](research/complex-82aed231-semantic-id-order.md)。
-- [ ] 新 scoped commit 后重新 clean force build/fresh scratch 从A1重跑六题；不拼接 `82aed231` 前五题，B3业务通过后复用同 Run验 QA/Trace。
+- [x] `94c10171` clean force build 8/8（0 cache）、full unit 15/15、attestation PASS；fresh NAS scratch 55511完成物理克隆、
+  10816/347业务表/9表70列121445行证明、独立stage认证与E17 scratch-only activation，live仍E16。
+- [x] `94c10171` A1唯一Run `818af266-7161-877d-8801-725d3ff609bc` 的Semantic/Text2SQL/QueryEvidence成功；本机Worker错用
+  DIRECT而不能访问NAS临时Sandbox endpoint，两次Analysis side effect超时后FAILED。SERVER_PROXY简化探针及正式双沙箱/Cell/Operator/
+  receipt probe均PASS，管理API与NAS Docker residual=0；旧Run不重提。见 [NAS代理复盘](research/complex-94c10171-opensandbox-proxy.md)。
+- [ ] 新 scoped commit 后重新 clean force build/fresh scratch，以 SERVER_PROXY 从A1重跑六题；不拼接 `82aed231` 前五题或
+  `94c10171` Semantic/Text2SQL前缀，B3业务通过后复用同 Run验 QA/Trace。
 - [ ] 六题预检闭合后继续 F5/F7 版本化15回合、authority、页面与最终清理；只有全部 AC 才 COMPLETE。
 
 当前细节见 [Semantic JSON text 复盘](research/complex-966760f5-semantic-json-text.md)。
@@ -2076,3 +2082,8 @@ Biome、`git diff --check` 和 Trellis validate PASS。Worker provider 目录的
 canonical schema instruction修复验证：Agent Runtime unit 193、integration 46、security 67、contract 32、focused 51 tests，Worker official
 unit 101与受影响 focused 116 tests全部PASS；两个 package typecheck/build、4个owned code/test Biome、diff与Trellis validate PASS。
 `b4a237db` live before/after 348表完全一致；旧Web/Worker/browser/auth精确关闭，scratch容器停机且volume作为失败checkpoint保留。
+
+NAS endpoint mode修复验证：新增静态合同先RED后GREEN；修改后的正式SERVER_PROXY runtime probe真实完成双沙箱、Cell policy、
+stateful symbols、Operator registry/result、单回执closure和session close，管理API与NAS Docker residual均为0。owned TypeScript Biome、
+focused test、diff与Trellis validate PASS；`94c10171` live before/after 348表一致且仍E16，旧Web/Worker/browser/SSH转发精确关闭，
+scratch容器停机、volume保留。既有同文件8-operator宽测试因当前manifest已有12项仍独立失败，未借本修复改写无关历史断言。

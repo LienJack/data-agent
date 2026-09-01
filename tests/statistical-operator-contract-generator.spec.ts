@@ -84,4 +84,10 @@ describe("statistical operator contract generator", () => {
     expect(runtimeProbe).toContain("const REGISTRY_DIGEST = STATISTICAL_OPERATOR_REGISTRY_DIGEST;");
     expect(runtimeProbe).not.toMatch(/const REGISTRY_DIGEST\s*=\s*"sha256:/u);
   });
+
+  it("allows the runtime probe endpoint mode to match Worker reachability", () => {
+    const runtimeProbe = readFileSync(runtimeProbePath, "utf8");
+    expect(runtimeProbe).not.toContain("OPENSANDBOX_LOCAL_PROBE_DIRECT_ENDPOINT_REQUIRED");
+    expect(runtimeProbe).toContain('endpoint_mode: useServerProxy ? "SERVER_PROXY" : "DIRECT"');
+  });
 });
