@@ -44,6 +44,7 @@ async function fixture(
   includeFormulaSelection = false,
   includeTimeColumn = false,
   periodSource = false,
+  evidenceSummaryBytes = 0,
 ) {
   const baseConfig = await buildWorkerEffectiveConfigFixture({
     scope,
@@ -157,7 +158,17 @@ async function fixture(
       ],
       relationship_ids: [],
     },
-    evidence: [],
+    evidence:
+      evidenceSummaryBytes === 0
+        ? []
+        : [
+            {
+              evidence_kind: "GRAPH",
+              evidence_id: "lineage.orders.audit",
+              evidence_hash: hash("f"),
+              summary: "x".repeat(evidenceSummaryBytes),
+            },
+          ],
   } as never;
   const selectedMetric = {
     metric_id: "metric.order-count",
@@ -764,7 +775,12 @@ describe("PostgreSQL Text2SQL query runtime", () => {
   });
 
   it("freezes exact datasource, SecretRef, schema and semantic bindings before I/O", async () => {
-    const { config, datasource, semanticCatalog, semanticContext, snapshot } = await fixture();
+    const { config, datasource, semanticCatalog, semanticContext, snapshot } = await fixture(
+      false,
+      false,
+      false,
+      40_000,
+    );
     const connect = vi.fn();
     const runtime = createPostgresqlText2SqlQueryRuntime({
       pool: { connect } as never,
@@ -816,6 +832,8 @@ describe("PostgreSQL Text2SQL query runtime", () => {
     expect(prepared.context_text).not.toContain("dimension.hidden");
     expect(prepared.context_text).not.toContain("managed-postgres");
     expect(prepared.context_text).not.toContain("secretref:");
+    expect(JSON.parse(prepared.context_text).semantic_context).not.toHaveProperty("evidence");
+    expect(Buffer.byteLength(prepared.context_text, "utf8")).toBeLessThanOrEqual(32_000);
     expect(JSON.parse(prepared.context_text)).not.toHaveProperty("period_comparison_candidate");
     await expect(
       runtime.compileCandidate({

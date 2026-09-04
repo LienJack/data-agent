@@ -2357,6 +2357,20 @@ v3 新 attempt `386506dd-173d-4c18-ba5a-0b98c50d39c5` 的 L1-01 完整通过；L
 - [x] Contracts/Evals/Platform/Web focused tests 12/3/30/47 PASS；Contracts/Platform/Web typecheck、Contracts/Evals/Platform build、
   migration render/inventory、owned Biome、Trellis validate 与 diff check PASS。Evals typecheck 单独暴露既有测试夹具缺少必填 `output_usage`，
   不混入 manifest 提交，按独立小修复收口。
-- [ ] 创建 manifest v4 scoped commit。
+- [x] 创建 manifest v4 scoped commit `a2db76f4`；测试夹具中缺失必填 `output_usage` 的独立修复以 scoped commit
+  `0c1b1723` 收口。
 - [ ] 从 v4 commit 重新 clean build/full unit/attestation，创建 fresh physical scratch/activation/attempt，从 L1-01 完整执行15回合；
   全部业务/QA/Trace 通过后才进入 live E17 前向激活、浏览器验收与最终清理。
+
+`0c1b1723` 的 force production build、single-concurrent full unit gate、attestation、fresh E17 physical scratch、10816～10819
+migration 与 LLM certification 均通过。正式 v4 attempt `aeb72f27-317a-4784-9896-e6950befae28` 的 L1-01～L1-03
+business/QA/Trace 通过；L1-04 Run `7347f813-76ff-8e9a-8c2d-1495cdaf8848` 在候选生成前四次以
+`TEXT2SQL_CONTEXT_BUDGET_EXCEEDED` 失败，attempt 已按 `FALCON24_RUN_FAILED` 不可变封存，前三题 PASS 不复用。
+
+只读诊断证明当前 RUN Semantic Package 冻结了31个检索对象和128条审计 evidence；后者进入 Text2SQL 模型投影后单独约
+32.6 KB，语义投影约65.1 KB，加 schema 后超过专职任务64 KB硬预算。Graph/Knowledge evidence 仍由原 Package、Receipt 与 hash
+保留并参与权威绑定，但它们不是生成 SQL 所需的 Metric/Formula/Dimension/physical binding。本小项已从 Text2SQL 模型输入删除
+这些冗余 evidence 摘要，保持 semantic executable projection、原 compile/execute/Oracle 和预算不变；40 KB evidence 回归、31项
+Text2SQL runtime 测试、Worker typecheck/build、owned Biome 与 diff check 均通过。
+对应长期边界已写入 `.trellis/spec/backend/text2sql-resolved-context.md`：完整 Package/Receipt 继续作为权威，审计 evidence 不再作为
+SQL 模型输入，剩余 executable/schema 仍受原64 KB预算约束并超限失败关闭。

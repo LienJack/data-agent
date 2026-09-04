@@ -451,12 +451,6 @@ function semanticProjection(
     semantic_release: packageDocument.semantic_release,
     route_decision: packageDocument.route_decision,
     mandatory_closure: packageDocument.mandatory_closure,
-    evidence: packageDocument.evidence.map((entry) => ({
-      kind: entry.evidence_kind,
-      id: entry.evidence_id,
-      hash: entry.evidence_hash,
-      summary: entry.summary,
-    })),
     executable: {
       metrics,
       dimensions,

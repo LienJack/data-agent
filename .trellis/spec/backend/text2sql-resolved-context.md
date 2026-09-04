@@ -674,6 +674,24 @@ Good: current semantic operator compiles to an independently proved model input,
 Bad: choose a canned SQL by question keyword, fill missing measures, copy old answers or weaken proof
 when a candidate is rejected. Offline compiler PASS is not complex-question or formal-gate PASS.
 
+### Text2SQL model projection evidence boundary
+
+The verified Semantic Context Package and Receipt remain the authority boundary in full: package/receipt hashes,
+release, snapshot, route and mandatory closure must still match before Text2SQL preparation. The model projection
+contains the exact selected executable Metrics, Dimensions, Formulas and physical bindings plus the bounded schema
+and any separately proved optional compiler references.
+
+Graph/Knowledge evidence entries and their summaries remain immutable inside the Package and its hash, but are not
+copied into `frozen_query_context`. They explain how retrieval authority was assembled; they neither grant an SQL
+relation nor provide a result binding and are not needed to generate a candidate. Omitting them from the model input
+does not weaken compile, adapter, QueryEvidence or Oracle checks. The remaining projection must still fit the same
+specialist byte budget or fail closed with `TEXT2SQL_CONTEXT_BUDGET_EXCEEDED`; do not increase the budget, truncate an
+executable object, or select objects by question keyword to make it pass.
+
+Regression: a valid package with evidence summaries larger than the specialist budget still prepares when its exact
+executable/schema projection fits; no evidence summary appears in the model context. Resource/hash drift and an
+oversized executable/schema projection continue to fail before provider or target I/O.
+
 ### Published Formula expression references
 
 Scope: an accepted SemanticQueryContext explicitly requests an independently published numeric Formula.
