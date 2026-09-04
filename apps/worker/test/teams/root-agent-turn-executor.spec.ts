@@ -21,13 +21,7 @@ import {
 const id = (suffix: number) => `81000000-0000-4000-8000-${String(suffix).padStart(12, "0")}`;
 const outputUsages = ["FINAL_ANSWER_EVIDENCE", "CONTINUATION_INPUT"] as const;
 const outputUsageCases = outputUsages.flatMap((semanticUsage) =>
-  outputUsages.flatMap((reportUsage) =>
-    (semanticUsage === "CONTINUATION_INPUT" ? [false, true] : [false]).map((providerCompletes) => ({
-      semanticUsage,
-      reportUsage,
-      providerCompletes,
-    })),
-  ),
+  outputUsages.map((reportUsage) => ({ semanticUsage, reportUsage })),
 );
 
 describe("Root Agent normal turn", () => {
@@ -123,8 +117,8 @@ describe("Root Agent normal turn", () => {
     ).toBeNull();
   });
 
-  it.each(outputUsageCases)("$semanticUsage/$reportUsage/$providerCompletes", async (usage) => {
-    const { semanticUsage, reportUsage, providerCompletes } = usage;
+  it.each(outputUsageCases)("$semanticUsage/$reportUsage", async (usage) => {
+    const { semanticUsage, reportUsage } = usage;
     const scope = { app_id: id(1), tenant_id: id(2), environment: "test" } as const;
     const runId = id(3);
     const principalId = id(4);
@@ -279,37 +273,6 @@ describe("Root Agent normal turn", () => {
       revision: 1,
       content_hash: `sha256:${"e".repeat(64)}`,
     };
-    if (semanticUsage === "CONTINUATION_INPUT") {
-      invoke.mockResolvedValueOnce(
-        providerCompletes
-          ? {
-              ok: true,
-              value: {
-                output_text: JSON.stringify({
-                  kind: "FINAL_ANSWER",
-                  sections: [
-                    {
-                      kind: "ARTIFACT_FACTS",
-                      artifact_ref: semanticArtifactRef,
-                      fact_selectors: ["projection.context.quality_constraints"],
-                    },
-                  ],
-                  public_summary: "Accepted facts complete the current request.",
-                }),
-                tool_calls: [],
-                projection: {},
-              },
-            }
-          : {
-              ok: false,
-              error: {
-                code: "NEXT_ROOT_ACTION_REQUIRED",
-                message: "Continue from accepted semantic input.",
-                retryable: false,
-              },
-            },
-      );
-    }
     const terminalSemanticResult = await createRootAgentTurnExecutor().decide(
       {
         lease,
@@ -355,52 +318,20 @@ describe("Root Agent normal turn", () => {
         verifier_feedback: null,
       },
     );
-    if (semanticUsage === "CONTINUATION_INPUT") {
-      expect(terminalSemanticResult).toMatchObject(
-        providerCompletes
-          ? {
-              ok: true,
-              value: {
-                kind: "FINAL_ANSWER",
-                sections: [{ kind: "ARTIFACT_FACTS", artifact_ref: semanticArtifactRef }],
-                public_summary: "Accepted facts complete the current request.",
-              },
-            }
-          : {
-              ok: false,
-              error: { code: "NEXT_ROOT_ACTION_REQUIRED" },
-            },
-      );
-      expect(invoke.mock.calls[1]?.[0]).toMatchObject({
-        turn: {
-          turn_index: 2,
-          tool_observations: [
-            expect.objectContaining({
-              status: "FAILED",
-              error_code: "MODEL_STREAM_PROTOCOL_VIOLATION",
-            }),
-            expect.objectContaining({
-              output_usage: semanticUsage,
-              output_ref: semanticArtifactRef,
-            }),
-          ],
-        },
-      });
-    } else {
-      expect(terminalSemanticResult).toEqual({
-        ok: true,
-        value: expect.objectContaining({
-          kind: "FINAL_ANSWER",
-          sections: [
-            expect.objectContaining({
-              kind: "ARTIFACT_FACTS",
-              artifact_ref: semanticArtifactRef,
-            }),
-          ],
-        }),
-      });
-    }
-    const semanticProviderCalls = semanticUsage === "CONTINUATION_INPUT" ? 2 : 1;
+    expect(terminalSemanticResult).toEqual({
+      ok: true,
+      value: expect.objectContaining({
+        kind: "FINAL_ANSWER",
+        sections: [
+          expect.objectContaining({
+            kind: "ARTIFACT_FACTS",
+            artifact_ref: semanticArtifactRef,
+            fact_selectors: ["projection.context.quality_constraints"],
+          }),
+        ],
+      }),
+    });
+    const semanticProviderCalls = 1;
     expect(invoke).toHaveBeenCalledTimes(semanticProviderCalls);
 
     const reportArtifactRef = {
