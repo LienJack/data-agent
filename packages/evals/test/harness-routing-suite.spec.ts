@@ -28,6 +28,7 @@ function delegation(profileId: string): RootAgentDecisionCandidate {
         tool_call_id: `call-${profileId}`,
         profile_id: profileId,
         objective: "Use governed evidence to answer the visible user request.",
+        output_usage: "FINAL_ANSWER_EVIDENCE",
         requested_artifact_types: ["AnalysisReport"],
         input_artifact_refs: [],
         requested_budget: {
