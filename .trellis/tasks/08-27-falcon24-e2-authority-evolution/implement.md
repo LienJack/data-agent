@@ -2303,3 +2303,16 @@ SERVER_PROXY 无模型探针通过。`complex-l4-semantic-defined@4.4.0` 六题�
   `complex-e5dc68c8-runtime-cleanup.json`。
 - [ ] 以新 HEAD clean force build/fresh physical scratch 建立版本化正式 manifest/attempt，从 L1-01 严格执行15回合，业务通过后才做
   同 Run QA/Trace；全部通过后前向激活 E17、完成 F7 authority/页面/资源最终清理。
+
+`ae3e1524` 基线上已实现正式 `falcon24-four-layer-gate-manifest@2.0.0` 与 migration 10817：v2 将用户批准且六题预检通过的公开
+同比窗口、ROAS 公式、请求级净 ROI、精确日期维度、完整面板和单 Analysis Stage 写入15回合题面/rubric；历史 v1 blueprint/hash 与 replay
+保持可用，两个版本互相混配失败关闭。v2 只要求业务所需的 Semantic/Text2SQL/Analysis，Report 仍按题面可选，所有业务/UI/authority proof
+保持原强度。
+
+- [x] Contracts/Evals/Web/Platform focused regression、三包 typecheck/build、迁移 render/inventory/static check、owned Biome 与 diff check通过。
+- [x] disposable E17 PostgreSQL 物理副本应用10817；受保护历史零漂移、v1/v2各自begin+replay+supersede PASS、v2 schema与v1 turns/hash混配被
+  `FALCON24_FOUR_LAYER_MANIFEST_INVALID` 拒绝，live writes 为0；副本、volume与55530 forward已删除。
+- [x] workspace 单并发 full unit 15/15 tasks通过；force production build 9/9、0 cache通过。一次误用默认并发造成资源竞争型跨包超时，
+  未放宽 timeout 或修改无关测试，随后 exact single-concurrent gate 无失败。
+- [x] 本项以 scoped commit 收口；随后从该 commit 重新 clean build/full unit/attestation，创建 fresh E17 physical scratch 和唯一 v2 attempt，
+  自 L1-01执行15回合。

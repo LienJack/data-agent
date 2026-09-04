@@ -2059,3 +2059,18 @@ composer、business 先于 UI/Trace、L4 两个固定 Conversation；只版本�
 正式 15 回合仍不能组合预检 PASS。每个正式 turn 必须由 gate authority claim 当前 ordinal，绑定同一个 formal build/baseline/release/profile，
 terminal 后写 deterministic business receipt；只有 business PASS 才打开同 Run QA/Trace 并 finalize。全部 turn PASS 后才能通过前向恢复流程把
 live E16 激活为 E17，随后做 production-port readback、390px smoke、live/protected-history 审计和资源清理。
+
+## 44. 双版本 manifest 的不可变映射
+
+Contracts 同时保留 v1 blueprint 和当前 v2 blueprint，并由 manifest schema version 选择唯一题库；构造器默认 v2，verifier 不允许调用方用
+v1 schema 包装 v2 turns 或反向混配。v2 保持 15 个 turn_id、5/2/2/6 层级、Conversation 模式和一次性 ordinal，只收敛题面与 rubric：
+公开公式/术语在 Semantic 层定义，Text2SQL 仍必须消费签发后的 SemanticQueryContext，复杂趋势再交给唯一 Analysis Stage。Report 是按题面
+选择的展示消费者，不再是每个协作回合的必选 Agent。
+
+数据库以 migration 10817 前向更新 begin RPC。RPC 对 v1/v2 分别校验 exact canonical turns hash，其他 manifest identity、当前 E17 authority、
+active-attempt 排他和 replay 条件完全复用。迁移前锁定并摘要四个受保护 schema 的实体表；迁移后逐表比较，同时核验 RPC body、owner、PUBLIC
+revoke 和 backend execute grant。migration ledger 是唯一被允许新增的持久化行。
+
+实现完成提交与正式证据 epoch 分离：实现提交可以用 disposable E17 copy 证明 migration 及 v1/v2 replay，但正式 controller 必须从该提交做
+新 generation/build attestation，再创建新的物理 scratch、activation、manifest 和 attempt。这样难度收敛发生在版本化业务合同，不发生在
+Oracle、同 Run 绑定、UI/Trace 或 live authority 上。

@@ -8,8 +8,10 @@ import {
 } from "../common/index.js";
 import { falcon24SuccessorAuthorityEpochSchema } from "../runs/falcon24-authority-identity.js";
 
-export const FALCON24_FOUR_LAYER_GATE_MANIFEST_VERSION =
+export const FALCON24_FOUR_LAYER_LEGACY_GATE_MANIFEST_VERSION =
   "falcon24-four-layer-gate-manifest@1.0.0" as const;
+export const FALCON24_FOUR_LAYER_GATE_MANIFEST_VERSION =
+  "falcon24-four-layer-gate-manifest@2.0.0" as const;
 export const FALCON24_FOUR_LAYER_LAYER_ORDER = Object.freeze(["L1", "L2", "L3", "L4"] as const);
 export const FALCON24_FOUR_LAYER_LAYER_TURN_COUNTS = Object.freeze({
   L1: 5,
@@ -132,7 +134,7 @@ function rubric(
  * Public, user-visible bank only. Gold SQL and sealed Oracle material must never
  * be added here because the manifest is available to the production controller.
  */
-export const FALCON24_FOUR_LAYER_TURN_BLUEPRINTS = Object.freeze([
+export const FALCON24_FOUR_LAYER_V1_TURN_BLUEPRINTS = Object.freeze([
   {
     ordinal: 0,
     turn_id: "L1-01",
@@ -484,6 +486,145 @@ export const FALCON24_FOUR_LAYER_TURN_BLUEPRINTS = Object.freeze([
   },
 ] as const);
 
+function currentTurnBlueprint(turn: (typeof FALCON24_FOUR_LAYER_V1_TURN_BLUEPRINTS)[number]) {
+  switch (turn.ordinal) {
+    case 5:
+      return {
+        ...turn,
+        question:
+          "使用已发布的订单收入、订单月份和请求级同比口径，比较数据中最近12个完整月。由 Semantic 解释口径，Text2SQL 输出12行 month、current_revenue、prior_revenue、yoy；先聚合再计算同比，零或缺失基期保留NULL。",
+      } as const;
+    case 6:
+      return {
+        ...turn,
+        question:
+          "使用已发布公式“营销ROAS”（formula.marketing_roas；按渠道先汇总营销归因收入与营销投入，汇总投入为0时结果为0，否则以汇总收入÷汇总投入计算），由 Semantic 解释该发布公式、Text2SQL 按渠道输出总营销投入、营销归因收入和ROAS渠道对比表。",
+      } as const;
+    case 7:
+      return {
+        ...turn,
+        question:
+          "最近12个完整月的订单收入同比表现如何？由 Semantic 保留订单收入、订单月份和同比口径，Text2SQL 输出完整12个月事实面板；随后只委派一个受治理 Analysis task，在同一个 Analysis Stage 内说明趋势强度并发布月度折线图和经营结论。只作描述性比较。",
+        expected_agents: expectedAgents(
+          "DYNAMIC",
+          ["semantic-management-agent", "governed-text2sql-agent", "governed-analysis-agent"],
+          { allowed: DYNAMIC_PROFILES, min: 3, max: 5 },
+        ),
+      } as const;
+    case 8:
+      return {
+        ...turn,
+        question:
+          "使用已发布营销投入、营销归因收入、营销转化和公式“营销ROAS”，由 Semantic 解释口径，Text2SQL 输出完整 channel × target_audience 事实面板；随后只委派一个受治理 Analysis task，在同一个 Analysis Stage 内比较渠道和目标人群并发布事实表与对比图。结论只描述当前数据，禁止因果断言。",
+        expected_agents: expectedAgents(
+          "DYNAMIC",
+          ["semantic-management-agent", "governed-text2sql-agent", "governed-analysis-agent"],
+          { allowed: DYNAMIC_PROFILES, min: 3, max: 5 },
+        ),
+        rubric: rubric(
+          "l3.marketing-effect",
+          [
+            "semantic-before-text2sql",
+            "channel-audience-comparison",
+            "accepted-analysis-evidence",
+            "single-analysis-stage",
+            "correlation-not-causation",
+            "table-chart-source-lineage",
+          ],
+          { table: true, chart: true },
+        ),
+      } as const;
+    case 9:
+      return {
+        ...turn,
+        expected_agents: expectedAgents(
+          "DYNAMIC",
+          ["semantic-management-agent", "governed-text2sql-agent", "governed-analysis-agent"],
+          { allowed: DYNAMIC_PROFILES, min: 3, max: 5 },
+        ),
+      } as const;
+    case 10:
+      return {
+        ...turn,
+        question:
+          "沿用上一题最近12个完整月的同比窗口。由 Semantic 保留订单收入、订单月份、客户类型和同比口径，Text2SQL 输出完整的12个月 × 客户类型同比事实面板；随后只委派一个受治理 Analysis task，并在同一个 Analysis Stage 内一次完成整体同比下降最大的3个月、各客户类型对整体同比变化的贡献，同时一次发布整体同比趋势图和客户类型对比图。不得拆成多个 Analysis task/Stage。",
+        rubric: rubric(
+          "l4.a.customer-segment-decomposition",
+          [
+            "pronoun-resolves-prior-yoy",
+            "complete-yoy-segment-panel",
+            "three-largest-declines",
+            "customer-segment-decomposition",
+            "single-analysis-stage",
+            "current-run-fact-verification",
+          ],
+          { table: true, chart: true },
+        ),
+      } as const;
+    case 11:
+      return {
+        ...turn,
+        expected_agents: expectedAgents(
+          "DYNAMIC",
+          ["semantic-management-agent", "governed-text2sql-agent", "governed-analysis-agent"],
+          { allowed: DYNAMIC_PROFILES, min: 3, max: 6 },
+        ),
+      } as const;
+    case 12:
+      return {
+        ...turn,
+        question:
+          "使用已发布公式“营销ROAS”（formula.marketing_roas；按渠道先汇总营销归因收入与营销投入，汇总投入为0时结果为0，否则以汇总收入÷汇总投入计算），由 Semantic 解释该发布公式、Text2SQL 按渠道输出总营销投入、营销归因收入和ROAS并给出渠道对比图。本题不要求因果解释。",
+        expected_agents: expectedAgents(
+          "DYNAMIC",
+          ["semantic-management-agent", "governed-text2sql-agent"],
+          { allowed: DYNAMIC_PROFILES, min: 2, max: 5 },
+        ),
+      } as const;
+    case 13:
+      return {
+        ...turn,
+        question:
+          "沿用同一渠道范围，把回报改为请求级“净ROI”：先按渠道分别汇总营销归因收入和营销投入，再计算（汇总收入－汇总投入）÷汇总投入。由 Semantic 形成 REQUEST_ONLY/NONE 口径、Text2SQL 重算并给出渠道对比图；不要复用ROAS列。",
+        expected_agents: expectedAgents(
+          "DYNAMIC",
+          ["semantic-management-agent", "governed-text2sql-agent"],
+          { allowed: DYNAMIC_PROFILES, min: 2, max: 5 },
+        ),
+      } as const;
+    case 14:
+      return {
+        ...turn,
+        question:
+          "继续使用上两题的渠道范围和请求级净ROI口径。比较数据中最近两个完整的营销表现自然月：时间字段使用已发布维度“blinkit_marketing_performance date”，收入使用已发布的“营销归因收入”。由 Semantic 解析 RECENT_COMPLETE_PERIODS + AGGREGATE_RATIO；Text2SQL 必须输出完整 month × channel × audience 两月事实面板，共32行，每行包含营销投入、营销归因收入和请求级净ROI，SQL阶段不得预筛。随后只委派一个受治理 Analysis task，从完整面板按渠道重新汇总并筛出本期投入增加且净ROI下降的渠道，列出入选渠道的全部目标人群事实。可能原因和下一步必须标为待验证假设，禁止因果或持续趋势断言。",
+        expected_agents: expectedAgents(
+          "DYNAMIC",
+          ["semantic-management-agent", "governed-text2sql-agent", "governed-analysis-agent"],
+          { allowed: DYNAMIC_PROFILES, min: 3, max: 5 },
+        ),
+        rubric: rubric(
+          "l4.b.audience-decomposition",
+          [
+            "net-roi-correction-retained",
+            "recent-two-complete-marketing-months",
+            "complete-six-column-thirty-two-row-panel",
+            "single-analysis-stage",
+            "spend-up-net-roi-down-filter",
+            "target-audience-decomposition",
+            "correlation-not-causation",
+          ],
+          { table: true, chart: true },
+        ),
+      } as const;
+    default:
+      return turn;
+  }
+}
+
+export const FALCON24_FOUR_LAYER_TURN_BLUEPRINTS = Object.freeze(
+  FALCON24_FOUR_LAYER_V1_TURN_BLUEPRINTS.map(currentTurnBlueprint),
+);
+
 const manifestTurnSchema = z.strictObject({
   ordinal: z.number().int().min(0).max(14),
   turn_id: z.string().regex(/^L[1-4](?:-[AB])?-0[1-5]$/u),
@@ -500,6 +641,9 @@ const manifestTurnSchema = z.strictObject({
 
 function compareFrozenTurns(
   turns: readonly z.infer<typeof manifestTurnSchema>[],
+  schemaVersion:
+    | typeof FALCON24_FOUR_LAYER_LEGACY_GATE_MANIFEST_VERSION
+    | typeof FALCON24_FOUR_LAYER_GATE_MANIFEST_VERSION,
   context: z.RefinementCtx,
 ): void {
   const counts = Object.fromEntries(
@@ -524,8 +668,12 @@ function compareFrozenTurns(
       path: ["turns"],
     });
   }
+  const blueprints =
+    schemaVersion === FALCON24_FOUR_LAYER_LEGACY_GATE_MANIFEST_VERSION
+      ? FALCON24_FOUR_LAYER_V1_TURN_BLUEPRINTS
+      : FALCON24_FOUR_LAYER_TURN_BLUEPRINTS;
   turns.forEach((turn, index) => {
-    const blueprint = FALCON24_FOUR_LAYER_TURN_BLUEPRINTS[index];
+    const blueprint = blueprints[index];
     if (!blueprint) return;
     const { question_hash: _questionHash, ...material } = turn;
     if (JSON.stringify(material) !== JSON.stringify(blueprint)) {
@@ -540,7 +688,10 @@ function compareFrozenTurns(
 
 const manifestMaterialSchema = z
   .strictObject({
-    schema_version: z.literal(FALCON24_FOUR_LAYER_GATE_MANIFEST_VERSION),
+    schema_version: z.enum([
+      FALCON24_FOUR_LAYER_LEGACY_GATE_MANIFEST_VERSION,
+      FALCON24_FOUR_LAYER_GATE_MANIFEST_VERSION,
+    ]),
     gate_id: falcon24FourLayerGateIdSchema,
     attempt_id: immutableIdSchema,
     authority_epoch: falcon24SuccessorAuthorityEpochSchema,
@@ -566,16 +717,24 @@ const manifestMaterialSchema = z
         path: ["gate_id"],
       });
     }
-    compareFrozenTurns(manifest.turns, context);
+    compareFrozenTurns(manifest.turns, manifest.schema_version, context);
   });
 
 export const falcon24FourLayerGateManifestSchema = manifestMaterialSchema.extend({
   manifest_hash: contentHashSchema,
 });
 
-export async function buildFalcon24FourLayerManifestTurns() {
+export async function buildFalcon24FourLayerManifestTurns(
+  schemaVersion:
+    | typeof FALCON24_FOUR_LAYER_LEGACY_GATE_MANIFEST_VERSION
+    | typeof FALCON24_FOUR_LAYER_GATE_MANIFEST_VERSION = FALCON24_FOUR_LAYER_GATE_MANIFEST_VERSION,
+) {
+  const blueprints =
+    schemaVersion === FALCON24_FOUR_LAYER_LEGACY_GATE_MANIFEST_VERSION
+      ? FALCON24_FOUR_LAYER_V1_TURN_BLUEPRINTS
+      : FALCON24_FOUR_LAYER_TURN_BLUEPRINTS;
   return Promise.all(
-    FALCON24_FOUR_LAYER_TURN_BLUEPRINTS.map(async (turn) =>
+    blueprints.map(async (turn) =>
       manifestTurnSchema.parse({
         ...turn,
         question_hash: await sha256ContentHash(turn.question),

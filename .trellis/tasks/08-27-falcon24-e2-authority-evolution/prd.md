@@ -1039,3 +1039,20 @@ A2 现在只有一个受治理 Analysis task/stage，并在同一 stage 一次�
   four-layer attempt 开始，禁止复用 `e5dc68c8` 的 build、baseline、Conversation、Run 或 Artifact。
 - **R-FL-FORMAL-VERSION-01** 正式 15 回合沿用 §20 的 5/2/2/6 层级和一次性 authority，同时把本节已经验证的公开公式、请求级术语、
   完整面板与单 Analysis Stage 合同写入新的版本化 manifest；不得把非计分 profile 或旧 manifest hash 冒充新 authority。
+
+### 22.16 正式 manifest v2 冻结协作难度，不降低证据难度
+
+正式 authority 使用 `falcon24-four-layer-gate-manifest@2.0.0`。15 回合及 5/2/2/6 数量保持不变；v2 只把已经在 §22.15
+闭合的公开语义写进题面和 rubric：同比使用最近 12 个完整月及 12 行结果合同，ROAS 使用当前 active Semantic Release 已发布公式，
+趋势题要求一次 Semantic→Text2SQL→单 Analysis 交接，营销题要求精确日期维度、32 行六列完整面板、请求级
+SUM-before-ratio 净 ROI 与单 Analysis Stage。Report 只在题目要求时出现，不能再把非必要 Report 当作 Semantic/Text2SQL 协作通过的前提。
+
+- **R-FL-MANIFEST-V2-01** v2 turns 的 canonical hash 固定为
+  `sha256:4ecf4742d2f8a201b3abe9609177441a0672a629becb4f58a23c18b7c7251142`；历史 v1 继续绑定
+  `sha256:c01c7944368ebdd0ae9fb2e69c9b809cb0cb24a2de65076da934e95a23c396e9`。schema version 与另一版本 turns/hash 混配必须失败关闭。
+- **R-FL-MANIFEST-V2-02** migration 10817 只能前向替换 `begin_falcon24_four_layer_gate(jsonb)` 的 manifest 版本校验，必须保持已有
+  attempt/turn/history 表逐字节不变、函数 owner/ACL 不变，并保留 v1 begin/replay 能力。
+- **R-FL-MANIFEST-V2-03** v2 不允许 Host 注入 SQL、内部对象 ID、结果值、关键词路由或模型输出；Semantic 仍从 active catalog
+  解析并签发当前 Run Context，Text2SQL 仍编译、执行并产出同 Run QueryEvidence，业务 Oracle 和 UI/Trace 标准不变。
+- **AC-FL-MANIFEST-V2-01** scoped commit 后必须以该 commit 重做 clean force build/full unit/attestation，创建 fresh physical scratch、
+  fresh activation 和唯一 v2 attempt；`e5dc68c8` 预检及迁移验证副本均不得升级为正式证据。
