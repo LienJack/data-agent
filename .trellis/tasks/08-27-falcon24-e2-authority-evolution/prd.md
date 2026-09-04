@@ -1196,3 +1196,21 @@ Run/attempt 已按真实失败不可变封存，前八题 PASS 不复用。
 - **AC-FL-ROOT-SCHEMA-REJECTION-01** 回归必须覆盖 AUTO/JSON_TEXT wrong-schema 与 extra-field、event certainty、Direct Root 分类、
   persisted transport 和 Root checkpoint repair；focused validation 与 scoped commit 后，必须从新 clean build、fresh physical scratch、
   fresh E17 activation 和 fresh v7 attempt 自 L1-01 重跑，本次八题 PASS 不得拼接。
+
+### 22.26 Root 必须保持用户显式语义范围，不能把“当前数据”改写为时间窗口
+
+v7 attempt `ca939d37-25dd-4889-b18f-c6e81de80f49` 已在同一 build/scratch 完整通过 L1 五题、L2 两题和 L3-01。L3-02 Run
+`9ba72726-6311-81cb-ac27-af279acb57d6` 的前两次 Root Semantic objective 都为题目自行增加了“当前时间窗口/时间语义”，Semantic 的
+完整响应因不符合选择 Schema 被安全拒绝；§22.25 的已知拒绝通道正确让 Root 在普通下一回合恢复。第三次去除该额外时间范围后，Semantic
+与 Text2SQL 均成功并接受 Artifact，但四个 Root 回合已耗尽，且 Text2SQL objective 还遗漏了题面显式要求的 conversions，无法进入唯一
+Analysis Stage。attempt 已按真实 `ROOT_AGENT_TURN_BUDGET_EXHAUSTED` 不可变封存，前八题 PASS 不复用。
+
+- **R-FL-ROOT-SCOPE-01** “当前数据/当前事实/active release”只限定答案的 authority 与 freshness；在用户或继承意图没有给出期间、
+  窗口或比较范围时，Root 不得据此要求 Semantic 选择额外时间语义、可执行当前窗口、日期过滤或无关关系，Text2SQL 保持 all-time/unbounded。
+- **R-FL-ROOT-SCOPE-02** 用户显式枚举的维度、指标、公式、输出列、分组键和图表要求必须在需要它们的 Semantic、Text2SQL、Analysis
+  objective 中完整传递；不得静默漏项、改变含义或加入无关语义范围。多步链路必须在完整面板基础上进入后续能力。
+- **R-FL-ROOT-SCOPE-03** 本项只收紧通用 Root system contract，不按关键词、case ID 或固定 profile 路由，不修改 v7 manifest、四回合预算、
+  Provider 重试、Artifact admission、业务 Oracle、QA/Trace 或 authority 门槛。
+- **AC-FL-ROOT-SCOPE-01** Harness 回归必须同时证明“当前数据不构成时间窗口”和“显式业务项跨链路保持”；focused validation 与 scoped
+  commit 后，必须从新 clean build、fresh physical scratch、fresh E17 activation 和 fresh v7 attempt 自 L1-01 重跑，本次八题
+  PASS 不得拼接。

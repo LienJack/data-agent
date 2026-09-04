@@ -265,6 +265,9 @@ Planner 必须按选中方法顺序完整复制 `required_operator_obligations`�
 - Root Harness: direct answer, native single delegation, cross-turn serial delegation, same-turn independent calls, safe Tool Result feedback, verifier feedback, mixed response rejection, four-turn exhaustion and durable replay；另覆盖同 task replay仍duplicate、跨 turn不同 child task的相同 Specialist stage不碰撞、repair index分域。
 - Pinned Mastra bridge 离线集成同时覆盖 AUTO native Tool 与 AUTO 无工具文本；合法 JSON 完成、非法 JSON/未知字段/prose/fence/空文本拒绝。
   Prompt 的 JSON Schema 必须等于可执行 Schema。continuation 后 Root 自主 final 与继续执行两条路径都需回归，不能只 mock 最终成功。
+- Root delegation objective 必须保真携带用户显式枚举的维度、指标、公式、输出字段、分组键和图表要求，不能在 Semantic、Text2SQL、
+  Analysis 的串行交接中静默漏项或增加无关范围。“当前数据/当前事实/active release”只约束 authority/freshness；没有用户或继承期间时，
+  不得把它扩张成时间窗口、日期过滤、额外时间语义或关系，查询保持 all-time/unbounded。测试必须固定这两个 prompt contract。
 - 四次串行委派后的 QueryEvidence/AnalysisReport 确定性收敛、continuation 仍耗尽、verifier 拒绝、最终证据 checkpoint 恢复及终态 replay；断言 Root 决策始终四次、恢复不重跑工具。
 - V2 Profile materialization/admission: exact revision/hash/tool/Skill closure; V1 and stale revision rejection。
 - Semantic: strict selection intent, exact release/projection/hash/resource binding, metric/formula/dependency, dimension/grain/parent, relationship/join/cardinality, time/restriction, ambiguity, semantic-only final and no SQL execution。

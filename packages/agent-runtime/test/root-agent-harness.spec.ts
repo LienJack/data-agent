@@ -102,6 +102,20 @@ describe("Root Agent Harness", () => {
     expect(message).toContain("retain the user's explicit or inherited time restriction");
   });
 
+  it("preserves explicit semantic scope without treating current data as a time window", async () => {
+    const message = await buildRootAgentSystemMessage(await catalog(["semantic-management-agent"]));
+    expect(message).toContain(
+      "current data, current facts, or use the active release identify the authority and freshness",
+    );
+    expect(message).toContain("they do not request a calendar period");
+    expect(message).toContain("keep Semantic and Text2SQL objectives all-time and unbounded");
+    expect(message).toContain(
+      "Preserve every business item explicitly enumerated by the current user",
+    );
+    expect(message).toContain("carry every requested item into the Semantic objective");
+    expect(message).toContain("complete requested panel");
+  });
+
   it("narrows Analysis's redundant Semantic input to the supported QueryEvidence", async () => {
     const frozenCatalog = await catalog(["governed-analysis-agent"], ["QueryEvidence"]);
     const query = {

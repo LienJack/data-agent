@@ -2217,3 +2217,17 @@ known certainty。event contract 只允许 empty、invalid JSON 和 schema-inval
 这不增加 provider attempt、Root turn、工具预算或路由规则。Tool activity、流中断、未知 finish、预算越界及任何未满足完整性条件的
 schema/protocol 错误仍为 `DISPATCHED_OUTCOME_UNKNOWN` 并终止。该修复归类为 **B Cross-Layer Contract Gap** 与
 **D Test Coverage Gap**：bridge 已知道确定性，但 adapter/event/Team 没有对应的安全负结果合同，测试也只覆盖了 empty 与 invalid JSON。
+
+## 55. Root delegation objective 是用户范围的保真投影
+
+L3-02 的事件和 provider 原文证明 §54 已按设计工作：两次完整 Semantic schema 拒绝都被 checkpoint 后交还给下一个普通 Root turn；第三次
+Semantic 和第四次 Text2SQL 成功。新断点来自 objective 漂移而不是失败恢复：Root 把题面“当前数据”误作待解析时间窗口，并在后续
+Text2SQL objective 丢掉显式 conversions，既浪费有界回合，也破坏完整面板。
+
+修复位于 Root system message 的通用决策合同。它将 authority/freshness 短语与业务时间限制分开：没有用户提供或继承的期间时，
+Semantic 和 Text2SQL 保持 all-time/unbounded，不选择额外时间对象。它还要求 Root 将用户枚举的维度、指标、公式、输出字段、分组和图表要求
+逐步保真投影到所有需要它们的下游 objective，Analysis 只能消费完成该面板的 QueryEvidence。
+
+该规则不读取题目 ID，不列出营销专用对象，也不决定 Profile 或 DAG；Root 仍从冻结 Catalog 自主选择下一步。manifest v7、Root 四回合、
+Specialist 内层预算、Schema、Artifact admission 和所有 formal proof 不变。该修复归类为 **A Prompt/Instruction Gap** 与
+**D Test Coverage Gap**，用 system-message regression 固定边界，再以 fresh one-shot epoch 验证实际协作。

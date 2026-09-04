@@ -2445,3 +2445,14 @@ SQL 模型输入，剩余 executable/schema 仍受原64 KB预算约束并超限�
   validate 与 diff check 均通过，本项由随后 scoped commit 收口。默认并发初跑只产生跨包资源争用超时，单并发重跑全部通过。
 - [ ] 从新 commit clean build、fresh physical scratch、fresh E17 activation 和 fresh v7 attempt 自 L1-01 重跑；本次前八题
   PASS 不得拼接。
+- [x] `732d7b5a` clean force build/full unit/attestation、fresh physical scratch、10816～10822、dataset proof、模型认证和 E17 scratch
+  activation 通过；v7 attempt `ca939d37-25dd-4889-b18f-c6e81de80f49` 的 L1 五题、L2 两题和 L3-01 均完成独立业务
+  Oracle 与 business/QA/Trace PASS。
+- [x] L3-02 Run `9ba72726-6311-81cb-ac27-af279acb57d6` 的两次 Semantic schema-invalid 响应被 §22.25 正确恢复；第三次 Semantic
+  与第四次 Text2SQL 成功，但前两次 Root 自增“当前时间窗口”已耗尽固定四回合，且 Text2SQL objective 漏传 conversions，Run/attempt
+  按 `ROOT_AGENT_TURN_BUDGET_EXHAUSTED` 不可变封存。
+- [x] Root system contract 明确 current-data 仅表示 authority/freshness，不自动产生时间窗口；同时要求显式枚举的业务项在需要它们的
+  Semantic、Text2SQL、Analysis objective 中完整传递。本项不修改 manifest、预算、路由或证据门槛。
+- [x] Harness 16/16、Agent Runtime typecheck/build、owned Biome、Trellis validate、diff check 与单并发 full unit gate 15/15 均通过；
+  本项由随后 scoped commit 收口。提交后从新 clean build/fresh physical scratch/fresh v7 attempt 自 L1-01 完整重跑，本次前八题
+  PASS 不得拼接。
