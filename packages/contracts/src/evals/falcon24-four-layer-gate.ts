@@ -18,8 +18,10 @@ export const FALCON24_FOUR_LAYER_V4_GATE_MANIFEST_VERSION =
   "falcon24-four-layer-gate-manifest@4.0.0" as const;
 export const FALCON24_FOUR_LAYER_V5_GATE_MANIFEST_VERSION =
   "falcon24-four-layer-gate-manifest@5.0.0" as const;
-export const FALCON24_FOUR_LAYER_GATE_MANIFEST_VERSION =
+export const FALCON24_FOUR_LAYER_V6_GATE_MANIFEST_VERSION =
   "falcon24-four-layer-gate-manifest@6.0.0" as const;
+export const FALCON24_FOUR_LAYER_GATE_MANIFEST_VERSION =
+  "falcon24-four-layer-gate-manifest@7.0.0" as const;
 export const FALCON24_FOUR_LAYER_LAYER_ORDER = Object.freeze(["L1", "L2", "L3", "L4"] as const);
 export const FALCON24_FOUR_LAYER_LAYER_TURN_COUNTS = Object.freeze({
   L1: 5,
@@ -670,13 +672,25 @@ export const FALCON24_FOUR_LAYER_V5_TURN_BLUEPRINTS = Object.freeze(
   ),
 );
 
-export const FALCON24_FOUR_LAYER_TURN_BLUEPRINTS = Object.freeze(
+export const FALCON24_FOUR_LAYER_V6_TURN_BLUEPRINTS = Object.freeze(
   FALCON24_FOUR_LAYER_V5_TURN_BLUEPRINTS.map((turn) =>
     turn.ordinal === 4
       ? {
           ...turn,
           question:
             "这是当前 Run 已验收并绑定的数据表。请只委派 Report Agent，基于这份表给经营负责人写一段简短摘要；不要查询其他数据，不要增加表中没有的结论。",
+        }
+      : turn,
+  ),
+);
+
+export const FALCON24_FOUR_LAYER_TURN_BLUEPRINTS = Object.freeze(
+  FALCON24_FOUR_LAYER_V6_TURN_BLUEPRINTS.map((turn) =>
+    turn.ordinal === 6
+      ? {
+          ...turn,
+          question:
+            "只执行两步委派：第一步只由 Semantic 解释已发布 formula.marketing_roas，并且只选择 dimension.marketing_channel、metric.marketing_spend、metric.marketing_revenue、formula.marketing_roas，不选择时间口径或关系；第二步只由 Text2SQL 对全部可用营销数据按渠道汇总，输出 channel、total_spend、marketing_revenue、roas 表。ROAS 等于汇总收入除以汇总投入，汇总投入为0时返回0；不得添加日期过滤，不要在 Semantic 后直接结束。",
         }
       : turn,
   ),
@@ -704,6 +718,7 @@ function compareFrozenTurns(
     | typeof FALCON24_FOUR_LAYER_V3_GATE_MANIFEST_VERSION
     | typeof FALCON24_FOUR_LAYER_V4_GATE_MANIFEST_VERSION
     | typeof FALCON24_FOUR_LAYER_V5_GATE_MANIFEST_VERSION
+    | typeof FALCON24_FOUR_LAYER_V6_GATE_MANIFEST_VERSION
     | typeof FALCON24_FOUR_LAYER_GATE_MANIFEST_VERSION,
   context: z.RefinementCtx,
 ): void {
@@ -740,7 +755,9 @@ function compareFrozenTurns(
             ? FALCON24_FOUR_LAYER_V4_TURN_BLUEPRINTS
             : schemaVersion === FALCON24_FOUR_LAYER_V5_GATE_MANIFEST_VERSION
               ? FALCON24_FOUR_LAYER_V5_TURN_BLUEPRINTS
-              : FALCON24_FOUR_LAYER_TURN_BLUEPRINTS;
+              : schemaVersion === FALCON24_FOUR_LAYER_V6_GATE_MANIFEST_VERSION
+                ? FALCON24_FOUR_LAYER_V6_TURN_BLUEPRINTS
+                : FALCON24_FOUR_LAYER_TURN_BLUEPRINTS;
   turns.forEach((turn, index) => {
     const blueprint = blueprints[index];
     if (!blueprint) return;
@@ -763,6 +780,7 @@ const manifestMaterialSchema = z
       FALCON24_FOUR_LAYER_V3_GATE_MANIFEST_VERSION,
       FALCON24_FOUR_LAYER_V4_GATE_MANIFEST_VERSION,
       FALCON24_FOUR_LAYER_V5_GATE_MANIFEST_VERSION,
+      FALCON24_FOUR_LAYER_V6_GATE_MANIFEST_VERSION,
       FALCON24_FOUR_LAYER_GATE_MANIFEST_VERSION,
     ]),
     gate_id: falcon24FourLayerGateIdSchema,
@@ -804,6 +822,7 @@ export async function buildFalcon24FourLayerManifestTurns(
     | typeof FALCON24_FOUR_LAYER_V3_GATE_MANIFEST_VERSION
     | typeof FALCON24_FOUR_LAYER_V4_GATE_MANIFEST_VERSION
     | typeof FALCON24_FOUR_LAYER_V5_GATE_MANIFEST_VERSION
+    | typeof FALCON24_FOUR_LAYER_V6_GATE_MANIFEST_VERSION
     | typeof FALCON24_FOUR_LAYER_GATE_MANIFEST_VERSION = FALCON24_FOUR_LAYER_GATE_MANIFEST_VERSION,
 ) {
   const blueprints =
@@ -817,7 +836,9 @@ export async function buildFalcon24FourLayerManifestTurns(
             ? FALCON24_FOUR_LAYER_V4_TURN_BLUEPRINTS
             : schemaVersion === FALCON24_FOUR_LAYER_V5_GATE_MANIFEST_VERSION
               ? FALCON24_FOUR_LAYER_V5_TURN_BLUEPRINTS
-              : FALCON24_FOUR_LAYER_TURN_BLUEPRINTS;
+              : schemaVersion === FALCON24_FOUR_LAYER_V6_GATE_MANIFEST_VERSION
+                ? FALCON24_FOUR_LAYER_V6_TURN_BLUEPRINTS
+                : FALCON24_FOUR_LAYER_TURN_BLUEPRINTS;
   return Promise.all(
     blueprints.map(async (turn) =>
       manifestTurnSchema.parse({

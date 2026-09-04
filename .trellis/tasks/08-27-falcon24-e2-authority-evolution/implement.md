@@ -2403,4 +2403,18 @@ SQL 模型输入，剩余 executable/schema 仍受原64 KB预算约束并超限�
 - [x] Contracts/Evals/Platform/Web focused tests 12/3/10/47 PASS；四包 typecheck、Contracts/Evals/Platform/Web build、
   migration 10821 render/registry、owned Biome、Trellis validate 与 diff check PASS。失败 scratch 上真实 PostgreSQL v1～v6
   begin/replay/supersede、v5/v6 双向混配拒绝、历史/owner/SECURITY DEFINER/ACL 保持和 live authority writes=0 均通过。
-- [ ] scoped commit 后从新 commit 创建 fresh build/scratch/v6 attempt，自 L1-01 完整重跑，禁止复用本次前四题 PASS。
+- [x] scoped commit 后从新 commit 创建 fresh build/scratch/v6 attempt，并自 L1-01 重跑；该 attempt 在 L2-02 真实失败并封存，
+  没有复用前序局部 PASS。
+- [x] `9762d8bc` clean build/full unit/attestation、fresh physical scratch、10816～10821、dataset proof、模型认证和 E17 scratch activation
+  通过。v6 attempt `a9782700-abc4-47ab-b1b9-68d6032dab6c` 的 L1 五题与 L2-01 均完成 business/QA/Trace。
+- [x] L2-02 Run `755a7323-6797-8da7-a8bf-31d88bb9008a` 前两次 Semantic 因 Root 自增时间窗口选择闭包外对象失败；第三次
+  Context 成功但 Root 改成 semantic-only，未创建 Text2SQL task。该题按真实 `AGENT_CONTRACT_MISMATCH` 失败，attempt 已不可变封存；
+  Web/Worker 随即停止，live E16 写入仍为0。
+- [x] manifest v7 只前向显式化 L2-02 的四对象、无日期过滤和 Semantic→Text2SQL 两步交接；v1～v6 blueprint/replay 保持不可变，
+  canonical turns hash 为 `sha256:df80081985d2a65f2ea161bb079a8b2a1dfa2930a90090493f3be6f640032795`。
+- [x] 新增 migration 10822 renderer source/static test，只在 exact post-10821 begin RPC 增加 v7 分支并保留历史/ACL；render checksum 为
+  `sha256:a084ef63a5ca84a46806055e60e246a1de65414aed6763c65f3142a20047a1d4`。
+- [x] Contracts/Evals/Platform/Web focused tests 12/3/27/47 PASS；四包 typecheck/build、10822 render、owned Biome、
+  Trellis validate 与 diff check PASS。失败 scratch 上真实 PostgreSQL v1～v7 begin/replay/supersede、v6/v7 双向混配拒绝、
+  migration ledger、owner/SECURITY DEFINER/ACL 保持和 live authority writes=0 均通过；本项由随后 scoped commit 收口。
+- [ ] 从新 commit 建 fresh build/scratch/v7 attempt，自 L1-01 完整重跑，禁止复用 v6 六题 PASS。

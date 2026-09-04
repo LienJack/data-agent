@@ -2150,3 +2150,19 @@ v6 仅将 L1-05 的自然语言合同改为“只委派 Report Agent”，保留
 accepted-table-only、management-summary、no-unsupported-claims 三项业务验收。Host 不新增关键词 Router、固定 DAG、模型响应修补或
 自动 Report 调度；当前 Run Artifact admission 与最终 answer verifier 仍按原路径执行。旧 v1～v5 blueprint/hash/attempt 不变，10821
 只在 exact post-10820 begin RPC 上追加 v6 hash。新正式证据必须来自新 commit/build/fresh physical scratch/fresh attempt。
+
+## 51. 渠道 ROAS 两步交接不应让 Root 发明时间窗口
+
+v6 attempt `a9782700-abc4-47ab-b1b9-68d6032dab6c` 的 L2-02 Run
+`755a7323-6797-8da7-a8bf-31d88bb9008a` 证明发布公式本身已经进入冻结闭包：route 直接命中
+`formula.marketing_roas`，retrieval selected set 含渠道、投入、收入和 ROAS，inference mandatory object 也是该公式。
+失败由 Root 的 objective 漂移造成：前两次额外要求当前时间窗口，触发两次
+`TEAM_SEMANTIC_SELECTION_OUTSIDE_FROZEN_CLOSURE`；第三次成功 Context 只含已发布对象，却被 Root 声明为
+`semantic-only`，因此没有 Text2SQL task。Run 的 SUCCEEDED 不替代 exact Agent contract，business 正确以
+`AGENT_CONTRACT_MISMATCH` 封存。
+
+v7 只前向替换 ordinal 6 的模型可见题面，枚举四个已发布对象、明确全量无日期过滤、固定 Semantic 后继续 Text2SQL，并写出四列结果与
+ratio-of-sums/零分母口径。Host runtime、模型自主原生 Tool Call、exact task admission、SQL compiler、QueryEvidence 与 UI/Trace
+完全不变；特别不增加 deterministic router/DAG 或允许闭包外选择。v1～v6 blueprint 继续按 schema version 验证。10822 在 exact
+post-10821 `prosrc` 上做唯一替换，追加 v7 turns hash
+`sha256:df80081985d2a65f2ea161bb079a8b2a1dfa2930a90090493f3be6f640032795`，并保持逐表历史与 ACL 快照守卫。

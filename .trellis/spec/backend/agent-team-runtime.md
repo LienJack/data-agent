@@ -199,6 +199,9 @@ The only model output contract is `text2sql-query-candidate@1.0.0`:
   provider 错误码不能替代原始响应证据，不得把可复现的合同缺口宣称为某个历史 provider failure 的唯一已证根因。
 - Host validates every selected ID against the frozen retrieval/inference closure, expands required formula/time/dimension-parent/relationship and physical-binding context, then commits `semantic-query-context@1.0.0` with exact Scope/Run, release/generation/digest, schema snapshot, datasource, retrieval/inference receipts and `context_hash`。
 - `SemanticQueryContext` returns to Root as a structured safe Tool Result. Root may answer a semantic-only question from allowlisted exact fields, or a later Root turn may pass the accepted Artifact through ordinary `input_artifact_refs`; Host does not schedule that later call。
+- 当同一问题明确要求 `Semantic -> Text2SQL` 串行交接时，Root 不得把用于后续 SQL 的 Semantic objective 改写成
+  `semantic-only`，也不得自行加入用户未声明的时间窗口。门禁题可显式冻结已发布对象 ID、禁止额外时间/关系选择并要求下一次委派，
+  但这只是模型可见任务合同：Host 仍不做关键词路由、固定 DAG 或越过 frozen-closure 守卫。
 - Report r5 consumes only ordinary admitted **current-Run** `QueryEvidence` / `AnalysisReport` references; discovery and execution agree.
   The single-QueryEvidence context is unchanged. Multiple inputs use the exact delegation receipt, not an arbitrary first query or conversation prose.
   Before provider I/O, verify every input hash/identity/Scope/Run, retained section refs, existing 16-source/100-section bounds and task context-byte budget.

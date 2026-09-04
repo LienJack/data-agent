@@ -16,7 +16,7 @@ const hash = (character: string) => `sha256:${character.repeat(64)}`;
 
 async function turns() {
   const manifest = await buildFalcon24FourLayerGateManifest({
-    schema_version: "falcon24-four-layer-gate-manifest@6.0.0",
+    schema_version: "falcon24-four-layer-gate-manifest@7.0.0",
     gate_id: "E11-FL1",
     attempt_id: id(1),
     authority_epoch: "E11",

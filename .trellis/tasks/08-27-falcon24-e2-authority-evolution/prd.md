@@ -1128,3 +1128,21 @@ L1-05 的 exact current-Run accepted table 也已绑定，但 Root 两次在任�
   ledger/checksum 与函数 hash 上增加 v6 分支；历史表、六版本 replay、owner、SECURITY DEFINER 与 ACL 保持不变。
 - **AC-FL-MANIFEST-V6-01** focused 回归、真实 PostgreSQL 迁移/replay、scoped commit 后，必须从新 commit clean build、fresh
   physical scratch、fresh E17 activation 和 fresh v6 attempt 自 L1-01 重跑；v5 前四题 PASS 不得复用。
+
+### 22.22 渠道 ROAS 的 Semantic → Text2SQL 两步交接必须单义
+
+v6 attempt `a9782700-abc4-47ab-b1b9-68d6032dab6c` 已完整通过 L1 五题和 L2-01。L2-02 的发布
+`formula.marketing_roas` 已在 route decision、retrieval selected set 和 inference mandatory closure 中存在；失败不是公式缺失。
+Root 前两次给 Semantic objective 增加“当前窗口/时间语义”，Semantic 因选择冻结闭包外对象被正确拒绝；第三次又把 objective 改成
+`semantic-only`，虽生成合法 `SemanticQueryContext`，却不再委派 Text2SQL，最终只有定义、没有渠道表。
+
+- **R-FL-MANIFEST-V7-01** 保留 v1～v6 题库不可变；v7 只把 L2-02 冻结为两步：Semantic 只选择
+  `dimension.marketing_channel`、`metric.marketing_spend`、`metric.marketing_revenue`、`formula.marketing_roas`，不选择额外时间口径或关系；
+  随后 Text2SQL 对全部可用营销数据按渠道输出 `channel/total_spend/marketing_revenue/roas`，不得添加日期过滤或在 Semantic 后结束。
+- **R-FL-MANIFEST-V7-02** expected Agent 仍精确为 Semantic + Text2SQL 两个 task；ratio-of-sums、零投入返回0、QueryEvidence、业务 Oracle、
+  QA/Trace 和 L3～L4 均不变。不得增加 Host Router、固定 DAG、自动补 SQL 或放宽 frozen closure。
+- **R-FL-MANIFEST-V7-03** v7 turns canonical hash 固定为
+  `sha256:df80081985d2a65f2ea161bb079a8b2a1dfa2930a90090493f3be6f640032795`。migration 10822 只能在 exact post-10821
+  ledger/checksum 与函数 hash 上增加 v7 分支；历史表、七版本 replay、owner、SECURITY DEFINER 与 ACL 保持不变。
+- **AC-FL-MANIFEST-V7-01** 真实 PostgreSQL 迁移/replay、focused validation 与 scoped commit 后，必须从新 commit 的 clean build、
+  fresh physical scratch、fresh E17 activation 和 fresh v7 attempt 自 L1-01 重跑；v6 已通过的六题不得拼接复用。
