@@ -100,14 +100,16 @@ async function terminalSemanticFactsDecision(input: {
   readonly catalog_snapshot_hash: string;
   readonly observations: readonly RootToolObservation[];
 }): Promise<RootAgentDecisionCandidate | null> {
-  // answer_scope is verified Host evidence; a Router hint cannot downgrade a
-  // complete semantic-only result into another provider turn.
+  // answer_scope describes the specialist's assigned semantic objective, while
+  // output_usage records whether Root considers that output terminal. Only the
+  // conjunction may bypass Root's next provider turn.
   const observation = [...input.observations]
     .reverse()
     .find(
       (candidate) =>
         candidate.status === "COMPLETED" &&
         candidate.profile_id === "semantic-management-agent" &&
+        candidate.output_usage === "FINAL_ANSWER_EVIDENCE" &&
         candidate.output_ref.artifact_type === "SemanticQueryContext" &&
         candidate.safe_projection.projection_kind === "SEMANTIC_CONTEXT",
     );

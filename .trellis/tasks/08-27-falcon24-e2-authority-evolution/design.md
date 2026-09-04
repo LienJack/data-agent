@@ -2178,3 +2178,19 @@ Production `run-bound-provider-dispatcher` 原先把 Root 输出再次硬编码�
 跨层预算漂移，不是 Report/Semantic 权威或题面缺失。前向修复只把 Root 单次输出 ceiling 对齐到4096，并继续取认证模型
 `effective_output_ceiling_tokens` 与 context headroom 的更小值。Provider 调用次数、Root 四回合、Tool allowlist、Catalog admission、
 accepted Artifact、答案 verifier 和失败关闭规则均不改变；v7 manifest/10822 无需新版本。
+
+## 53. 专职产物范围与根流程终态是两条独立轴
+
+L2-02 的 provider 原始响应证明 Root 已把 Semantic Tool Call 声明为 `CONTINUATION_INPUT`；Semantic 返回的
+`answer_scope=SEMANTIC_FACTS_ONLY` 也完全符合其被分配的第一步 objective。旧的
+`terminalSemanticFactsDecision` 只读取第二条信号，于是把“专职任务已完成”误作“整个用户流程已完成”。这是 Worker 跨层编排合同错误，
+不是模型未选择 Text2SQL，也不是发布 ROAS 公式缺失。
+
+修复后的自动终态判定读取同一条 completed observation，并要求四项同时成立：profile 为 Semantic、Artifact 为已验收
+`SemanticQueryContext`、Context 无未决歧义且 scope 为 semantic facts、Root usage 为 `FINAL_ANSWER_EVIDENCE`。若 usage 为
+`CONTINUATION_INPUT`，正常 Root provider loop 接收原样 observation 历史并决定下一 Agent。这样 specialist scope 仍由 Semantic Host
+验证，workflow terminality 仍由 Root 决定，两者不互相覆盖。
+
+预防矩阵不只断言最终返回值，还验证 continuation 的下一次 provider 输入包含成功 Context 及完整历史；final-evidence 分支继续无需额外
+provider call。实现不添加 Router/DAG、不自动选择 Text2SQL、不改 manifest 或 Agent allowlist。失败类别归为 B（Cross-Layer Contract）
+与 D（Test Coverage Gap）：既有测试错误地把两种 `output_usage` 都期望为终态，现改为二维合同回归。

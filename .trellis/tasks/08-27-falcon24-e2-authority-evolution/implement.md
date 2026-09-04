@@ -2424,4 +2424,11 @@ SQL 模型输入，剩余 executable/schema 仍受原64 KB预算约束并超限�
   不可变封存；Web/Worker 已停止，live E16 writes=0。
 - [x] 将 Production Root 输出 ceiling 从额外2048硬上限对齐到既有 Team 4096，同时保留模型/context更小上限；provider focused
   2/2、Worker typecheck/build、owned Biome、Trellis validate 与 diff check PASS，本项由随后 scoped commit 收口。
-- [ ] 从新 commit 的 fresh build/scratch/v7 attempt 自 L1-01 完整重跑，禁止复用本轮四题 PASS。
+- [x] `6aa0b71d` clean force build/full unit/attestation、fresh physical scratch、10816～10822、dataset proof、模型认证和 E17 scratch
+  activation 通过；v7 attempt `78d327e2-a020-450d-991a-d6d2bfd44ec2` 的 L1 五题与 L2-01 business/QA/Trace PASS。
+- [x] L2-02 Run `31a7dde2-6242-83aa-a598-46f032edf3d3` 的 Root provider 响应明确把合法 Semantic Context 标记为
+  `CONTINUATION_INPUT`，但 Worker 仅据 Context 的 `SEMANTIC_FACTS_ONLY` 提前终结，未给 Root 第二次委派 Text2SQL；该 attempt 已按
+  `AGENT_CONTRACT_MISMATCH` 不可变封存，Web/Worker 停止，live E16 writes=0。
+- [x] `terminalSemanticFactsDecision` 改为同时要求 Root `FINAL_ANSWER_EVIDENCE`；矩阵回归证明 Semantic continuation 保留完整
+  observation 历史并回到 Root，真实 semantic-only final evidence 仍可确定性结算。本项归类为跨层合同与测试覆盖缺口。
+- [ ] focused validation 与 scoped commit 后，从新 commit 的 fresh build/scratch/v7 attempt 自 L1-01 完整重跑，禁止复用本轮六题 PASS。

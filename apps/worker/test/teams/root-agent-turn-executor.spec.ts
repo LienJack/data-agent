@@ -273,6 +273,16 @@ describe("Root Agent normal turn", () => {
       revision: 1,
       content_hash: `sha256:${"e".repeat(64)}`,
     };
+    if (semanticUsage === "CONTINUATION_INPUT") {
+      invoke.mockResolvedValueOnce({
+        ok: false,
+        error: {
+          code: "NEXT_ROOT_ACTION_REQUIRED",
+          message: "Continue from accepted semantic input.",
+          retryable: false,
+        },
+      });
+    }
     const terminalSemanticResult = await createRootAgentTurnExecutor().decide(
       {
         lease,
@@ -318,20 +328,43 @@ describe("Root Agent normal turn", () => {
         verifier_feedback: null,
       },
     );
-    expect(terminalSemanticResult).toEqual({
-      ok: true,
-      value: expect.objectContaining({
-        kind: "FINAL_ANSWER",
-        sections: [
-          expect.objectContaining({
-            kind: "ARTIFACT_FACTS",
-            artifact_ref: semanticArtifactRef,
-            fact_selectors: ["projection.context.quality_constraints"],
-          }),
-        ],
-      }),
-    });
-    const semanticProviderCalls = 1;
+    if (semanticUsage === "CONTINUATION_INPUT") {
+      expect(terminalSemanticResult).toMatchObject({
+        ok: false,
+        error: { code: "NEXT_ROOT_ACTION_REQUIRED" },
+      });
+      expect(invoke.mock.calls[1]?.[0]).toMatchObject({
+        turn: {
+          turn_index: 2,
+          tool_observations: expect.arrayContaining([
+            expect.objectContaining({
+              tool_call_id: "semantic-failed",
+              status: "FAILED",
+              error_code: "MODEL_STREAM_PROTOCOL_VIOLATION",
+            }),
+            expect.objectContaining({
+              output_usage: semanticUsage,
+              output_ref: semanticArtifactRef,
+            }),
+          ]),
+        },
+      });
+    } else {
+      expect(terminalSemanticResult).toEqual({
+        ok: true,
+        value: expect.objectContaining({
+          kind: "FINAL_ANSWER",
+          sections: [
+            expect.objectContaining({
+              kind: "ARTIFACT_FACTS",
+              artifact_ref: semanticArtifactRef,
+              fact_selectors: ["projection.context.quality_constraints"],
+            }),
+          ],
+        }),
+      });
+    }
+    const semanticProviderCalls = semanticUsage === "CONTINUATION_INPUT" ? 2 : 1;
     expect(invoke).toHaveBeenCalledTimes(semanticProviderCalls);
 
     const reportArtifactRef = {

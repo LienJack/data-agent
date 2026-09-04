@@ -66,6 +66,27 @@ Host projection, next-agent decision, pre-I/O execution denial, and public answe
 Test the complete round-trip and unchanged legacy hashes. A reproducible contract
 gap does not prove what an unavailable historical provider response contained.
 
+### Specialist Scope Is Not Workflow Terminality
+
+Agent orchestration can carry two valid but independent decisions on the same
+artifact: the specialist declares what its output answers, while the caller
+declares how that output will be used. A semantic-only specialist result does
+not prove that the user's multi-agent workflow is complete.
+
+When an automatic terminal path exists:
+
+- require the verified specialist scope and the caller's explicit final-answer
+  usage to agree before bypassing the caller's next turn;
+- treat continuation usage as authoritative for orchestration, preserve the
+  complete observation history, and return control to the caller;
+- do not replace the missing handoff with a keyword router, fixed DAG, or an
+  automatically selected downstream agent;
+- test the cross-product of specialist scope and caller usage, including the
+  exact input observed by the next provider turn.
+
+This keeps artifact authority, task completion, and workflow completion as
+separate contracts instead of letting one layer silently overwrite another.
+
 ### Mistake 1: Implicit Format Assumptions
 
 **Bad**: Assuming date format without checking
@@ -129,6 +150,8 @@ After implementation:
 - [ ] Tested with edge cases (null, empty, invalid)
 - [ ] Verified error handling at each boundary
 - [ ] Checked data survives round-trip
+- [ ] Checked specialist answer scope and caller output usage independently
+      before any automatic terminal decision
 - [ ] Checked that consumers import shared decoders / projections instead of
       casting payload fields locally
 - [ ] Checked that derived state points back to the source event identifier

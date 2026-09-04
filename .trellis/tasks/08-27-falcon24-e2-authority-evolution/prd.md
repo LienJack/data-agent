@@ -1155,3 +1155,24 @@ Root 前两次给 Semantic objective 增加“当前窗口/时间语义”，Sem
   business/QA/Trace rubric。未闭合 Tool Call 仍失败关闭，Host 不得拼接或补写模型输出。
 - **AC-FL-ROOT-OUTPUT-01** 回归必须证明原 profile ceiling 4000 被完整传入 provider，而不是截为2048；focused validation 与 scoped
   commit 后，从新 clean build、fresh physical scratch、fresh v7 attempt 自 L1-01 重跑，旧 L1 四题 PASS 不得复用。
+
+### 22.24 Semantic 专职范围不得覆盖 Root 终态意图
+
+v7 attempt `78d327e2-a020-450d-991a-d6d2bfd44ec2` 已在同一 build/scratch 完整通过 L1 五题和 L2-01。L2-02 Run
+`31a7dde2-6242-83aa-a598-46f032edf3d3` 中，Root 首个原生 Tool Call 明确选择 Semantic、将产物标记为
+`CONTINUATION_INPUT`，并要求随后继续完成渠道 ROAS 数据查询。Semantic 正确返回仅含四个已发布对象的合法
+`SemanticQueryContext`；其 `answer_scope=SEMANTIC_FACTS_ONLY` 只描述本次专职语义任务的范围。Worker 却仅据该字段自动生成最终答案，
+覆盖了 Root 已持久化的 continuation 意图，导致 Text2SQL 从未获得第二次委派。attempt 已按真实
+`AGENT_CONTRACT_MISMATCH` 不可变封存。
+
+- **R-FL-SEMANTIC-TERMINAL-01** Semantic 自动结算必须同时满足：已验收 `SemanticQueryContext` 的
+  `answer_scope=SEMANTIC_FACTS_ONLY`、无未决歧义，并且对应 Root observation 的
+  `output_usage=FINAL_ANSWER_EVIDENCE`。两条终态信号缺一不可。
+- **R-FL-SEMANTIC-TERMINAL-02** `output_usage=CONTINUATION_INPUT` 时，Worker 必须把完整 observation 历史返回 Root 的下一次正常
+  provider turn，使 Root 自主选择后续 Agent；不得因 specialist answer scope 提前结算，也不得丢弃先前失败 observation。
+- **R-FL-SEMANTIC-TERMINAL-03** 本修复只消费现有 Root 决策字段，不增加关键词 Router、固定 DAG、自动 Text2SQL 调度、SQL 注入或
+  semantic authority 放宽；非法 Context、未决歧义及错误产物继续失败关闭。
+- **AC-FL-SEMANTIC-TERMINAL-01** 测试矩阵必须覆盖 `CONTINUATION_INPUT` 与
+  `FINAL_ANSWER_EVIDENCE` 两种 Semantic usage，证明前者继续 Root、后者仍可确定性结算，并保留 observation 历史。focused validation
+  与 scoped commit 后，必须从新 clean build、fresh physical scratch、fresh E17 activation 和 fresh v7 attempt 自 L1-01 重跑；
+  本次六题 PASS 不得拼接复用。
