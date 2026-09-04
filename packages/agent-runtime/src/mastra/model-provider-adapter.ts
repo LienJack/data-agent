@@ -11,6 +11,7 @@ import {
 import {
   isFullyObservedEmptyResponse,
   isFullyObservedInvalidJsonResponse,
+  isFullyObservedSchemaInvalidResponse,
   MastraExecutionError,
   normalizeMastraExecutionError,
 } from "./errors.js";
@@ -170,13 +171,17 @@ function failedEvent(
 ): ModelProviderEvent {
   if (
     dispatchMarked &&
-    (isFullyObservedEmptyResponse(error) || isFullyObservedInvalidJsonResponse(error))
+    (isFullyObservedEmptyResponse(error) ||
+      isFullyObservedInvalidJsonResponse(error) ||
+      isFullyObservedSchemaInvalidResponse(error))
   ) {
     return nextSequenceEvent(request, clock, sequence, {
       event_type: "FAILED",
       reason_code: isFullyObservedEmptyResponse(error)
         ? "MODEL_RESPONSE_EMPTY"
-        : "MODEL_RESPONSE_INVALID_JSON",
+        : isFullyObservedInvalidJsonResponse(error)
+          ? "MODEL_RESPONSE_INVALID_JSON"
+          : "MODEL_RESPONSE_SCHEMA_INVALID",
       retryable: false,
       delivery_certainty: "DISPATCHED_OUTCOME_KNOWN",
     });

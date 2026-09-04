@@ -2194,3 +2194,26 @@ L2-02 的 provider 原始响应证明 Root 已把 Semantic Tool Call 声明为 `
 预防矩阵不只断言最终返回值，还验证 continuation 的下一次 provider 输入包含成功 Context 及完整历史；final-evidence 分支继续无需额外
 provider call。实现不添加 Router/DAG、不自动选择 Text2SQL、不改 manifest 或 Agent allowlist。失败类别归为 B（Cross-Layer Contract）
 与 D（Test Coverage Gap）：既有测试错误地把两种 `output_usage` 都期望为终态，现改为二维合同回归。
+
+## 54. 完整 Schema 拒绝使用已知拒绝通道，未知协议故障仍失败关闭
+
+L3-02 的 Provider 并未产生 Tool Call，原始 JSON、stream terminal、finish reason 与 usage 均被 bridge 完整观测；唯一失败是该 JSON
+不满足服务端 Root response Schema。这个状态既不是已接受决策，也不是未知副作用。跨层投影应为：
+
+```text
+complete no-tool JSON text
+  -> JSON parse succeeds
+  -> server Schema rejects original value (no repair)
+  -> bridge brands only this in-memory error as fully observed schema-invalid
+  -> adapter emits MODEL_RESPONSE_SCHEMA_INVALID + DISPATCHED_OUTCOME_KNOWN
+  -> Direct Root maps to PROVIDER_RESPONSE_REJECTED
+  -> Team checkpoints rejection feedback and advances to the next existing Root turn
+```
+
+brand 使用不可序列化 WeakSet，只能由 bridge 在读取完整原流后附加；复制 diagnostic、手工构造相同错误码或只观察 Zod issue 都不能获得
+known certainty。event contract 只允许 empty、invalid JSON 和 schema-invalid JSON 三种完整拒绝携带
+`DISPATCHED_OUTCOME_KNOWN/retryable=false`。原始文本、解析对象和 schema issue 值均不进入公开事件或 checkpoint。
+
+这不增加 provider attempt、Root turn、工具预算或路由规则。Tool activity、流中断、未知 finish、预算越界及任何未满足完整性条件的
+schema/protocol 错误仍为 `DISPATCHED_OUTCOME_UNKNOWN` 并终止。该修复归类为 **B Cross-Layer Contract Gap** 与
+**D Test Coverage Gap**：bridge 已知道确定性，但 adapter/event/Team 没有对应的安全负结果合同，测试也只覆盖了 empty 与 invalid JSON。

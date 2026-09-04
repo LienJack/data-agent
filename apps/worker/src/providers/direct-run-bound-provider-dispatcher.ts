@@ -297,6 +297,14 @@ function retryableReason(code: string): boolean {
   );
 }
 
+function knownRootRejectedResponseReason(code: string): boolean {
+  return (
+    code === "MODEL_RESPONSE_EMPTY" ||
+    code === "MODEL_RESPONSE_INVALID_JSON" ||
+    code === "MODEL_RESPONSE_SCHEMA_INVALID"
+  );
+}
+
 function shouldRetryProviderCall(input: {
   readonly first_ok: boolean;
   readonly retryable: boolean;
@@ -895,13 +903,12 @@ export function createDirectRunBoundProviderDispatcher(input: {
               if (
                 rootTurn &&
                 event.event_type === "FAILED" &&
-                (event.reason_code === "MODEL_RESPONSE_EMPTY" ||
-                  event.reason_code === "MODEL_RESPONSE_INVALID_JSON") &&
+                knownRootRejectedResponseReason(event.reason_code) &&
                 event.delivery_certainty === "DISPATCHED_OUTCOME_KNOWN"
               ) {
                 return failure(
                   "PROVIDER_RESPONSE_REJECTED",
-                  "Root 响应为空或不是完整 JSON，未接受任何决策。",
+                  "Root 响应为空、不是完整 JSON 或未满足响应 Schema，未接受任何决策。",
                   false,
                 );
               }
@@ -947,6 +954,7 @@ export const directRunBoundProviderDispatcherInternals = Object.freeze({
   buildRootLoopMessages,
   text2SqlSpecialistSystemPrompt,
   buildText2SqlSpecialistMessages,
+  knownRootRejectedResponseReason,
   retryableReason,
   semanticQuerySelectionProviderResponseSchema,
   semanticSpecialistSystemPrompt,

@@ -37,7 +37,7 @@ const reasonCodeSchema = z
   .max(128)
   .regex(/^[A-Z][A-Z0-9_]*$/u);
 
-// Local type rejection or a committed known empty response may consume a normal
+// Local type rejection or a fully observed rejected response may consume a normal
 // turn. Unknown provider outcomes and all other protocol failures remain terminal.
 const ROOT_RECOVERABLE_TURN_FEEDBACK_CODES = new Set([
   "ROOT_AGENT_PROVIDED_UNSUPPORTED_INPUT_ARTIFACT",

@@ -211,6 +211,8 @@ describe("Mastra execution bridge integration", () => {
         !interrupted &&
         !unknownFinish &&
         !overBudget;
+      const knownSchemaInvalid =
+        !valid && !tool && name === "extra field" && !interrupted && !unknownFinish && !overBudget;
       const finish =
         name === "truncated final" || name === "blank length"
           ? "length"
@@ -348,11 +350,13 @@ describe("Mastra execution bridge integration", () => {
                         ? "MODEL_RESPONSE_EMPTY"
                         : knownInvalidJson
                           ? "MODEL_RESPONSE_INVALID_JSON"
-                          : "MODEL_STREAM_PROTOCOL_VIOLATION",
+                          : knownSchemaInvalid
+                            ? "MODEL_RESPONSE_SCHEMA_INVALID"
+                            : "MODEL_STREAM_PROTOCOL_VIOLATION",
                     }),
                 retryable: interrupted,
                 delivery_certainty:
-                  knownEmpty || knownInvalidJson
+                  knownEmpty || knownInvalidJson || knownSchemaInvalid
                     ? "DISPATCHED_OUTCOME_KNOWN"
                     : "DISPATCHED_OUTCOME_UNKNOWN",
               },
@@ -423,7 +427,7 @@ describe("Mastra execution bridge integration", () => {
     {
       name: "wrong schema",
       text: '{"summary":7,"confidence":1}',
-      terminal: "MODEL_STREAM_PROTOCOL_VIOLATION",
+      terminal: "MODEL_RESPONSE_SCHEMA_INVALID",
     },
     {
       name: "non JSON",
@@ -1202,12 +1206,10 @@ describe("Mastra execution bridge integration", () => {
                 name === "empty"
                   ? "MODEL_RESPONSE_EMPTY"
                   : ["wrong schema", "extra field"].includes(name)
-                    ? "MODEL_STREAM_PROTOCOL_VIOLATION"
+                    ? "MODEL_RESPONSE_SCHEMA_INVALID"
                     : "MODEL_RESPONSE_INVALID_JSON",
               retryable: false,
-              delivery_certainty: ["wrong schema", "extra field"].includes(name)
-                ? "DISPATCHED_OUTCOME_UNKNOWN"
-                : "DISPATCHED_OUTCOME_KNOWN",
+              delivery_certainty: "DISPATCHED_OUTCOME_KNOWN",
             },
       );
     } finally {

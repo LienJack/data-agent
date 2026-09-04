@@ -206,6 +206,20 @@ describe("direct run-bound provider retry policy", () => {
     ).toBe(true);
   });
 
+  it.each(["MODEL_RESPONSE_EMPTY", "MODEL_RESPONSE_INVALID_JSON", "MODEL_RESPONSE_SCHEMA_INVALID"])(
+    "classifies a fully observed Root response rejection (%s)",
+    (reasonCode) => {
+      expect(
+        directRunBoundProviderDispatcherInternals.knownRootRejectedResponseReason(reasonCode),
+      ).toBe(true);
+      expect(
+        directRunBoundProviderDispatcherInternals.knownRootRejectedResponseReason(
+          "MODEL_STREAM_PROTOCOL_VIOLATION",
+        ),
+      ).toBe(false);
+    },
+  );
+
   it("binds specialist context length to the frozen run budget instead of a smaller constant", () => {
     expect(
       directRunBoundProviderDispatcherInternals.validSpecialistContextText(

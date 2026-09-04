@@ -2432,3 +2432,16 @@ SQL 模型输入，剩余 executable/schema 仍受原64 KB预算约束并超限�
 - [x] `terminalSemanticFactsDecision` 改为同时要求 Root `FINAL_ANSWER_EVIDENCE`；矩阵回归证明 Semantic continuation 保留完整
   observation 历史并回到 Root，真实 semantic-only final evidence 仍可确定性结算。本项归类为跨层合同与测试覆盖缺口。
 - [ ] focused validation 与 scoped commit 后，从新 commit 的 fresh build/scratch/v7 attempt 自 L1-01 完整重跑，禁止复用本轮六题 PASS。
+- [x] `846e49bb` clean force build/full unit/attestation、fresh physical scratch、10816～10822、dataset proof、模型认证和 E17 scratch
+  activation 通过；v7 attempt `4da7380e-1dc2-4377-82c6-06efaa186ee2` 的 L1 五题、L2 两题和 L3-01 均完成独立业务
+  Oracle 与 business/QA/Trace PASS。
+- [x] L3-02 Run `d46227a0-d8d0-8337-85f4-65ba316060b8` 首个 Root generation 无 Tool Call 且完整结束，但合法 JSON 的第二个
+  section 不符合 Root response Schema；旧 adapter 将这个已完整观测的拒绝错误标为 unknown，Run/attempt 已不可变封存，Web/Worker
+  停止，live E16 writes=0。
+- [x] bridge 仅在完整无副作用原始响应上附加 schema-invalid brand；adapter/event contract 新增
+  `MODEL_RESPONSE_SCHEMA_INVALID` known rejection，Direct Root 将其映射到既有 `PROVIDER_RESPONSE_REJECTED` checkpoint repair，
+  persisted transport 保持同一语义。没有修补或接受错误 JSON，也没有增加 provider/Root 预算。
+- [x] focused 169/169、Contracts/Agent Runtime/Worker typecheck+build、单并发 full unit gate 15/15、owned Biome、Trellis
+  validate 与 diff check 均通过，本项由随后 scoped commit 收口。默认并发初跑只产生跨包资源争用超时，单并发重跑全部通过。
+- [ ] 从新 commit clean build、fresh physical scratch、fresh E17 activation 和 fresh v7 attempt 自 L1-01 重跑；本次前八题
+  PASS 不得拼接。

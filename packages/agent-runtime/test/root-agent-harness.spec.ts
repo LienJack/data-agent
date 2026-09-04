@@ -61,7 +61,7 @@ describe("Root Agent Harness", () => {
     const message = await buildRootAgentSystemMessage(await catalog(["semantic-management-agent"]));
     expect(message).toContain("PROVIDER_RESPONSE_REJECTED");
     expect(message).toContain(
-      "fully ended without tool activity but returned empty, whitespace, or invalid JSON text",
+      "fully ended without tool activity but returned empty text, invalid JSON, or JSON that did not match the server-owned response Schema",
     );
     expect(message).toContain("next normal turn");
     expect(message).toContain(

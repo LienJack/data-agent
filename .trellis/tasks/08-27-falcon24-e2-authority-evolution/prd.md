@@ -1176,3 +1176,23 @@ v7 attempt `78d327e2-a020-450d-991a-d6d2bfd44ec2` 已在同一 build/scratch 完
   `FINAL_ANSWER_EVIDENCE` 两种 Semantic usage，证明前者继续 Root、后者仍可确定性结算，并保留 observation 历史。focused validation
   与 scoped commit 后，必须从新 clean build、fresh physical scratch、fresh E17 activation 和 fresh v7 attempt 自 L1-01 重跑；
   本次六题 PASS 不得拼接复用。
+
+### 22.25 已完整观测的 Root Schema 拒绝不得冒充未知 Provider 结果
+
+v7 attempt `4da7380e-1dc2-4377-82c6-06efaa186ee2` 已在同一 build/scratch 完整通过 L1 五题、L2 两题和
+L3-01。L3-02 Run `d46227a0-d8d0-8337-85f4-65ba316060b8` 的首个 Root provider generation 在没有任何 Tool
+Call 时完整结束，返回的是可解析 JSON，但第二个 section 不符合服务端 `root-agent-final-answer@1.0.0` Schema。旧 bridge 已经完整读取
+原响应、finish reason 和 usage，却仍将该确定性拒绝投影为 `DISPATCHED_OUTCOME_UNKNOWN`，Team 因而无法使用既有正常 Root 回合纠正格式。
+Run/attempt 已按真实失败不可变封存，前八题 PASS 不复用。
+
+- **R-FL-ROOT-SCHEMA-REJECTION-01** 只有同时满足“原始流完整结束、无 Tool Call 或其他非文本活动、finish reason 为 stop/length、
+  usage 未越界、完整文本等于已观测 delta、JSON 可解析但不符合服务端 Response Schema”的响应，才可投影为新的
+  `MODEL_RESPONSE_SCHEMA_INVALID / DISPATCHED_OUTCOME_KNOWN / retryable=false`。缺少任一证明时继续保持未知结果并失败关闭。
+- **R-FL-ROOT-SCHEMA-REJECTION-02** Direct Root dispatcher 只把上述已知拒绝与既有 empty/invalid-JSON 拒绝统一映射为
+  `PROVIDER_RESPONSE_REJECTED`，由持久 checkpoint 消耗下一个普通 Root turn 并反馈 Schema 约束。不得同 call 重试、修补/提取字段、
+  接受部分值、重放响应、增加回合预算或固定后续 Agent。
+- **R-FL-ROOT-SCHEMA-REJECTION-03** 持久 Provider transport 必须保留相同已知拒绝语义；Tool Call 后的错误、未完整流、未知 finish、
+  超预算、Structured Output 内部故障以及一般 `MODEL_STREAM_PROTOCOL_VIOLATION` 不得被降级为可恢复的 Schema 拒绝。
+- **AC-FL-ROOT-SCHEMA-REJECTION-01** 回归必须覆盖 AUTO/JSON_TEXT wrong-schema 与 extra-field、event certainty、Direct Root 分类、
+  persisted transport 和 Root checkpoint repair；focused validation 与 scoped commit 后，必须从新 clean build、fresh physical scratch、
+  fresh E17 activation 和 fresh v7 attempt 自 L1-01 重跑，本次八题 PASS 不得拼接。

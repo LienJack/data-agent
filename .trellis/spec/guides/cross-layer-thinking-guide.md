@@ -87,6 +87,26 @@ When an automatic terminal path exists:
 This keeps artifact authority, task completion, and workflow completion as
 separate contracts instead of letting one layer silently overwrite another.
 
+### Fully Observed Rejection Is Not An Unknown Outcome
+
+A provider response can be fully observed yet still be rejected before any
+decision is accepted. Empty text, invalid JSON, and schema-invalid JSON need
+distinct stable reason codes, but may share a recoverable caller path only when
+the transport proves all of the following: the original stream completed, no
+tool or non-text activity occurred, finish and usage are within contract, and
+the complete original text was validated without repair.
+
+Carry that proof as an in-memory capability or brand from the layer that read
+the original stream. Do not infer it later from an error code or diagnostic.
+Public events may expose only the stable rejection class and known delivery;
+they must not contain the rejected payload. A caller may then spend an existing
+normal turn on structured feedback, while interrupted streams, tool activity,
+budget violations, and copied diagnostics remain unknown and terminal.
+
+Test the bridge classification, event certainty invariant, direct and persisted
+transport projections, and caller checkpoint behavior together. A unit test of
+schema validation alone does not prove safe recovery.
+
 ### Mistake 1: Implicit Format Assumptions
 
 **Bad**: Assuming date format without checking

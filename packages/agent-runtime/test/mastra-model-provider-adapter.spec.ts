@@ -93,6 +93,36 @@ async function collect(
 }
 
 describe("MastraModelProviderAdapter", () => {
+  it("does not promote a copied schema diagnostic into known response evidence", async () => {
+    const warning = vi.spyOn(console, "warn").mockImplementation(() => {});
+    try {
+      const events = await collect(
+        createAdapter({
+          async *stream() {
+            yield { chunk_type: "DISPATCH_READY" };
+            throw new MastraExecutionError(
+              "MODEL_STREAM_PROTOCOL_VIOLATION",
+              false,
+              "private",
+              "RESPONSE_SCHEMA_MISMATCH",
+              [{ code: "custom", path: ["sections", 1, "kind"] }],
+            );
+          },
+        }),
+        await makeInvocation(),
+      );
+      expect(events.at(-1)).toMatchObject({
+        event_type: "FAILED",
+        reason_code: "MODEL_STREAM_PROTOCOL_VIOLATION",
+        retryable: false,
+        delivery_certainty: "DISPATCHED_OUTCOME_UNKNOWN",
+      });
+      expect(events.filter((event) => event.event_type === "COMPLETED")).toEqual([]);
+    } finally {
+      warning.mockRestore();
+    }
+  });
+
   it.each(["WHITESPACE", "NON_JSON"] as const)(
     "does not promote copied %s diagnostics into known response evidence",
     async (textState) => {

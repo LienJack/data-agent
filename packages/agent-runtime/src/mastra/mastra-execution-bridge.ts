@@ -27,6 +27,7 @@ import {
   MastraExecutionError,
   markFullyObservedEmptyResponse,
   markFullyObservedInvalidJsonResponse,
+  markFullyObservedSchemaInvalidResponse,
 } from "./errors.js";
 import type { ModelExecutionBridge, ModelExecutionChunk } from "./execution-bridge.js";
 import {
@@ -769,7 +770,27 @@ class MastraExecutionBridge implements ModelExecutionBridge {
         }
         throw error;
       }
-      return canonicalizeStructuredOutput(responseSchema, candidate);
+      try {
+        return canonicalizeStructuredOutput(responseSchema, candidate);
+      } catch (error) {
+        const text = fullOutput.text ?? "";
+        if (
+          error instanceof MastraExecutionError &&
+          error.protocol_stage === "RESPONSE_SCHEMA_MISMATCH" &&
+          !input.signal.aborted &&
+          !nonTextResponseActivity &&
+          observedToolCalls === 0 &&
+          (usage.availability !== "AVAILABLE" ||
+            (usage.input_tokens <= input.request.budget.max_input_tokens &&
+              usage.output_tokens <= input.request.budget.max_output_tokens)) &&
+          (fullOutput.finishReason === "stop" || fullOutput.finishReason === "length") &&
+          text.trim().length > 0 &&
+          text === jsonResponseTextParts.join("")
+        ) {
+          throw markFullyObservedSchemaInvalidResponse(error);
+        }
+        throw error;
+      }
     };
     let outputText: string;
     if (usesToolCalling && observedToolCalls > 0) {

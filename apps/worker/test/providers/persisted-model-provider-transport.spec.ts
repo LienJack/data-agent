@@ -195,6 +195,20 @@ describe("persisted ModelProvider transport", () => {
       normalizeAuditedProviderTerminalEvent({
         ...base,
         event_type: "FAILED",
+        reason_code: "MODEL_RESPONSE_SCHEMA_INVALID",
+        retryable: false,
+        delivery_certainty: "DISPATCHED_OUTCOME_KNOWN",
+      }),
+    ).toEqual({
+      kind: "FAILED",
+      reason_code: "PROVIDER_PROTOCOL_VIOLATION",
+      retryable: false,
+      delivery_certainty: "DISPATCHED_OUTCOME_KNOWN",
+    });
+    expect(
+      normalizeAuditedProviderTerminalEvent({
+        ...base,
+        event_type: "FAILED",
         reason_code: "MODEL_RESPONSE_INVALID_JSON",
         retryable: false,
         delivery_certainty: "DISPATCHED_OUTCOME_KNOWN",

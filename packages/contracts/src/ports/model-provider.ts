@@ -158,14 +158,15 @@ export const modelProviderEventSchema = z.discriminatedUnion("event_type", [
     .superRefine((event, ctx) => {
       const rejectedText =
         event.reason_code === "MODEL_RESPONSE_EMPTY" ||
-        event.reason_code === "MODEL_RESPONSE_INVALID_JSON";
+        event.reason_code === "MODEL_RESPONSE_INVALID_JSON" ||
+        event.reason_code === "MODEL_RESPONSE_SCHEMA_INVALID";
       const known = event.delivery_certainty === "DISPATCHED_OUTCOME_KNOWN";
       if (known !== rejectedText || (rejectedText && event.retryable)) {
         ctx.addIssue({
           code: "custom",
           path: ["delivery_certainty"],
           message:
-            "Only fully observed empty or invalid JSON text may be a known, non-retryable failure.",
+            "Only fully observed empty, invalid JSON, or schema-invalid JSON responses may be known non-retryable failures.",
         });
       }
     }),
