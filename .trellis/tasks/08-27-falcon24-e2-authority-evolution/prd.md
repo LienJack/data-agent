@@ -1079,3 +1079,19 @@ v2 正式执行证明 L1-04 的数据、SQL、Oracle、TABLE UI 和 Trace 均可
   owner、SECURITY DEFINER 与 ACL 必须保持不变。
 - **AC-FL-MANIFEST-V3-01** 实现与真实 PostgreSQL 三版本 replay 验证后创建 scoped commit；正式证据必须从该 commit 重新 clean build、
   fresh physical scratch、fresh E17 activation 和 fresh v3 attempt 开始。
+
+### 22.19 客单价题只验收已发布公式
+
+v3 的 L1-02 已由 Semantic 正确命中已发布 `formula.average_order_value`，但旧题面同时要求解释未发布的“客户订单总金额”，导致
+`SemanticQueryContext` 附带空候选 FORMULA 歧义。Host 因而正确拒绝自动结算，Root 随后两次返回非 JSON 并耗尽 turn budget。这不是
+客单价公式缺失，也不是 Semantic 与 Text2SQL 协作能力失败；继续依赖模型猜测一个未治理术语会让门禁验证偏离业务目标。
+
+- **R-FL-MANIFEST-V4-01** 保留 v1/v2/v3 题库不可变；v4 只把 L1-02 收敛为直接询问已发布
+  `formula.average_order_value` 的分子、分母和零订单处理，并只保留 `published-aov-definition` rubric。L2–L4、其余14题、Agent 合同、
+  当前 Run 证据、Oracle、UI/Trace 与 authority 标准不变。
+- **R-FL-MANIFEST-V4-02** v4 turns canonical hash 固定为
+  `sha256:1b197368096673c1015935308f2db4a4fcddb0f3cc04c73b627cd7ce4d97503f`；schema version 与 v1/v2/v3 turns/hash 混配必须失败关闭。
+- **R-FL-MANIFEST-V4-03** migration 10819 只能在精确 post-10818 ledger/checksum 与函数 hash 上增加 v4 分支；历史实体、四版本
+  replay、owner、SECURITY DEFINER 与 ACL 必须保持不变。
+- **AC-FL-MANIFEST-V4-01** 真实 PostgreSQL 四版本验证与 scoped commit 后，正式证据必须从该 commit 的 clean build、fresh physical
+  scratch、fresh E17 activation 和 fresh v4 attempt 开始；任何旧 attempt 的局部 PASS 仍不可组合。

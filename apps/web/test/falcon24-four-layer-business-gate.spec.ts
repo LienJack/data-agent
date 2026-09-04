@@ -21,7 +21,7 @@ const taskId = id(22);
 
 async function manifest(): Promise<Falcon24FourLayerGateManifest> {
   return buildFalcon24FourLayerGateManifest({
-    schema_version: "falcon24-four-layer-gate-manifest@3.0.0",
+    schema_version: "falcon24-four-layer-gate-manifest@4.0.0",
     gate_id: "E11-FL1",
     attempt_id: id(1),
     authority_epoch: "E11",

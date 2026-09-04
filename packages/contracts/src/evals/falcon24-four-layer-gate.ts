@@ -12,8 +12,10 @@ export const FALCON24_FOUR_LAYER_LEGACY_GATE_MANIFEST_VERSION =
   "falcon24-four-layer-gate-manifest@1.0.0" as const;
 export const FALCON24_FOUR_LAYER_V2_GATE_MANIFEST_VERSION =
   "falcon24-four-layer-gate-manifest@2.0.0" as const;
-export const FALCON24_FOUR_LAYER_GATE_MANIFEST_VERSION =
+export const FALCON24_FOUR_LAYER_V3_GATE_MANIFEST_VERSION =
   "falcon24-four-layer-gate-manifest@3.0.0" as const;
+export const FALCON24_FOUR_LAYER_GATE_MANIFEST_VERSION =
+  "falcon24-four-layer-gate-manifest@4.0.0" as const;
 export const FALCON24_FOUR_LAYER_LAYER_ORDER = Object.freeze(["L1", "L2", "L3", "L4"] as const);
 export const FALCON24_FOUR_LAYER_LAYER_TURN_COUNTS = Object.freeze({
   L1: 5,
@@ -627,13 +629,26 @@ export const FALCON24_FOUR_LAYER_V2_TURN_BLUEPRINTS = Object.freeze(
   FALCON24_FOUR_LAYER_V1_TURN_BLUEPRINTS.map(currentTurnBlueprint),
 );
 
-export const FALCON24_FOUR_LAYER_TURN_BLUEPRINTS = Object.freeze(
+export const FALCON24_FOUR_LAYER_V3_TURN_BLUEPRINTS = Object.freeze(
   FALCON24_FOUR_LAYER_V2_TURN_BLUEPRINTS.map((turn) =>
     turn.ordinal === 3
       ? {
           ...turn,
           question:
             "这是纯订单明细查询，不需要先解释指标或时间语义。请直接由 Text2SQL 列出最近10笔订单的订单编号、下单日期和订单金额。",
+        }
+      : turn,
+  ),
+);
+
+export const FALCON24_FOUR_LAYER_TURN_BLUEPRINTS = Object.freeze(
+  FALCON24_FOUR_LAYER_V3_TURN_BLUEPRINTS.map((turn) =>
+    turn.ordinal === 1
+      ? {
+          ...turn,
+          question:
+            "当前工作区里的“客单价”（formula.average_order_value）正式计算公式是什么？请说明分子、分母，以及订单数为0时怎样处理。",
+          rubric: rubric("l1.semantic-aov-definition", ["published-aov-definition"]),
         }
       : turn,
   ),
@@ -658,6 +673,7 @@ function compareFrozenTurns(
   schemaVersion:
     | typeof FALCON24_FOUR_LAYER_LEGACY_GATE_MANIFEST_VERSION
     | typeof FALCON24_FOUR_LAYER_V2_GATE_MANIFEST_VERSION
+    | typeof FALCON24_FOUR_LAYER_V3_GATE_MANIFEST_VERSION
     | typeof FALCON24_FOUR_LAYER_GATE_MANIFEST_VERSION,
   context: z.RefinementCtx,
 ): void {
@@ -688,7 +704,9 @@ function compareFrozenTurns(
       ? FALCON24_FOUR_LAYER_V1_TURN_BLUEPRINTS
       : schemaVersion === FALCON24_FOUR_LAYER_V2_GATE_MANIFEST_VERSION
         ? FALCON24_FOUR_LAYER_V2_TURN_BLUEPRINTS
-        : FALCON24_FOUR_LAYER_TURN_BLUEPRINTS;
+        : schemaVersion === FALCON24_FOUR_LAYER_V3_GATE_MANIFEST_VERSION
+          ? FALCON24_FOUR_LAYER_V3_TURN_BLUEPRINTS
+          : FALCON24_FOUR_LAYER_TURN_BLUEPRINTS;
   turns.forEach((turn, index) => {
     const blueprint = blueprints[index];
     if (!blueprint) return;
@@ -708,6 +726,7 @@ const manifestMaterialSchema = z
     schema_version: z.enum([
       FALCON24_FOUR_LAYER_LEGACY_GATE_MANIFEST_VERSION,
       FALCON24_FOUR_LAYER_V2_GATE_MANIFEST_VERSION,
+      FALCON24_FOUR_LAYER_V3_GATE_MANIFEST_VERSION,
       FALCON24_FOUR_LAYER_GATE_MANIFEST_VERSION,
     ]),
     gate_id: falcon24FourLayerGateIdSchema,
@@ -746,6 +765,7 @@ export async function buildFalcon24FourLayerManifestTurns(
   schemaVersion:
     | typeof FALCON24_FOUR_LAYER_LEGACY_GATE_MANIFEST_VERSION
     | typeof FALCON24_FOUR_LAYER_V2_GATE_MANIFEST_VERSION
+    | typeof FALCON24_FOUR_LAYER_V3_GATE_MANIFEST_VERSION
     | typeof FALCON24_FOUR_LAYER_GATE_MANIFEST_VERSION = FALCON24_FOUR_LAYER_GATE_MANIFEST_VERSION,
 ) {
   const blueprints =
@@ -753,7 +773,9 @@ export async function buildFalcon24FourLayerManifestTurns(
       ? FALCON24_FOUR_LAYER_V1_TURN_BLUEPRINTS
       : schemaVersion === FALCON24_FOUR_LAYER_V2_GATE_MANIFEST_VERSION
         ? FALCON24_FOUR_LAYER_V2_TURN_BLUEPRINTS
-        : FALCON24_FOUR_LAYER_TURN_BLUEPRINTS;
+        : schemaVersion === FALCON24_FOUR_LAYER_V3_GATE_MANIFEST_VERSION
+          ? FALCON24_FOUR_LAYER_V3_TURN_BLUEPRINTS
+          : FALCON24_FOUR_LAYER_TURN_BLUEPRINTS;
   return Promise.all(
     blueprints.map(async (turn) =>
       manifestTurnSchema.parse({

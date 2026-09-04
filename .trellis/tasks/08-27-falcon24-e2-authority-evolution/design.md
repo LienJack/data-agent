@@ -2099,3 +2099,18 @@ Contracts 同时冻结 v1/v2/v3，v3 turns canonical hash 为
 `sha256:bc9fdac88acf23889beabeb2ae2c6f49d3df93d72c02d87ab1fde023e434564a`。migration 10818 以 post-10817
 `prosrc` hash 为前置，通过唯一结构替换增加 v3 分支；迁移内逐表历史摘要和 ACL snapshot 保持 fail-closed。accepted-input L1-05
 另采用“停 Worker→claim 得到 exact Run ID→以该 ID 重启 Worker”的运行顺序，避免把上一个 attempt 的 seed 或外部 ref 冒充当前 Run 输入。
+
+## 47. 已发布客单价公式的单义门禁
+
+v3 正式运行中，L1-02 的 Semantic task 已接受 `formula.average_order_value`，其产物也足以回答客单价公式；但同一题的“客户订单总金额”
+没有已发布公式候选，Semantic 因此保留一个 `candidate_ids=[]` 的 FORMULA 歧义。Host 只对无未决歧义的
+`SEMANTIC_FACTS_ONLY` 产物做确定性结算，所以拒绝该产物是正确的 fail-closed 行为。Root 后续的非 JSON 输出不能成为绕过歧义的理由。
+
+v4 通过版本化题面删除这个未治理的第二术语，只要求 Semantic 解释明确给出的已发布公式 ID、分子、分母和零分母行为；rubric 同步缩减为
+`published-aov-definition`。这不是降低四层证据链：L2–L4 的 Semantic→Text2SQL→Analysis 协作、复杂面板、单 Analysis Stage、业务
+Oracle、QA/Trace、浏览器与 live authority 切换完全不变。旧 v1/v2/v3 blueprint、hash、attempt 和 receipt 均保持不可变。
+
+Contracts 默认 v4，同时按 schema version 严格选择四套冻结 blueprint。v4 turns hash 为
+`sha256:1b197368096673c1015935308f2db4a4fcddb0f3cc04c73b627cd7ce4d97503f`。migration 10819 在 exact post-10818
+`prosrc` hash 上做唯一结构替换，仅增加 v4 schema/hash 分支；迁移前后比较全部受保护表摘要与函数 ACL。正式 v4 运行仍必须从新提交的
+clean build、fresh physical scratch、fresh activation 和 fresh attempt 开始，禁止继承 v3 的任何局部 PASS。

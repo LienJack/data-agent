@@ -2342,3 +2342,21 @@ SERVER_PROXY 无模型探针通过。`complex-l4-semantic-defined@4.4.0` 六题�
   `prosrc` hash 后提交。v1/v2/v3 begin+replay+supersede 均 PASS，跨版本 turns 混配失败，live writes 为0。
 - [x] focused test/typecheck/build、Trellis validate/diff check 与 scoped commit 后，从新 commit 重建 production build、fresh physical scratch
   和唯一 v3 attempt；L1-05 使用 exact claimed Run ID 重启 Worker seed。
+
+v3 新 attempt `386506dd-173d-4c18-ba5a-0b98c50d39c5` 的 L1-01 完整通过；L1-02 的 Semantic task 命中已发布
+`formula.average_order_value`，但未发布的第二术语“客户订单总金额”产生空候选 FORMULA 歧义。Host 正确拒绝将有未决歧义的 Context 自动
+结算，Root 两次返回非 JSON 后 Run 以 `ROOT_AGENT_TURN_BUDGET_EXHAUSTED` 终止，attempt 已不可变封存。
+
+- [x] 新增 manifest v4，只将 L1-02 收敛为明确的已发布客单价公式及分子/分母/零订单处理，rubric 只保留
+  `published-aov-definition`；L2–L4 与其余14题保持不变，v1/v2/v3 verifier 与 turns 保持不可变。
+- [x] 新增 migration 10819 renderer source、checksummed migration 与静态测试；v4 turns hash 为
+  `sha256:1b197368096673c1015935308f2db4a4fcddb0f3cc04c73b627cd7ce4d97503f`。
+- [x] 普通 JSON hash 初稿被真实 begin 测试拒绝后，改用 shared canonical hasher 得到最终 v4 turns hash；错误初稿只进入已失败的
+  disposable scratch，未进入 live 或正式证据。随后从 live E16 新建独立 `pg_verifybackup` 副本，应用10816～10819；347张非 ledger 表
+  零漂移、live 348张表前后完全一致，v1/v2/v3/v4 begin+replay 与双向跨版本混配拒绝均 PASS，验证容器/volume/55537 tunnel 已精确删除。
+- [x] Contracts/Evals/Platform/Web focused tests 12/3/30/47 PASS；Contracts/Platform/Web typecheck、Contracts/Evals/Platform build、
+  migration render/inventory、owned Biome、Trellis validate 与 diff check PASS。Evals typecheck 单独暴露既有测试夹具缺少必填 `output_usage`，
+  不混入 manifest 提交，按独立小修复收口。
+- [ ] 创建 manifest v4 scoped commit。
+- [ ] 从 v4 commit 重新 clean build/full unit/attestation，创建 fresh physical scratch/activation/attempt，从 L1-01 完整执行15回合；
+  全部业务/QA/Trace 通过后才进入 live E17 前向激活、浏览器验收与最终清理。
