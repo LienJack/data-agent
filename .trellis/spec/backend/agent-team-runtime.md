@@ -200,6 +200,9 @@ The only model output contract is `text2sql-query-candidate@1.0.0`:
 - 该兼容扩展保持旧合法 payload/hash 字节不变；新的零候选 payload 要求同一冻结构建中的 producer/consumer 同步更新。
   回归必须覆盖零候选 round-trip、单候选/重复/乱序/超界拒绝、hash tamper、精确 Artifact 引用及 SQL pre-I/O 拒绝；
   provider 错误码不能替代原始响应证据，不得把可复现的合同缺口宣称为某个历史 provider failure 的唯一已证根因。
+- 当 active release 已有同一物理口径的 canonical Metric/Formula，而业务题仅使用未发布同义词时，版本化门禁应显式引用既有对象或已发布
+  别名；不得创建同义影子指标，也不得把只存在于源码、未进入 retained release 的 alias 当作运行时权威。该收敛只能降低术语入口歧义，
+  不能降低 Text2SQL 执行、业务 Oracle、Artifact lineage、QA/Trace 或页面证据标准。
 - Host validates every selected ID against the frozen retrieval/inference closure, expands required formula/time/dimension-parent/relationship and physical-binding context, then commits `semantic-query-context@1.0.0` with exact Scope/Run, release/generation/digest, schema snapshot, datasource, retrieval/inference receipts and `context_hash`。
 - `SemanticQueryContext` returns to Root as a structured safe Tool Result. Root may answer a semantic-only question from allowlisted exact fields, or a later Root turn may pass the accepted Artifact through ordinary `input_artifact_refs`; Host does not schedule that later call。
 - 当同一问题明确要求 `Semantic -> Text2SQL` 串行交接时，Root 不得把用于后续 SQL 的 Semantic objective 改写成
@@ -271,6 +274,8 @@ Planner 必须按选中方法顺序完整复制 `required_operator_obligations`�
 - 四次串行委派后的 QueryEvidence/AnalysisReport 确定性收敛、continuation 仍耗尽、verifier 拒绝、最终证据 checkpoint 恢复及终态 replay；断言 Root 决策始终四次、恢复不重跑工具。
 - V2 Profile materialization/admission: exact revision/hash/tool/Skill closure; V1 and stale revision rejection。
 - Semantic: strict selection intent, exact release/projection/hash/resource binding, metric/formula/dependency, dimension/grain/parent, relationship/join/cardinality, time/restriction, ambiguity, semantic-only final and no SQL execution。
+- Versioned gate term closure: current manifest may name existing canonical Metric/Formula IDs to remove an unpublished-synonym ambiguity; every historical
+  manifest/version/hash mapping remains verifiable and cross-version turns are rejected。
 - Text2SQL: strict candidate schema, literal parameterization, relation/function/AST rejection, exact binding, EXPLAIN/read-only transaction, SQLSTATE classes, bounded repair and result-shape closure。
 - Artifact: `SemanticQueryContext` exact Run/resource/hash binding plus `SqlArtifact -> QueryEvidence -> Chart/Report` source refs, hashes and accepted-state ordering。
 - Real Falcon db24: DeepSeek Root selects Text2SQL for a business aggregate and the browser shows both QueryEvidence table and same-source chart; relationship question selects Semantic only; general knowledge remains direct。

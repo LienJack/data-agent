@@ -50,7 +50,7 @@ function authority() {
 
 async function manifest() {
   return buildFalcon24FourLayerGateManifest({
-    schema_version: "falcon24-four-layer-gate-manifest@7.0.0",
+    schema_version: "falcon24-four-layer-gate-manifest@8.0.0",
     gate_id: "E11-FL1",
     attempt_id: ids.attempt,
     authority_epoch: "E11",

@@ -1214,3 +1214,22 @@ Analysis Stage。attempt 已按真实 `ROOT_AGENT_TURN_BUDGET_EXHAUSTED` 不可�
 - **AC-FL-ROOT-SCOPE-01** Harness 回归必须同时证明“当前数据不构成时间窗口”和“显式业务项跨链路保持”；focused validation 与 scoped
   commit 后，必须从新 clean build、fresh physical scratch、fresh E17 activation 和 fresh v7 attempt 自 L1-01 重跑，本次八题
   PASS 不得拼接。
+
+### 22.27 营销转化必须复用现有发布对象，不创建影子指标
+
+v7 attempt `4b851d00-eded-4ebd-a6c6-1e3bf8eaf3f3` 的 L1 五题、L2 两题和 L3-01 在同一 build/scratch 完成
+business/QA/Trace PASS。L3-02 Run `9ea0054a-eade-8373-8e98-e941e517153c` 中，§22.26 已使 Root 保留全部业务字段且不再
+增加请求时间窗口；Semantic 仍把“营销转化”解析为空候选 METRIC。active generation 2 实际已有
+`metric.conversions` 和 `formula.conversions=SUM(conversions)`，发布别名为“转化量”。该 Run 在 Text2SQL I/O 前按
+`TEXT2SQL_SEMANTIC_CONTEXT_AMBIGUOUS` 失败，attempt 已不可变封存，前八题 PASS 不复用。
+
+- **R-FL-MANIFEST-V8-01** 保留 v1～v7 题库不可变；v8 只将 L3-02 冻结为三步委派，并显式复用 active release 的
+  `metric.conversions`、`formula.conversions`、`metric.marketing_spend`、`metric.marketing_revenue`、
+  `formula.marketing_roas`、`dimension.marketing_channel` 和 `dimension.target_audience`。不得创建同义影子 Metric 或 Formula。
+- **R-FL-MANIFEST-V8-02** Text2SQL 对全部可用营销数据按 `channel × target_audience` 输出六列完整事实表且不得添加日期过滤；随后只进入
+  一个 governed Analysis task/Stage。表、图、同源 lineage、非因果结论、business Oracle、QA/Trace 与动态 Agent 数量边界不变。
+- **R-FL-MANIFEST-V8-03** v8 turns canonical hash 固定为
+  `sha256:b741d7abc1e929ef6cacf0a482e4b2235e5442756eb2d4f75cdc3dbcc6846d43`。migration 10823 只能在 exact post-10822
+  ledger/checksum 与函数 hash 上增加 v8 分支；历史表、八版本 replay、owner、SECURITY DEFINER 与 ACL 保持不变。
+- **AC-FL-MANIFEST-V8-01** focused 回归、真实 PostgreSQL v1～v8 replay、scoped commit 后，必须从新 commit 的 clean build、fresh
+  physical scratch、fresh E17 activation 和 fresh v8 attempt 自 L1-01 重跑；本次八题 PASS 不得拼接。

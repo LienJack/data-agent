@@ -20,8 +20,10 @@ export const FALCON24_FOUR_LAYER_V5_GATE_MANIFEST_VERSION =
   "falcon24-four-layer-gate-manifest@5.0.0" as const;
 export const FALCON24_FOUR_LAYER_V6_GATE_MANIFEST_VERSION =
   "falcon24-four-layer-gate-manifest@6.0.0" as const;
-export const FALCON24_FOUR_LAYER_GATE_MANIFEST_VERSION =
+export const FALCON24_FOUR_LAYER_V7_GATE_MANIFEST_VERSION =
   "falcon24-four-layer-gate-manifest@7.0.0" as const;
+export const FALCON24_FOUR_LAYER_GATE_MANIFEST_VERSION =
+  "falcon24-four-layer-gate-manifest@8.0.0" as const;
 export const FALCON24_FOUR_LAYER_LAYER_ORDER = Object.freeze(["L1", "L2", "L3", "L4"] as const);
 export const FALCON24_FOUR_LAYER_LAYER_TURN_COUNTS = Object.freeze({
   L1: 5,
@@ -684,13 +686,25 @@ export const FALCON24_FOUR_LAYER_V6_TURN_BLUEPRINTS = Object.freeze(
   ),
 );
 
-export const FALCON24_FOUR_LAYER_TURN_BLUEPRINTS = Object.freeze(
+export const FALCON24_FOUR_LAYER_V7_TURN_BLUEPRINTS = Object.freeze(
   FALCON24_FOUR_LAYER_V6_TURN_BLUEPRINTS.map((turn) =>
     turn.ordinal === 6
       ? {
           ...turn,
           question:
             "只执行两步委派：第一步只由 Semantic 解释已发布 formula.marketing_roas，并且只选择 dimension.marketing_channel、metric.marketing_spend、metric.marketing_revenue、formula.marketing_roas，不选择时间口径或关系；第二步只由 Text2SQL 对全部可用营销数据按渠道汇总，输出 channel、total_spend、marketing_revenue、roas 表。ROAS 等于汇总收入除以汇总投入，汇总投入为0时返回0；不得添加日期过滤，不要在 Semantic 后直接结束。",
+        }
+      : turn,
+  ),
+);
+
+export const FALCON24_FOUR_LAYER_TURN_BLUEPRINTS = Object.freeze(
+  FALCON24_FOUR_LAYER_V7_TURN_BLUEPRINTS.map((turn) =>
+    turn.ordinal === 8
+      ? {
+          ...turn,
+          question:
+            "只执行三步委派：第一步只由 Semantic 解释已发布转化量 metric.conversions（其定义引用 formula.conversions=SUM(conversions)）、营销投入 metric.marketing_spend、营销归因收入 metric.marketing_revenue、营销ROAS formula.marketing_roas、渠道 dimension.marketing_channel 和目标人群 dimension.target_audience，不选择额外时间口径或关系；第二步只由 Text2SQL 对全部可用营销数据按 channel × target_audience 汇总，输出 channel、target_audience、total_spend、marketing_revenue、conversions、roas 完整事实表，不得添加日期过滤；第三步只委派一个受治理 Analysis task，在同一个 Analysis Stage 内比较渠道和目标人群并发布事实表与对比图。结论只描述当前数据，禁止因果断言。",
         }
       : turn,
   ),
@@ -719,6 +733,7 @@ function compareFrozenTurns(
     | typeof FALCON24_FOUR_LAYER_V4_GATE_MANIFEST_VERSION
     | typeof FALCON24_FOUR_LAYER_V5_GATE_MANIFEST_VERSION
     | typeof FALCON24_FOUR_LAYER_V6_GATE_MANIFEST_VERSION
+    | typeof FALCON24_FOUR_LAYER_V7_GATE_MANIFEST_VERSION
     | typeof FALCON24_FOUR_LAYER_GATE_MANIFEST_VERSION,
   context: z.RefinementCtx,
 ): void {
@@ -757,7 +772,9 @@ function compareFrozenTurns(
               ? FALCON24_FOUR_LAYER_V5_TURN_BLUEPRINTS
               : schemaVersion === FALCON24_FOUR_LAYER_V6_GATE_MANIFEST_VERSION
                 ? FALCON24_FOUR_LAYER_V6_TURN_BLUEPRINTS
-                : FALCON24_FOUR_LAYER_TURN_BLUEPRINTS;
+                : schemaVersion === FALCON24_FOUR_LAYER_V7_GATE_MANIFEST_VERSION
+                  ? FALCON24_FOUR_LAYER_V7_TURN_BLUEPRINTS
+                  : FALCON24_FOUR_LAYER_TURN_BLUEPRINTS;
   turns.forEach((turn, index) => {
     const blueprint = blueprints[index];
     if (!blueprint) return;
@@ -781,6 +798,7 @@ const manifestMaterialSchema = z
       FALCON24_FOUR_LAYER_V4_GATE_MANIFEST_VERSION,
       FALCON24_FOUR_LAYER_V5_GATE_MANIFEST_VERSION,
       FALCON24_FOUR_LAYER_V6_GATE_MANIFEST_VERSION,
+      FALCON24_FOUR_LAYER_V7_GATE_MANIFEST_VERSION,
       FALCON24_FOUR_LAYER_GATE_MANIFEST_VERSION,
     ]),
     gate_id: falcon24FourLayerGateIdSchema,
@@ -823,6 +841,7 @@ export async function buildFalcon24FourLayerManifestTurns(
     | typeof FALCON24_FOUR_LAYER_V4_GATE_MANIFEST_VERSION
     | typeof FALCON24_FOUR_LAYER_V5_GATE_MANIFEST_VERSION
     | typeof FALCON24_FOUR_LAYER_V6_GATE_MANIFEST_VERSION
+    | typeof FALCON24_FOUR_LAYER_V7_GATE_MANIFEST_VERSION
     | typeof FALCON24_FOUR_LAYER_GATE_MANIFEST_VERSION = FALCON24_FOUR_LAYER_GATE_MANIFEST_VERSION,
 ) {
   const blueprints =
@@ -838,7 +857,9 @@ export async function buildFalcon24FourLayerManifestTurns(
               ? FALCON24_FOUR_LAYER_V5_TURN_BLUEPRINTS
               : schemaVersion === FALCON24_FOUR_LAYER_V6_GATE_MANIFEST_VERSION
                 ? FALCON24_FOUR_LAYER_V6_TURN_BLUEPRINTS
-                : FALCON24_FOUR_LAYER_TURN_BLUEPRINTS;
+                : schemaVersion === FALCON24_FOUR_LAYER_V7_GATE_MANIFEST_VERSION
+                  ? FALCON24_FOUR_LAYER_V7_TURN_BLUEPRINTS
+                  : FALCON24_FOUR_LAYER_TURN_BLUEPRINTS;
   return Promise.all(
     blueprints.map(async (turn) =>
       manifestTurnSchema.parse({

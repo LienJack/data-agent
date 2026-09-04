@@ -3022,6 +3022,15 @@
       "placeholder": "__FALCON24_FOUR_LAYER_MANIFEST_V7_MIGRATION_CHECKSUM__",
       "checksum_header": "falcon24_four_layer_manifest_v7_migration_checksum",
       "postcondition": { "checksum_occurrences": 2 }
+    },
+    {
+      "id": "10823",
+      "migration_name": "20260725010823_app_data_agent_falcon24_four_layer_manifest_v8.sql",
+      "source_directory": "infra/supabase/apps/data-agent/migration-sources/10823",
+      "segments": ["00-preflight.sql.inc", "20-manifest-v8.sql.inc", "90-postconditions.sql.inc", "99-ledger.sql.inc"],
+      "placeholder": "__FALCON24_FOUR_LAYER_MANIFEST_V8_MIGRATION_CHECKSUM__",
+      "checksum_header": "falcon24_four_layer_manifest_v8_migration_checksum",
+      "postcondition": { "checksum_occurrences": 2 }
     }
   ],
   "exceptions": [

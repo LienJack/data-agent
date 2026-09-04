@@ -2231,3 +2231,14 @@ Semantic 和 Text2SQL 保持 all-time/unbounded，不选择额外时间对象。
 该规则不读取题目 ID，不列出营销专用对象，也不决定 Profile 或 DAG；Root 仍从冻结 Catalog 自主选择下一步。manifest v7、Root 四回合、
 Specialist 内层预算、Schema、Artifact admission 和所有 formal proof 不变。该修复归类为 **A Prompt/Instruction Gap** 与
 **D Test Coverage Gap**，用 system-message regression 固定边界，再以 fresh one-shot epoch 验证实际协作。
+
+## 56. L3 营销面板复用发布 conversions 权威
+
+L3-02 的新失败不是 Root scope 漂移：首个 Root objective 已完整携带投入、归因收入、转化、ROAS、渠道和目标人群，且没有要求时间窗口。
+断点位于自然语言入口与 active release 的命名差异：题面“营销转化”没有候选，而 generation 2 已有同一物理列上的
+`metric.conversions` 与 `formula.conversions=SUM(conversions)`，别名是“转化量”。因此不演进第二套同义指标，也不靠未发布源码别名。
+
+manifest v8 只前向改写 L3-02：第一步列出既有 canonical IDs，第二步冻结 all-time 六列 `channel × target_audience` 面板，第三步冻结
+单 Analysis Stage。模型仍自主产生每个 Tool Call 和 SQL；Host 不按 case ID 路由、不生成 SQL、不补业务结果。v1～v7 继续按各自 turns hash
+验证，10823 只扩展 begin RPC 的版本/hash allowlist，并以全表 digest、函数 owner/SECURITY DEFINER/ACL 和历史 replay 证明零数据漂移。
+该收敛归类为 **C Semantic Contract Naming Gap** 与 **D Test Coverage Gap**；难度只在已发布术语入口上降低，证据门槛不变。

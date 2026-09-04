@@ -2456,3 +2456,18 @@ SQL 模型输入，剩余 executable/schema 仍受原64 KB预算约束并超限�
 - [x] Harness 16/16、Agent Runtime typecheck/build、owned Biome、Trellis validate、diff check 与单并发 full unit gate 15/15 均通过；
   本项由随后 scoped commit 收口。提交后从新 clean build/fresh physical scratch/fresh v7 attempt 自 L1-01 完整重跑，本次前八题
   PASS 不得拼接。
+- [x] `0b3f36ed` clean force build/full unit/attestation、fresh physical scratch、10816～10822、dataset proof、模型认证和 E17 scratch
+  activation 通过；v7 attempt `4b851d00-eded-4ebd-a6c6-1e3bf8eaf3f3` 的 L1 五题、L2 两题和 L3-01 均完成独立业务
+  Oracle 与 business/QA/Trace PASS。
+- [x] L3-02 Run `9ea0054a-eade-8373-8e98-e941e517153c` 证明 Root 已完整保留投入、归因收入、转化、ROAS、渠道和目标人群，且未新增
+  请求时间窗口；active Semantic Context 仍因“营销转化”没有候选而保留空候选 METRIC，Text2SQL 在 I/O 前拒绝。Run/attempt 已按真实
+  FAILED 不可变封存，前八题 PASS 不复用。
+- [x] 审计 generation 2 发布对象后确认 `metric.conversions` 与 `formula.conversions=SUM(conversions)` 已存在；放弃不会进入 retained
+  finalizer 的源码 alias 假修复，也不创建 `metric.marketing_conversions` 影子权威。
+- [x] manifest v8 只前向显式化 L3-02 的既有 canonical IDs、三步委派、all-time 六列面板和单 Analysis Stage；v1～v7 blueprint/replay
+  保持不可变，canonical turns hash 为 `sha256:b741d7abc1e929ef6cacf0a482e4b2235e5442756eb2d4f75cdc3dbcc6846d43`。
+- [x] migration 10823 render/static、真实 PostgreSQL v1～v8 begin/replay/supersede、v7/v8 双向混配拒绝、全表历史与 RPC 安全边界
+  均通过；Contracts/Evals/Platform/Web focused 89/89、相关 12 项 typecheck/build、owned Biome、Trellis validate、diff check 与 workspace
+  单并发 unit gate 15/15 通过。本项由随后 scoped commit 收口。
+- [ ] 从新 commit clean force build、fresh physical scratch、10816～10823、fresh E17 activation 和 fresh v8 attempt 自 L1-01 重跑；
+  不拼接本次前八题 PASS。

@@ -16,6 +16,7 @@ import {
   FALCON24_FOUR_LAYER_V4_GATE_MANIFEST_VERSION,
   FALCON24_FOUR_LAYER_V5_GATE_MANIFEST_VERSION,
   FALCON24_FOUR_LAYER_V6_GATE_MANIFEST_VERSION,
+  FALCON24_FOUR_LAYER_V7_GATE_MANIFEST_VERSION,
   falcon24FourLayerSubmitFenceSchema,
   verifyFalcon24FourLayerAttemptTerminalReceipt,
   verifyFalcon24FourLayerConversationBindings,
@@ -29,7 +30,7 @@ const now = "2026-08-30T08:00:00.000Z";
 
 async function manifest() {
   return buildFalcon24FourLayerGateManifest({
-    schema_version: "falcon24-four-layer-gate-manifest@7.0.0",
+    schema_version: "falcon24-four-layer-gate-manifest@8.0.0",
     gate_id: "E11-FL1",
     attempt_id: id(1),
     authority_epoch: "E11",
@@ -109,7 +110,7 @@ describe("Falcon24 four-layer gate contracts", () => {
     ).rejects.toThrow();
   });
 
-  it("keeps v1-v6 history verifiable while freezing the explicit v7 ROAS handoff", async () => {
+  it("keeps v1-v7 history verifiable while freezing the explicit v8 marketing handoff", async () => {
     const current = await manifest();
     expect(current.turns[1]?.question).toContain("formula.average_order_value");
     expect(current.turns[1]?.rubric.required_checks).toEqual([
@@ -121,6 +122,11 @@ describe("Falcon24 four-layer gate contracts", () => {
     expect(current.turns[6]?.question).toContain("只执行两步委派");
     expect(current.turns[6]?.question).toContain("不选择时间口径或关系");
     expect(current.turns[6]?.question).toContain("不得添加日期过滤");
+    expect(current.turns[8]?.question).toContain("只执行三步委派");
+    expect(current.turns[8]?.question).toContain("metric.conversions");
+    expect(current.turns[8]?.question).toContain("formula.conversions=SUM(conversions)");
+    expect(current.turns[8]?.question).toContain("channel × target_audience");
+    expect(current.turns[8]?.question).toContain("不得添加日期过滤");
     expect(current.turns[10]?.question).toContain("只委派一个受治理 Analysis task");
     expect(current.turns[14]?.question).toContain("共32行");
     expect(current.turns[14]?.rubric.required_checks).toContain(
@@ -131,6 +137,16 @@ describe("Falcon24 four-layer gate contracts", () => {
       FALCON24_FOUR_LAYER_V3_GATE_MANIFEST_VERSION,
     );
     const { manifest_hash: _manifestHash, ...material } = current;
+    const v7Turns = await buildFalcon24FourLayerManifestTurns(
+      FALCON24_FOUR_LAYER_V7_GATE_MANIFEST_VERSION,
+    );
+    const v7 = await buildFalcon24FourLayerGateManifest({
+      ...material,
+      schema_version: FALCON24_FOUR_LAYER_V7_GATE_MANIFEST_VERSION,
+      turns: v7Turns,
+    });
+    await expect(verifyFalcon24FourLayerGateManifest(v7)).resolves.toEqual(v7);
+    expect(v7.turns[8]?.question).not.toContain("只执行三步委派");
     const v5Turns = await buildFalcon24FourLayerManifestTurns(
       FALCON24_FOUR_LAYER_V5_GATE_MANIFEST_VERSION,
     );
@@ -189,6 +205,13 @@ describe("Falcon24 four-layer gate contracts", () => {
       turns: legacyTurns,
     });
     await expect(verifyFalcon24FourLayerGateManifest(legacy)).resolves.toEqual(legacy);
+    await expect(
+      buildFalcon24FourLayerGateManifest({
+        ...material,
+        schema_version: FALCON24_FOUR_LAYER_V7_GATE_MANIFEST_VERSION,
+        turns: current.turns,
+      }),
+    ).rejects.toThrow("Falcon24 turn 与冻结题库不一致");
     await expect(
       buildFalcon24FourLayerGateManifest({
         ...material,
