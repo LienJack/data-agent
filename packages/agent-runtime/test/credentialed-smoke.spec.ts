@@ -266,7 +266,7 @@ describe("显式 Provider Credentialed Smoke", () => {
   });
 
   it.each(["deepseek", "kimi"] as const)(
-    "%s 强制工具调用会在请求边界关闭 thinking",
+    "%s 结构化输出与强制工具调用都会在请求边界关闭 thinking",
     async (provider) => {
       const binding = getModelProviderBinding(provider);
       const transport = createForcedToolChatTransport(binding.default_model_id);
@@ -277,6 +277,7 @@ describe("显式 Provider Credentialed Smoke", () => {
       );
 
       expect(observation.checks.tool_calling).toBe(true);
+      expect(transport.bodies[1]).toMatchObject({ thinking: { type: "disabled" } });
       expect(transport.bodies[2]).toMatchObject({ thinking: { type: "disabled" } });
     },
   );

@@ -75,7 +75,7 @@ const toolOptions = {
   },
 };
 
-function forcedToolProviderOptions(binding: ModelProviderBinding) {
+function structuredOutputProviderOptions(binding: ModelProviderBinding) {
   if (binding.provider === "deepseek") {
     return { deepseek: { thinking: { type: "disabled" as const } } };
   }
@@ -207,8 +207,10 @@ async function executeProviderSmoke(
   });
 
   const structuredOutput = await evaluate(async () => {
+    const providerOptions = structuredOutputProviderOptions(input.binding);
     const result = await model.doGenerate({
       ...structuredOutputOptions,
+      ...(providerOptions ? { providerOptions } : {}),
       abortSignal: callSignal(timeoutMs),
     });
     return textPartsContain(result.content, (text) =>
@@ -217,7 +219,7 @@ async function executeProviderSmoke(
   });
 
   const toolCalling = await evaluate(async () => {
-    const providerOptions = forcedToolProviderOptions(input.binding);
+    const providerOptions = structuredOutputProviderOptions(input.binding);
     const result = await model.doGenerate({
       ...toolOptions,
       ...(providerOptions ? { providerOptions } : {}),

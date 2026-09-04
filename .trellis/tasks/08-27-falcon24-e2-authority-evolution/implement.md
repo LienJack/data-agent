@@ -2335,6 +2335,7 @@ SERVER_PROXY 无模型探针通过。`complex-l4-semantic-defined@4.4.0` 六题�
 
 - [x] 新增 manifest v3，只澄清 L1-04 为纯明细直接 Text2SQL；v1/v2 verifier 与 turns 保持不可变。
 - [x] v3 首轮 L1-02 复现 Root 最终响应 `RESPONSE_SCHEMA_MISMATCH` 后，改为由 Host 对已验收且 `answer_scope=SEMANTIC_FACTS_ONLY` 的 `SemanticQueryContext` 直接结算，不再依赖 Root 是否把该产物误标为 `CONTINUATION_INPUT`；查询/分析产物仍保留显式 `FINAL_ANSWER_EVIDENCE` 边界。
+- [x] 新提交首次两条独立 scratch 的 LLM certification 均仅在 `structured_output` HOLD；隔离探针证明相同 JSON schema 可通过，代码审计发现 credential smoke 未像生产 Mastra bridge 一样为 DeepSeek/Kimi 结构化输出关闭 thinking。已统一 provider option，保持五项认证强度不变。
 - [x] 新增 migration 10818 renderer source、checksummed migration 与静态测试；v3 turns hash 为
   `sha256:bc9fdac88acf23889beabeb2ae2c6f49d3df93d72c02d87ab1fde023e434564a`。
 - [x] 在已失败的专用 scratch 上真实应用10818；首次以错误 pre-10817 hash 被 preflight 原子回滚，修正为真实 post-10817
