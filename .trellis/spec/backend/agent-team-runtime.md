@@ -32,6 +32,9 @@ Root turn 0..3 (AUTO)
 
 - Run acceptance freezes the exact Subagent Capability Catalog in the V3 lease。
 - Root uses the catalog's semantic `description/when_to_use/when_not_to_use/examples` and is the only component allowed to choose a Profile。
+- 正式门禁若只验证一个已接受输入到指定专职 Agent 的交接，冻结题面必须明确该 Agent 与禁止的额外工作，不能让 Root 同时猜测
+  “直接格式化”或“委派专职”。这属于版本化用户任务合同，不授权 Host 增加关键词 Router、固定 DAG、自动调度或模型响应修补；
+  native Tool Call、Catalog admission、current-Run Artifact binding 与最终 answer verifier 仍必须完整通过。
 - Root direct answers are limited to `GENERAL_TEXT` based on general knowledge or visible user messages. Workspace facts, semantic definitions/relationships, aggregates, rankings, trends, rows and charts require delegation or accepted Artifact evidence。
 - Root uses server-owned `toolChoice=AUTO` for at most four normal turns. Each turn decides only the current next action or final answer; there is no dedicated review stage or predeclared future call chain。
 - AUTO 且有可选工具时不启用 Mastra `structuredOutput`；若实际没有 native Tool Call，必须严格解析完整 `fullOutput.text`

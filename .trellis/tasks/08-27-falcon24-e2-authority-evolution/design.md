@@ -2139,3 +2139,14 @@ v5 正式 attempt 在 L3-01 已完成 business 与 QA 后，Trace observer 发�
 前向修复仍保留真实指针可操作性校验，只将入口二次定位改为 `block:start`。浏览器在内容末端会滚到容器最大位置，使入口落在消息区
 底部留白内、避开 Composer；随后仍必须通过非零尺寸、视口边界、`elementFromPoint` containment 和真实 click。不得改为 DOM `click()`、
 强制点击或跳过可操作性检查。旧 attempt 和已生成的 receipt 保持不可变，新提交必须重新 build 并从新 attempt 的 L1-01 全量证明。
+
+## 50. 已接受表格的 Report 交接必须在题面中单义
+
+v5 attempt `3e95d599-edcf-4777-bc1f-3a5630ea179d` 的前四题完整通过。L1-05 在 exact Run 绑定 accepted table 后，Root 首次返回
+非 JSON，第二次返回不符合 `root-agent-final-answer@1.0.0` 的对象；两次都没有 native Tool Call。该失败发生在 Report admission 之前，
+不是 accepted input、Report runtime 或答案事实验证失败。
+
+v6 仅将 L1-05 的自然语言合同改为“只委派 Report Agent”，保留 Report Agent 作为唯一 expected specialist，也保留
+accepted-table-only、management-summary、no-unsupported-claims 三项业务验收。Host 不新增关键词 Router、固定 DAG、模型响应修补或
+自动 Report 调度；当前 Run Artifact admission 与最终 answer verifier 仍按原路径执行。旧 v1～v5 blueprint/hash/attempt 不变，10821
+只在 exact post-10820 begin RPC 上追加 v6 hash。新正式证据必须来自新 commit/build/fresh physical scratch/fresh attempt。

@@ -1114,3 +1114,17 @@ v3 的 L1-02 已由 Semantic 正确命中已发布 `formula.average_order_value`
   ledger/checksum 与函数 hash 上增加 v5 分支，历史表、五版本 replay、owner、SECURITY DEFINER 与 ACL 保持不变。
 - **AC-FL-MANIFEST-V5-01** focused 回归、真实 PostgreSQL 迁移/replay、scoped commit 后，必须从新 commit clean build、fresh
   physical scratch、fresh E17 activation 和 fresh v5 attempt 自 L1-01 重跑；v4 的前三题 PASS 与 canary 均不可拼接。
+
+### 22.21 已接受表格到 Report Agent 的显式交接
+
+v5 attempt `3e95d599-edcf-4777-bc1f-3a5630ea179d` 的 L1-01～L1-04 已在同一 build/scratch 完成 business、QA 与 Trace；
+L1-05 的 exact current-Run accepted table 也已绑定，但 Root 两次在任何 Tool Call 之前违反结构化响应协议，Run 因而失败。
+该题唯一业务目标是验证已接受表格到 Report Agent 的交接，不需要让 Root 猜测“直接格式化”还是“委派报告”。
+
+- **R-FL-MANIFEST-V6-01** 保留 v1～v5 题库不可变；v6 只把 L1-05 写成显式委派 Report Agent，并继续要求只消费
+  current-Run accepted table、不查询其他数据、不增加表外结论。expected Agent、rubric、accepted-input、Oracle、QA/Trace 和 L2～L4 均不变。
+- **R-FL-MANIFEST-V6-02** v6 turns canonical hash 固定为
+  `sha256:959a850d482cd49fb8840da0a2f7c0cdc1a788bcbe1f00430bbd591afd07b22a`。migration 10821 只能在 exact post-10820
+  ledger/checksum 与函数 hash 上增加 v6 分支；历史表、六版本 replay、owner、SECURITY DEFINER 与 ACL 保持不变。
+- **AC-FL-MANIFEST-V6-01** focused 回归、真实 PostgreSQL 迁移/replay、scoped commit 后，必须从新 commit clean build、fresh
+  physical scratch、fresh E17 activation 和 fresh v6 attempt 自 L1-01 重跑；v5 前四题 PASS 不得复用。

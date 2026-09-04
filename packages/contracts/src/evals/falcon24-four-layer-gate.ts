@@ -16,8 +16,10 @@ export const FALCON24_FOUR_LAYER_V3_GATE_MANIFEST_VERSION =
   "falcon24-four-layer-gate-manifest@3.0.0" as const;
 export const FALCON24_FOUR_LAYER_V4_GATE_MANIFEST_VERSION =
   "falcon24-four-layer-gate-manifest@4.0.0" as const;
-export const FALCON24_FOUR_LAYER_GATE_MANIFEST_VERSION =
+export const FALCON24_FOUR_LAYER_V5_GATE_MANIFEST_VERSION =
   "falcon24-four-layer-gate-manifest@5.0.0" as const;
+export const FALCON24_FOUR_LAYER_GATE_MANIFEST_VERSION =
+  "falcon24-four-layer-gate-manifest@6.0.0" as const;
 export const FALCON24_FOUR_LAYER_LAYER_ORDER = Object.freeze(["L1", "L2", "L3", "L4"] as const);
 export const FALCON24_FOUR_LAYER_LAYER_TURN_COUNTS = Object.freeze({
   L1: 5,
@@ -656,13 +658,25 @@ export const FALCON24_FOUR_LAYER_V4_TURN_BLUEPRINTS = Object.freeze(
   ),
 );
 
-export const FALCON24_FOUR_LAYER_TURN_BLUEPRINTS = Object.freeze(
+export const FALCON24_FOUR_LAYER_V5_TURN_BLUEPRINTS = Object.freeze(
   FALCON24_FOUR_LAYER_V4_TURN_BLUEPRINTS.map((turn) =>
     turn.ordinal === 3
       ? {
           ...turn,
           question:
             "这是纯物理列查询。请直接由 Text2SQL 查询 falcon_db_24.blinkit_orders：返回 o.order_id AS order_id、o.order_date::pg_catalog.date AS order_date、o.order_total AS order_total，按 o.order_date::pg_catalog.date 降序，LIMIT 参数为数字 10。不要解释指标或时间语义。",
+        }
+      : turn,
+  ),
+);
+
+export const FALCON24_FOUR_LAYER_TURN_BLUEPRINTS = Object.freeze(
+  FALCON24_FOUR_LAYER_V5_TURN_BLUEPRINTS.map((turn) =>
+    turn.ordinal === 4
+      ? {
+          ...turn,
+          question:
+            "这是当前 Run 已验收并绑定的数据表。请只委派 Report Agent，基于这份表给经营负责人写一段简短摘要；不要查询其他数据，不要增加表中没有的结论。",
         }
       : turn,
   ),
@@ -689,6 +703,7 @@ function compareFrozenTurns(
     | typeof FALCON24_FOUR_LAYER_V2_GATE_MANIFEST_VERSION
     | typeof FALCON24_FOUR_LAYER_V3_GATE_MANIFEST_VERSION
     | typeof FALCON24_FOUR_LAYER_V4_GATE_MANIFEST_VERSION
+    | typeof FALCON24_FOUR_LAYER_V5_GATE_MANIFEST_VERSION
     | typeof FALCON24_FOUR_LAYER_GATE_MANIFEST_VERSION,
   context: z.RefinementCtx,
 ): void {
@@ -723,7 +738,9 @@ function compareFrozenTurns(
           ? FALCON24_FOUR_LAYER_V3_TURN_BLUEPRINTS
           : schemaVersion === FALCON24_FOUR_LAYER_V4_GATE_MANIFEST_VERSION
             ? FALCON24_FOUR_LAYER_V4_TURN_BLUEPRINTS
-            : FALCON24_FOUR_LAYER_TURN_BLUEPRINTS;
+            : schemaVersion === FALCON24_FOUR_LAYER_V5_GATE_MANIFEST_VERSION
+              ? FALCON24_FOUR_LAYER_V5_TURN_BLUEPRINTS
+              : FALCON24_FOUR_LAYER_TURN_BLUEPRINTS;
   turns.forEach((turn, index) => {
     const blueprint = blueprints[index];
     if (!blueprint) return;
@@ -745,6 +762,7 @@ const manifestMaterialSchema = z
       FALCON24_FOUR_LAYER_V2_GATE_MANIFEST_VERSION,
       FALCON24_FOUR_LAYER_V3_GATE_MANIFEST_VERSION,
       FALCON24_FOUR_LAYER_V4_GATE_MANIFEST_VERSION,
+      FALCON24_FOUR_LAYER_V5_GATE_MANIFEST_VERSION,
       FALCON24_FOUR_LAYER_GATE_MANIFEST_VERSION,
     ]),
     gate_id: falcon24FourLayerGateIdSchema,
@@ -785,6 +803,7 @@ export async function buildFalcon24FourLayerManifestTurns(
     | typeof FALCON24_FOUR_LAYER_V2_GATE_MANIFEST_VERSION
     | typeof FALCON24_FOUR_LAYER_V3_GATE_MANIFEST_VERSION
     | typeof FALCON24_FOUR_LAYER_V4_GATE_MANIFEST_VERSION
+    | typeof FALCON24_FOUR_LAYER_V5_GATE_MANIFEST_VERSION
     | typeof FALCON24_FOUR_LAYER_GATE_MANIFEST_VERSION = FALCON24_FOUR_LAYER_GATE_MANIFEST_VERSION,
 ) {
   const blueprints =
@@ -796,7 +815,9 @@ export async function buildFalcon24FourLayerManifestTurns(
           ? FALCON24_FOUR_LAYER_V3_TURN_BLUEPRINTS
           : schemaVersion === FALCON24_FOUR_LAYER_V4_GATE_MANIFEST_VERSION
             ? FALCON24_FOUR_LAYER_V4_TURN_BLUEPRINTS
-            : FALCON24_FOUR_LAYER_TURN_BLUEPRINTS;
+            : schemaVersion === FALCON24_FOUR_LAYER_V5_GATE_MANIFEST_VERSION
+              ? FALCON24_FOUR_LAYER_V5_TURN_BLUEPRINTS
+              : FALCON24_FOUR_LAYER_TURN_BLUEPRINTS;
   return Promise.all(
     blueprints.map(async (turn) =>
       manifestTurnSchema.parse({

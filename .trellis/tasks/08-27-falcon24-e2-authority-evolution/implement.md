@@ -2394,3 +2394,13 @@ SQL 模型输入，剩余 executable/schema 仍受原64 KB预算约束并超限�
   `block:center` 后 `elementFromPoint` 命中 textarea。将二次滚动收敛为 `block:start`，继续保留尺寸、视口、hit-test 与真实 click。
 - [ ] focused validation 与 scoped commit 后重新 clean build/attestation，创建新 attempt 自 L1-01 全量跑完15题，再做 live E17、浏览器和清理；
   不复用 `89ef8168` 的局部 PASS。
+- [x] `aa28854f` clean build/full unit/attestation 与 fresh physical scratch 通过；v5 attempt
+  `3e95d599-edcf-4777-bc1f-3a5630ea179d` 的 L1-01～L1-04 business/QA/Trace PASS。L1-05 exact accepted input 已绑定，
+  但 Root 两次在任何 Tool Call 前分别以非 JSON 和 response schema mismatch 失败；attempt 已按 `FALCON24_RUN_FAILED` 封存。
+- [x] manifest v6 只前向显式化 L1-05 的 Report Agent 交接；v1～v5 blueprint/replay 保持不可变，canonical turns hash 为
+  `sha256:959a850d482cd49fb8840da0a2f7c0cdc1a788bcbe1f00430bbd591afd07b22a`。
+- [x] 新增 migration 10821 source/static test，只在 exact post-10820 begin RPC 增加 v6 分支并保留历史/ACL。
+- [x] Contracts/Evals/Platform/Web focused tests 12/3/10/47 PASS；四包 typecheck、Contracts/Evals/Platform/Web build、
+  migration 10821 render/registry、owned Biome、Trellis validate 与 diff check PASS。失败 scratch 上真实 PostgreSQL v1～v6
+  begin/replay/supersede、v5/v6 双向混配拒绝、历史/owner/SECURITY DEFINER/ACL 保持和 live authority writes=0 均通过。
+- [ ] scoped commit 后从新 commit 创建 fresh build/scratch/v6 attempt，自 L1-01 完整重跑，禁止复用本次前四题 PASS。
