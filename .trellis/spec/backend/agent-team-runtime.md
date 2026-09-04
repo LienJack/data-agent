@@ -276,6 +276,9 @@ Planner 必须按选中方法顺序完整复制 `required_operator_obligations`�
 - Semantic: strict selection intent, exact release/projection/hash/resource binding, metric/formula/dependency, dimension/grain/parent, relationship/join/cardinality, time/restriction, ambiguity, semantic-only final and no SQL execution。
 - Versioned gate term closure: current manifest may name existing canonical Metric/Formula IDs to remove an unpublished-synonym ambiguity; every historical
   manifest/version/hash mapping remains verifiable and cross-version turns are rejected。
+- Versioned gate questions may reduce a repeatedly failing mixed-unit comparison to one published Metric plus the required dimensions, but must retain
+  Semantic→Text2SQL→Analysis collaboration, real execution, complete QueryEvidence, table/chart lineage and QA/Trace. Do not weaken the general
+  Analysis unit-consistency guard or combine count, currency and ratio measures in one category-comparison program merely to pass a gate。
 - Text2SQL: strict candidate schema, literal parameterization, relation/function/AST rejection, exact binding, EXPLAIN/read-only transaction, SQLSTATE classes, bounded repair and result-shape closure。
 - Artifact: `SemanticQueryContext` exact Run/resource/hash binding plus `SqlArtifact -> QueryEvidence -> Chart/Report` source refs, hashes and accepted-state ordering。
 - Real Falcon db24: DeepSeek Root selects Text2SQL for a business aggregate and the browser shows both QueryEvidence table and same-source chart; relationship question selects Semantic only; general knowledge remains direct。

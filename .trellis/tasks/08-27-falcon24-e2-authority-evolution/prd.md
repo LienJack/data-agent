@@ -1233,3 +1233,25 @@ business/QA/Trace PASS。L3-02 Run `9ea0054a-eade-8373-8e98-e941e517153c` 中，
   ledger/checksum 与函数 hash 上增加 v8 分支；历史表、八版本 replay、owner、SECURITY DEFINER 与 ACL 保持不变。
 - **AC-FL-MANIFEST-V8-01** focused 回归、真实 PostgreSQL v1～v8 replay、scoped commit 后，必须从新 commit 的 clean build、fresh
   physical scratch、fresh E17 activation 和 fresh v8 attempt 自 L1-01 重跑；本次八题 PASS 不得拼接。
+
+### 22.28 多单位比较不得降级 Analysis 权威，门禁改用单一已发布度量
+
+v8 attempt `9771bf1a-d0df-437c-9ba4-48dda36f78ea` 已在 commit `43bcc102`、同一 fresh physical scratch 与同一
+E17 activation 下完成 L1 五题、L2 两题和 L3-01 的 business/QA/Trace PASS。L3-02 Run
+`66f7c8ed-ae09-87de-836e-2aa141d923ec` 中，Semantic 精确选择了 v8 枚举对象，Text2SQL 也提交了16行六列
+`channel/target_audience/total_spend/marketing_revenue/conversions/roas` QueryEvidence；Analysis 在创建 Stage 前两次以
+`CATEGORY_COMPARISON_AUTHORITY_INVALID` 拒绝。根因是 category comparison 同时收到 `unit.count` 与 `unit.currency`，触发既有
+`UNIT_MISMATCH` 守卫；它是防止混合单位进入同一比较图的正确失败关闭，不能通过放宽 planner/compiler 修复。Run 最终按
+`ROOT_AGENT_TURN_BUDGET_EXHAUSTED`、attempt 按真实 FAILED 不可变封存。
+
+- **R-FL-MANIFEST-V9-01** 保留 v1～v8 题库不可变；v9 只前向替换 L3-02，使用已发布
+  `metric.conversions`（定义引用 `formula.conversions=SUM(conversions)`）、`dimension.marketing_channel` 和
+  `dimension.target_audience`。不得选择投入、收入、ROAS、时间语义或额外关系。
+- **R-FL-MANIFEST-V9-02** Text2SQL 仍须对全部可用营销数据按 `channel × target_audience` 输出完整三列事实表；随后只委派一个
+  governed Analysis task，在同一 Stage 发布完整事实表与转化量对比图。业务 Oracle、QueryEvidence lineage、QA/Trace、非因果结论及
+  Agent 动态协作门槛不降低。
+- **R-FL-MANIFEST-V9-03** v9 turns canonical hash 固定为
+  `sha256:04ee93aa5fc9eb0e21ae58c5d7b9503ffa8705866b1af11461e7881c444f7de9`。migration 10824 只能在 exact post-10823
+  ledger/checksum 与函数 hash 上增加 v9 分支；历史表、九版本 replay、owner、SECURITY DEFINER 与 ACL 保持不变。
+- **AC-FL-MANIFEST-V9-01** focused 回归、真实 PostgreSQL v1～v9 replay、scoped commit 后，必须从新 commit 的 clean build、fresh
+  physical scratch、fresh E17 activation 和 fresh v9 attempt 自 L1-01 重跑；v8 的八题 PASS 不得拼接。

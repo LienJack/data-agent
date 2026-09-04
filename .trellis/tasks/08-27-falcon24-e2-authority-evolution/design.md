@@ -2242,3 +2242,13 @@ manifest v8 只前向改写 L3-02：第一步列出既有 canonical IDs，第二
 单 Analysis Stage。模型仍自主产生每个 Tool Call 和 SQL；Host 不按 case ID 路由、不生成 SQL、不补业务结果。v1～v7 继续按各自 turns hash
 验证，10823 只扩展 begin RPC 的版本/hash allowlist，并以全表 digest、函数 owner/SECURITY DEFINER/ACL 和历史 replay 证明零数据漂移。
 该收敛归类为 **C Semantic Contract Naming Gap** 与 **D Test Coverage Gap**；难度只在已发布术语入口上降低，证据门槛不变。
+
+## 57. L3 分类比较保持单单位输入
+
+v8 已证明 Semantic→Text2SQL 交接和六列事实表均可执行；真正断点位于 Analysis applicability，而不是术语、SQL 或数据缺失。分类比较当前
+按所有选中 Metric 的发布单位做同质性校验，`conversions=unit.count` 与 spend/revenue 的 `unit.currency` 不能进入同一比较程序。
+这个守卫防止将数量、金额和比率画到同一坐标或生成误导性排序，因此不修改通用 applicability、planner 或 compiler。
+
+v9 将 L3-02 收敛为单一度量 `metric.conversions`，同时保留两个分类维度、三步原生 Tool Call、完整 QueryEvidence、唯一 Analysis
+Stage、表格/图表同源和最终 QA/Trace。它降低的是题面度量组合复杂度，不是 Agent 协作、执行、证据或业务正确性标准。v1～v8 按各自
+blueprint/hash 继续验证，10824 只扩展 begin RPC 的版本/hash allowlist，并用逐表 digest 与 RPC 安全边界守卫证明零历史漂移。

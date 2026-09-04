@@ -2469,5 +2469,20 @@ SQL 模型输入，剩余 executable/schema 仍受原64 KB预算约束并超限�
 - [x] migration 10823 render/static、真实 PostgreSQL v1～v8 begin/replay/supersede、v7/v8 双向混配拒绝、全表历史与 RPC 安全边界
   均通过；Contracts/Evals/Platform/Web focused 89/89、相关 12 项 typecheck/build、owned Biome、Trellis validate、diff check 与 workspace
   单并发 unit gate 15/15 通过。本项由随后 scoped commit 收口。
-- [ ] 从新 commit clean force build、fresh physical scratch、10816～10823、fresh E17 activation 和 fresh v8 attempt 自 L1-01 重跑；
-  不拼接本次前八题 PASS。
+- [x] `43bcc102` clean force build/full unit/attestation、fresh physical scratch、10816～10823、dataset proof、模型认证和 E17 scratch
+  activation 通过；v8 attempt `9771bf1a-d0df-437c-9ba4-48dda36f78ea` 自 L1-01 重跑，L1 五题、L2 两题和 L3-01 完成
+  business/QA/Trace PASS，未拼接旧证据。
+- [x] L3-02 Run `66f7c8ed-ae09-87de-836e-2aa141d923ec` 的 Semantic 与 Text2SQL 成功，产出16行六列完整事实表；Analysis 因
+  `unit.count` 与 `unit.currency` 混合触发 `CATEGORY_COMPARISON_AUTHORITY_INVALID`，没有创建 Stage。Run/attempt 已按真实 FAILED
+  不可变封存，Web/Worker 停止，live E16 writes=0。
+- [x] 保留通用单位一致性守卫；manifest v9 仅将 L3-02 收敛为 conversions/count × channel × target_audience，仍要求
+  Semantic→Text2SQL→单 Analysis Stage、完整事实表/图、业务 Oracle、QA/Trace。v1～v8 blueprint/replay 保持不可变，v9 turns hash 为
+  `sha256:04ee93aa5fc9eb0e21ae58c5d7b9503ffa8705866b1af11461e7881c444f7de9`。
+- [x] 新增 migration 10824 renderer source/static test，只在 exact post-10823 begin RPC 增加 v9 分支并保留历史/ACL；render checksum 为
+  `sha256:6fd919c5ec352a795d329af3a7768d1454c3277b8046675b756087c4ce63cfd2`。
+- [x] 失败 scratch 上真实 PostgreSQL v1～v9 begin/replay/supersede、v8/v9 双向混配拒绝、migration 10824 ledger、逐表历史与 RPC
+  安全边界均通过；v8 attempt 保持 FAILED，live authority writes=0。
+- [x] Contracts/Evals/Platform/Web focused 89/89、四包 typecheck/build、10824 render/verify、owned Biome、Trellis validate 与 workspace
+  单并发 unit gate 15/15 全部通过；提交前仅恢复 Web typecheck 生成的 `tsconfig.tsbuildinfo` 并做 staged diff 审计。
+- [ ] 从新 commit clean force build、fresh physical scratch、10816～10824、fresh E17 activation 和 fresh v9 attempt 自 L1-01 重跑；
+  通过全部15题后再进入 retained finalization、live E17、Agent/答案/Trace 浏览器 E2E 与最终审计清理。
