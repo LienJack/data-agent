@@ -37,6 +37,9 @@ Root turn 0..3 (AUTO)
   native Tool Call、Catalog admission、current-Run Artifact binding 与最终 answer verifier 仍必须完整通过。
 - Root direct answers are limited to `GENERAL_TEXT` based on general knowledge or visible user messages. Workspace facts, semantic definitions/relationships, aggregates, rankings, trends, rows and charts require delegation or accepted Artifact evidence。
 - Root uses server-owned `toolChoice=AUTO` for at most four normal turns. Each turn decides only the current next action or final answer; there is no dedicated review stage or predeclared future call chain。
+- Production Root Provider 的单次输出上限必须与 Team runtime 的 4096 token 上限一致，同时继续取模型认证有效输出上限和剩余
+  context headroom 的最小值；不得另行硬编码更低的 2048 上限。若 provider 恰好用满输出预算且 native Tool Call JSON 未闭合，
+  必须按协议失败，不能补写；修复后也必须从新 Run 重做，不得重放或接续被截断的调用。
 - AUTO 且有可选工具时不启用 Mastra `structuredOutput`；若实际没有 native Tool Call，必须严格解析完整 `fullOutput.text`
   为 JSON，再用同一注册 Response Schema 验证/规范化。不得读取未生成的 `fullOutput.object`、剥除 Markdown/prose，
   或通过伪 Tool Call 包装最终答案。REQUIRED/无可用工具的 structured-output 路径不变。

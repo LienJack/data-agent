@@ -2166,3 +2166,15 @@ ratio-of-sums/零分母口径。Host runtime、模型自主原生 Tool Call、ex
 完全不变；特别不增加 deterministic router/DAG 或允许闭包外选择。v1～v6 blueprint 继续按 schema version 验证。10822 在 exact
 post-10821 `prosrc` 上做唯一替换，追加 v7 turns hash
 `sha256:df80081985d2a65f2ea161bb079a8b2a1dfa2930a90090493f3be6f640032795`，并保持逐表历史与 ACL 快照守卫。
+
+## 52. Root native Tool Call 输出预算与 Team runtime 对齐
+
+v7 attempt `333ecf97-aae1-496b-ae68-6d0509725181` 的 L1-01～L1-04 已在同一 build/scratch 完成 business、QA、Trace；
+L1-05 exact accepted table 也按停 Worker、claim、精确 seed 的顺序绑定。Root 第一次完整非 JSON 被既有有界反馈拒绝；第二次已经选择
+`report-writing-agent`，但 provider usage 精确到达 `output_tokens=2048`，native Tool Call 参数在字段中间截断，Run 以
+`ROOT_AGENT_TOOL_CALL_INVALID` 失败。该 attempt 已不可变封存。
+
+Production `run-bound-provider-dispatcher` 原先把 Root 输出再次硬编码截到 2048，而 `deriveTeamRuntimeTaskBounds` 已声明 4096；这是一处
+跨层预算漂移，不是 Report/Semantic 权威或题面缺失。前向修复只把 Root 单次输出 ceiling 对齐到4096，并继续取认证模型
+`effective_output_ceiling_tokens` 与 context headroom 的更小值。Provider 调用次数、Root 四回合、Tool allowlist、Catalog admission、
+accepted Artifact、答案 verifier 和失败关闭规则均不改变；v7 manifest/10822 无需新版本。

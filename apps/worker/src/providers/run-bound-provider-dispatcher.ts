@@ -218,7 +218,7 @@ export function createRunBoundProviderDispatcher(input: {
         Math.max(0, effectiveContextCeiling - trustedInputTokenUpperBound),
       );
       const capacityStatus = effectiveOutputCeiling < 1 ? "EXCEEDED" : "WITHIN_LIMIT";
-      const maxOutputTokens = Math.min(2_048, Math.max(1, effectiveOutputCeiling));
+      const maxOutputTokens = Math.min(4_096, Math.max(1, effectiveOutputCeiling));
       const providerRequest = {
         schema_version: "model-provider-request@1.0.0",
         request_id: logicalCallId,

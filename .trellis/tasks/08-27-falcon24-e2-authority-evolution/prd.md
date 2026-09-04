@@ -1146,3 +1146,12 @@ Root 前两次给 Semantic objective 增加“当前窗口/时间语义”，Sem
   ledger/checksum 与函数 hash 上增加 v7 分支；历史表、七版本 replay、owner、SECURITY DEFINER 与 ACL 保持不变。
 - **AC-FL-MANIFEST-V7-01** 真实 PostgreSQL 迁移/replay、focused validation 与 scoped commit 后，必须从新 commit 的 clean build、
   fresh physical scratch、fresh E17 activation 和 fresh v7 attempt 自 L1-01 重跑；v6 已通过的六题不得拼接复用。
+
+### 22.23 Root Tool Call 不得被低于 Team 合同的输出硬上限截断
+
+- **R-FL-ROOT-OUTPUT-01** Production Root 单次 provider 请求的 `max_output_tokens` 上限为4096，并继续受认证模型
+  `effective_output_ceiling_tokens` 与有效 context headroom 的更小值约束；不得保留额外2048硬上限。
+- **R-FL-ROOT-OUTPUT-02** 本项不增加 provider 调用次数、Root 四回合、工具权限或修复重试，也不改变 manifest、Agent contract、
+  business/QA/Trace rubric。未闭合 Tool Call 仍失败关闭，Host 不得拼接或补写模型输出。
+- **AC-FL-ROOT-OUTPUT-01** 回归必须证明原 profile ceiling 4000 被完整传入 provider，而不是截为2048；focused validation 与 scoped
+  commit 后，从新 clean build、fresh physical scratch、fresh v7 attempt 自 L1-01 重跑，旧 L1 四题 PASS 不得复用。

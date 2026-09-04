@@ -2417,4 +2417,11 @@ SQL 模型输入，剩余 executable/schema 仍受原64 KB预算约束并超限�
 - [x] Contracts/Evals/Platform/Web focused tests 12/3/27/47 PASS；四包 typecheck/build、10822 render、owned Biome、
   Trellis validate 与 diff check PASS。失败 scratch 上真实 PostgreSQL v1～v7 begin/replay/supersede、v6/v7 双向混配拒绝、
   migration ledger、owner/SECURITY DEFINER/ACL 保持和 live authority writes=0 均通过；本项由随后 scoped commit 收口。
-- [ ] 从新 commit 建 fresh build/scratch/v7 attempt，自 L1-01 完整重跑，禁止复用 v6 六题 PASS。
+- [x] `f6bc8548` clean force build/full unit/attestation、fresh physical scratch、10816～10822、dataset proof、模型认证和 E17
+  scratch activation 通过；v7 attempt `333ecf97-aae1-496b-ae68-6d0509725181` 的 L1-01～L1-04 business/QA/Trace PASS。
+- [x] L1-05 Run `f2937c92-55ed-8903-857d-5e69ae3cc3c4` 的第二次 Root provider 调用已选择 Report Agent，但 usage 精确为
+  `output_tokens=2048`，native Tool Call 参数被截断，Run/attempt 按 `ROOT_AGENT_TOOL_CALL_INVALID`/`FALCON24_RUN_FAILED`
+  不可变封存；Web/Worker 已停止，live E16 writes=0。
+- [x] 将 Production Root 输出 ceiling 从额外2048硬上限对齐到既有 Team 4096，同时保留模型/context更小上限；provider focused
+  2/2、Worker typecheck/build、owned Biome、Trellis validate 与 diff check PASS，本项由随后 scoped commit 收口。
+- [ ] 从新 commit 的 fresh build/scratch/v7 attempt 自 L1-01 完整重跑，禁止复用本轮四题 PASS。

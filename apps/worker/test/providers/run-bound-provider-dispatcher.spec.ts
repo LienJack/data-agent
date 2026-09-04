@@ -264,7 +264,10 @@ describe("audited run-bound Root provider coordinator", () => {
     expect(invocation?.payload).toMatchObject({
       messages: [
         expect.objectContaining({ role: "system" }),
-        { role: "assistant", content: history.content },
+        expect.objectContaining({
+          role: "user",
+          content: expect.stringContaining(`"content":"${history.content}"`),
+        }),
         { role: "user", content: current.content },
         { role: "system", content: "Current normal Root turn index: 0." },
         expect.objectContaining({
@@ -273,6 +276,7 @@ describe("audited run-bound Root provider coordinator", () => {
         }),
       ],
       tool_allowlist: ["delegate_to_subagent@2"],
+      budget: { max_output_tokens: 4_000 },
     });
     expect(invocation?.envelope.invocation_id).toBe(ids.command);
     expect(invocation?.envelope.projection.payload_hash).toMatch(/^sha256:/u);
