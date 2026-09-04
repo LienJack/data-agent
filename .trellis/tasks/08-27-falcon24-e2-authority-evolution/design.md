@@ -2129,3 +2129,13 @@ binding、不授权兄弟列，也不绕过 semantic selection。
 v5 仅前向替换 L1-04 题面，显式给出已公开物理表列、日期 cast、排序和参数化 limit，使冻结检索只围绕本题三列建立闭包，避免无关时间
 对象参与 compile。完整业务表、独立 PostgreSQL Oracle、QA/Trace 与一次性 attempt 标准不变。Contracts 按 schema version 继续验证
 v1～v5 blueprint；10820 对 begin RPC 做唯一结构替换并保留历史摘要与 ACL 校验。
+
+## 49. 长答案后的 Trace 入口必须真实可点击
+
+v5 正式 attempt 在 L3-01 已完成 business 与 QA 后，Trace observer 发现长答案末尾的运行轨迹入口虽然存在且未禁用，但 `block:center`
+滚动把入口中心留在 Composer 覆盖区，`elementFromPoint` 命中 textarea，因而以 `FALCON24_TRACE_ENTRY_NOT_ACTIONABLE` 正确停止。
+入口本身、Run、Trace 与页面数据均未漂移；问题是自动验收的滚动定位不能保证长内容末端进入可点击视口。
+
+前向修复仍保留真实指针可操作性校验，只将入口二次定位改为 `block:start`。浏览器在内容末端会滚到容器最大位置，使入口落在消息区
+底部留白内、避开 Composer；随后仍必须通过非零尺寸、视口边界、`elementFromPoint` containment 和真实 click。不得改为 DOM `click()`、
+强制点击或跳过可操作性检查。旧 attempt 和已生成的 receipt 保持不可变，新提交必须重新 build 并从新 attempt 的 L1-01 全量证明。

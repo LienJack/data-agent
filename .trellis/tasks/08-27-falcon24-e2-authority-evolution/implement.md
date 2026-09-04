@@ -2388,4 +2388,9 @@ SQL 模型输入，剩余 executable/schema 仍受原64 KB预算约束并超限�
 - [x] Contracts/Evals/Worker/Platform/Web focused tests 12/3/32/173/47 PASS；相关包 typecheck/build、migration render、
   owned Biome、Trellis validate 与 diff check PASS。隔离 scratch 上 10820 事务内历史 postcondition 通过，v1～v5
   begin/replay/supersede 与 v4/v5 双向混配拒绝通过，owner/SECURITY DEFINER/ACL 不变；live E16 writes 为0。本项由随后 scoped commit 收口。
-- [ ] 从新 commit clean build/full unit/attestation、fresh physical scratch/activation/attempt 自 L1-01 跑完15题，再做 live E17、浏览器和清理。
+- [x] `aee210bf` clean build/full unit/attestation 与 fresh physical scratch 通过；v5 attempt `89ef8168-882c-4bd9-81c2-1ad2fbd4984d`
+  的 L1 五题、L2 两题 business/QA/Trace 全部 PASS，L3-01 business/QA PASS。
+- [x] L3-01 Trace 入口因长答案末端被 Composer 覆盖而停止在 `QA_PASSED`；DOM 只读证据确认入口存在、未禁用，但
+  `block:center` 后 `elementFromPoint` 命中 textarea。将二次滚动收敛为 `block:start`，继续保留尺寸、视口、hit-test 与真实 click。
+- [ ] focused validation 与 scoped commit 后重新 clean build/attestation，创建新 attempt 自 L1-01 全量跑完15题，再做 live E17、浏览器和清理；
+  不复用 `89ef8168` 的局部 PASS。

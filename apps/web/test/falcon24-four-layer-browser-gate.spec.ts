@@ -674,6 +674,11 @@ describe("Falcon24 four-layer browser gate", () => {
     expect(commands.filter((command) => command.includes("elementFromPoint"))).toHaveLength(
       exactRunClicks.length,
     );
+    const actionabilityWaits = commands.filter(
+      (command) => command.includes("wait --fn") && command.includes("entry.scrollIntoView"),
+    );
+    expect(actionabilityWaits).toHaveLength(exactRunClicks.length);
+    expect(actionabilityWaits.every((command) => command.includes('block: "start"'))).toBe(true);
   });
 
   it("rejects missing Team and SQL read views even when primary Trace nodes are valid", async () => {

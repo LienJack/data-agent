@@ -150,7 +150,7 @@ async function clickRunEntry(session: string, selector: string): Promise<void> {
       `(() => {
         const entry = document.querySelector(${JSON.stringify(selector)});
         if (!entry || entry.disabled) return false;
-        entry.scrollIntoView({behavior: "instant", block: "center", inline: "nearest"});
+        entry.scrollIntoView({behavior: "instant", block: "start", inline: "nearest"});
         const rect = entry.getBoundingClientRect();
         const x = rect.left + rect.width / 2;
         const y = rect.top + rect.height / 2;
