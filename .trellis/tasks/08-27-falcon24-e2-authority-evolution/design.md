@@ -2114,3 +2114,18 @@ Contracts 默认 v4，同时按 schema version 严格选择四套冻结 blueprin
 `sha256:1b197368096673c1015935308f2db4a4fcddb0f3cc04c73b627cd7ce4d97503f`。migration 10819 在 exact post-10818
 `prosrc` hash 上做唯一结构替换，仅增加 v4 schema/hash 分支；迁移前后比较全部受保护表摘要与函数 ACL。正式 v4 运行仍必须从新提交的
 clean build、fresh physical scratch、fresh activation 和 fresh attempt 开始，禁止继承 v3 的任何局部 PASS。
+
+## 48. containment 节点到发布物理列的精确投影
+
+Falcon24 图检索将表列作为 `contains.column.<table>.<column>` 节点返回，发布执行目录则以
+`column.<table>.<column>` 作为 physical binding 的 logical object identity。两者是同一已发布列的检索关系节点与执行对象，旧实现却在
+Worker projection 和 Platform QueryEvidence 两侧都做了字符串精确比较，导致“已检索但未选择”的假阴性。
+
+共享 Contracts helper 只接受两个固定前缀：原 `column.*` 保持不变，`contains.column.*` 去掉 `contains.`；其他对象返回 null。
+Worker 将该 canonical id 加入冻结模型投影的 physical binding 过滤集合；Platform 用同一 helper 建立 selected physical-column set。
+后续 `physicalSources` 仍要求唯一 active catalog binding、同 datasource、同 table/column 和同 physical snapshot 类型，因此映射不创建
+binding、不授权兄弟列，也不绕过 semantic selection。
+
+v5 仅前向替换 L1-04 题面，显式给出已公开物理表列、日期 cast、排序和参数化 limit，使冻结检索只围绕本题三列建立闭包，避免无关时间
+对象参与 compile。完整业务表、独立 PostgreSQL Oracle、QA/Trace 与一次性 attempt 标准不变。Contracts 按 schema version 继续验证
+v1～v5 blueprint；10820 对 begin RPC 做唯一结构替换并保留历史摘要与 ACL 校验。

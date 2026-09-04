@@ -2374,3 +2374,18 @@ business/QA/Trace 通过；L1-04 Run `7347f813-76ff-8e9a-8c2d-1495cdaf8848` 在�
 Text2SQL runtime 测试、Worker typecheck/build、owned Biome 与 diff check 均通过。
 对应长期边界已写入 `.trellis/spec/backend/text2sql-resolved-context.md`：完整 Package/Receipt 继续作为权威，审计 evidence 不再作为
 SQL 模型输入，剩余 executable/schema 仍受原64 KB预算约束并超限失败关闭。
+
+`ff960257` 的 force build/full unit/fresh E17 scratch 与 v4 attempt `cf8646cf-2d4f-4731-8c3a-af8a3b712445` 已证明上下文预算修复
+生效：L1-01～L1-03 business/QA/Trace PASS，L1-04 已实际生成候选。失败 attempt 不重放；显式三列 canary compile/execute 后把剩余断点
+定位为 containment identity 与发布 physical-column identity 未闭合。
+
+- [x] Contracts 新增固定 `contains.column.* -> column.*` helper，Worker 模型投影与 Platform QueryEvidence 共同使用；未选择列和缺失
+  active binding/snapshot 继续拒绝。
+- [x] Worker projection 与 Platform acceptance 增加正反回归；现有完整 Text2SQL/QueryEvidence focused suite 通过。
+- [x] manifest v5 只前向显式化 L1-04 三列/date cast/order/参数化 limit；v1～v4 blueprint/replay 保持不可变，canonical turns hash 为
+  `sha256:040e238b038f8ec2d246f553ac26a1d7abc6067f152e4106f7aca93859c6d55c`。
+- [x] 新增 migration 10820 source/renderer/static test，只在 post-10819 begin RPC 增加 v5 分支并保留历史/ACL。
+- [x] Contracts/Evals/Worker/Platform/Web focused tests 12/3/32/173/47 PASS；相关包 typecheck/build、migration render、
+  owned Biome、Trellis validate 与 diff check PASS。隔离 scratch 上 10820 事务内历史 postcondition 通过，v1～v5
+  begin/replay/supersede 与 v4/v5 双向混配拒绝通过，owner/SECURITY DEFINER/ACL 不变；live E16 writes 为0。本项由随后 scoped commit 收口。
+- [ ] 从新 commit clean build/full unit/attestation、fresh physical scratch/activation/attempt 自 L1-01 跑完15题，再做 live E17、浏览器和清理。

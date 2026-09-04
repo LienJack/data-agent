@@ -12,7 +12,10 @@ import {
 } from "@data-agent/contracts/artifacts";
 import type { PhysicalSchemaSnapshot } from "@data-agent/contracts/catalog";
 import { canonicalizeJson, sha256ContentHash } from "@data-agent/contracts/common";
-import type { SemanticContextCommitResult } from "@data-agent/contracts/context";
+import {
+  type SemanticContextCommitResult,
+  selectedSemanticObjectPhysicalColumnId,
+} from "@data-agent/contracts/context";
 import {
   buildGovernedDatasourceQueryRequest,
   type GovernedDatasourceQueryResult,
@@ -427,7 +430,10 @@ function semanticProjection(
     ({ node_id: nodeId }) => selectedIds.has(nodeId) || formulaIds.has(nodeId),
   );
   const physicalObjectIds = new Set([
-    ...selectedIds,
+    ...[...selectedIds].flatMap((objectId) => {
+      const physicalColumnId = selectedSemanticObjectPhysicalColumnId(objectId);
+      return physicalColumnId ? [objectId, physicalColumnId] : [objectId];
+    }),
     ...metrics.flatMap((metric) =>
       metric.dependency_column_ids.map((columnId) =>
         columnId.startsWith("column.")

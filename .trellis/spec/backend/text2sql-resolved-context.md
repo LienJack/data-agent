@@ -692,6 +692,19 @@ Regression: a valid package with evidence summaries larger than the specialist b
 executable/schema projection fits; no evidence summary appears in the model context. Resource/hash drift and an
 oversized executable/schema projection continue to fail before provider or target I/O.
 
+### Retrieved containment node to physical-column closure
+
+Graph retrieval represents a selected table column as `contains.column.<table>.<column>`, while the executable release
+catalog keys its physical binding as `column.<table>.<column>`. Treat the former as selection proof for exactly the latter
+in both the Worker model projection and Platform QueryEvidence acceptance. An already canonical `column.*` remains
+unchanged; every other object kind maps to no physical column.
+
+This conversion grants no relation or sibling-column access. The corresponding `column.*` entry must still exist as one
+active binding in the exact frozen release, match the datasource, relation and schema snapshot, and agree with the actual
+PostgreSQL result type. A missing containment selection, stale catalog binding or snapshot mismatch keeps the existing
+fail-closed errors. Test both projection visibility and end-to-end physical-column binding, including rejection after the
+containment node is removed.
+
 ### Published Formula expression references
 
 Scope: an accepted SemanticQueryContext explicitly requests an independently published numeric Formula.

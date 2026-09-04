@@ -23,6 +23,7 @@ import {
 import { canonicalizeJson, sha256ContentHash } from "@data-agent/contracts/common";
 import {
   type SemanticContextCommitResult,
+  selectedSemanticObjectPhysicalColumnId,
   verifySemanticContextCommitResult,
 } from "@data-agent/contracts/context";
 import {
@@ -137,7 +138,12 @@ function selectedPhysicalColumns(
   catalog: QueryEvidenceSemanticCatalog,
 ): ReadonlySet<string> {
   const selected = selectedSemanticObjects(context);
-  const physicalIds = new Set([...selected].filter((id) => id.startsWith("column.")));
+  const physicalIds = new Set(
+    [...selected].flatMap((objectId) => {
+      const physicalColumnId = selectedSemanticObjectPhysicalColumnId(objectId);
+      return physicalColumnId ? [physicalColumnId] : [];
+    }),
+  );
   for (const metric of catalog.executable.metrics) {
     if (!selected.has(metric.metric_id)) continue;
     for (const columnId of [

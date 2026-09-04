@@ -1095,3 +1095,22 @@ v3 的 L1-02 已由 Semantic 正确命中已发布 `formula.average_order_value`
   replay、owner、SECURITY DEFINER 与 ACL 必须保持不变。
 - **AC-FL-MANIFEST-V4-01** 真实 PostgreSQL 四版本验证与 scoped commit 后，正式证据必须从该 commit 的 clean build、fresh physical
   scratch、fresh E17 activation 和 fresh v4 attempt 开始；任何旧 attempt 的局部 PASS 仍不可组合。
+
+### 22.20 containment 物理列闭包与显式明细题
+
+`ff960257` 已消除 L1-04 的模型上下文预算阻塞；新 v4 attempt `cf8646cf-2d4f-4731-8c3a-af8a3b712445` 的 L1-01～L1-03
+再次完成 business/QA/Trace。L1-04 已进入真实 Text2SQL 候选生成，但宽泛题面检索了无关时间对象，导致 temporal compile 在候选所需列之外
+失败。同一 scratch 的非计分显式物理列 canary 随后成功 compile 并执行，最终只因检索选择的是
+`contains.column.blinkit_orders.*`，而模型投影和 QueryEvidence 仅按同名 `column.blinkit_orders.*` 查找而失败。
+
+- **R-FL-CONTAINED-COLUMN-01** 已验证检索闭包中的 `contains.column.<table>.<column>` 只授权同名
+  `column.<table>.<column>` 进入 Text2SQL 模型投影与 QueryEvidence selected set。对应 active release physical binding、datasource 与
+  schema snapshot 仍须逐项验证；不存在 containment 选择或已发布 binding 时继续失败关闭。
+- **R-FL-MANIFEST-V5-01** 保留 v1～v4 题库不可变；v5 只把 L1-04 写成显式
+  `falcon_db_24.blinkit_orders` 三列、date cast、降序和参数化 `LIMIT 10` 的纯物理列查询。它仍由 Semantic 检索闭包和 Text2SQL
+  compile/execute/QueryEvidence 协作完成，不允许 Host 注入候选 SQL 或结果。
+- **R-FL-MANIFEST-V5-02** v5 turns canonical hash 固定为
+  `sha256:040e238b038f8ec2d246f553ac26a1d7abc6067f152e4106f7aca93859c6d55c`。migration 10820 只能在 exact post-10819
+  ledger/checksum 与函数 hash 上增加 v5 分支，历史表、五版本 replay、owner、SECURITY DEFINER 与 ACL 保持不变。
+- **AC-FL-MANIFEST-V5-01** focused 回归、真实 PostgreSQL 迁移/replay、scoped commit 后，必须从新 commit clean build、fresh
+  physical scratch、fresh E17 activation 和 fresh v5 attempt 自 L1-01 重跑；v4 的前三题 PASS 与 canary 均不可拼接。

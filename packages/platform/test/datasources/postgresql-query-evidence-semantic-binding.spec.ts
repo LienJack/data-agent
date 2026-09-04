@@ -2419,6 +2419,79 @@ describe("PostgreSQL QueryEvidence semantic binding", () => {
     ]);
   });
 
+  it("binds a physical column selected through its exact containment node only", async () => {
+    const snapshot = await physicalSnapshot("date", true);
+    const containmentId = "contains.column.orders.spend";
+    const context = await semanticContext(snapshot, [containmentId]);
+    const catalog = semanticCatalog();
+    const spendBinding = {
+      logical_object_id: "column.orders.spend",
+      logical_object_type: "column" as const,
+      datasource_id: datasourceId,
+      schema_name: "public",
+      table_name: "orders",
+      column_name: "spend",
+      binding_lifecycle: "active" as const,
+      valid_from: null,
+      valid_until: null,
+    };
+    const physicalCandidate: Text2SqlQueryCandidate = {
+      schema_version: "text2sql-query-candidate@1.0.0",
+      sql: "select o.spend as spend from public.orders o limit $1",
+      parameters: [10],
+      result_columns: [
+        {
+          name: "spend",
+          semantic_type: "NUMBER",
+          label: "支出",
+          semantic_binding: {
+            object_kind: "PHYSICAL_COLUMN",
+            object_id: "column.orders.spend",
+          },
+        },
+      ],
+      time_window: null,
+      presentation: {
+        title: "订单支出",
+        summary: "返回已选物理列。",
+        visualization: "TABLE",
+        x_key: null,
+        y_keys: [],
+      },
+    };
+    const input = {
+      candidate: physicalCandidate,
+      result: await queryResult([{ name: "spend", type: "1700" }], [{ spend: "12.50" }]),
+      physical_snapshot: snapshot,
+      semantic_context: context,
+      semantic_catalog: {
+        ...catalog,
+        executable: {
+          ...catalog.executable,
+          physical_bindings: [...catalog.executable.physical_bindings, spendBinding],
+        },
+      },
+      datasource_ref: datasourceRef,
+      target_binding_hash: targetBindingHash,
+    };
+
+    await expect(buildPostgresqlQueryEvidenceSemanticBinding(input)).resolves.toMatchObject({
+      columns: [
+        {
+          semantic_role: "PHYSICAL_COLUMN",
+          semantic_object_id: "column.orders.spend",
+        },
+      ],
+    });
+
+    await expect(
+      buildPostgresqlQueryEvidenceSemanticBinding({
+        ...input,
+        semantic_context: await semanticContext(snapshot),
+      }),
+    ).rejects.toMatchObject({ code: "QUERY_EVIDENCE_SEMANTIC_OBJECT_NOT_SELECTED" });
+  });
+
   it("binds a selected text-backed physical date only through an explicit temporal cast", async () => {
     const input = await fixture("text");
     const binding = await buildPostgresqlQueryEvidenceSemanticBinding({

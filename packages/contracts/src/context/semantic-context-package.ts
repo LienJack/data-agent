@@ -696,6 +696,21 @@ const semanticContextPackageDraftSchema = semanticContextPackageMaterialSchema.s
   package_key_hash: contentHashSchema,
 });
 
+const PHYSICAL_COLUMN_OBJECT_PREFIX = "column.";
+const PHYSICAL_COLUMN_CONTAINMENT_PREFIX = "contains.column.";
+
+/**
+ * A retrieved containment node proves selection of the corresponding published
+ * physical-column object. It does not create a binding: downstream consumers
+ * must still resolve the returned id through the frozen release catalog.
+ */
+export function selectedSemanticObjectPhysicalColumnId(objectId: string): string | null {
+  if (objectId.startsWith(PHYSICAL_COLUMN_OBJECT_PREFIX)) return objectId;
+  if (!objectId.startsWith(PHYSICAL_COLUMN_CONTAINMENT_PREFIX)) return null;
+  const suffix = objectId.slice(PHYSICAL_COLUMN_CONTAINMENT_PREFIX.length);
+  return suffix.length > 0 ? `${PHYSICAL_COLUMN_OBJECT_PREFIX}${suffix}` : null;
+}
+
 export const semanticContextPackageSchema = semanticContextPackageDraftSchema.safeExtend({
   package_hash: contentHashSchema,
 });

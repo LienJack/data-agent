@@ -461,6 +461,27 @@ const candidate = (sql: string): Text2SqlQueryCandidate => ({
 });
 
 describe("PostgreSQL Text2SQL query runtime", () => {
+  it("projects a selected containment node through its published physical-column binding", async () => {
+    const base = await fixture();
+    const packageDocument = structuredClone(
+      base.semanticContextPackage,
+    ) as SemanticContextCommitResult["package"];
+    packageDocument.retrieval_receipt.selected_object_ids.push("contains.column.orders.secret");
+    packageDocument.mandatory_closure.object_ids.push("contains.column.orders.secret");
+
+    const projection = postgresqlText2SqlQueryRuntimeInternals.semanticProjection(
+      packageDocument,
+      base.semanticCatalog,
+    );
+
+    expect(projection.executable.physical_bindings).toContainEqual(
+      expect.objectContaining({ logical_object_id: "column.orders.secret" }),
+    );
+    expect(projection.executable.physical_bindings).not.toContainEqual(
+      expect.objectContaining({ logical_object_id: "contains.column.orders.secret" }),
+    );
+  });
+
   it("projects the exact accepted aggregate-ratio identity into provider and compiler allowlists", async () => {
     const base = await fixture(true);
     const original = base.semanticContext as SemanticContextCommitResult;
