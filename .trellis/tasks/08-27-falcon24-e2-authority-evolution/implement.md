@@ -2324,3 +2324,19 @@ SERVER_PROXY 无模型探针通过。`complex-l4-semantic-defined@4.4.0` 六题�
 - [x] 为独立表增加稳定 `artifact-data-table` DOM 标记，four-layer QA 同时接受独立表和 `chart-source-table`。
 - [x] Artifact component、four-layer browser gate tests、Web typecheck 与 owned Biome 通过；失败 attempt 不重放、不改写。
 - [ ] scoped commit 后重做 clean build/full unit/attestation，创建 fresh E17 physical scratch/activation/attempt，从 L1-01 全量重跑。
+
+后续 v2 执行继续保留三个不可组合的失败 attempt：
+
+- `82256322-8ce4-45d2-a6ca-59e0db9a6b26`：L1-01 PASS，L1-02 因 Root response schema violation 失败。
+- `5aacc502-f090-4572-939c-8fa8241eff35`：L1-01～L1-04 PASS；L1-05 Worker seed 未绑定当前 Run，真实回答无 accepted input，
+  以 `AGENT_CONTRACT_MISMATCH` 失败，未用外部 ref 伪造通过。
+- `7a1bbf63-bd4b-4ade-8e6f-2bf32979e35b`：L1-01～L1-03 PASS；L1-04 被 Root 先路由到无关 Semantic 预解析，
+  Text2SQL 以 `TEXT2SQL_SEMANTIC_CONTEXT_AMBIGUOUS` 拒绝，随后 Root 非 JSON，Run FAILED。
+
+- [x] 新增 manifest v3，只澄清 L1-04 为纯明细直接 Text2SQL；v1/v2 verifier 与 turns 保持不可变。
+- [x] 新增 migration 10818 renderer source、checksummed migration 与静态测试；v3 turns hash 为
+  `sha256:bc9fdac88acf23889beabeb2ae2c6f49d3df93d72c02d87ab1fde023e434564a`。
+- [x] 在已失败的专用 scratch 上真实应用10818；首次以错误 pre-10817 hash 被 preflight 原子回滚，修正为真实 post-10817
+  `prosrc` hash 后提交。v1/v2/v3 begin+replay+supersede 均 PASS，跨版本 turns 混配失败，live writes 为0。
+- [x] focused test/typecheck/build、Trellis validate/diff check 与 scoped commit 后，从新 commit 重建 production build、fresh physical scratch
+  和唯一 v3 attempt；L1-05 使用 exact claimed Run ID 重启 Worker seed。

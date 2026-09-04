@@ -2085,3 +2085,17 @@ QueryEvidence 表格，但 QA observer 只查询 `chart-source-table`。该 sele
 前向修复为 `ArtifactWorkspaceTable` 增加统一的 `artifact-data-table` 标记，并让 four-layer QA 同时接受独立表和图表源表。
 它只修复“已经真实可见的表格是否被 observer 识别”，不改变 table-required rubric、Artifact 内容、业务 Oracle、Run、答案、Trace
 或 live authority。失败 attempt 保持 immutable；新 commit/build/fresh physical scratch/fresh attempt 必须从 L1-01 重走。
+
+## 46. 纯明细查询不经过无关 Semantic 预解析
+
+selector 修复后的 v2 attempt 已证明同一 build 的 L1-04 QueryEvidence、Oracle、TABLE QA 与 Trace 可以闭合；另一次 attempt 中 Root
+却先调用 Semantic，生成带空候选歧义的 `SemanticQueryContext`，随后 Text2SQL 以
+`TEXT2SQL_SEMANTIC_CONTEXT_AMBIGUOUS` 正确拒绝。这个差异来自题面路由含混，不是 datasource、编译器或 UI 回归。
+
+v3 保持15题、Agent contract、rubric 与所有证据门槛，只把 L1-04 的用户可见问题写成“纯订单明细、无需先解释指标或时间语义、直接由
+Text2SQL 查询”。这仍是模型读取的自然语言任务合同，不是 Host 关键词路由，也不向模型提供 SQL、内部对象 ID 或结果。
+
+Contracts 同时冻结 v1/v2/v3，v3 turns canonical hash 为
+`sha256:bc9fdac88acf23889beabeb2ae2c6f49d3df93d72c02d87ab1fde023e434564a`。migration 10818 以 post-10817
+`prosrc` hash 为前置，通过唯一结构替换增加 v3 分支；迁移内逐表历史摘要和 ACL snapshot 保持 fail-closed。accepted-input L1-05
+另采用“停 Worker→claim 得到 exact Run ID→以该 ID 重启 Worker”的运行顺序，避免把上一个 attempt 的 seed 或外部 ref 冒充当前 Run 输入。

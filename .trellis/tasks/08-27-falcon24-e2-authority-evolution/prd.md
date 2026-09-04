@@ -1065,3 +1065,17 @@ SUM-before-ratio 净 ROI 与单 Analysis Stage。Report 只在题目要求时出
   business receipt 或 Trace receipt 检查。
 - **AC-FL-TABLE-UI-01** 首个失败 attempt 保持 immutable；focused tests 与 scoped commit 后，以新 clean build/fresh scratch/fresh
   attempt 从 L1-01 重跑，禁止复用其前三题 PASS。
+
+### 22.18 纯明细题冻结直接 Text2SQL 边界
+
+v2 正式执行证明 L1-04 的数据、SQL、Oracle、TABLE UI 和 Trace 均可通过，但 Root 也可能把纯明细请求先交给 Semantic；当 Semantic
+对并不需要的指标/时间对象留下空候选歧义时，Text2SQL 会正确 fail-closed。正式门禁不能依赖 Root 恰好跳过这次无关预解析。
+
+- **R-FL-MANIFEST-V3-01** 保留 v1/v2 题库不可变；v3 只将 L1-04 澄清为纯订单明细查询，明确无需先解释指标或时间语义并直接交给
+  Text2SQL。不得注入 SQL、内部对象 ID、结果值或 Host 关键词路由。
+- **R-FL-MANIFEST-V3-02** L1-04 仍必须由当前 Run 的 Text2SQL 产出恰好 10 行 QueryEvidence，独立 PostgreSQL Oracle、TABLE UI、
+  business 与 Trace 标准不变。
+- **R-FL-MANIFEST-V3-03** migration 10818 只能在精确 post-10817 函数 hash 上增加 v3 schema/turns hash；历史实体、v1/v2 replay、
+  owner、SECURITY DEFINER 与 ACL 必须保持不变。
+- **AC-FL-MANIFEST-V3-01** 实现与真实 PostgreSQL 三版本 replay 验证后创建 scoped commit；正式证据必须从该 commit 重新 clean build、
+  fresh physical scratch、fresh E17 activation 和 fresh v3 attempt 开始。

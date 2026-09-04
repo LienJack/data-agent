@@ -23,7 +23,7 @@ const hash = (c: string) => `sha256:${c.repeat(64)}`;
 const timestamp = "2026-08-30T00:00:00.000Z";
 async function manifest(): Promise<Falcon24FourLayerGateManifest> {
   return buildFalcon24FourLayerGateManifest({
-    schema_version: "falcon24-four-layer-gate-manifest@2.0.0",
+    schema_version: "falcon24-four-layer-gate-manifest@3.0.0",
     gate_id: "E11-FL1",
     attempt_id: id(1),
     authority_epoch: "E11",

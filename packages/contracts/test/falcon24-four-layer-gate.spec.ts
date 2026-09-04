@@ -11,6 +11,7 @@ import {
   FALCON24_FOUR_LAYER_LAYER_TURN_COUNTS,
   FALCON24_FOUR_LAYER_LEGACY_GATE_MANIFEST_VERSION,
   FALCON24_FOUR_LAYER_TURN_BLUEPRINTS,
+  FALCON24_FOUR_LAYER_V2_GATE_MANIFEST_VERSION,
   falcon24FourLayerSubmitFenceSchema,
   verifyFalcon24FourLayerAttemptTerminalReceipt,
   verifyFalcon24FourLayerConversationBindings,
@@ -24,7 +25,7 @@ const now = "2026-08-30T08:00:00.000Z";
 
 async function manifest() {
   return buildFalcon24FourLayerGateManifest({
-    schema_version: "falcon24-four-layer-gate-manifest@2.0.0",
+    schema_version: "falcon24-four-layer-gate-manifest@3.0.0",
     gate_id: "E11-FL1",
     attempt_id: id(1),
     authority_epoch: "E11",
@@ -104,8 +105,9 @@ describe("Falcon24 four-layer gate contracts", () => {
     ).rejects.toThrow();
   });
 
-  it("keeps v1 history verifiable while freezing the clarified v2 formulas and handoffs", async () => {
+  it("keeps v1/v2 history verifiable while freezing the clarified v3 Text2SQL handoff", async () => {
     const current = await manifest();
+    expect(current.turns[3]?.question).toContain("直接由 Text2SQL");
     expect(current.turns[6]?.question).toContain("formula.marketing_roas");
     expect(current.turns[10]?.question).toContain("只委派一个受治理 Analysis task");
     expect(current.turns[14]?.question).toContain("共32行");
@@ -113,16 +115,33 @@ describe("Falcon24 four-layer gate contracts", () => {
       "falcon24.check.complete-six-column-thirty-two-row-panel@1",
     );
 
+    const v2Turns = await buildFalcon24FourLayerManifestTurns(
+      FALCON24_FOUR_LAYER_V2_GATE_MANIFEST_VERSION,
+    );
+    const { manifest_hash: _manifestHash, ...material } = current;
+    const v2 = await buildFalcon24FourLayerGateManifest({
+      ...material,
+      schema_version: FALCON24_FOUR_LAYER_V2_GATE_MANIFEST_VERSION,
+      turns: v2Turns,
+    });
+    await expect(verifyFalcon24FourLayerGateManifest(v2)).resolves.toEqual(v2);
+
     const legacyTurns = await buildFalcon24FourLayerManifestTurns(
       FALCON24_FOUR_LAYER_LEGACY_GATE_MANIFEST_VERSION,
     );
-    const { manifest_hash: _manifestHash, ...material } = current;
     const legacy = await buildFalcon24FourLayerGateManifest({
       ...material,
       schema_version: FALCON24_FOUR_LAYER_LEGACY_GATE_MANIFEST_VERSION,
       turns: legacyTurns,
     });
     await expect(verifyFalcon24FourLayerGateManifest(legacy)).resolves.toEqual(legacy);
+    await expect(
+      buildFalcon24FourLayerGateManifest({
+        ...material,
+        schema_version: FALCON24_FOUR_LAYER_V2_GATE_MANIFEST_VERSION,
+        turns: current.turns,
+      }),
+    ).rejects.toThrow("Falcon24 turn 与冻结题库不一致");
     await expect(
       buildFalcon24FourLayerGateManifest({
         ...material,
