@@ -1056,3 +1056,12 @@ SUM-before-ratio 净 ROI 与单 Analysis Stage。Report 只在题目要求时出
   解析并签发当前 Run Context，Text2SQL 仍编译、执行并产出同 Run QueryEvidence，业务 Oracle 和 UI/Trace 标准不变。
 - **AC-FL-MANIFEST-V2-01** scoped commit 后必须以该 commit 重做 clean force build/full unit/attestation，创建 fresh physical scratch、
   fresh activation 和唯一 v2 attempt；`e5dc68c8` 预检及迁移验证副本均不得升级为正式证据。
+
+### 22.17 表格 UI 证据覆盖独立 TABLE 与图表源表
+
+- **R-FL-TABLE-UI-01** `table_required=true` 时，当前 Run 内真实可见的独立 TABLE Artifact 或已展开的 governed chart source table
+  都是合格表格可见性证据；observer 不得把独立 QueryEvidence 表误判为无表格。
+- **R-FL-TABLE-UI-02** 修复只增加稳定 DOM 标记和 observer selector，不放宽可见性、current Run、build、刷新、Agent 状态、错误横幅、
+  business receipt 或 Trace receipt 检查。
+- **AC-FL-TABLE-UI-01** 首个失败 attempt 保持 immutable；focused tests 与 scoped commit 后，以新 clean build/fresh scratch/fresh
+  attempt 从 L1-01 重跑，禁止复用其前三题 PASS。

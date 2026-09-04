@@ -15,6 +15,7 @@ import {
 } from "@data-agent/contracts/runs";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 import {
+  FALCON24_FOUR_LAYER_TABLE_SELECTOR,
   observeFalcon24FourLayerQaUi,
   observeFalcon24FourLayerTraceUi,
   preflightFalcon24FourLayerBrowserSubmission,
@@ -343,6 +344,12 @@ beforeEach(() => {
 });
 
 describe("Falcon24 four-layer browser gate", () => {
+  it("counts both standalone Artifact tables and chart source tables as visible table evidence", () => {
+    expect(FALCON24_FOUR_LAYER_TABLE_SELECTOR).toBe(
+      '[data-testid="artifact-data-table"], [data-testid="chart-source-table"]',
+    );
+  });
+
   it("allows the retained L4 session only when its previous consumed Run is exact", async () => {
     const { business } = await fixture();
     execFileAsyncMock.mockImplementation(async (_file: string, args: readonly string[]) => {

@@ -32,6 +32,8 @@ const GATE_CLAIM_KEY = "falcon24-browser-submit-claim";
 const GATE_CONSUMED_KEY = "falcon24-browser-submit-consumed";
 const QA_FAILURE_CODE = "FALCON24_QA_UI_OBSERVATION_FAILED";
 const TRACE_FAILURE_CODE = "FALCON24_TRACE_UI_OBSERVATION_FAILED";
+export const FALCON24_FOUR_LAYER_TABLE_SELECTOR =
+  '[data-testid="artifact-data-table"], [data-testid="chart-source-table"]';
 
 const contentHashSchema = z.string().regex(/^sha256:[0-9a-f]{64}$/u);
 const webBuildSchema = z.strictObject({
@@ -296,7 +298,7 @@ async function observeQaPage(input: {
       const build=await response.json();
       const visible=(element)=>Boolean(element&&element.getBoundingClientRect().width>0&&element.getBoundingClientRect().height>0);
       const answer=run?.querySelector('.agent-answer');
-      const table=run?.querySelector('[data-testid="chart-source-table"]');
+      const table=run?.querySelector(${JSON.stringify(FALCON24_FOUR_LAYER_TABLE_SELECTOR)});
       const chart=run?.querySelector('[data-testid="governed-chart"]');
       return {
         run_id:entry?.getAttribute('data-run-id')??null,

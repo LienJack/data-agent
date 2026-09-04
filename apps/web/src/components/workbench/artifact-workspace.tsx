@@ -69,7 +69,7 @@ function ArtifactWorkspaceTable({
     range && onPageChange && total !== null && range.offset + projection.rows.length < total,
   );
   return (
-    <div className="overflow-x-auto">
+    <div className="overflow-x-auto" data-testid="artifact-data-table">
       <table className="min-w-full border-collapse text-left text-xs">
         <thead>
           <tr>

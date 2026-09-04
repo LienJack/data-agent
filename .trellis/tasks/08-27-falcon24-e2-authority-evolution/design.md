@@ -2074,3 +2074,14 @@ revoke 和 backend execute grant。migration ledger 是唯一被允许新增的�
 实现完成提交与正式证据 epoch 分离：实现提交可以用 disposable E17 copy 证明 migration 及 v1/v2 replay，但正式 controller 必须从该提交做
 新 generation/build attestation，再创建新的物理 scratch、activation、manifest 和 attempt。这样难度收敛发生在版本化业务合同，不发生在
 Oracle、同 Run 绑定、UI/Trace 或 live authority 上。
+
+## 45. 独立 TABLE Artifact 是正式表格可见性证据
+
+首个 v2 正式 attempt `bd57f9cd-365b-47f1-a397-cdbc932088e6` 的 L1-01 至 L1-03 完整通过；L1-04 的当前 Run
+`562a1b63-596f-8630-968c-c15c518e4e9f` 业务 receipt 与独立 PostgreSQL Oracle 均 PASS，页面截图也展示了 10 行
+QueryEvidence 表格，但 QA observer 只查询 `chart-source-table`。该 selector 只标记图表的等价源表，独立 `TABLE` projection
+没有对应标记，因此生成了不可重试的 `FALCON24_QA_UI_OBSERVATION_FAILED`。
+
+前向修复为 `ArtifactWorkspaceTable` 增加统一的 `artifact-data-table` 标记，并让 four-layer QA 同时接受独立表和图表源表。
+它只修复“已经真实可见的表格是否被 observer 识别”，不改变 table-required rubric、Artifact 内容、业务 Oracle、Run、答案、Trace
+或 live authority。失败 attempt 保持 immutable；新 commit/build/fresh physical scratch/fresh attempt 必须从 L1-01 重走。

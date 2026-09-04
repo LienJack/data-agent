@@ -2316,3 +2316,11 @@ SERVER_PROXY 无模型探针通过。`complex-l4-semantic-defined@4.4.0` 六题�
   未放宽 timeout 或修改无关测试，随后 exact single-concurrent gate 无失败。
 - [x] 本项以 scoped commit 收口；随后从该 commit 重新 clean build/full unit/attestation，创建 fresh E17 physical scratch 和唯一 v2 attempt，
   自 L1-01执行15回合。
+
+首个 v2 正式 attempt `bd57f9cd-365b-47f1-a397-cdbc932088e6` 在 L1-04 immutable FAIL：L1-01～L1-03 的 business/QA/Trace
+均 PASS；L1-04 Run `562a1b63-596f-8630-968c-c15c518e4e9f` 的 10 行 QueryEvidence、答案与独立源数据 Oracle PASS，但页面 observer
+只识别图表源表 selector，漏掉截图中真实可见的独立 TABLE Artifact。
+
+- [x] 为独立表增加稳定 `artifact-data-table` DOM 标记，four-layer QA 同时接受独立表和 `chart-source-table`。
+- [x] Artifact component、four-layer browser gate tests、Web typecheck 与 owned Biome 通过；失败 attempt 不重放、不改写。
+- [ ] scoped commit 后重做 clean build/full unit/attestation，创建 fresh E17 physical scratch/activation/attempt，从 L1-01 全量重跑。

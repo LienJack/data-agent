@@ -43,6 +43,7 @@ describe("ArtifactWorkspace", () => {
       viewport: { offset: 0, limit: 100, total_rows: 1, truncated: false },
     };
     const markup = renderToStaticMarkup(<ArtifactWorkspace preview={preview} />);
+    expect(markup).toContain('data-testid="artifact-data-table"');
     expect(markup).toContain(">2023-11<");
     expect(markup).toContain(">567,783.74<");
     expect(markup).toContain('title="567783.7399999999"');
