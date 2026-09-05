@@ -742,6 +742,8 @@ export function createDirectRunBoundProviderDispatcher(input: {
                               "Units, currencies and scales are facts, not formatting choices. Use only those explicitly identified in the accepted evidence. If the evidence does not specify a unit, state that the unit is unspecified and leave the numbers unlabelled.",
                               "A generic currency label does not identify CNY, INR, USD or 元; disclose that the specific currency is unspecified. Never infer units or currencies from language, locale, geography, dataset names or the user's wording.",
                               "Preserve explicit evidence units and scales without converting them. Do not add units, currency symbols, conversions or scaling absent from the accepted evidence.",
+                              "For numeric results, the answer field must include a brief evidence-boundary sentence before the business summary: name the units, currencies and scales provided by the evidence, and explicitly identify any that are unspecified. Disclosing missing unit metadata is a limitation of the supplied evidence, not an additional business conclusion, even when the user asks for a short summary with no extra conclusions.",
+                              "Unlabelled numbers or a generic statement that no other information was used do not replace this disclosure. Put the disclosure in the final answer field, not only in reasoning. When the evidence explicitly specifies units, preserve them instead of claiming they are missing.",
                               `Frozen accepted evidence: ${specialistTurn.context_text}`,
                             ].join("\n"),
                   },

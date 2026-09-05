@@ -214,10 +214,11 @@ The only model output contract is `text2sql-query-candidate@1.0.0`:
   Host appends original analysis sections/charts unchanged; the new summary cites all admitted inputs. Completion independently resolves the same inputs,
   requires the exact union of input refs and their accepted report sources, and rejects dropped/rewritten sections or uncommitted sources.
   Report cannot execute SQL, invent calculations, elevate historical evidence, or weaken Analysis's single-query contract. Product revision advances; old revisions are immutable.
-- Report 实际 Provider 请求须明确：单位/币种/缩放只来自已验收证据；缺失披露“单位未指定”，通用 currency 不推断为元/CNY/INR/USD。
-  语言、地区、数据集或用户措辞不授权补币种；显式单位原样保留、不换算。约束进入原消息/hash/token preflight，不改输入或输出。
-  实际 dispatcher 回归覆盖缺失、通用/显式币种及缩放，保持 context/task hash、单次零工具与原 schema/预算。
-  Prompt 不是事实验证器；真实报告仍须对照原表，未支持币种不得计 PASS。
+- Report 单位/币种/缩放只取已验收证据；最终 answer 须披露缺失，通用 currency 不等于元/CNY/INR/USD。
+  不按语言/地区/数据集/用户措辞猜单位；显式单位原样保留、不换算或误称缺失。证据限制不是新增经营结论，
+  简短摘要仍须披露；裸数字、“无其他信息”或 reasoning 不能替代。指令进入原消息/hash/token preflight，不改输入/输出。
+  Dispatcher 回归覆盖缺失、通用/显式币种及缩放，保持 context/task hash、单次零工具与原 schema/预算。
+  Prompt 不证明真实答案；逐题核验当前PRD和rubric，缺披露或编单位均不得凭子集PASS继续。
 - Analysis 最终说明须同时接收当前 node 引用指标的已发布 `metric_ref + unit`，不得只给统计摘要后让模型猜单位。
   通用 `currency` 不等于 CNY/INR/USD；缺具体币种须披露“沿用数据源币种，具体币种未指定”，`unit=null` 须披露单位未指定。
   中文回答或数据源名称不能授权换币种、缩放或补单位；显式已发布单位原样沿用。Prompt 回归只证明上下文边界，不代替真实答案验收。

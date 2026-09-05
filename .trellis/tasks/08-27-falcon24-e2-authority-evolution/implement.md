@@ -2614,3 +2614,17 @@ SQL 模型输入，剩余 executable/schema 仍受原64 KB预算约束并超限�
 - [x] Provider/Report focused 20文件229项通过，Worker typecheck/build、owned Biome、Trellis/diff通过。
   新增规范压缩至注入上限以内；既有超大文件告警不扩张。本小任务通过随后scoped commit收口。
 - [ ] 新clean build/fresh physical scratch/E17/v10 attempt完整15题，之后live E17/F7/390px/历史与最终清理；本次前四题不拼接。
+
+### v10 Report 最终答案披露遗漏
+
+- [x] 当前12b8e2b3前11题原 business/QA/Trace闭合；A2完整48行来源、12月汇总、三个下降月/12项贡献、
+  单Analysis Stage与两张图逐值核对。当前题与原L1-05均没有重放模型。
+- [x] 原L1-05未明确披露单位缺失；当前PRD需求未满足，原rubric PASS仅保留历史。
+  READY/version56经原supersede封存FAILED/version57，后四题未提交，live writes=0。
+- [x] 原REPORT生成指令细化为最终answer中的证据限制说明；实际dispatcher五个用例先RED，不改来源/schema/输出/预算。
+- [x] Worker focused 20文件229项、typecheck/build、owned Biome、Trellis/diff通过；
+  新增规范压缩到注入上限内，旧超长文件不扩张。本小任务以随后scoped commit闭合。
+- [x] 唯一Chrome/Helpers、Web/Worker、NAS control和SSH已退出，Sandbox=0、scratch停止/卷保留，
+  普通NAS数据库healthy，用户Chrome9741未动，内存free72%；见runtime-cleanup-report-disclosure.json。
+- [ ] 新clean build/fresh physical scratch/E17/v10 attempt完整15题；L1-05明确披露通过才继续；
+  后续live E17/F7/390px/历史和定向资源清理仍未完成，不拼当前11题。

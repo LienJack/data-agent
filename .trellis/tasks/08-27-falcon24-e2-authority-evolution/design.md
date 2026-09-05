@@ -2427,3 +2427,34 @@ Report 的多输入和保留分析节/图表链保持原合同，原 no-calculat
 同步 backend/agent-team-runtime 的 Report 单位段；仓库不存在 src/templates/markdown/spec 分发模板。
 原审计 runtime/L1-05-business-review.json 记录币种缺证，control-advance-1788602051345.json 保存 FAILED/version24。
 第一次观察因 operator 漏传 accepted-input refs 而拒绝 identity；补齐同一已验收引用后只封存业务失败，没有重提模型或改 rubric。
+
+## 65. Report 披露遗漏与需求级验收
+
+### 1. Root Cause Category
+
+D/E：旧检查把“不编造币种”当作完整单位合同，而 R-FL-REPORT-UNIT-01 还要求明确披露缺失。
+当前正式原文为无单位的三渠道摘要，只说没有使用其他信息；原报告投影直接使用 parsed answer，不存在移除披露的后处理。
+现有受保护 ProviderResponseArtifact 仅提供 Root 委派，不能据此声称看到了 Report 的内部 reasoning。
+
+### 2. Why Fixes Failed
+
+前次指令明确禁止猜单位，但真实最终答案仍漏披露；离线回归只证明指令已发送，不能证明模型必然遵循。
+Root objective 强调简短且不增加表外结论；模型是否因此省略不可直接观察，作为提示歧义而非已证明内部原因处理。
+操作方明知无披露却将缺口留到最终审查，造成额外六题调用；不得再次用冻结 rubric 子集取代当前完整 PRD。
+
+### 3. Prevention Mechanisms
+
+P0：原 REPORT system 明确披露须进入 JSON answer，置于数值摘要前；证据元数据缺失是限制，不是新增经营结论。
+不以裸数字、泛化声明或 reasoning 替代；显式单位照原证据保留。两行约束仍进入既有消息/token preflight。
+P0：每题业务检查先结合当前 PRD，不只列举 manifest checks；L1-05 同时检查缺失披露，失败不得继续付费题目。
+
+### 4. Systematic Expansion
+
+保持原输入解析、报告内容、响应 schema、budget、Profile 和发布权威；不增加关键词输出修补或固定业务摘要。
+本次封存前已完成 A2 的48行 Oracle、单Stage/两图及同Run页面验证，保存真实历史而不声称可拼入新构建。
+
+### 5. Knowledge Capture
+
+同步 backend/agent-team-runtime 的 Report 规范；实际请求5种单位回归先RED，修复后再验证。
+原审计包含 L1-05-business-review.json、L4-A-02-business-review.json 与 attempt-superseded-report-disclosure.json。
+仓库无 src/templates/markdown/spec 分发目录；不创建影子模板。

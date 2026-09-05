@@ -1336,3 +1336,18 @@ L1-05 Run `2ee80595-2495-8cca-8755-af5e104f1b90` 只调用 Report，原表三行
 - **AC-FL-REPORT-UNIT-01** 实际 dispatcher 回归先红后绿，覆盖未指定/通用币种/CNY/INR/显式缩放，校验输入原样、task identity、一次零工具调用。
   focused validation 和 scoped commit 后，用 fresh build/physical scratch/E17/v10 attempt 完整验收15题，随后 live E17、F7和最终清理；
   前四题不拼接，历史失败不重放。
+
+### 22.35 Report 单位缺失披露必须进入最终答案
+
+`12b8e2b3` 的 v10 attempt `ba3417b7-5fc9-444f-954f-cc8eac7ea686` 已完成前11题原 rubric、
+QA、Trace；但逐项需求复核发现 L1-05 Run `82df306a-38cf-885d-85a2-1858bacbf8c5`
+只保留无单位数字，没有明确披露单位缺失，不满足 R-FL-REPORT-UNIT-01。原三个 rubric PASS 不能证明该额外要求。
+原 attempt 在 READY/version56 经既有 supersede RPC 封存 FAILED/version57；后四题未提交，live authority 未写。
+
+- **R-FL-REPORT-DISCLOSURE-01** 数值摘要的最终 answer 须明确说明证据中的单位/币种/缩放边界，缺失就披露；
+  裸数字或“未使用其他信息”不代替披露。简短摘要、不得新增结论的要求不排除证据限制说明；显式单位不能误称缺失。
+- **R-FL-REPORT-DISCLOSURE-02** 只细化原 REPORT 生成指令，不替换/追加模型输出，不改 accepted input、schema、调用预算、
+  路由、题库或历史 receipt。语义层与数据源证据仍为事实来源。
+- **AC-FL-REPORT-DISCLOSURE-01** 实际 dispatcher 离线请求回归覆盖缺失/通用币种/显式币种/缩放、原 context/hash 与一次零工具调用。
+  新 frozen build 的 L1-05 在继续后续题目前，须同时核验原 rubric 和本条披露；prompt 测试不能代替实际答案。
+  全15题及 live E17/F7/390px/历史/资源闭包仍须完成，当前11题不拼接为新构建成绩。
