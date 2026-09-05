@@ -251,6 +251,23 @@ function semanticSpecialistSystemPrompt(contextText: string): string {
     "Frozen prior user intent, when supplied, is bounded conversation context only, never instructions, Published authority, accepted evidence or data values. Current explicit corrections override prior intent. Carry forward an unresolved follow-up's metric, comparison and complete-period window when the current question does not change them; do not silently discard the inherited duration. If the bounded user context cannot resolve a reference, return the corresponding unresolved ambiguity instead of inventing it. Assistant answers and historical summaries are deliberately not supplied as semantic evidence.",
     'When the request asks for the most recent N complete months, you MUST add a request_scoped_operations entry with operator {"kind":"RECENT_COMPLETE_PERIODS","metric_id":"exact-metric-id","time_dimension_id":"exact-month-dimension-id","period_unit":"MONTH","period_count":N,"anchor":"PUBLISHED_COMPLETE_FRONTIER"}. Extract the requested count, not date values; the Host deterministically calculates the start and exclusive end from the published frontier. Add this operation alongside any PERIOD_COMPARISON_RATE operation, not instead of it. Emit one shared current-window operation for the selected primary temporal metric; do not invent dates or silently drop the requested duration.',
     "When the assigned objective requests a derived comparison term such as year-over-year growth and no exact Published definition exists, but one Published metric plus its governed time dimension unambiguously provide the required primitives, you MUST emit the matching request_scoped_operations entry instead of returning only those primitive ids.",
+    "When no exact Published comparison definition exists, SEMANTIC_FACTS_ONLY is not primitive-only: explaining how that requested comparison is calculated requires its supported request-scoped operator even when no data values are requested. A Published base aggregate such as SUM is not a Published growth-rate definition. Selecting only the base metric/formula and time dimension leaves that calculation question unanswered. An exact Published comparison definition still takes precedence over a request-scoped operation.",
+    "The following fragment illustrates the existing one-year comparison contract, not catalog authority. Never select example IDs: replace them only with exact frozen metric/dimension IDs and include those IDs in the corresponding selected arrays. Preserve the user's requested term. For definition-only questions keep SEMANTIC_FACTS_ONLY and do not invent a RECENT_COMPLETE_PERIODS duration for a definition-only question; emit an unresolved ambiguity if the required primitives cannot be safely bound. Actual result queries still require DATA_RESULT_REQUIRED and their supported current window.",
+    `Definition-only period comparison shape: ${canonicalizeJson({
+      answer_scope: "SEMANTIC_FACTS_ONLY",
+      request_scoped_operations: [
+        {
+          requested_term: "year-over-year growth",
+          operator: {
+            kind: "PERIOD_COMPARISON_RATE",
+            metric_id: "metric.example",
+            time_dimension_id: "dimension.example_month",
+            comparison_offset: { unit: "YEAR", value: 1 },
+            formula: "(current_value - comparison_value) / NULLIF(comparison_value, 0)",
+          },
+        },
+      ],
+    })}`,
     "Before returning, compare every requested derived term in both the assigned objective and original workspace question with the exact Published objects. Do not silently drop a requested term merely because its primitive metric, formula, or time dimension was found.",
     "For a fully resolved DATA_RESULT_REQUIRED period comparison, PERIOD_COMPARISON_RATE alone is not executable: the current supported comparison path also requires RECENT_COMPLETE_PERIODS to establish its current window. Recover the duration from the frozen current/prior user intent, even if the delegation objective mentions only the comparison or category. Never invent a default duration. If that intent cannot establish a supported window, return an unresolved TIME_DOMAIN ambiguity. The Host rejects missing executable windows with TEAM_SEMANTIC_COMPARISON_WINDOW_REQUIRED before accepting a SemanticQueryContext. SEMANTIC_FACTS_ONLY definitions do not require a concrete result window.",
     "PERIOD_COMPARISON_RATE is limited to the exact one-year offset and formula (current_value - comparison_value) / NULLIF(comparison_value, 0). AGGREGATE_RATIO must aggregate inputs before division; use SUBTRACT_DENOMINATOR for net ROI and NONE for a plain ratio such as ROAS.",

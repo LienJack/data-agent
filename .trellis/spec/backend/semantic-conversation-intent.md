@@ -44,6 +44,16 @@ Root 多轮问答、Semantic Context Request/Snapshot/Receipt、检索候选容�
     Semantic 窗口缺失。不得因此要求 Semantic 缩短窗口或增加失败 task 重试预算。SQL repair 的窄反馈
     引用原 resolved_time_window/period_comparison_candidate，不改 Candidate、上下文或原时间校验。
 
+## 定义查询与请求级算子
+
+- `SEMANTIC_FACTS_ONLY` 限制的是答案不取数据，不是只允许基础发布对象。询问同比如何计算时，若无精确发布比较定义，且发布的 Metric/时间 Dimension
+  可构成既有 `PERIOD_COMPARISON_RATE`，Semantic 仍须输出该请求操作；基础 `SUM` 公式不能代替增长率定义。精确发布定义仍优先。
+- Provider 提示可提供原算子的无数据 JSON 结构示例，必须声明示例 ID 不是 catalog 权威，只能替换为本轮 frozen exact IDs。
+  保留原 selected-set、操作/来源约束和 strict schema；Host 不按问题关键词补算子、不注入选择、不默认最近12月、不创建发布 Formula。
+- 定义题不要求 `RECENT_COMPLETE_PERIODS` 或实际日期窗口；结果题继续要求已证明的完整窗口。窗口缺失不能成为定义题丢弃同比的理由。
+- 回归从实际提示取出示例并通过原 Provider selection schema，断言仅一个年度比较操作、无 Published Formula 和窗口；
+  production projection 继续验证 `REQUEST_ONLY/NONE` 与解释来源。此测试只证明装配/合同，真实业务题仍必须独立验证。
+
 ## 禁止
 
 - 把 assistant 文本、摘要或旧 QueryEvidence 数值作为新 Run 的事实。

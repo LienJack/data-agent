@@ -2528,3 +2528,15 @@ SQL 模型输入，剩余 executable/schema 仍受原64 KB预算约束并超限�
   两者目录请求 200、账户可用；只证明运行时差异，不把该差异认定为远端断流唯一原因。模型调用与 authority 写入均为 0。
 - [ ] 显式固定 Node 24.18.0 的父/子工具链，fresh clean build/full unit/attestation、physical scratch、v9 attempt 从 L1-01 完整验收。
   通过15题才继续 live E17、F7 与最终资源清理。
+
+### v9 纯定义查询不能遗漏请求同比
+
+- [x] `35190953` 使用 Node 24.18.0 完成 force build 8/8、无缓存单并发 full unit 15/15、attestation、fresh physical scratch、
+  9项迁移/347表无漂移、dataset proof、认证、双沙箱预检和 E17 scratch activation；实际 Web/Worker 二进制均为 Node 24。
+- [x] Attempt `bf6038e9-d00e-4044-975e-168ac00f5f94` 首题 Run `0f6a960c-7613-8ac9-951d-e761e6f2dd15` 的
+  Root 委派保留同比要求，接受的 SemanticQueryContext 却没有请求操作；Run SUCCEEDED 不等于业务通过。原 rubric 将
+  request-scoped-yoy 记为 FAIL，controller 封存 FAILED，未验 QA/Trace。Web/Worker/Chrome/OpenSandbox 已停止。
+- [x] 新增定义模式的原比较算子格式示例与范围说明；测试先因示例缺失失败，再以原 strict schema 验证格式、模式、算子和无窗口边界。
+- [x] focused 142/142、Worker typecheck/build、owned Biome、Trellis validate/diff 通过；原 Published 定义优先及结果窗口要求不变，
+  本次 scoped commit 收口。
+- [ ] 以 Node24 新 clean build/scratch/v9 attempt 完整验收，未将提示装配测试计为模型或业务 PASS。

@@ -428,6 +428,59 @@ describe("direct run-bound provider retry policy", () => {
     expect(prompt).toContain("do not expose index or governance lookup failures");
   });
 
+  it("keeps a definition-only comparison as a request operation without inventing a data window", () => {
+    const prompt = directRunBoundProviderDispatcherInternals.semanticSpecialistSystemPrompt("{}");
+    const prefix = "Definition-only period comparison shape: ";
+    const exampleLine = prompt.split("\n").find((line) => line.startsWith(prefix));
+    expect(exampleLine).toBeDefined();
+    const example = JSON.parse(exampleLine?.slice(prefix.length) ?? "null");
+    const selection =
+      directRunBoundProviderDispatcherInternals.semanticQuerySelectionProviderResponseSchema.parse({
+        schema_version: "semantic-query-selection-intent@1.0.0",
+        selected_metric_ids: ["metric.example"],
+        selected_dimension_ids: ["dimension.example_month"],
+        selected_formula_ids: [],
+        selected_relationship_ids: [],
+        selected_time_domain_ids: [],
+        selected_quality_constraint_ids: [],
+        unresolved_ambiguities: [],
+        ...example,
+      });
+    expect(selection.answer_scope).toBe("SEMANTIC_FACTS_ONLY");
+    expect(selection.request_scoped_operations).toEqual([
+      {
+        requested_term: "year-over-year growth",
+        operator: {
+          kind: "PERIOD_COMPARISON_RATE",
+          metric_id: "metric.example",
+          time_dimension_id: "dimension.example_month",
+          comparison_offset: { unit: "YEAR", value: 1 },
+          formula: "(current_value - comparison_value) / NULLIF(comparison_value, 0)",
+        },
+      },
+    ]);
+    expect(selection.selected_formula_ids).toEqual([]);
+    expect(selection).not.toHaveProperty("time_window");
+    expect(
+      directRunBoundProviderDispatcherInternals.semanticQuerySelectionProviderResponseSchema.safeParse(
+        {
+          ...selection,
+          selected_metric_ids: [],
+        },
+      ).success,
+    ).toBe(false);
+    expect(prompt).toContain("SEMANTIC_FACTS_ONLY is not primitive-only");
+    expect(prompt).toContain("An exact Published comparison definition still takes precedence");
+    expect(prompt).toContain("Actual result queries still require DATA_RESULT_REQUIRED");
+    expect(prompt).toContain(
+      "A Published base aggregate such as SUM is not a Published growth-rate definition",
+    );
+    expect(prompt).toContain("Never select example IDs");
+    expect(prompt).toContain(
+      "do not invent a RECENT_COMPLETE_PERIODS duration for a definition-only question",
+    );
+  });
+
   it("can request clarification without inventing candidates or claiming global absence", () => {
     const prompt = directRunBoundProviderDispatcherInternals.semanticSpecialistSystemPrompt("{}");
     expect(prompt).toContain("zero or at least two unique candidate_ids");
