@@ -169,5 +169,23 @@ pnpm dev:build && pnpm dev:check:local  # 只刷新并核对受管理 build 证�
 pnpm prod:nas:migrate && pnpm prod:nas  # NAS 完整容器部署
 pnpm exec vitest run --exclude '**/.next/**' apps/web/test/integration/example.spec.ts
 DATA_AGENT_ALLOW_QA_READINESS_BOOTSTRAP=YES NODE_OPTIONS=--conditions=react-server \
-  pnpm --filter @data-agent/web exec tsx src/cli/bootstrap-qa-readiness.ts
+pnpm --filter @data-agent/web exec tsx src/cli/bootstrap-qa-readiness.ts
 ```
+
+### 8. 浏览器与测试容器资源生命周期
+
+- 每批浏览器、数据库或 Sandbox 测试开始前，先记录本任务已有的浏览器主进程/会话、Docker 容器名称与状态、端口及内存占用。
+  Chrome Helper/Renderer 是同一浏览器的子进程，不能按子进程数误判为多个浏览器；命令行与日志不得暴露凭据。
+- 浏览器测试默认只保留一个本任务会话及一个活动测试页面，跨题复用页面或标签；需要第二页面验证交互时，用完立即关闭。
+  不得为每题、重试或恢复重复启动 Chrome，也不得同时运行多套浏览器自动化引擎。使用现有用户浏览器时只关闭本任务创建的页面。
+  若必须重新启动，先按 session/profile/PID 确认并关闭失效的测试实例，再验证其子进程已退出；不得执行全局 `pkill Chrome`。
+- 数据库与端到端测试串行执行，默认只运行一个当前批次的 scratch 数据库。确需源库物理复制时，可临时恢复一个精确绑定的源库；
+  一次性 restore/verify 容器使用 `--rm` 并串行退出。历史失败批次保留证据及数据卷，停止或移除其容器后再启动后继批次。
+  普通开发库、live authority、其他任务服务不计入可清理的临时资源，不得以资源回收为由切换数据库 binding 或修改权威数据。
+- OpenSandbox 仅在分析预检或分析题需要时启动一个控制面和一个活动 Sandbox。若既有验收明确要求双沙箱隔离，可在该项期间保留两个，
+  并在完成后立刻回收。不得因租约过期或失败而累积旧 Sandbox；回收前核对 task/attempt 标签、挂载、连接与保留证据。
+- 构建、全量单测、数据库测试和浏览器 E2E 不并行争用内存；资源紧张时先降低本任务并发，并关闭已完成的临时服务。
+  NAS 模式维持 OrbStack 关闭，不能为某条测试脚本重新启动本地 VM。
+- 完成、失败、暂停或执行中断后，都必须复查本任务浏览器主进程、子进程、容器状态/数量、监听端口和内存；
+  终端命令退出或收到 Ctrl-C 不能代替资源已退出的证据。确需保留的运行资源要记录名称、用途和恢复 checkpoint。
+  删除只能针对已核实的本任务临时容器或实例；保留数据卷、镜像和审计记录，禁止全局 Docker prune。

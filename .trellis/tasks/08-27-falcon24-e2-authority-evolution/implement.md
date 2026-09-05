@@ -2486,3 +2486,9 @@ SQL 模型输入，剩余 executable/schema 仍受原64 KB预算约束并超限�
   单并发 unit gate 15/15 全部通过；提交前仅恢复 Web typecheck 生成的 `tsconfig.tsbuildinfo` 并做 staged diff 审计。
 - [ ] 从新 commit clean force build、fresh physical scratch、10816～10824、fresh E17 activation 和 fresh v9 attempt 自 L1-01 重跑；
   通过全部15题后再进入 retained finalization、live E17、Agent/答案/Trace 浏览器 E2E 与最终审计清理。
+
+### 测试资源限制（用户 2026-09-05 明确要求）
+
+- [x] 将浏览器复用、测试容器数量限制、串行执行与失败/暂停后的资源复查写入 AGENTS.md 和本地运行规范 §8。
+- [x] 恢复前盘点：仅一个正常用户 Chrome，无测试浏览器；NAS 四个已有非 Falcon 服务健康/运行，无 Falcon 测试容器，历史数据卷保留。
+- [ ] 后续每批只使用一个浏览器会话、一个活动 scratch；源库/控制面/Sandbox 按需恢复并记录用途，结束后精确回收并复查数量及内存。

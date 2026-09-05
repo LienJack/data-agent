@@ -28,3 +28,10 @@ Managed by Trellis. Edits outside this block are preserved; edits inside may be 
 - If a safe scoped commit cannot be created, report the blocker and do not claim the task is complete.
 - Do not amend, squash, rewrite, or otherwise alter existing commits unless the user explicitly requests it.
 - An explicit user instruction not to commit overrides this policy for that task.
+
+## Test Resource Lifecycle
+
+- Before browser or Docker tests, inspect existing task-owned processes, sessions, containers, ports, and memory use. Reuse one browser session across cases; do not launch another Chrome for each test or retry.
+- Run resource-heavy tests serially. Keep only containers required by the active test; stop or remove completed task-owned temporary containers before starting the next batch, preserving evidence and data volumes.
+- After tests, failures, pauses, or interruptions, verify the remaining process/container count and memory use. Never terminate the user's browser or unrelated services to reclaim test resources.
+- Follow `.trellis/spec/backend/local-runtime-modes.md` section 8 for resource limits and cleanup verification.
