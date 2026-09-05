@@ -20,6 +20,18 @@ function contract() {
 }
 
 describe("governed analysis agent contract v3", () => {
+  it("normalizes nullable numeric scalars before descriptive arithmetic, not only at publication", () => {
+    const rules = analysisAgentPromptInternals;
+    expect(rules).toHaveProperty("inputNumericNullRule");
+    const rule = Reflect.get(rules, "inputNumericNullRule");
+    expect(rule).toContain("pandas.isna(value)");
+    expect(rule).toContain("before counting, sorting, ranking, or arithmetic");
+    expect(rule).toContain("is None is insufficient");
+    expect(rule).toContain("zero remains an observed value");
+    expect(rule).toContain("Never fill missing values with zero");
+    expect(rule).toContain("protected input");
+  });
+
   it("distinguishes logical date fields from pandas dtype without permitting silent coercion", () => {
     const rule = analysisAgentPromptInternals.inputDateTimeRule;
     expect(rule).toContain("logical DATE/TIMESTAMP");

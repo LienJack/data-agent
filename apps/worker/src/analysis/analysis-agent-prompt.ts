@@ -17,6 +17,9 @@ type AnalysisProgramNode = AnalysisProgramPayload["nodes"][number];
 const inputDateTimeRule =
   "A logical DATE/TIMESTAMP field is not a pandas datetime dtype guarantee: Arrow may materialize ISO text or Python date objects as object dtype. inputs[].binding.datetime_timezones declares the exact columns already presented as timezone-aware pandas timestamps in the accepted business timezone. Preserve that timezone for every date label, extrema, endpoint and adjacent-period change. For such a column derive calendar dates with pandas.to_datetime(series, errors='raise', utc=True).dt.tz_convert(declared_timezone).dt.strftime('%Y-%m-%d'); never take the UTC month, slice the raw ISO string, or drop timezone before conversion. DATE is a calendar date, not an instant: preserve its day without UTC localization/conversion; pandas.to_datetime(series, errors='raise') may be used before .dt on DATE. Never coerce invalid dates to NaT, infer a new time window, or mutate the protected input. Already normalized ISO date strings may be retained directly when the result contract requires the same dates.";
 
+const inputNumericNullRule =
+  "Nullable numeric input can contain None, numpy.nan, or pandas.NA after Arrow-to-pandas conversion; DataFrame.to_dict does not guarantee None. On a derived copy, normalize each declared numeric scalar with None if pandas.isna(value) else float(value), and reject non-finite non-missing values, before counting, sorting, ranking, or arithmetic. Testing value is None is insufficient before this normalization; zero remains an observed value. Preserve every row and the original calendar endpoints, excluding missing values only from statistics that require observations. Never fill missing values with zero, bridge a missing period, mutate the protected input, or rely on final JSON serialization to repair an already incorrect count or ranking.";
+
 const inputSchemaProjectionSchema = z.strictObject({
   input_name: z.string().regex(/^[A-Za-z_][A-Za-z0-9_.-]{0,62}$/u),
   format: z.enum(["JSON", "CSV", "ARROW"]),
@@ -200,6 +203,7 @@ export async function buildAnalysisAgentInitialMessages(input: {
       "Use each declared server-bound input symbol directly; do not open input paths or parse Arrow, CSV, or JSON yourself. Network, subprocess, package installation, credentials, database access, arbitrary paths, pickle, eval, and final artifact serialization are forbidden.",
       "Every declared server-bound input symbol is already a pandas.DataFrame. Do not call to_pandas(), read it again, or wrap it in a parser; start transformations from the bound symbol directly (a shallow copy is allowed).",
       inputDateTimeRule,
+      inputNumericNullRule,
       "Use only Python stdlib plus the libraries declared by the runtime profile. CORE_ANALYSIS provides pandas, numpy, pyarrow, scipy, and matplotlib; do not probe or import optional packages such as seaborn, plotly, statsmodels, or scikit-learn.",
       "The Cell policy forbids reflection and authority-probing names including dir, globals, locals, vars, getattr, hasattr, builtins, os, pathlib, sys, and subprocess. Never use them, including while repairing a failed Cell.",
       "Treat the declared input schema as authoritative. Do not spend a Cell only printing head(), dtypes, shape, or descriptive previews; prefer one cohesive material preparation Cell per governed operator, with assertions embedded in that Cell.",
@@ -280,6 +284,7 @@ export async function buildAnalysisAgentInitialMessages(input: {
 
 export const analysisAgentPromptInternals = Object.freeze({
   inputDateTimeRule,
+  inputNumericNullRule,
   governedAnalysisContractSchema,
   operatorCards,
 });

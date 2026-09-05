@@ -2265,3 +2265,18 @@ Root 原恢复校验将 snapshot provenance 与当前租约逐项相等比较，
 
 测试用新租约重新签发 Effective Config Context Receipt，覆盖已接受输入、已完成 tool turn 和 terminal 三种恢复；验证后续 snapshot
 使用新 attempt/fence，Root 从下一 turn 继续且不重复工具。已封存 `966091b9` 保持 FAILED；新构建与 fresh v9 attempt 独立验收。
+
+## 59. 月度比较参考在运算前规范化缺失值
+
+本次故障归类为 B（Arrow/pandas/JSON 跨层表示契约）与 D（未覆盖实际数值 dtype 的执行测试）。QueryEvidence 中的 NULL
+在 pandas 浮点列中不是必然的 `None`，以 `is None` 过滤会将 NaN 计入观察/排名。Publisher 最后的 JSON 规范化只能恢复合法表示，
+无法修复此前的 count/extrema。原 Oracle 拒绝是正确行为，不改变其算法或相等标准。
+
+修复复用已有分类比较/分群面板的无数据参考模式：原月度 `execution_contract` 携带精确列、逻辑时间类型、时区及 Python preparation reference。
+参考在派生副本上按明确业务日历规范日期、按 `pd.isna` 规范数值，再执行原计数、极值、稳定排名、首尾变化和相邻下降公式。
+所有原行及源列保留，NULL 不补零、端点不移动、不跨缺口，非缺失无限值拒绝。通用 Agent 提示同步明确“统计前规范化，而非只在发布时转换”。
+
+Host 不运行参考、不预计算答案、不改已经封存的 stage；模型仍提交实际 Cell，原 AST policy、Publisher 和 TypeScript 独立 Oracle 全部保留。
+参考仅增加当前 method 的执行说明，不创建 Metric/Formula/Authority，不改 ResultContract/hash 算法、v9 manifest 或调用预算。
+NAS 无模型探针用原 Agent image 的 Arrow→pandas 对真实失败输入及 7 个边界变体逐字段比对，两个旧误计序列均被定位且旧输出继续拒绝。
+两只验证容器串行 `--rm`、无网络、512 MiB/1 CPU，峰值 1、残留 0；审计为 `monthly-comparison-null-reference-probe.json`，不计正式 PASS。

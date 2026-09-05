@@ -21,6 +21,12 @@
 - 逻辑DATE/TIMESTAMP不保证pandas datetime dtype；Arrow文本或Python date可落为object。
   `.dt`前只对声明的日期列在派生Series上显式`pandas.to_datetime(..., errors='raise')`；保留日历日期、timezone、NULL和行。
   禁止coerce为NaT、改变protected input或推断新时间窗。已规范化ISO DATE可直接保留。
+- nullable NUMBER 的 Arrow NULL 在 pandas 中可表现为 `None`、`numpy.nan` 或 `pandas.NA`；`to_dict` 不保证转成 `None`。
+  在派生副本上先用 `None if pandas.isna(value) else float(value)` 规范化并拒绝非缺失的非有限值，再做计数、排序、排名和算术。
+  不能只测 `value is None`，也不能等 Publisher 的 JSON 规范化补救已算错的统计；0 是有效观测。禁止补零、跨缺口、移动端点或修改原输入。
+- 月度比较的原 `execution_contract` 可携带无数据 `preparation_reference`、精确 `source_columns/time_column/time_logical_type/timezone/measure_fields`。
+  Agent 将参考函数复制到实际 Cell，使用原 bound DataFrame 计算并经原 Publisher/FULL Oracle；Host 不执行参考、不注入计算结果或修补原 stage。
+  Oracle 仍独立从原 QueryEvidence/Arrow 验算，不引用参考函数；原方法、结果 schema、公式、模型预算及正式题库不变。
 - 不发送stdout/stderr/raw error；固定pandas accessor消息须精确匹配，拒绝未知/带数据后缀/异常类型不符。
   原CELL_EXECUTION最多一次repair，strict模式零次；AST、算子、Oracle和Publisher校验不放宽。
 - Publisher拒绝进入原`PUBLISH_SYMBOL_CONTRACT`单次修复预算后，状态机必须先只允许一条修复`python_cell`；
@@ -69,6 +75,7 @@
 | `Can only use .dt accessor with datetimelike values` | `PANDAS_DATETIME_ACCESSOR_REQUIRES_CONVERSION`；显式转换声明日期列 |
 | `Can only use .str accessor with string values!` | `PANDAS_STRING_ACCESSOR_REQUIRES_STRING_VALUES`；仅声明字符串列、NULL保留 |
 | 未知/带行数据的其他消息 | 不按以上规则投影；保留原有受界identifier策略 |
+| NULL 序列被算为完整观测，或排名/极值包含 NULL | 原 `MONTHLY_COMPARISON_ORACLE_RESULT_MISMATCH`，零公开结果；不得恢复已封存失败 |
 | `ANALYSIS_RESULT_TABLE_TYPE_UNSUPPORTED` | 只反馈DataFrame或稳定built-in dict rows；只允许一条成功修复Cell后重新发布 |
 | 修复Cell后再次请求`python_cell` | 工具不暴露；当前状态只允许`publish_analysis_result` |
 | 精确重复的直接条件叶节点 | 编译时删除；budget按剩余节点重算 |
@@ -79,6 +86,10 @@
 Good：first=null、last=20时只说明首端缺失，整体变化未定义。
 Base：first=0、last=20时绝对变化20，相对变化未定义，两个端点均存在。
 Bad：根据一个全局限制码写“两端均缺失”，或为了继续运行把坏日期变成NaT。
+
+Good：12 月中 6 个 NULL 先在派生记录里规范化，统计为 observed=6/missing=6；完整 12 行仍保留。
+Base：零值计入 observed，端点 NULL 保持 NULL，相邻变化不跨缺口。
+Bad：将 `NaN is not None` 当作有效观测，发布时再把 NaN 变成 NULL；JSON 合法不代表统计正确。
 
 Good：`ALWAYS A -> MATERIAL_CHANGE B`中B与A执行身份完全相同且B是叶节点，只编译A。
 Base：B使用不同published method或有后继C时，A/B（及C）全部保留。
@@ -91,6 +102,8 @@ Bad：修复Cell成功后继续开放Python，允许重复转换、重算或用t
 ## 6. Tests Required
 
 - 真实NAS Agent image中Arrow DATE32与ISO文本转DataFrame的object dtype；显式转换后日期不变，无网络/数据源写入。
+- 月度参考必须用真实 Agent 镜像执行 Arrow→pandas，覆盖 float NaN、nullable Float64/pandas.NA、0、首尾和内部缺失、同值排序、别名/列序及 DATETIME 时区；
+  结果逐字段与独立 Oracle 一致，原 DataFrame/列不变、JSON 无非有限值，原 Cell policy 通过。旧 count/extrema 错误即使重新封 hash 仍拒绝。
 - 固定错误正例、类型不符/数据后缀负例；provider消息和进度不泄漏raw output；一次repair后原Publisher仍闭合。
 - 发布表类型失败时的精确无数据反馈；拒绝后仅Cell、成功修复Cell后仅Publisher，禁止第三条Python旁路；
   修复后错误表仍由原Publisher拒绝，不增加模型/Cell/timeout预算。
@@ -107,6 +120,9 @@ Bad：修复Cell成功后继续开放Python，允许重复转换、重算或用t
   条件节点保留；原missing dependency、cycle、unpublished method和operator rewrite拒绝继续通过。
 
 ## 7. Wrong vs Correct
+
+Wrong：`observed = [v for v in frame['value'] if v is not None]`，把 pandas NaN 计入观测。
+Correct：在派生记录中逐声明数值列先执行 `None if pandas.isna(value) else float(value)`，再按原合同做统计，完整输入行不删。
 
 Wrong：`relative_change=null` → 两个端点都缺失。
 Correct：分别读first_value和last_value，说明实际缺失端；若仅摘要省略，不推断源数据状态。

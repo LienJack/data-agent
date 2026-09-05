@@ -362,6 +362,7 @@ describe("independent monthly comparison oracle", () => {
   it.each([
     "minimum",
     "count",
+    "null-count-and-extrema",
     "tie-order",
     "source-column",
     "first-null",
@@ -374,6 +375,18 @@ describe("independent monthly comparison oracle", () => {
     const result = structuredClone(test.result);
     if (mutation === "minimum") result.data.measure_1.minimum = -1;
     if (mutation === "count") result.data.measure_2.observed_count = 12;
+    if (mutation === "null-count-and-extrema") {
+      for (const measure of [result.data.measure_2, result.data.measure_3]) {
+        Object.assign(measure, {
+          observed_count: 12,
+          missing_count: 0,
+          minimum: null,
+          maximum: null,
+          lowest: [{ period: period(1), value: null }],
+          highest: [{ period: period(1), value: null }],
+        });
+      }
+    }
     if (mutation === "tie-order") result.data.measure_2.highest.reverse();
     if (mutation === "source-column") result.data.measure_1.source_column = "prior";
     if (mutation === "first-null") Object.assign(result.data.measure_2, { first_value: 100 });

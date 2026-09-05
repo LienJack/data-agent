@@ -2504,3 +2504,16 @@ SQL 模型输入，剩余 executable/schema 仍受原64 KB预算约束并超限�
 - [x] Root 恢复按原 provenance 与当前租约的单调 fence 关系验证；新 checkpoint 保持当前租约 guard/CAS，不增加模型或工具调用。
 - [x] focused recovery/Runner/Context provenance 88/88、Worker typecheck/build、Biome、Trellis 与 diff 检查通过；由本次 scoped commit 收口。
 - [ ] 新 clean build/full unit/attestation、fresh physical scratch、fresh v9 attempt 自 L1-01 完整重跑，随后 F7 和最终浏览器验收。
+
+### v9 月度比较缺失值统计修复
+
+- [x] `d63b5716` attempt `7be3d293-3f00-480e-aede-cc4fbe2820df` 前七题 business/QA/Trace PASS；L3-01
+  Run `3402eaaf-7b68-834c-8366-74111c262e75` 的原始 QueryEvidence 含两个各缺失六项的序列，暂存分析却均记为 observed=12/missing=0。
+  原表图完整，独立 Oracle 正确拒绝 `MONTHLY_COMPARISON_ORACLE_RESULT_MISMATCH`；已封存 FAILED，前七题不复用。
+- [x] 捕获原 stage、三个输出及哈希；停止本批次 Web/Worker/Chrome，NAS 无残留 Sandbox，仅保留当前 scratch 供诊断。
+- [x] 先红后绿：7 个新增断言先因规则/reference 缺失失败，随后 Agent 数值 NULL 表示规则和月度 source metadata/reference 绑定通过。
+- [x] 月度参考只使用既有描述性公式，在模型 Cell 的派生副本中先规范化 pandas 缺失值；独立 Oracle 不消费参考函数。
+- [x] NAS 原 Cell policy 及原 Agent 镜像 8 个 Arrow/pandas 样本通过；NULL、0、首尾/内部缺失、别名/列序/时区与输入不变；原失败输出仍被拒绝。
+  审计 `monthly-comparison-null-reference-probe.json`，临时容器峰值 1/残留 0，无模型/权威写入；诊断结束后当前 scratch 已停止，数据卷保留。
+- [x] Analysis 全目录 37 文件/482 tests、Worker typecheck/build、Biome、Trellis/diff 通过；本次 scoped commit 收口。
+- [ ] fresh build/scratch/v9 attempt 从 L1-01 验收，随后 F7 和最终浏览器验收。

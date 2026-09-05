@@ -92,6 +92,18 @@ describe("published monthly multi-measure comparison plan", () => {
           ? ["rate", "prior", "current"]
           : ["current", "prior", "rate"],
     );
+    expect(plan.execution_contract).toMatchObject({
+      time_logical_type: variant.includes("datetime") ? "DATETIME" : "DATE",
+      source_columns:
+        document.projection.kind === "TABLE"
+          ? document.projection.columns.map(({ key }) => key)
+          : [],
+      preparation_reference: expect.stringContaining("def prepare_monthly_comparison("),
+    });
+    expect(Reflect.get(plan.execution_contract, "preparation_reference")).toContain(
+      "pd.isna(value)",
+    );
+    expect(plan.execution_contract.rules.join(" ")).toContain("not pre-executed output");
   });
 
   it("binds each accepted source column while preserving role, NULL and original Metric authority", async () => {

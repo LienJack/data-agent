@@ -10,6 +10,7 @@ import { z } from "zod";
 import { resolveAnalysisResultSourceObjects } from "./analysis-result-source-authority.js";
 import { buildDescriptiveResultContract } from "./descriptive-result-contract.js";
 import { verifyProductTeamQueryEvidenceInput } from "./governed-analysis-input.js";
+import { MONTHLY_COMPARISON_PREPARATION_REFERENCE } from "./monthly-comparison-preparation-reference.js";
 
 export const MONTHLY_COMPARISON_METHOD_ID = "published-monthly-multi-measure-comparison@1";
 export const MONTHLY_COMPARISON_CONTRACT_ID = "monthly-multi-measure-comparison.result";
@@ -278,16 +279,22 @@ export async function compileMonthlyComparisonPlan(input: MonthlyComparisonInput
       method_id: MONTHLY_COMPARISON_METHOD_ID,
       claim_strength: "DESCRIPTIVE" as const,
       time_column: shape.time_column,
+      time_logical_type:
+        shape.binding.columns.find(({ output_name }) => output_name === shape.time_column)
+          ?.logical_type ?? fail("SHAPE"),
       timezone: shape.timezone,
+      source_columns: shape.columns.map(({ key }) => key),
       measure_fields: measureFields,
       measure_schema: z.toJSONSchema(monthlyComparisonMeasureSchema),
       rules: [
+        "Use preparation_reference as the data-free reference implementation of these descriptive rules. Copy its function into your actual python_cell. Call prepare_monthly_comparison with the exact bound input DataFrame and a configuration dict copying only source_columns, time_column, time_logical_type, timezone and measure_fields. Do not copy schemas, rules or preparation_reference into that dict. Assign the returned dict to a named result symbol and construct the table from result['observations'] with exactly source_columns. Normalize pandas missing numeric scalars before counting or ranking, not only when publishing JSON. The reference is not pre-executed output and does not replace Cell policy, Publisher or FULL Oracle checks.",
         "observations contains every accepted row, sorted by calendar month, and exactly the contract source columns. DATE stays calendar date; DATETIME becomes its date in the explicit timezone. Never fill NULL, drop a period, aggregate measures together, or average ratios.",
         "Populate each measure field using only its source_column. observed_count excludes NULL; missing_count counts NULL. minimum/maximum use observed values. lowest/highest contain up to three observed {period,value} points ordered by value ascending/descending, with ties ordered by period ascending.",
         "first_period/last_period are the first/last of all 12 calendar months. first_value/last_value retain endpoint NULL. absolute_change=last_value-first_value, NULL if either endpoint is missing. relative_change=absolute_change/first_value, NULL if missing or zero denominator. Do not move endpoints to the first/last observed value.",
         "largest_drops includes up to three strictly negative changes between adjacent calendar months with both values present; order by absolute_change ascending then to_period ascending. from_period/to_period identify the adjacent pair. relative_change=absolute_change/previous_value, NULL at zero denominator. Never bridge a missing observation.",
         "claim_strength must equal DESCRIPTIVE. Do not emit a free-form summary or additional fields; no statistical significance, slope test, causal attribution, or unverified arithmetic. Use the existing result/table/chart publisher once; chart x is time_column, y fields are all source measures in order, series/bounds are null.",
       ],
+      preparation_reference: MONTHLY_COMPARISON_PREPARATION_REFERENCE,
     }),
   });
 }

@@ -1268,3 +1268,15 @@ L1-03 Run `96323cb9-3332-81eb-ad71-98fc62fe3199` 已接受 Semantic 产物，随
   后续 checkpoint 与写入继续使用当前租约的权限和 fence。未知副作用及已封存正式失败不因本修复获得重试权限。
 - **AC-FL-LEASE-RECOVERY-01** 必须先精确复现新租约下 accepted-input/tool/terminal 三种恢复失败，再用同租约/新租约与非法来源矩阵验证；
   focused 验证、scoped commit 后从新 clean build、fresh physical scratch 和 fresh v9 attempt 自 L1-01 重跑。
+
+### 22.30 月度比较必须在统计前识别 pandas 缺失表示
+
+v9 attempt `7be3d293-3f00-480e-aede-cc4fbe2820df` 在 `d63b5716` 完成前七题 business/QA/Trace，L3-01
+Run `3402eaaf-7b68-834c-8366-74111c262e75` 在 Analysis 发布前被独立 Oracle 拒绝。两个原序列各有 6 个 NULL，
+暂存统计却为 observed=12/missing=0，极值和排名含 NULL；原完整表图数值保留。attempt 已封存 FAILED。
+
+- **R-FL-MONTHLY-NULL-01** 分析 Cell 在计数、排序、排名、算术前必须区分 pandas 缺失表示与有效数值；0 仍为观测，原行、日历端点和缺口不得变化。
+- **R-FL-MONTHLY-NULL-02** 可为既有月度描述性方法提供不含数据/答案的计算参考及精确 source metadata，遵循已有分类/分群方法模式。
+  模型仍提交并实际执行 Cell；Host 不执行参考或注入结果，独立 Oracle、Publisher、stage、预算和 v9 题库不变。
+- **AC-FL-MONTHLY-NULL-01** 回归先红后绿；原 Agent 镜像真实 Arrow/pandas 的 NULL/NaN/NA、0、端点/缺口、别名/列序/时区逐字段校验，
+  原输入不变，旧失败输出继续拒绝。focused 验证和 scoped commit 后以 fresh build/scratch/v9 attempt 自 L1-01 重跑，不拼接前七题。
