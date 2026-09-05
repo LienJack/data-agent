@@ -1322,3 +1322,17 @@ L3-02 的 FORMULA-only 事实表、唯一 Analysis Stage 和完整表图均通�
 - **AC-FL-RESOURCE-SNAPSHOT-01** Contracts 与真实 PostgreSQL 先红后绿，覆盖 v1～v10、相等/增加/倒退、同组第二/三轮、
   换对话、过期快照、前轮未通过、重复 Run、顺序及 CAS 冲突。诊断夹具全部回滚，受保护历史逐表 count/hash 不变。
   scoped commit 后从新 clean build、fresh physical scratch/E17/v10 attempt 完整验收15题，再做 live E17、F7和最终清理。
+
+### 22.34 Report 不得为无单位输入补币种
+
+`759c2a86` 的 v10 attempt `a10b9a9d-c948-464e-88d9-0a34b7c9cf75` 前四题 business/QA/Trace PASS。
+L1-05 Run `2ee80595-2495-8cca-8755-af5e104f1b90` 只调用 Report，原表三行金额和数值计算正确，但报告加入了输入未注明的“元”。
+原 controller 已按 no-unsupported-claims 失败封存 FAILED/version24；没有执行本题 QA/Trace 或后十题，没有 live authority 写入。
+
+- **R-FL-REPORT-UNIT-01** 单位、币种和缩放只能来自当前已验收证据；缺失时明确披露，不得从回答语言、地区、数据集或用户措辞推断。
+  显式单位原样保留；不更改 accepted table 来追认答案，不在模型输出后替换币种，不增加 Semantic/Analysis 或固定路由。
+- **R-FL-REPORT-UNIT-02** 本次仅收紧原 REPORT Provider 生成指令。输入投影、Artifact/Scope/Run/hash、原响应 schema、调用与预算均保持；
+  原 v10 题库、rubric、15题范围、Oracle 和安全边界不变。Prompt 回归不等于真实文本事实正确。
+- **AC-FL-REPORT-UNIT-01** 实际 dispatcher 回归先红后绿，覆盖未指定/通用币种/CNY/INR/显式缩放，校验输入原样、task identity、一次零工具调用。
+  focused validation 和 scoped commit 后，用 fresh build/physical scratch/E17/v10 attempt 完整验收15题，随后 live E17、F7和最终清理；
+  前四题不拼接，历史失败不重放。

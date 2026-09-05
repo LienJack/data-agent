@@ -2603,3 +2603,14 @@ SQL 模型输入，剩余 executable/schema 仍受原64 KB预算约束并超限�
   scratch和SSH已精确停止，Browser/Web/Worker/control/Sandbox仍为0，卷与历史保留，普通NAS服务健康，内存free74%。
 - [ ] 安全 scoped commit；新 clean build/fresh physical scratch/E17/v10 attempt 完整15题，随后 live E17、F7、390px与历史审计。
   所有旧 PASS 仅保留历史，不计新 attempt；用户浏览器、普通NAS服务和保留数据卷不清理。
+
+### v10 Report 缺失币种约束
+
+- [x] `759c2a86` clean force build/full unit、fresh physical scratch、10825、E17与v10 attempt完成；前四题同构建 business/QA/Trace PASS。
+- [x] L1-05 原表无单位但报告增加“元”；原 controller 封存 FAILED/version24，后十题未提交、本题不运行 QA/Trace、live writes=0。
+  失败输入/输出hash和 rubric保存在 formal-e17-759c2a86-a10b9a9d/runtime/L1-05-business-review.json。
+- [x] Report 实际请求五种单位情形回归先RED后GREEN；只补原Provider生成约束，不改题库、来源、响应或输出。
+  唯一Browser及Helpers、Web/Worker/control、SSH转发均已退出，scratch停止且卷保留，普通NAS服务健康，内存free72%。
+- [x] Provider/Report focused 20文件229项通过，Worker typecheck/build、owned Biome、Trellis/diff通过。
+  新增规范压缩至注入上限以内；既有超大文件告警不扩张。本小任务通过随后scoped commit收口。
+- [ ] 新clean build/fresh physical scratch/E17/v10 attempt完整15题，之后live E17/F7/390px/历史与最终清理；本次前四题不拼接。

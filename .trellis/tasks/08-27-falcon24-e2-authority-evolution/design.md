@@ -2394,3 +2394,36 @@ migration10825 绑定 post10824 ledger/checksum 和两个原函数 prosrc，迁�
 原审计 formal-e17-1c24ed3b-64530f4a/runtime 保留 L3-02/L4-A-01 的业务、表图和 QA/Trace 回执，
 control-advance-1788598092132.json 保存 preclaim 拒绝，control-supersede-resource-version.json 保存 FAILED/version52。
 后继必须新 clean build、fresh physical scratch/E17/v10 attempt 从第一题完整验收，不拼接前10题。
+
+## 64. Report 缺失单位的生成边界
+
+### 1. Root Cause Category
+
+E（默认将中文金额视作元）及 C/D（Analysis 已有单位约束，独立 Report 请求未覆盖）。
+原 accepted table 的列仅为投入/营销收入，provenance 没有币种；resolveReportEvidence 原样传递。
+实际 REPORT system 只有“do not invent facts”，没有区分未指定、通用 currency 和显式单位。真实报告却补元；
+五个实际 dispatcher 断言先复现缺失指令。输入与输出可靠，具体模型内部推理不可见；不声称 prompt 能确定消除幻觉。
+
+### 2. Why Fixes Failed
+
+这是本根因的首次 scoped 修复。前序 Analysis FINAL 的 metric_units 约束不参与独立 Report 调用；
+不能因其他 Agent 已有同类规范，就假定 Report 的实际模型消息也包含它。数值、引用与 SUCCEEDED 不足以证明货币标签。
+
+### 3. Prevention Mechanisms
+
+P0：在原 REPORT system 明确单位/币种/缩放必须有 accepted evidence，缺失披露、通用 currency 不猜具体币种，
+显式单位不换算；原数据和输出均不改写，部署指令经过既有请求消息/hash/token 上界。
+回归截获实际 dispatcher 发往 Provider 的单次请求，锁定完整 context、task hash、原 schema 与零工具；
+覆盖不同币种和缩放，防止把“永远不写单位”误作修复。仍由新正式业务验收检查真实答案。
+
+### 4. Systematic Expansion
+
+采用 Analysis 已有的证据原则，但不引入共享解析器、关键词币种过滤器、固定摘要、额外模型评委或新发布权威。
+Report 的多输入和保留分析节/图表链保持原合同，原 no-calculations/no-causality 提醒不变。
+本批已封存失败后关闭唯一测试 Chrome、Web/Worker/control、SSH 与 scratch，再串行离线验证；旧卷/证据和普通 NAS 服务保留。
+
+### 5. Knowledge Capture
+
+同步 backend/agent-team-runtime 的 Report 单位段；仓库不存在 src/templates/markdown/spec 分发模板。
+原审计 runtime/L1-05-business-review.json 记录币种缺证，control-advance-1788602051345.json 保存 FAILED/version24。
+第一次观察因 operator 漏传 accepted-input refs 而拒绝 identity；补齐同一已验收引用后只封存业务失败，没有重提模型或改 rubric。
