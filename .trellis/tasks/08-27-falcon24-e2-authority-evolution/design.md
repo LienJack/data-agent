@@ -2280,3 +2280,19 @@ Host 不运行参考、不预计算答案、不改已经封存的 stage；模型
 参考仅增加当前 method 的执行说明，不创建 Metric/Formula/Authority，不改 ResultContract/hash 算法、v9 manifest 或调用预算。
 NAS 无模型探针用原 Agent image 的 Arrow→pandas 对真实失败输入及 7 个边界变体逐字段比对，两个旧误计序列均被定位且旧输出继续拒绝。
 两只验证容器串行 `--rm`、无网络、512 MiB/1 CPU，峰值 1、残留 0；审计为 `monthly-comparison-null-reference-probe.json`，不计正式 PASS。
+
+## 60. Trace 点击前必须观察布局稳定
+
+根因属于 E（把单帧可点击误当成后续指针事件可点击）与 D（mock 未执行滚动帧）。`ede08965` 的正式批次前四题通过，
+L1-05 business/QA 已通过，但返回答案后仍在平滑定位。只读帧与 trusted pointer 记录证明：CLI 在 y≈523 点击时，
+按钮已从 y≈508 移到 y≈615，实际命中正文 `P`。这不是已修复的 Trace selection 重置，也不是模型或业务失败。
+
+此前的 `block:start + elementFromPoint` 只验证一个时刻；单纯等待最终可点击也不足，因为自然滚动结束后按钮可能被 Composer 遮挡。
+修复顺序为：同元素身份及矩形连续120ms稳定 → 原滚动定位及命中检查 → 同元素、同矩形、无遮挡连续120ms稳定 → 真实指针点击。
+所有观察按 animation frame 进行且有25秒上限，不使用固定 sleep、DOM click、隐藏 Composer、扩大超时或重复提交。
+搜索节点同样在筛选布局稳定后点击；节点/详情/产物/hash/刷新/切 Run 的原判定保持不变。
+
+VM 回归执行实际等待表达式，覆盖移动、替换、遮挡、缺失、零尺寸、disabled、视口外和持续移动；原观察器测试核对操作顺序。
+同一原 Chrome 对已封存 L1-05 的完整 Trace 只读验证通过，回执标记 `diagnostic_only=true/authority_writes=0`，不能计正式 PASS。
+失败回执 `sha256:2769bce7cf867335a36b09ef8d13f772a63874c0601e1ef875bd782a66593ebc` 保留于原 attempt；
+新提交必须重新冻结、build、fresh scratch 和15题。规范同步在 frontend/component-guidelines；仓库无对应 Trellis 分发模板。

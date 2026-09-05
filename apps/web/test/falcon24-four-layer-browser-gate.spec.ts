@@ -662,7 +662,7 @@ describe("Falcon24 four-layer browser gate", () => {
     ).toBe(true);
     expect(commands.some((command) => command.includes(previousRunId))).toBe(true);
     expect(commands.filter((command) => command.includes("resolution-trace-node"))).toHaveLength(
-      details.length * 2,
+      details.length * 3,
     );
     const exactRunClicks = commands.filter(
       (command) => command.includes("click") && command.includes("qa-result-trace-entry"),
@@ -671,14 +671,21 @@ describe("Falcon24 four-layer browser gate", () => {
       (command) => command.includes("scrollintoview") && command.includes("qa-result-trace-entry"),
     );
     expect(exactRunScrolls).toHaveLength(exactRunClicks.length);
-    expect(commands.filter((command) => command.includes("elementFromPoint"))).toHaveLength(
-      exactRunClicks.length,
+    expect(commands.filter((command) => command.includes("const requireHitTarget"))).toHaveLength(
+      exactRunClicks.length * 2 + details.length,
     );
     const actionabilityWaits = commands.filter(
       (command) => command.includes("wait --fn") && command.includes("entry.scrollIntoView"),
     );
     expect(actionabilityWaits).toHaveLength(exactRunClicks.length);
     expect(actionabilityWaits.every((command) => command.includes('block: "start"'))).toBe(true);
+    for (const [index, command] of commands.entries()) {
+      if (!exactRunClicks.includes(command)) continue;
+      expect(commands[index - 4]).toContain("const requireHitTarget = false");
+      expect(commands[index - 3]).toContain("scrollintoview");
+      expect(commands[index - 2]).toContain("entry.scrollIntoView");
+      expect(commands[index - 1]).toContain("const requireHitTarget = true");
+    }
   });
 
   it("rejects missing Team and SQL read views even when primary Trace nodes are valid", async () => {

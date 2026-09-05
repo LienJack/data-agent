@@ -141,8 +141,60 @@ function exactRunSelector(runId: string): string {
   return `[data-testid="qa-result-trace-entry"][data-run-id="${falcon24BrowserSelectorValue(runId)}"][data-terminal-status="COMPLETED"]`;
 }
 
+export function falcon24StableTargetWaitScript(
+  selector: string,
+  requireHitTarget: boolean,
+): string {
+  return `new Promise((resolve) => {
+    const selector = ${JSON.stringify(selector)};
+    const requireHitTarget = ${JSON.stringify(requireHitTarget)};
+    const started = performance.now();
+    let previousElement = null;
+    let previousGeometry = null;
+    let stableSince = started;
+    const sample = () => {
+      const now = performance.now();
+      if (now - started >= 25000) { resolve(false); return; }
+      const element = document.querySelector(selector);
+      const rect = element?.getBoundingClientRect();
+      const geometry = rect ? JSON.stringify([rect.x, rect.y, rect.width, rect.height]) : null;
+      let actionable = !!element && !element.disabled && !!rect.width && !!rect.height;
+      if (actionable && requireHitTarget) {
+        const x = rect.x + rect.width / 2;
+        const y = rect.y + rect.height / 2;
+        const hit = document.elementFromPoint(x, y);
+        actionable = x >= 0 && y >= 0 && x < innerWidth && y < innerHeight &&
+          hit !== null && element.contains(hit);
+      }
+      if (!actionable || element !== previousElement || geometry !== previousGeometry) {
+        stableSince = now;
+      }
+      previousElement = element;
+      previousGeometry = geometry;
+      if (actionable && now - stableSince >= 120) { resolve(true); return; }
+      requestAnimationFrame(sample);
+    };
+    requestAnimationFrame(sample);
+  })`;
+}
+
+async function waitForStableTarget(
+  session: string,
+  selector: string,
+  requireHitTarget: boolean,
+): Promise<void> {
+  await executeFalcon24AgentBrowser(session, [
+    "wait",
+    "--fn",
+    falcon24StableTargetWaitScript(selector, requireHitTarget),
+  ]);
+}
+
 async function clickRunEntry(session: string, selector: string): Promise<void> {
   try {
+    // Returning to an answer can still be smooth-scrolling after its button mounts.
+    // Settle that movement before positioning; then verify the positioned hit target.
+    await waitForStableTarget(session, selector, false);
     await executeFalcon24AgentBrowser(session, ["scrollintoview", selector]);
     await executeFalcon24AgentBrowser(session, [
       "wait",
@@ -159,6 +211,7 @@ async function clickRunEntry(session: string, selector: string): Promise<void> {
         return hit !== null && entry.contains(hit);
       })()`,
     ]);
+    await waitForStableTarget(session, selector, true);
     await executeFalcon24AgentBrowser(session, ["click", selector]);
   } catch (error) {
     throw new Error("FALCON24_TRACE_ENTRY_NOT_ACTIONABLE", { cause: error });
@@ -580,6 +633,7 @@ export async function observeFalcon24FourLayerTraceUi(input: {
     ]);
     const nodeSelector = `[data-testid="resolution-trace-node"][data-run-id="${falcon24BrowserSelectorValue(input.trace.run_id)}"][data-node-id="${falcon24BrowserSelectorValue(node.node_id)}"]`;
     await executeFalcon24AgentBrowser(input.session, ["wait", nodeSelector]);
+    await waitForStableTarget(input.session, nodeSelector, true);
     await executeFalcon24AgentBrowser(input.session, ["click", nodeSelector]);
     const detailSelector = `[data-testid="resolution-trace-detail"][data-node-id="${falcon24BrowserSelectorValue(node.node_id)}"][data-trace-hash="${falcon24BrowserSelectorValue(input.trace.trace_hash)}"][data-detail-hash="${falcon24BrowserSelectorValue(detail.detail_hash)}"]`;
     await executeFalcon24AgentBrowser(input.session, ["wait", detailSelector]);

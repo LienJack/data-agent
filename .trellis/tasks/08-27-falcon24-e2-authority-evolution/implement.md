@@ -2552,3 +2552,15 @@ SQL 模型输入，剩余 executable/schema 仍受原64 KB预算约束并超限�
 - [x] 维护版真实浏览器脚本七项状态复验通过（`trace-focus-browser-maintained-green-27dcdf2f.json`）；
   Web focused 42/42、typecheck、build、owned Biome、Trellis/diff 通过。浏览器/fixture/应用/control 已退出，scratch 停机；本小任务 scoped commit 收口。
 - [ ] 新 clean build/fresh scratch/v9 attempt 从 L1-01 继续正式 15 题，随后 live E17、F7 和最终清理。
+
+### v9 Trace 点击位置稳定性修复
+
+- [x] `ede08965` clean Node24 build/full unit、fresh scratch 与 E17 activation 已完成；attempt `ee0a5ed7-6f37-4f68-89a2-4ed2070cd696`
+  前四题完整 PASS，L1-05 business/QA PASS，返回答案后的点击位置随滚动改变；原失败通过原 authority 接口封存 FAILED，未写 live。
+- [x] 最小真实浏览器复现捕获 trusted pointer 命中正文而非按钮；加入定位前稳定观察与定位后稳定命中，对照成功。
+  Audit 位于 `formal-e17-ede08965-ee0a5ed7/runtime/L1-05-click-geometry-*.json`，无模型调用或 authority 写入。
+- [x] 新增等待表达式回归先 RED，修复后与原门禁/Trace focused 测试通过；同一 Chrome 完整只读 Trace 验证 PASS，
+  `trace-click-fix-validation-1788588787671.json` 明确 diagnostic-only，不计正式验收。资源规范及用户 Chrome 边界不变。
+- [x] Web focused 4文件/51项、typecheck、build、owned Biome、Trellis/diff 通过；本小任务以 scoped commit 收口。
+  Chrome/Helper、Web/Worker、OpenSandbox控制面、SSH转发均已退出，scratch 停机且数据卷保留；未触碰用户 Chrome 或普通 NAS 服务。
+- [ ] 新 clean build/fresh scratch/v9 attempt 自 L1-01 验收全部15题，再执行 live E17、F7 和最终资源清理；原前四题不拼接。
