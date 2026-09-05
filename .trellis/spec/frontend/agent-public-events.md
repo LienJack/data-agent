@@ -78,6 +78,9 @@ identity、replay/cursor/terminal 和 Inspector addressing；未来 surface 可�
 - Resolution Trace Workbench 使用同一个 `selectedNodeId` 驱动四泳道时间轴、sequence 列表与五页签
   Inspector。10,000 节点列表只渲染可视窗口；时间轴按泳道有界采样，但必须优先保留当前选择、搜索命中和
   FAILED/WAITING/BLOCKED/INTERRUPTED 等异常记录，并明确提示时间轴已聚合、列表仍保留全部记录。
+- Trace URL 焦点同步只依赖稳定的 `focusedNodeId`，不能依赖派生 record 的对象引用。同 Run/hash/focus 的
+  等价 props 刷新必须保留用户点击的节点及已关闭 Inspector；只有显式焦点变化才重新选中目标。
+  Run/hash 变化仍走原 refresh/authority 规则，详情继续按 exact Run/node/trace/detail hash 校验，不靠延时或重复点击掩盖重置。
 - Conversation Trajectory 必须覆盖当前对话的全部 Run，并按各 Run 最早 `occurred_at` 形成 Turn；Turn header
   显示状态、公开终态摘要、节点/调用/耗时和 Request 数。旧 Turn 默认可折叠，但搜索命中、时间轴选择或 URL focus
   必须自动显示其记录；折叠不能删除模型、搜索数据或 Inspector identity。
@@ -158,6 +161,10 @@ identity、replay/cursor/terminal 和 Inspector addressing；未来 surface 可�
 - Web: ContextMeter 覆盖 exact 62%、100% clamp、Profile mismatch、usage unavailable、capacity disappearance、
   outside click 与 Escape；不得出现启发式 token。
 - Web: Inspector target schema/URL restore, baseline + SSE merge, stale target, cross-Run cleanup and focus return.
+- Browser: `apps/web/test-support/resolution-trace-focus-browser.mjs` 用真实 React/Workbench 验证节点点击后
+  等价对象刷新、显式焦点切换、清除焦点、关闭详情与切换 Run；只替换无关网络/预览 leaf，不证明 API 或正式门禁。
+  从仓库根目录用声明的 Node 运行脚本，在唯一已有任务浏览器打开 `http://127.0.0.1:3311`，执行
+  `window.probe()` 并断言 `pass === true`；结束后停止精确 server 并复查 3311 与本任务浏览器进程。
 - Web/API: Artifact Preview exact Workspace/scope/run/revision/hash, unsupported/denied/hash mismatch and no raw fallback.
 - Web: Chinese/English switching changes display text without pathname/query/hash or Workspace Store mutation.
 - Web: safe Markdown covers CJK emphasis, mapped headings, task lists, code, GFM table, unsafe URL/image and exact
@@ -180,6 +187,14 @@ identity、replay/cursor/terminal 和 Inspector addressing；未来 surface 可�
 // Wrong: forwards provider internals and makes transient stream state authoritative.
 emit({ type: "reasoning", reasoning_content: provider.reasoning });
 setCompleted(streamClosed);
+// Wrong: an equivalent trace object refresh steals the user's Inspector selection.
+useEffect(() => setSelectedNodeId(focused.node_id), [focused]);
+
+// Correct: URL focus changes are identified by a stable node ID, not object identity.
+const focusedNodeId = focused?.node_id ?? null;
+useEffect(() => {
+  if (focusedNodeId) setSelectedNodeId(focusedNodeId);
+}, [focusedNodeId]);
 
 // Correct: emits a bounded public summary and rebuilds from durable events.
 emit({

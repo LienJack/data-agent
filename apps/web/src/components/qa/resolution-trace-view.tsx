@@ -788,6 +788,7 @@ function TraceWorkbench({
   const focused = model.records.find(
     ({ node, run_id }) => run_id === focusedRunId && node.sequence === focusedSequence,
   );
+  const focusedNodeId = focused?.node_id ?? null;
   const [selectedNodeId, setSelectedNodeId] = useState<string | null>(
     focused?.node_id ?? model.records.at(-1)?.node_id ?? null,
   );
@@ -879,9 +880,9 @@ function TraceWorkbench({
   const visible = listItems.slice(start, end);
 
   useEffect(() => {
-    if (!focused) return;
-    setSelectedNodeId(focused.node_id);
-  }, [focused]);
+    if (!focusedNodeId) return;
+    setSelectedNodeId(focusedNodeId);
+  }, [focusedNodeId]);
   useEffect(() => {
     if (!selectedRecord || !collapsedTurns.has(selectedRecord.turn_index)) return;
     setCollapsedTurns((current) => {

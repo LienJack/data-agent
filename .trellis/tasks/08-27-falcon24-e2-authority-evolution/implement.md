@@ -2540,3 +2540,15 @@ SQL 模型输入，剩余 executable/schema 仍受原64 KB预算约束并超限�
 - [x] focused 142/142、Worker typecheck/build、owned Biome、Trellis validate/diff 通过；原 Published 定义优先及结果窗口要求不变，
   本次 scoped commit 收口。
 - [ ] 以 Node24 新 clean build/scratch/v9 attempt 完整验收，未将提示装配测试计为模型或业务 PASS。
+
+### v9 Trace 等价刷新不能重置用户选择
+
+- [x] `27dcdf2f` clean Node24 force build 8/8、无缓存 full unit 15/15、attestation、fresh physical scratch、
+  9项迁移/347业务表无漂移、dataset、认证、无模型 Sandbox 探针与 E17 scratch activation 完成。
+- [x] Attempt `e012d065-5cd4-47f9-95c1-03fc1e85aa85` 前两题完整 PASS，首题真实包含请求同比。
+  L1-03 业务/QA PASS，但 Trace 节点选择被重置，已通过原接口封存 FAILED；未执行后续题、未写 live authority。
+- [x] 同一 Chrome 的真实 React/Workbench 复现先 RED；焦点 effect 改为稳定 node ID 后 GREEN，
+  等价刷新、显式焦点、清除焦点、关闭详情及换 Run 边界均通过。复现脚本入库，不增加模型/数据库依赖。
+- [x] 维护版真实浏览器脚本七项状态复验通过（`trace-focus-browser-maintained-green-27dcdf2f.json`）；
+  Web focused 42/42、typecheck、build、owned Biome、Trellis/diff 通过。浏览器/fixture/应用/control 已退出，scratch 停机；本小任务 scoped commit 收口。
+- [ ] 新 clean build/fresh scratch/v9 attempt 从 L1-01 继续正式 15 题，随后 live E17、F7 和最终清理。
