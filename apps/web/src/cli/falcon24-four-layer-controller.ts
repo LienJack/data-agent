@@ -177,8 +177,7 @@ export function falcon24FourLayerBrowserSession(input: {
   readonly attempt_id: string;
   readonly turn: Pick<PostgresFalcon24FourLayerGateTurn, "conversation_group" | "turn_id">;
 }): string {
-  const suffix = input.turn.conversation_group?.toLowerCase() ?? input.turn.turn_id.toLowerCase();
-  return `falcon24-${input.attempt_id}-${suffix}`;
+  return `falcon24-${input.attempt_id}`;
 }
 
 export function createFalcon24FourLayerController(

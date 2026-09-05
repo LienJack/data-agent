@@ -2492,6 +2492,8 @@ SQL 模型输入，剩余 executable/schema 仍受原64 KB预算约束并超限�
 - [x] 将浏览器复用、测试容器数量限制、串行执行与失败/暂停后的资源复查写入 AGENTS.md 和本地运行规范 §8。
 - [x] 恢复前盘点：仅一个正常用户 Chrome，无测试浏览器；NAS 四个已有非 Falcon 服务健康/运行，无 Falcon 测试容器，历史数据卷保留。
 - [ ] 后续每批只使用一个浏览器会话、一个活动 scratch；源库/控制面/Sandbox 按需恢复并记录用途，结束后精确回收并复查数量及内存。
+- [x] 发现控制器按 turn/scenario 派生浏览器会话，改为整个 attempt 共用一个会话；独立 Conversation 通过新页面隔离，L4 同组保留原页。
+  原 consumed claim、业务、QA/Trace 与一次提交校验保持不变；测试驱动每组结束核对并关闭旧页。
 
 ### v9 Worker 接管恢复修复
 

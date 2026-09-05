@@ -177,6 +177,8 @@ pnpm --filter @data-agent/web exec tsx src/cli/bootstrap-qa-readiness.ts
 - 每批浏览器、数据库或 Sandbox 测试开始前，先记录本任务已有的浏览器主进程/会话、Docker 容器名称与状态、端口及内存占用。
   Chrome Helper/Renderer 是同一浏览器的子进程，不能按子进程数误判为多个浏览器；命令行与日志不得暴露凭据。
 - 浏览器测试默认只保留一个本任务会话及一个活动测试页面，跨题复用页面或标签；需要第二页面验证交互时，用完立即关闭。
+  Falcon 四层控制器的浏览器会话名只绑定 attempt，不绑定 turn/scenario；独立 Conversation 开始前，由测试驱动在同一浏览器中新建
+  页面并关闭上一已验收页面，隔离 `sessionStorage`。同组 L4 后继 turn 必须复用原页面，保留 consumed claim 与冻结对话历史。
   不得为每题、重试或恢复重复启动 Chrome，也不得同时运行多套浏览器自动化引擎。使用现有用户浏览器时只关闭本任务创建的页面。
   若必须重新启动，先按 session/profile/PID 确认并关闭失效的测试实例，再验证其子进程已退出；不得执行全局 `pkill Chrome`。
 - 数据库与端到端测试串行执行，默认只运行一个当前批次的 scratch 数据库。确需源库物理复制时，可临时恢复一个精确绑定的源库；

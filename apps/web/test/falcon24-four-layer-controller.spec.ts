@@ -431,7 +431,7 @@ describe("Falcon24 four-layer Web controller", () => {
     expect(evaluate).not.toHaveBeenCalled();
   });
 
-  it("reuses one browser session for an L4 scenario and isolates independent turns", () => {
+  it("reuses one browser session across all turns and isolates different attempts", () => {
     expect(
       falcon24FourLayerBrowserSession({
         attempt_id: id(1),
@@ -448,10 +448,21 @@ describe("Falcon24 four-layer Web controller", () => {
         attempt_id: id(1),
         turn: { turn_id: "L1-01", conversation_group: null },
       }),
-    ).not.toBe(
+    ).toBe(
       falcon24FourLayerBrowserSession({
         attempt_id: id(1),
         turn: { turn_id: "L1-02", conversation_group: null },
+      }),
+    );
+    expect(
+      falcon24FourLayerBrowserSession({
+        attempt_id: id(1),
+        turn: { turn_id: "L1-01", conversation_group: null },
+      }),
+    ).not.toBe(
+      falcon24FourLayerBrowserSession({
+        attempt_id: id(2),
+        turn: { turn_id: "L1-01", conversation_group: null },
       }),
     );
   });
