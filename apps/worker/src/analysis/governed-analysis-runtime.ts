@@ -195,12 +195,11 @@ async function buildGenericBrief(input: {
   readonly context: AnalysisContext;
   readonly binding: QueryEvidenceSemanticBinding;
   readonly methods: readonly AnalysisMethodRegistryEntry[];
+  readonly approved_metric_ids: readonly string[];
 }): Promise<ResearchBriefV3Payload> {
-  const metricIds = new Set(
-    input.binding.columns
-      .filter(({ semantic_role: role }) => role === "METRIC")
-      .map(({ semantic_object_id: objectId }) => objectId),
-  );
+  // Formula-only evidence still uses its already resolved Published Metric authority.
+  // Do not derive a second, narrower authority set from the result-column roles.
+  const metricIds = new Set(input.approved_metric_ids);
   const dimensionIds = new Set(
     input.binding.columns
       .filter(({ semantic_role: role }) => role === "DIMENSION")
@@ -389,11 +388,13 @@ export function createGovernedAnalysisRuntime(input: {
         ) {
           throw new TypeError("GOVERNED_ANALYSIS_METHOD_REGISTRY_INVALID");
         }
+        stage = "RESEARCH_BRIEF";
         const brief = await buildGenericBrief({
           command,
           context,
           binding: evidence.binding,
           methods,
+          approved_metric_ids: requestedMetricIds,
         });
         stage = "COMMIT_BRIEF";
         const briefRef = await input.artifacts.commitL2({

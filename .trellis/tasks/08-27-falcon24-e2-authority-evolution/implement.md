@@ -2576,3 +2576,16 @@ SQL 模型输入，剩余 executable/schema 仍受原64 KB预算约束并超限�
 - [x] Web build、owned Biome、Trellis/diff 通过；Chrome/Helper、Web/Worker、SSH转发、控制面及临时 Sandbox 均已退出，
   scratch 停机且数据卷保留，普通 NAS 服务与用户 Chrome 未触碰。本小任务以 scoped commit 收口。
 - [ ] 新 clean build/fresh physical scratch/v9 attempt 从 L1-01 验收全部15题，再进入 live E17、F7 与最终清理；本次五题不拼接。
+
+### v9 纯公式支撑 Metric 的 Brief 修复
+
+- [x] `06628bba` fresh Node24 build/full unit/scratch/E17/v9 attempt 的前八题全部 business/QA/Trace PASS。
+  L3-01真实 NULL 统计为12/0、6/6、6/6，完整表图/源 Oracle一致；不是只读复验拼接。
+- [x] L3-02 Run `6ac09e67-3a96-8cc7-bab1-cd38ebae67f5` 的16行转化量 source Oracle PASS，但 FORMULA-only 输入导致
+  Brief丢失已解析的支撑 Metric；Stage/Sandbox=0。原controller以FAILED/version44封存，未进入后续题或写live。
+- [x] 完整装配回归先RED，传递原approved Metric集合后GREEN；ResultContract保留FORMULA，无支撑/Context换绑继续拒绝，副作用为0。
+  Browser/Helper、Web/Worker/control已停止，再串行验证；规范同步artifact-authority，设计§62记录五维分析。
+- [x] Analysis 37文件/485项、Worker typecheck/build、owned Biome、Trellis/diff通过；既有超大context文件告警不新增类型。
+  Chrome/Helper、Web/Worker、SSH转发、控制面均已退出，scratch停止且卷保留，普通NAS服务/用户Chrome未改；内存free73%。
+  本小任务按scoped commit收口，整体验收仍未完成。
+- [ ] 新 clean build/fresh physical scratch/v9 attempt 自L1-01完整验收15题，再进行live E17、F7和最终清理；本次八题不拼接。

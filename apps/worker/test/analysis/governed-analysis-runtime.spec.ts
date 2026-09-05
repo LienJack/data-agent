@@ -300,6 +300,7 @@ async function fixture() {
 async function withInputResultRole(
   base: Awaited<ReturnType<typeof fixture>>,
   role: "FORMULA" | "REQUEST_DERIVED",
+  omitDirectMetric = false,
 ) {
   const objectId = role === "FORMULA" ? "formula.return" : "request-scoped.return";
   const metric = base.binding.columns[1];
@@ -313,7 +314,9 @@ async function withInputResultRole(
   const binding = await buildQueryEvidenceSemanticBinding({
     ...bindingMaterial,
     columns: [
-      ...bindingMaterial.columns,
+      ...bindingMaterial.columns.filter(
+        (column) => !omitDirectMetric || column.semantic_role !== "METRIC",
+      ),
       {
         ...metric,
         output_name: "ratio",
@@ -352,10 +355,15 @@ async function withInputResultRole(
     projection: {
       ...base.evidence.projection,
       columns: [
-        ...base.evidence.projection.columns,
+        ...base.evidence.projection.columns.filter(
+          (column) => !omitDirectMetric || column.key !== "revenue",
+        ),
         { key: "ratio", label: "比例", data_type: "NUMBER" },
       ],
-      rows: base.evidence.projection.rows.map((row) => ({ ...row, ratio: 0.2 })),
+      rows: base.evidence.projection.rows.map((row) => {
+        const { revenue: _revenue, ...withoutMetric } = row;
+        return { ...(omitDirectMetric ? withoutMetric : row), ratio: 0.2 };
+      }),
     },
   });
   const { contract_hash: _contractHash, ...contract } = base.resultContract;
@@ -377,7 +385,7 @@ async function withInputResultRole(
     tables: contract.tables.map((table) => ({
       ...table,
       columns: [
-        ...table.columns,
+        ...table.columns.filter((column) => !omitDirectMetric || column.semantic_role !== "METRIC"),
         {
           key: "ratio",
           label_zh: "比例",
@@ -408,9 +416,14 @@ async function harness(input?: {
   readonly omitAcceptedRole?: boolean;
   readonly promoteRole?: boolean;
   readonly omitTimeDimension?: boolean;
+  readonly formulaOnly?: boolean;
+  readonly omitSupportingMetric?: boolean;
+  readonly mismatchedContextMetric?: boolean;
 }) {
   const base = await fixture();
-  const withRole = input?.inputRole ? await withInputResultRole(base, input.inputRole) : base;
+  const withRole = input?.inputRole
+    ? await withInputResultRole(base, input.inputRole, input.formulaOnly)
+    : base;
   const fixed = input?.omitAcceptedRole ? { ...withRole, evidence: base.evidence } : withRole;
   const briefRef = reference("ResearchBrief", 40);
   const programRef = reference("AnalysisProgram", 41);
@@ -451,10 +464,11 @@ async function harness(input?: {
     report_ref: reportRef,
     publication_receipt: {},
   })) as never;
+  const commitL2 = vi.fn(
+    async (_command: Parameters<AnalysisArtifactCommitPort["commitL2"]>[0]) => briefRef,
+  );
   const artifacts: AnalysisArtifactCommitPort = {
-    async commitL2() {
-      return briefRef;
-    },
+    commitL2,
     async commitSystem(command) {
       return command.reference;
     },
@@ -479,11 +493,40 @@ async function harness(input?: {
     artifact_capability: {},
     semantic_release: {
       async read() {
+        if (input?.formulaOnly) {
+          return {
+            ok: true as const,
+            value: {
+              executable: {
+                metrics: input.omitSupportingMetric
+                  ? []
+                  : [
+                      {
+                        metric_id: "metric.revenue",
+                        table_id: "orders",
+                        dependency_column_ids: ["orders.order_total"],
+                        formula: { formula_id: "formula.return" },
+                      },
+                    ],
+              },
+            } as never,
+          };
+        }
         return { ok: true as const, value: {} as never };
       },
     },
     compile_context: async (compileInput) => {
       expect(compileInput.requested_metric_ids).toEqual(["metric.revenue"]);
+      if (input?.mismatchedContextMetric) {
+        const { context_hash: _contextHash, ...material } = fixed.context;
+        return buildAnalysisContext({
+          ...material,
+          metrics: material.metrics.map((metric) => ({
+            ...metric,
+            metric_ref: { ...metric.metric_ref, node_id: "metric.unrelated" },
+          })),
+        });
+      }
       return fixed.context;
     },
     method_registry: {
@@ -505,6 +548,9 @@ async function harness(input?: {
     package: {
       package_id: fixed.context.semantic_context_binding.package_id,
       package_hash: fixed.context.semantic_context_binding.package_hash,
+      retrieval_receipt: { selected_object_ids: ["metric.revenue"] },
+      mandatory_closure: { object_ids: [] },
+      route_decision: { selected_metric_id: null },
     },
     receipt: {
       receipt_id: fixed.context.semantic_context_binding.receipt_id,
@@ -566,10 +612,90 @@ async function harness(input?: {
     },
     fence_guard: { isCurrent: async () => true },
   } as never;
-  return { command, diagnostics, execute, providerContext: () => providerContext, runtime };
+  return {
+    command,
+    diagnostics,
+    execute,
+    commitL2,
+    providerContext: () => providerContext,
+    runtime,
+  };
 }
 
 describe("generic governed analysis runtime", () => {
+  it("carries formula-only supporting Metric authority into the committed brief and executor", async () => {
+    const test = await harness({ inputRole: "FORMULA", formulaOnly: true });
+    await expect(test.runtime.analyze(test.command)).resolves.toHaveProperty("answer");
+    expect(test.commitL2).toHaveBeenCalledOnce();
+    expect(test.commitL2).toHaveBeenCalledWith(
+      expect.objectContaining({
+        payload: expect.objectContaining({
+          primary_metric_refs: [expect.objectContaining({ node_id: "metric.revenue" })],
+        }),
+      }),
+    );
+    expect(test.execute).toHaveBeenCalledOnce();
+    expect(test.execute).toHaveBeenCalledWith(
+      expect.objectContaining({
+        brief: expect.objectContaining({
+          primary_metric_refs: [expect.objectContaining({ node_id: "metric.revenue" })],
+        }),
+        program: expect.objectContaining({
+          nodes: [
+            expect.objectContaining({
+              metric_refs: [expect.objectContaining({ node_id: "metric.revenue" })],
+              result_contract: expect.objectContaining({
+                tables: [
+                  expect.objectContaining({
+                    columns: [
+                      expect.anything(),
+                      expect.objectContaining({
+                        semantic_role: "FORMULA",
+                        semantic_object_id: "formula.return",
+                      }),
+                    ],
+                  }),
+                ],
+              }),
+            }),
+          ],
+        }),
+      }),
+    );
+    expect(test.providerContext()).not.toContain("SENSITIVE_ROW_VALUE");
+  });
+
+  it("rejects formula-only evidence without published supporting Metric authority before any effect", async () => {
+    const test = await harness({
+      inputRole: "FORMULA",
+      formulaOnly: true,
+      omitSupportingMetric: true,
+    });
+    await expect(test.runtime.analyze(test.command)).rejects.toThrow(
+      "GOVERNED_ANALYSIS_METRIC_AUTHORITY_UNRESOLVED",
+    );
+    expect(test.commitL2).not.toHaveBeenCalled();
+    expect(test.execute).not.toHaveBeenCalled();
+    expect(test.providerContext()).toBe("");
+  });
+
+  it("cannot substitute an unrelated compiled Metric for a formula-only supporting Metric", async () => {
+    const test = await harness({
+      inputRole: "FORMULA",
+      formulaOnly: true,
+      mismatchedContextMetric: true,
+    });
+    await expect(test.runtime.analyze(test.command)).rejects.toThrow(
+      "GOVERNED_ANALYSIS_SEMANTIC_BINDING_INVALID",
+    );
+    expect(test.commitL2).not.toHaveBeenCalled();
+    expect(test.execute).not.toHaveBeenCalled();
+    expect(test.providerContext()).toBe("");
+    expect(test.diagnostics).toHaveBeenCalledWith(
+      expect.objectContaining({ stage: "RESEARCH_BRIEF" }),
+    );
+  });
+
   it("narrows formula-only evidence to its exact published supporting metrics", () => {
     const binding = {
       columns: [

@@ -627,6 +627,12 @@ Correct：`points.map(p => ({ period: p.period_start, value: p.value, delta: p.a
   exact physical binding 的共同证明封存；不得冒充 Metric。AnalysisInputMaterializationReceipt 保留该 role/object_id，
   source_binding_hash 继续绑定完整 QueryEvidence 公式证明；Arrow 数值转换不产生新的语义权威。
   Analysis 方法授权仍只使用真正的 Metric，Report/Chart/Trace 继续沿原 exact QueryEvidence 引用链读取。
+- Analysis 的 `requestedAnalysisMetricIds` 先从已接受结果及发布/检索闭包解析支撑 Metric；同一集合必须贯穿
+  `compilePublishedAnalysisContext`、方法注册、ResearchBrief 与执行器，不能在 Brief 中重新只扫描直接 `METRIC` 列。
+  `FORMULA`-only 结果仍以原角色进入表图，Brief 的 `primary_metric_refs` 只引用已验证的支撑 Metric；不把公式升级为 Metric，
+  不允许空指标 Brief，也不引入未选择的其他 Metric。编译 Context 缺少所需 Metric 时继续失败关闭。
+  回归必须覆盖完整 analyze→Brief commit→executor，而不止单测 Metric ID 解析：纯公式正例、无支撑 Metric、Context 指标换绑、
+  原直接 Metric/混合结果、原 Oracle/来源闭包拒绝；诊断阶段应区分 `METHOD_REGISTRY` 与 `RESEARCH_BRIEF`。
 - 新 QueryEvidence 的 `time_window=null` 不得掩盖 SQL 中的时间选择。compile/执行前与 acceptance 共用 AST/CTE
   时间依赖反向校验；文本日期从已选 Metric 的绑定关系定位，不能因缺少独立时间 Dimension 跳过。
   仅投影/分组/最新行排序不要求窗口；完整规则见 `backend/text2sql-resolved-context.md`。旧证据 hash/历史不改写。

@@ -2327,3 +2327,36 @@ frontend/component-guidelines 增加可执行签名、边界、错误矩阵与�
 原证据位于 `formal-e17-20d7f063-73d1612f/runtime/L2-01-hash-verified-observation.json`；
 同一 Chrome 的 `qa-readiness-fix-validation-1788592043744.json` 为 PASS，但仅 diagnostic，模型/authority writes=0。
 原 terminal receipt `sha256:7b3ab9cd27b36a473350f1daf818fcbd7345c3fca2b3813fbea247eb9ecd60ec` 保留；后继必须重新完整验收。
+
+## 62. 纯公式支撑 Metric 的 Brief 传递闭包
+
+### 1. Root Cause Category
+
+B（跨层契约）、C（前序解析修复未传递到 Brief）和 D（只测 ID 解析，完整 runtime fixture 仍含直接 Metric）。
+初始假设为方法能力/输入形状45%、结果/Brief装配45%、基础设施10%；16行 source Oracle PASS、Stage=0及84/85ms拒绝排除执行资源问题。
+代码证明前序已解析 `metric.conversions`，`buildGenericBrief` 却从 FORMULA-only binding 得到空 `primary_metric_refs`；
+相同装配回归先复现 `GOVERNED_ANALYSIS_CONTRACT_INVALID`，改传已解析集合后通过，置信度高。
+
+### 2. Why Fixes Failed
+
+前序支持纯公式的 ID 解析和 Category planner，但完整 runtime 测试的公式总伴随直接 Metric，掩盖了 Brief 的第二次窄化。
+v9 改为单一转化量消除了混合单位问题，未改变 SQL 合法使用发布 Formula 的权利；不应通过强制模型选 Metric 或放宽 Brief min(1) 修复。
+
+### 3. Prevention Mechanisms
+
+P0：`buildGenericBrief` 显式接收既有 `requestedMetricIds`，只从编译 Context 取精确支撑引用；数量不符继续拒绝。
+原 Formula/source role、Context compiler、Category planner、Oracle、Publisher、预算和题库均不变。
+运行阶段细分 `RESEARCH_BRIEF`，避免把 Brief schema 错误误记为 Method Registry 失败。完整正例验证 commit 与 executor 的
+Metric refs、ResultContract 原 FORMULA 列；无支撑/Context 换绑负例证明无 Brief commit、无 Provider、无 executor。
+
+### 4. Systematic Expansion
+
+直接 Metric、混合 Formula/REQUEST_DERIVED 与纯 Formula 共享同一授权集合传递，不新增另一套推断或 fallback。
+仅传递既有解析结果；请求派生的额外能力、无数据来源授权、单元单位合并和更高预算均不在范围内。
+资源规范保持单 Chrome/单分析会话；本批 Browser/Web/Worker/control 先关闭后做离线回归，不重复模型或旧正式 Run。
+
+### 5. Knowledge Capture
+
+规范同步 `backend/artifact-authority.md` 的公式身份段；仓库无对应 `src/templates/markdown/spec` 分发模板。
+`formal-e17-06628bba-7693bb8e/runtime/L3-02-failure.json` 保存0 Stage，`L3-02-source-oracle.json` 保存16/16源表一致，
+`control-advance-1788594709846.json` 保存不可变 FAILED（version44）。本修复不能把旧批次升级为 PASS。

@@ -1290,3 +1290,15 @@ L2-01 Run `6be6a170-7146-89a9-a5bd-46d803f4abe5` business PASS，但首次 QA �
 - **R-FL-QA-READY-02** 不降低表图、身份、Agent、Build、刷新或错误检查；不重提业务、不调用模型、不改写原失败回执。
 - **AC-FL-QA-READY-01** 真实等待表达式回归先红后绿、同一浏览器只读复验、focused validation 和 scoped commit 后，
   以新 clean build/fresh physical scratch/v9 attempt 从 L1-01 验收15题；本次五题不拼接。
+
+### 22.32 纯公式结果的支撑 Metric 必须传递到 ResearchBrief
+
+`06628bba` 的 v9 attempt `7693bb8e-877f-4f5c-b817-ed806a76de78` 在同一构建下完成前八题 business/QA/Trace PASS。
+L3-02 Run `6ac09e67-3a96-8cc7-bab1-cd38ebae67f5` 的16行转化量与源表完全一致，结果合法标记 `FORMULA/formula.conversions`。
+上游已解析支撑 `metric.conversions`，但 Brief 重扫直接 METRIC 列得到空引用，在原 schema 的 min(1) 处失败。原 attempt 已封存 FAILED，
+Analysis Stage/Sandbox 执行为0，live authority writes=0；不能把 SQL 正确计为本题 PASS。
+
+- **R-FL-FORMULA-BRIEF-01** 支撑 Metric 集合由既有发布/检索/物理依赖解析一次，Context 与 Brief 必须复用该集合；不得重标结果角色。
+- **R-FL-FORMULA-BRIEF-02** 原 Brief 非空指标、来源、Oracle、预算和发布边界不变；缺失支撑或 Context 换绑在副作用前失败关闭。
+- **AC-FL-FORMULA-BRIEF-01** 完整装配回归先红后绿，覆盖纯公式、无支撑、Context 错绑及原混合结果；focused 验证与 scoped commit 后
+  用 fresh build/physical scratch/v9 attempt 从 L1-01 验收全部15题，前八题不拼接。
