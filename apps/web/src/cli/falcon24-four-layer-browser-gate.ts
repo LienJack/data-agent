@@ -335,20 +335,21 @@ async function assertCurrentConsumption(
   }
 }
 
-async function observeQaPage(input: {
-  readonly session: string;
+export function falcon24QaObservationScript(input: {
   readonly run_id: string;
   readonly conversation_run_ids: readonly string[];
-}) {
+  readonly table_required: boolean;
+  readonly chart_required: boolean;
+}): string {
   const selector = exactRunSelector(input.run_id);
-  return evaluateFalcon24Browser(
-    input.session,
-    `(async () => {
+  return `(async () => {
       const runIds=${JSON.stringify(input.conversation_run_ids)};
+      const tableRequired=${JSON.stringify(input.table_required)};
+      const chartRequired=${JSON.stringify(input.chart_required)};
+      const deadline=performance.now()+25000;
+      const observe=()=>{
       const entry=document.querySelector(${JSON.stringify(selector)});
       const run=document.getElementById(${JSON.stringify(`chat-run-${input.run_id}`)});
-      const response=await fetch('/api/ready',{cache:'no-store'});
-      const build=await response.json();
       const visible=(element)=>Boolean(element&&element.getBoundingClientRect().width>0&&element.getBoundingClientRect().height>0);
       const answer=run?.querySelector('.agent-answer');
       const table=run?.querySelector(${JSON.stringify(FALCON24_FOUR_LAYER_TABLE_SELECTOR)});
@@ -366,10 +367,32 @@ async function observeQaPage(input: {
         })),
         horizontal_overflow:document.documentElement.scrollWidth>document.documentElement.clientWidth,
         conversation_run_counts:runIds.map((run_id)=>({run_id,count:document.querySelectorAll('[data-testid="qa-result-trace-entry"][data-run-id="'+run_id+'"]').length})),
-        error_banners:[...document.querySelectorAll('[role="alert"]')].map((element)=>element.textContent?.trim()||''),
-        web_build:{build_id:build.build_id,generation_id:build.generation_id}
+        error_banners:[...document.querySelectorAll('[role="alert"]')].map((element)=>element.textContent?.trim()||'')
       };
-    })()`,
+      };
+      const ready=(value)=>value.run_id===${JSON.stringify(input.run_id)}&&value.terminal_status==='COMPLETED'
+        &&value.answer_visible&&(!tableRequired||value.table_visible)&&(!chartRequired||value.chart_rendered)&&!value.loading_visible;
+      let observation=observe();
+      while(!ready(observation)&&observation.error_banners.length===0&&performance.now()<deadline){
+        await new Promise(resolve=>requestAnimationFrame(resolve));
+        observation=observe();
+      }
+      const response=await fetch('/api/ready',{cache:'no-store'});
+      const build=await response.json();
+      return {...observation,web_build:{build_id:build.build_id,generation_id:build.generation_id}};
+    })()`;
+}
+
+async function observeQaPage(input: {
+  readonly session: string;
+  readonly run_id: string;
+  readonly conversation_run_ids: readonly string[];
+  readonly table_required: boolean;
+  readonly chart_required: boolean;
+}) {
+  return evaluateFalcon24Browser(
+    input.session,
+    falcon24QaObservationScript(input),
     fourLayerQaObservationSchema,
   );
 }
@@ -451,6 +474,8 @@ export async function observeFalcon24FourLayerQaUi(input: {
     session: input.session,
     run_id: input.business.run_id,
     conversation_run_ids: runIds,
+    table_required: input.turn.rubric.table_required,
+    chart_required: input.turn.rubric.chart_required,
   });
   await executeFalcon24AgentBrowser(input.session, ["reload"]);
   await executeFalcon24AgentBrowser(input.session, [
@@ -461,6 +486,8 @@ export async function observeFalcon24FourLayerQaUi(input: {
     session: input.session,
     run_id: input.business.run_id,
     conversation_run_ids: runIds,
+    table_required: input.turn.rubric.table_required,
+    chart_required: input.turn.rubric.chart_required,
   });
   const screenshotPath = `${input.screenshot_path}.1440.qa.png`;
   await executeFalcon24AgentBrowser(input.session, ["screenshot", "--full", screenshotPath]);

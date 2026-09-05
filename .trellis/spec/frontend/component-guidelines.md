@@ -97,3 +97,39 @@ Data Agent 前端组件只格式化已经在边界解析完成的领域投影。
 - 不要因空 children 显示“无工具”的 Agent placeholder；没有公开 Agent event 时不得出现 Agent DOM/target。
 - 不要把 HTTP 409 一律当失败 Run。经过 schema/hash 校验的 adaptive `DEFERRED` receipt 显示 BLOCKED、
   public reason code 和 required capabilities，且不建立 SSE 或假 Subagent。
+
+## QA Artifact 就绪观察
+
+### 1. Scope / Trigger
+
+终态答案入口与异步 Artifact 表格/图表不是同一个就绪信号。首次打开和刷新后都必须按当前题目的 rubric 等待。
+
+### 2. Signatures
+
+`falcon24QaObservationScript({ run_id, conversation_run_ids, table_required, chart_required }): string`
+生成只读浏览器表达式；`observeFalcon24FourLayerQaUi` 的两次观察共用它，不新增提交、模型调用或服务。
+
+### 3. Contracts
+
+只在 `chat-run-${run_id}` 子树读取答案、表、图与 loading。按动画帧观察最多25秒；必需表须有尺寸，必需图须有尺寸且
+`data-chart-render-state=READY`，答案有文本且无 active loader。只在观察结束读取一次 `/api/ready`，不逐帧请求服务。
+
+### 4. Validation & Error Matrix
+
+短暂缺失 → 等待；持续缺失/LOADING → 保留最后真实观察，原 QA 判定返回 `FALCON24_QA_UI_OBSERVATION_FAILED`。
+已观察到 alert → 不等待其消失。Run、Agent 标签/角色/完成证据、Build、重复提交、横向溢出的原校验保持不变。
+
+### 5. Good / Base / Bad
+
+Good：终态入口先出现，随后当前 Run 的必需表就绪。Base：纯定义题无需表图，立即观察。
+Bad：别的 Run 已有表、当前图仅挂载但未 READY、25秒后仍加载；这些不能满足当前题的要求。
+
+### 6. Tests Required
+
+VM 执行真实表达式覆盖延迟表/图、零尺寸、缺失 Run/答案、loader、持续缺失与 alert；门禁测试验证首次/刷新均携带 rubric，
+并证明错误身份、Build、重复 Run、标签、溢出仍失败。真实浏览器只读复验不改写已封存 attempt，不能计入正式 PASS。
+
+### 7. Wrong vs Correct
+
+Wrong：`wait exact terminal entry → immediate table assertion`。Correct：`terminal entry → bounded current-Run Artifact readiness → unchanged QA validator`。
+禁止固定 sleep、跨 Run 找表、取消 table/chart requirement 或重提业务请求来规避加载时序。

@@ -2296,3 +2296,34 @@ VM 回归执行实际等待表达式，覆盖移动、替换、遮挡、缺失�
 同一原 Chrome 对已封存 L1-05 的完整 Trace 只读验证通过，回执标记 `diagnostic_only=true/authority_writes=0`，不能计正式 PASS。
 失败回执 `sha256:2769bce7cf867335a36b09ef8d13f772a63874c0601e1ef875bd782a66593ebc` 保留于原 attempt；
 新提交必须重新冻结、build、fresh scratch 和15题。规范同步在 frontend/component-guidelines；仓库无对应 Trellis 分发模板。
+
+## 61. QA 在终态后等待当前 Run 的异步 Artifact
+
+### 1. Root Cause Category
+
+E（把模型终态入口当作异步 Artifact 就绪）与 D（mock 返回静态 DOM，未执行加载时序）。L2-01 business PASS、12个月 source Oracle
+通过。原 QA snapshot hash `sha256:1d0eb3028e35b76e15ac4c69f747d6de9b96d8f328283d9a7f2246f84ed7499e` 与只读同 Run
+观察组合仅有一个匹配：initial table=false，refreshed table=true；其余必需条件通过。原失败不因诊断被改写。
+
+### 2. Why Fixes Failed
+
+§60 解决真实指针点击时的布局变化，本批 L1-05 Trace 已通过；它不涵盖 QA 初次读取。等待终态入口只保证 Run 完成，
+不能保证独立加载的 Artifact 数据与动态 client 图表完成。未使用固定 sleep 或反复重跑业务尝试掩盖该问题。
+
+### 3. Prevention Mechanisms
+
+P0：首次与刷新共用 `falcon24QaObservationScript`，在 exact Run 子树按原 table/chart rubric 逐帧观察最多25秒；
+持续缺失返回真实末次状态，alert 不等待消失，原 `qaObservationPasses` 完整保留。服务 readiness 只读取一次，无额外模型或 SQL。
+VM 回归先出现9个预期失败，修复后覆盖所有延迟/持续缺失分支；调用层断言两次观察均传入真实 rubric。
+
+### 4. Systematic Expansion
+
+表、图、答案、loader 均属于独立就绪维度，旧 Run 的表不能为当前 Run 兜底。可选图不能强制阻塞纯定义/查询题。
+Trace 的点击稳定等待与 QA 的内容就绪等待职责不同，不互相替代，也不扩大业务执行或 Provider 预算。
+
+### 5. Knowledge Capture
+
+frontend/component-guidelines 增加可执行签名、边界、错误矩阵与回归要求；仓库无 `src/templates/markdown/spec` 分发模板，不创建第二套。
+原证据位于 `formal-e17-20d7f063-73d1612f/runtime/L2-01-hash-verified-observation.json`；
+同一 Chrome 的 `qa-readiness-fix-validation-1788592043744.json` 为 PASS，但仅 diagnostic，模型/authority writes=0。
+原 terminal receipt `sha256:7b3ab9cd27b36a473350f1daf818fcbd7345c3fca2b3813fbea247eb9ecd60ec` 保留；后继必须重新完整验收。

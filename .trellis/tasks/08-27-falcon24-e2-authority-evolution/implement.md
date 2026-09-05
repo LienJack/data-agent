@@ -2564,3 +2564,15 @@ SQL 模型输入，剩余 executable/schema 仍受原64 KB预算约束并超限�
 - [x] Web focused 4文件/51项、typecheck、build、owned Biome、Trellis/diff 通过；本小任务以 scoped commit 收口。
   Chrome/Helper、Web/Worker、OpenSandbox控制面、SSH转发均已退出，scratch 停机且数据卷保留；未触碰用户 Chrome 或普通 NAS 服务。
 - [ ] 新 clean build/fresh scratch/v9 attempt 自 L1-01 验收全部15题，再执行 live E17、F7 和最终资源清理；原前四题不拼接。
+
+### v9 QA Artifact 就绪时序修复
+
+- [x] `20d7f063` clean Node24 force build/full unit、fresh scratch 和 E17 activation 已完成；`73d1612f` 的 L1 五题完整 PASS，
+  L2-01 business PASS，首次 QA 缺少异步表格导致原控制器封存 FAILED，live authority writes=0。
+- [x] 同 Run 只读观察与原 snapshot hash 唯一匹配，确认 initial table=false/refreshed table=true；原回执不可变。
+- [x] 表达式回归先9项 RED；修复在首次/刷新按原 rubric 有界等待当前 Run 的必需 Artifact，保留所有原校验。
+  同一 Chrome 只读 QA 复验 PASS，模型/authority writes=0，不计正式门禁成绩。
+- [x] Web focused 5文件/66项与 typecheck 通过；规范同步 frontend/component-guidelines，资源复用边界保持不变。
+- [x] Web build、owned Biome、Trellis/diff 通过；Chrome/Helper、Web/Worker、SSH转发、控制面及临时 Sandbox 均已退出，
+  scratch 停机且数据卷保留，普通 NAS 服务与用户 Chrome 未触碰。本小任务以 scoped commit 收口。
+- [ ] 新 clean build/fresh physical scratch/v9 attempt 从 L1-01 验收全部15题，再进入 live E17、F7 与最终清理；本次五题不拼接。

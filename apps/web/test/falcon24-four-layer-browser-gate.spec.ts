@@ -484,6 +484,78 @@ describe("Falcon24 four-layer browser gate", () => {
         (args as readonly string[]).includes("reload"),
       ),
     ).toHaveLength(2);
+    const observations = execFileAsyncMock.mock.calls
+      .map(([, args]) => decodedScript(args as readonly string[]))
+      .filter((script) => script.includes("conversation_run_counts"));
+    expect(observations).toHaveLength(4);
+    for (const [index, script] of observations.entries()) {
+      expect(script).toContain("const tableRequired=false;");
+      expect(script).toContain(`const chartRequired=${index >= 2};`);
+      expect(script).toContain("performance.now()+25000");
+    }
+  });
+
+  it.each([
+    "PASS",
+    "TABLE_MISSING",
+    "WRONG_RUN",
+    "WRONG_BUILD",
+    "DUPLICATE_RUN",
+    "ERROR_BANNER",
+    "OVERFLOW",
+  ] as const)("retains QA identity and visibility gates after readiness: %s", async (state) => {
+    const { turn, business } = await fixture();
+    const observation = {
+      run_id: state === "WRONG_RUN" ? previousRunId : runId,
+      terminal_status: "COMPLETED",
+      answer_visible: true,
+      table_visible: state !== "TABLE_MISSING",
+      chart_rendered: false,
+      loading_visible: false,
+      agent_activity: [
+        {
+          profile_id: "data-agent-orchestrator",
+          role: "ROOT",
+          label: "主代理 · Root",
+          status: "COMPLETED",
+        },
+        {
+          profile_id: "semantic-management-agent",
+          role: "SPECIALIST",
+          label: "子代理 · Semantic",
+          status: "COMPLETED",
+        },
+      ],
+      horizontal_overflow: state === "OVERFLOW",
+      conversation_run_counts: [{ run_id: runId, count: state === "DUPLICATE_RUN" ? 2 : 1 }],
+      error_banners: state === "ERROR_BANNER" ? ["Artifact unavailable"] : [],
+      web_build: state === "WRONG_BUILD" ? { ...webBuild, build_id: hash("c") } : webBuild,
+    };
+    execFileAsyncMock.mockImplementation(async (_file: string, args: readonly string[]) => {
+      const script = decodedScript(args);
+      if (script.includes("conversation_run_counts")) return commandResult({ result: observation });
+      if (script.includes("sessionStorage.getItem"))
+        return commandResult({ result: consumed(business) });
+      return commandResult();
+    });
+    const result = await observeFalcon24FourLayerQaUi({
+      session: "falcon24-e11-readiness",
+      web_base_url: "https://data-agent.example",
+      screenshot_path: "/tmp/falcon24-readiness",
+      workspace_id: workspaceId,
+      turn: { ...turn, rubric: { ...turn.rubric, table_required: true } },
+      business,
+      expected_web_build: webBuild,
+      conversation_run_ids: [runId],
+      viewport: { width: 1440, height: 900 },
+      now: () => new Date(now),
+    });
+    expect(result.status).toBe(state === "PASS" ? "PASS" : "FAIL");
+    const observations = execFileAsyncMock.mock.calls
+      .map(([, args]) => decodedScript(args as readonly string[]))
+      .filter((script) => script.includes("conversation_run_counts"));
+    expect(observations).toHaveLength(2);
+    expect(observations.every((script) => script.includes("const tableRequired=true;"))).toBe(true);
   });
 
   it.each([

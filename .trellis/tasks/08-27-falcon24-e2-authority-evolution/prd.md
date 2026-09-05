@@ -1280,3 +1280,13 @@ Run `3402eaaf-7b68-834c-8366-74111c262e75` 在 Analysis 发布前被独立 Oracl
   模型仍提交并实际执行 Cell；Host 不执行参考或注入结果，独立 Oracle、Publisher、stage、预算和 v9 题库不变。
 - **AC-FL-MONTHLY-NULL-01** 回归先红后绿；原 Agent 镜像真实 Arrow/pandas 的 NULL/NaN/NA、0、端点/缺口、别名/列序/时区逐字段校验，
   原输入不变，旧失败输出继续拒绝。focused 验证和 scoped commit 后以 fresh build/scratch/v9 attempt 自 L1-01 重跑，不拼接前七题。
+
+### 22.31 终态入口不能代替 QA Artifact 就绪
+
+`20d7f063` 的 v9 attempt `73d1612f-2736-41c1-b4bb-d8630b10732a` 完成 L1 五题 business/QA/Trace。
+L2-01 Run `6be6a170-7146-89a9-a5bd-46d803f4abe5` business PASS，但首次 QA 表格尚未渲染，刷新后出现，attempt 已封存 FAILED。
+
+- **R-FL-QA-READY-01** 首次与刷新后均须按原 rubric 有界等待当前 Run 的答案、必需表/图及 loader 就绪，不能只等待终态入口。
+- **R-FL-QA-READY-02** 不降低表图、身份、Agent、Build、刷新或错误检查；不重提业务、不调用模型、不改写原失败回执。
+- **AC-FL-QA-READY-01** 真实等待表达式回归先红后绿、同一浏览器只读复验、focused validation 和 scoped commit 后，
+  以新 clean build/fresh physical scratch/v9 attempt 从 L1-01 验收15题；本次五题不拼接。
