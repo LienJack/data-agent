@@ -2492,3 +2492,13 @@ SQL 模型输入，剩余 executable/schema 仍受原64 KB预算约束并超限�
 - [x] 将浏览器复用、测试容器数量限制、串行执行与失败/暂停后的资源复查写入 AGENTS.md 和本地运行规范 §8。
 - [x] 恢复前盘点：仅一个正常用户 Chrome，无测试浏览器；NAS 四个已有非 Falcon 服务健康/运行，无 Falcon 测试容器，历史数据卷保留。
 - [ ] 后续每批只使用一个浏览器会话、一个活动 scratch；源库/控制面/Sandbox 按需恢复并记录用途，结束后精确回收并复查数量及内存。
+
+### v9 Worker 接管恢复修复
+
+- [x] `e138c1e1` clean build、full unit、physical clone、10816～10824、dataset proof、认证及 scratch E17 activation 已通过。
+- [x] v9 attempt `966091b9-6d20-46d9-9373-ace1bb9449d8` 前两题 PASS；L1-03 在 Worker 接管时因原快照租约比较失败。
+  已用 controller 封存 FAILED，证据位于 `formal-e17-e138c1e1-966091b9`；失败前两题不复用。
+- [x] 三种新租约恢复先红：terminal、accepted input、tool checkpoint 全部复现 `ROOT_AGENT_LOOP_SNAPSHOT_INVALID`；同租约及非法来源测试通过。
+- [x] Root 恢复按原 provenance 与当前租约的单调 fence 关系验证；新 checkpoint 保持当前租约 guard/CAS，不增加模型或工具调用。
+- [x] focused recovery/Runner/Context provenance 88/88、Worker typecheck/build、Biome、Trellis 与 diff 检查通过；由本次 scoped commit 收口。
+- [ ] 新 clean build/full unit/attestation、fresh physical scratch、fresh v9 attempt 自 L1-01 完整重跑，随后 F7 和最终浏览器验收。

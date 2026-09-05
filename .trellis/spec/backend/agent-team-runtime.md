@@ -262,6 +262,10 @@ Planner 必须按选中方法顺序完整复制 `required_operator_obligations`�
 
 - Team task/handoff/completion/verifier/acceptance remain durable and idempotent。
 - Recovery reuses the frozen Catalog, Semantic Context, schema snapshot and selected Profile; it never reroutes through a new catalog or republishes an existing accepted Artifact。
+- Root checkpoint 的 `attempt_id/worker_fence` 记录原写入租约。恢复同一 Run 的已验证 snapshot 时，同 fence 必须同 attempt；
+  新租约仅可接管更低 fence、不同 attempt 的快照。未来 fence、同 fence 异 attempt、旧 fence 复用当前 attempt 仍失败关闭。
+  新写入始终使用当前租约并通过现有 lease guard/CAS；snapshot hash、workflow revision、Run/Scope、版本、预算和 Artifact 引用校验不变。
+  测试必须同时覆盖同租约及新租约的 accepted input、tool observation、terminal checkpoint，证明不重复已提交副作用。
 
 ## 9. Required Tests
 

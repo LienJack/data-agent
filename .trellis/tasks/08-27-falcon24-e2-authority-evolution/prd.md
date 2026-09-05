@@ -1255,3 +1255,16 @@ E17 activation 下完成 L1 五题、L2 两题和 L3-01 的 business/QA/Trace PA
   ledger/checksum 与函数 hash 上增加 v9 分支；历史表、九版本 replay、owner、SECURITY DEFINER 与 ACL 保持不变。
 - **AC-FL-MANIFEST-V9-01** focused 回归、真实 PostgreSQL v1～v9 replay、scoped commit 后，必须从新 commit 的 clean build、fresh
   physical scratch、fresh E17 activation 和 fresh v9 attempt 自 L1-01 重跑；v8 的八题 PASS 不得拼接。
+
+### 22.29 Worker 新租约必须能恢复同一 Run 的历史 checkpoint
+
+v9 attempt `966091b9-6d20-46d9-9373-ace1bb9449d8` 在 `e138c1e1` 完成 L1-01、L1-02 的 business/QA/Trace。
+L1-03 Run `96323cb9-3332-81eb-ad71-98fc62fe3199` 已接受 Semantic 产物，随后本地 Worker 中断。
+新 Worker 在 fence=2 接管时因快照仍记录原 attempt/fence=1 而报 `ROOT_AGENT_LOOP_SNAPSHOT_INVALID`；attempt 已不可变封存为 FAILED。
+
+- **R-FL-LEASE-RECOVERY-01** 合法的同 Run 持久化 checkpoint 必须可由后继租约恢复；原写入租约与当前执行租约不能强制相等。
+  同 fence 异 attempt、未来 fence、旧 fence 复用当前 attempt、跨 Run/Scope、非法版本/hash/引用继续失败关闭。
+- **R-FL-LEASE-RECOVERY-02** 恢复必须保留已接受输入、工具结果、Root 回合及终态，不重复 Provider、SQL、Sandbox 或 Artifact 副作用；
+  后续 checkpoint 与写入继续使用当前租约的权限和 fence。未知副作用及已封存正式失败不因本修复获得重试权限。
+- **AC-FL-LEASE-RECOVERY-01** 必须先精确复现新租约下 accepted-input/tool/terminal 三种恢复失败，再用同租约/新租约与非法来源矩阵验证；
+  focused 验证、scoped commit 后从新 clean build、fresh physical scratch 和 fresh v9 attempt 自 L1-01 重跑。

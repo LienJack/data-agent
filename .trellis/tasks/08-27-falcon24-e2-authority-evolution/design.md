@@ -2252,3 +2252,16 @@ v8 已证明 Semantic→Text2SQL 交接和六列事实表均可执行；真正�
 v9 将 L3-02 收敛为单一度量 `metric.conversions`，同时保留两个分类维度、三步原生 Tool Call、完整 QueryEvidence、唯一 Analysis
 Stage、表格/图表同源和最终 QA/Trace。它降低的是题面度量组合复杂度，不是 Agent 协作、执行、证据或业务正确性标准。v1～v8 按各自
 blueprint/hash 继续验证，10824 只扩展 begin RPC 的版本/hash allowlist，并用逐表 digest 与 RPC 安全边界守卫证明零历史漂移。
+
+## 58. Root snapshot 区分原写入租约与当前执行租约
+
+Queue 每次接管生成新 `attempt_id` 并递增 `worker_fence`；Event Store 在当前 Run/Scope 下验证并加载已提交 snapshot。
+Root 原恢复校验将 snapshot provenance 与当前租约逐项相等比较，导致通用 Runner 支持的 crash recovery 在真实 Root executor 中失败。
+既有 Root 测试只使用同一租约，未覆盖跨层组合，归类为 B（跨层契约）与 D（测试缺口）。
+
+恢复接受两个来源：同 fence 且同 attempt，或更低 fence 且不同 attempt。更高 fence、同 fence 不同 attempt、同 attempt 跨 fence
+均拒绝。其余 Run、Workflow、snapshot version、Root budget、accepted Artifact Scope 校验保持原样；Event Store hash 验证不绕过。
+恢复后依旧通过当前租约 guard/CAS 提交新快照；原快照不重写、不改 hash，不把其 provenance 提升为当前写入权限。
+
+测试用新租约重新签发 Effective Config Context Receipt，覆盖已接受输入、已完成 tool turn 和 terminal 三种恢复；验证后续 snapshot
+使用新 attempt/fence，Root 从下一 turn 继续且不重复工具。已封存 `966091b9` 保持 FAILED；新构建与 fresh v9 attempt 独立验收。

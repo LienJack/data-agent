@@ -20,7 +20,22 @@ import {
 const id = (suffix: number) => `88000000-0000-4000-8000-${String(suffix).padStart(12, "0")}`;
 const hash = (character: string) => `sha256:${character.repeat(64)}`;
 
-async function fixture() {
+const recoveryLeases = [
+  { name: "same lease", overrides: {} },
+  {
+    name: "new lease",
+    overrides: {
+      attempt_id: id(18),
+      attempt_no: 2,
+      delivery_attempt_no: 2,
+      worker_id: "worker-root-loop-recovered",
+      lease_token: 2,
+      worker_fence: 2,
+    },
+  },
+] as const satisfies ReadonlyArray<{ name: string; overrides: Partial<RunWorkLease> }>;
+
+async function fixture(leaseOverrides: Partial<RunWorkLease> = {}) {
   const scope = { app_id: id(1), tenant_id: id(2), environment: "test" } as const;
   const runId = id(3);
   const principalId = id(4);
@@ -63,6 +78,7 @@ async function fixture() {
       catalog_snapshot: catalog,
       visible_message_refs: [id(9)],
     },
+    ...leaseOverrides,
   };
   const loaded = await createEffectiveConfigFixtureLoader(effectiveConfig)(lease);
   if (!loaded.ok) throw new Error("fixture load failed");
@@ -1102,8 +1118,199 @@ describe("bounded Root tool loop", () => {
     expect(execute).toHaveBeenCalledOnce();
   });
 
-  it("restores a completed checkpoint without repeating Root or Subagent effects", async () => {
-    const input = await fixture();
+  it.each(recoveryLeases)(
+    "restores a completed checkpoint on $name without repeating effects",
+    async ({ overrides }) => {
+      const input = await fixture();
+      const decide = vi.fn(async () => ({ ok: true as const, value: finalDecision(input) }));
+      const execute = vi.fn(async () => ({
+        status: "ACCEPTED" as const,
+        reason_code: "ROOT_ANSWER_VERIFIED",
+      }));
+      const runner = createDataAgentTeamRunner({
+        ...input.dependencies,
+        root: { decide },
+        root_runtime: { execute },
+      });
+      const execution = {
+        lease: input.lease,
+        restored_snapshot: null,
+        context: input.createContext(),
+        signal: new AbortController().signal,
+        deadline_at: input.lease.expires_at,
+      };
+      await expect(runner.execute(execution)).resolves.toEqual({ kind: "COMPLETED" });
+      const terminal = input.snapshots.at(-1);
+      if (!terminal) throw new Error("terminal checkpoint missing");
+
+      decide.mockClear();
+      execute.mockClear();
+      const resumed = await fixture(overrides);
+      await expect(
+        runner.execute({
+          ...execution,
+          lease: resumed.lease,
+          restored_snapshot: terminal,
+          context: resumed.createContext(),
+        }),
+      ).resolves.toEqual({ kind: "COMPLETED" });
+      expect(decide).not.toHaveBeenCalled();
+      expect(execute).not.toHaveBeenCalled();
+    },
+  );
+
+  it.each(recoveryLeases)(
+    "restores an accepted input checkpoint on $name without loading or committing it again",
+    async ({ overrides }) => {
+      const input = await fixture();
+      const seeded = acceptedInput(input);
+      const load = vi.fn(async () => ({ ok: true as const, value: [seeded] }));
+      const firstDecide = vi.fn(async () => ({
+        ok: false as const,
+        error: { code: "ROOT_PROVIDER_CRASH", message: "crash", retryable: false },
+      }));
+      const firstRunner = createDataAgentTeamRunner({
+        ...input.dependencies,
+        accepted_inputs: { load },
+        root: { decide: firstDecide },
+        root_runtime: { execute: vi.fn() },
+      });
+      const execution = {
+        lease: input.lease,
+        restored_snapshot: null,
+        context: input.createContext(),
+        signal: new AbortController().signal,
+        deadline_at: input.lease.expires_at,
+      };
+
+      await expect(firstRunner.execute(execution)).resolves.toEqual({
+        kind: "FAILED",
+        error_code: "ROOT_PROVIDER_CRASH",
+      });
+      const acceptedInputCheckpoint = input.snapshots[0];
+      if (!acceptedInputCheckpoint) throw new Error("accepted input checkpoint missing");
+      expect(acceptedInputCheckpoint.mastra_snapshot).toMatchObject({
+        turn_index: 0,
+        checkpoint_version: 1,
+        accepted_input_artifacts: [seeded],
+      });
+
+      const resumedDecide = vi.fn(async () => ({
+        ok: true as const,
+        value: finalDecision(input),
+      }));
+      const resumedExecute = vi.fn(async () => ({
+        status: "ACCEPTED" as const,
+        reason_code: "ROOT_ANSWER_VERIFIED",
+      }));
+      const resumedRunner = createDataAgentTeamRunner({
+        ...input.dependencies,
+        accepted_inputs: { load },
+        root: { decide: resumedDecide },
+        root_runtime: { execute: resumedExecute },
+      });
+      const resumed = await fixture(overrides);
+      await expect(
+        resumedRunner.execute({
+          ...execution,
+          lease: resumed.lease,
+          restored_snapshot: acceptedInputCheckpoint,
+          context: resumed.createContext(),
+        }),
+      ).resolves.toEqual({ kind: "COMPLETED" });
+      expect(load).toHaveBeenCalledOnce();
+      expect(resumedDecide).toHaveBeenCalledWith(
+        expect.anything(),
+        expect.objectContaining({ accepted_input_artifacts: [seeded] }),
+      );
+      expect(resumedExecute).toHaveBeenCalledWith(
+        expect.objectContaining({ accepted_artifact_refs: [seeded.artifact_ref] }),
+      );
+    },
+  );
+
+  it.each(recoveryLeases)(
+    "resumes after a tool checkpoint on $name without repeating the completed tool turn",
+    async ({ overrides }) => {
+      const input = await fixture();
+      const firstDecide = vi
+        .fn()
+        .mockResolvedValueOnce({ ok: true, value: toolDecision(input) })
+        .mockResolvedValueOnce({
+          ok: false,
+          error: { code: "ROOT_PROVIDER_CRASH", message: "crash", retryable: false },
+        });
+      const firstExecute = vi.fn(async () => ({
+        status: "CONTINUE" as const,
+        reason_code: "ROOT_TOOL_OBSERVATIONS_READY",
+        observations: [observation(input)],
+        verifier_feedback: null,
+      }));
+      const firstRunner = createDataAgentTeamRunner({
+        ...input.dependencies,
+        root: { decide: firstDecide },
+        root_runtime: { execute: firstExecute },
+      });
+      const execution = {
+        lease: input.lease,
+        restored_snapshot: null,
+        context: input.createContext(),
+        signal: new AbortController().signal,
+        deadline_at: input.lease.expires_at,
+      };
+      await expect(firstRunner.execute(execution)).resolves.toEqual({
+        kind: "FAILED",
+        error_code: "ROOT_PROVIDER_CRASH",
+      });
+      const active = input.snapshots[0];
+      if (!active) throw new Error("active tool checkpoint missing");
+      expect(firstExecute).toHaveBeenCalledOnce();
+
+      const resumedDecide = vi.fn(async () => ({
+        ok: true as const,
+        value: finalDecision(input),
+      }));
+      const resumedExecute = vi.fn(async () => ({
+        status: "ACCEPTED" as const,
+        reason_code: "ROOT_ANSWER_VERIFIED",
+      }));
+      const resumedRunner = createDataAgentTeamRunner({
+        ...input.dependencies,
+        root: { decide: resumedDecide },
+        root_runtime: { execute: resumedExecute },
+      });
+      const resumed = await fixture(overrides);
+      await expect(
+        resumedRunner.execute({
+          ...execution,
+          lease: resumed.lease,
+          restored_snapshot: active,
+          context: resumed.createContext(),
+        }),
+      ).resolves.toEqual({ kind: "COMPLETED" });
+      const resumedCalls = resumedDecide.mock.calls as unknown as Array<
+        [unknown, { turn_index: number; tool_observations: RootToolObservation[] }]
+      >;
+      expect(resumedCalls[0]?.[1]).toMatchObject({
+        turn_index: 1,
+        tool_observations: [{ tool_call_id: "semantic-1" }],
+      });
+      expect(resumedExecute).toHaveBeenCalledOnce();
+      expect(resumed.snapshots.at(-1)).toMatchObject({
+        attempt_id: resumed.lease.attempt_id,
+        worker_fence: resumed.lease.worker_fence,
+        snapshot_version: active.snapshot_version + 1,
+      });
+    },
+  );
+
+  it.each([
+    { name: "same fence with a different attempt", origin: { attempt_id: id(19) } },
+    { name: "future fence", origin: { attempt_id: id(19), worker_fence: 3 } },
+    { name: "older fence reusing the current attempt", origin: { worker_fence: 1 } },
+    { name: "different Run", origin: { run_id: id(19) } },
+  ])("rejects a checkpoint from $name before any effects", async ({ origin }) => {
+    const input = await fixture(recoveryLeases[1].overrides);
     const decide = vi.fn(async () => ({ ok: true as const, value: finalDecision(input) }));
     const execute = vi.fn(async () => ({
       status: "ACCEPTED" as const,
@@ -1124,143 +1331,18 @@ describe("bounded Root tool loop", () => {
     await expect(runner.execute(execution)).resolves.toEqual({ kind: "COMPLETED" });
     const terminal = input.snapshots.at(-1);
     if (!terminal) throw new Error("terminal checkpoint missing");
-
     decide.mockClear();
     execute.mockClear();
+    const checkpointCount = input.snapshots.length;
     await expect(
-      runner.execute({ ...execution, restored_snapshot: terminal, context: input.createContext() }),
-    ).resolves.toEqual({ kind: "COMPLETED" });
+      runner.execute({
+        ...execution,
+        restored_snapshot: { ...terminal, ...origin },
+        context: input.createContext(),
+      }),
+    ).resolves.toEqual({ kind: "FAILED", error_code: "ROOT_AGENT_LOOP_SNAPSHOT_INVALID" });
     expect(decide).not.toHaveBeenCalled();
     expect(execute).not.toHaveBeenCalled();
-  });
-
-  it("restores an accepted input checkpoint without loading or committing the input again", async () => {
-    const input = await fixture();
-    const seeded = acceptedInput(input);
-    const load = vi.fn(async () => ({ ok: true as const, value: [seeded] }));
-    const firstDecide = vi.fn(async () => ({
-      ok: false as const,
-      error: { code: "ROOT_PROVIDER_CRASH", message: "crash", retryable: false },
-    }));
-    const firstRunner = createDataAgentTeamRunner({
-      ...input.dependencies,
-      accepted_inputs: { load },
-      root: { decide: firstDecide },
-      root_runtime: { execute: vi.fn() },
-    });
-    const execution = {
-      lease: input.lease,
-      restored_snapshot: null,
-      context: input.createContext(),
-      signal: new AbortController().signal,
-      deadline_at: input.lease.expires_at,
-    };
-
-    await expect(firstRunner.execute(execution)).resolves.toEqual({
-      kind: "FAILED",
-      error_code: "ROOT_PROVIDER_CRASH",
-    });
-    const acceptedInputCheckpoint = input.snapshots[0];
-    if (!acceptedInputCheckpoint) throw new Error("accepted input checkpoint missing");
-    expect(acceptedInputCheckpoint.mastra_snapshot).toMatchObject({
-      turn_index: 0,
-      checkpoint_version: 1,
-      accepted_input_artifacts: [seeded],
-    });
-
-    const resumedDecide = vi.fn(async () => ({
-      ok: true as const,
-      value: finalDecision(input),
-    }));
-    const resumedExecute = vi.fn(async () => ({
-      status: "ACCEPTED" as const,
-      reason_code: "ROOT_ANSWER_VERIFIED",
-    }));
-    const resumedRunner = createDataAgentTeamRunner({
-      ...input.dependencies,
-      accepted_inputs: { load },
-      root: { decide: resumedDecide },
-      root_runtime: { execute: resumedExecute },
-    });
-    await expect(
-      resumedRunner.execute({
-        ...execution,
-        restored_snapshot: acceptedInputCheckpoint,
-        context: input.createContext(),
-      }),
-    ).resolves.toEqual({ kind: "COMPLETED" });
-    expect(load).toHaveBeenCalledOnce();
-    expect(resumedDecide).toHaveBeenCalledWith(
-      expect.anything(),
-      expect.objectContaining({ accepted_input_artifacts: [seeded] }),
-    );
-    expect(resumedExecute).toHaveBeenCalledWith(
-      expect.objectContaining({ accepted_artifact_refs: [seeded.artifact_ref] }),
-    );
-  });
-
-  it("resumes after a tool checkpoint without repeating the completed tool turn", async () => {
-    const input = await fixture();
-    const firstDecide = vi
-      .fn()
-      .mockResolvedValueOnce({ ok: true, value: toolDecision(input) })
-      .mockResolvedValueOnce({
-        ok: false,
-        error: { code: "ROOT_PROVIDER_CRASH", message: "crash", retryable: false },
-      });
-    const firstExecute = vi.fn(async () => ({
-      status: "CONTINUE" as const,
-      reason_code: "ROOT_TOOL_OBSERVATIONS_READY",
-      observations: [observation(input)],
-      verifier_feedback: null,
-    }));
-    const firstRunner = createDataAgentTeamRunner({
-      ...input.dependencies,
-      root: { decide: firstDecide },
-      root_runtime: { execute: firstExecute },
-    });
-    const execution = {
-      lease: input.lease,
-      restored_snapshot: null,
-      context: input.createContext(),
-      signal: new AbortController().signal,
-      deadline_at: input.lease.expires_at,
-    };
-    await expect(firstRunner.execute(execution)).resolves.toEqual({
-      kind: "FAILED",
-      error_code: "ROOT_PROVIDER_CRASH",
-    });
-    const active = input.snapshots[0];
-    if (!active) throw new Error("active tool checkpoint missing");
-    expect(firstExecute).toHaveBeenCalledOnce();
-
-    const resumedDecide = vi.fn(async () => ({
-      ok: true as const,
-      value: finalDecision(input),
-    }));
-    const resumedExecute = vi.fn(async () => ({
-      status: "ACCEPTED" as const,
-      reason_code: "ROOT_ANSWER_VERIFIED",
-    }));
-    const resumedRunner = createDataAgentTeamRunner({
-      ...input.dependencies,
-      root: { decide: resumedDecide },
-      root_runtime: { execute: resumedExecute },
-    });
-    await expect(
-      resumedRunner.execute({
-        ...execution,
-        restored_snapshot: active,
-        context: input.createContext(),
-      }),
-    ).resolves.toEqual({ kind: "COMPLETED" });
-    const resumedCalls = resumedDecide.mock.calls as unknown as Array<
-      [unknown, { turn_index: number; tool_observations: RootToolObservation[] }]
-    >;
-    expect(resumedCalls[0]?.[1]).toMatchObject({
-      turn_index: 1,
-      tool_observations: [{ tool_call_id: "semantic-1" }],
-    });
-    expect(resumedExecute).toHaveBeenCalledOnce();
+    expect(input.snapshots).toHaveLength(checkpointCount);
   });
 });

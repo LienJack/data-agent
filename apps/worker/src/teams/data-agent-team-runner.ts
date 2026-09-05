@@ -227,11 +227,16 @@ function restoreLoopState(input: Parameters<RunWorkflowExecutorPort["execute"]>[
           accepted_input_artifacts: [],
         })
       : currentState;
+  // Snapshot provenance belongs to the writer; takeover creates a new attempt and higher fence.
+  const validLeaseOrigin =
+    snapshot.worker_fence === input.lease.worker_fence
+      ? snapshot.attempt_id === input.lease.attempt_id
+      : snapshot.worker_fence < input.lease.worker_fence &&
+        snapshot.attempt_id !== input.lease.attempt_id;
   if (
     !state.success ||
     snapshot.run_id !== input.lease.run_id ||
-    snapshot.attempt_id !== input.lease.attempt_id ||
-    snapshot.worker_fence !== input.lease.worker_fence ||
+    !validLeaseOrigin ||
     snapshot.workflow_id !== ROOT_LOOP_WORKFLOW_ID ||
     (!isCurrent && !isLegacy) ||
     snapshot.mastra_run_id !== mastraRunId(input.lease.run_id) ||
