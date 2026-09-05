@@ -184,8 +184,10 @@ pnpm --filter @data-agent/web exec tsx src/cli/bootstrap-qa-readiness.ts
 - 数据库与端到端测试串行执行，默认只运行一个当前批次的 scratch 数据库。确需源库物理复制时，可临时恢复一个精确绑定的源库；
   一次性 restore/verify 容器使用 `--rm` 并串行退出。历史失败批次保留证据及数据卷，停止或移除其容器后再启动后继批次。
   普通开发库、live authority、其他任务服务不计入可清理的临时资源，不得以资源回收为由切换数据库 binding 或修改权威数据。
-- OpenSandbox 仅在分析预检或分析题需要时启动一个控制面和一个活动 Sandbox。若既有验收明确要求双沙箱隔离，可在该项期间保留两个，
-  并在完成后立刻回收。不得因租约过期或失败而累积旧 Sandbox；回收前核对 task/attempt 标签、挂载、连接与保留证据。
+- OpenSandbox 仅在分析预检或分析题需要时启动一个控制面、一个活动分析会话（`ANALYSIS_SANDBOX_MAX_CONCURRENT_SESSIONS=1`）。
+  原运行时的 Agent/Operator 是两个隔离角色：该会话允许同时最多两个 Sandbox 容器，遵守 `before=0、peak<=2、after=0`；
+  不得为降低数量而合并角色或绕过隔离，也不得并行启动第二个分析会话。独立 restore/verify/policy/runtime 探针串行、峰值一个临时容器。
+  不得因租约过期或失败而累积旧 Sandbox；完成后立刻回收，回收前核对 task/attempt 标签、挂载、连接与保留证据。
 - 构建、全量单测、数据库测试和浏览器 E2E 不并行争用内存；资源紧张时先降低本任务并发，并关闭已完成的临时服务。
   NAS 模式维持 OrbStack 关闭，不能为某条测试脚本重新启动本地 VM。
 - 完成、失败、暂停或执行中断后，都必须复查本任务浏览器主进程、子进程、容器状态/数量、监听端口和内存；
