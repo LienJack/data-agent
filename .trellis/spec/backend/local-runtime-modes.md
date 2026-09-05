@@ -193,3 +193,16 @@ pnpm --filter @data-agent/web exec tsx src/cli/bootstrap-qa-readiness.ts
 - 完成、失败、暂停或执行中断后，都必须复查本任务浏览器主进程、子进程、容器状态/数量、监听端口和内存；
   终端命令退出或收到 Ctrl-C 不能代替资源已退出的证据。确需保留的运行资源要记录名称、用途和恢复 checkpoint。
   删除只能针对已核实的本任务临时容器或实例；保留数据卷、镜像和审计记录，禁止全局 Docker prune。
+
+### 9. 冻结验收的 Node 运行时一致性
+
+- 正式构建、CLI、Web 与 Worker 使用仓库 `.node-version` 声明的主版本；当前为 Node 24，与 OCI 默认值一致。
+  `package.json.engines` 的兼容范围不能代替验收运行时选择。启动前记录 `process.version`、`process.execPath`、
+  `process.versions.undici`，并对声明主版本断言；子进程必须继承同一工具链，不得依赖登录 shell 的全局 nvm 默认值。
+- 检查命令：`node -p 'JSON.stringify({node:process.version,execPath:process.execPath,undici:process.versions.undici})'`。
+  版本不符时不启动正式题目；修正本任务工具链后重新构建和冻结新 attempt，不在运行中的 attempt 偷换解释器或拼接旧 PASS。
+- Provider 已 dispatch 后的断流仍是原 `OUTCOME_UNKNOWN`，不能靠切换 Node、协议或网络重放原调用，也不能伪造已知失败或 token 用量。
+  `/models`、余额及 TLS/ALPN 只读探针只能证明该时点的连通性/协议；不能证明 SSE 稳定、业务通过或旧请求未被处理。
+- 必需验证：父进程与实际 CLI/consumer 的 Node 主版本一致；错误版本在模型前停止；无模型探针不写 authority；
+  失败批次保留原 Run/receipt，修正后用完整同批验收证明结果。Wrong：用 Node 26 构建后临时用 Node 24 接续同一 attempt；
+  Correct：显式 Node 24 工具链完成新 clean build、fresh scratch 和新 attempt。

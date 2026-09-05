@@ -2517,3 +2517,14 @@ SQL 模型输入，剩余 executable/schema 仍受原64 KB预算约束并超限�
   审计 `monthly-comparison-null-reference-probe.json`，临时容器峰值 1/残留 0，无模型/权威写入；诊断结束后当前 scratch 已停止，数据卷保留。
 - [x] Analysis 全目录 37 文件/482 tests、Worker typecheck/build、Biome、Trellis/diff 通过；本次 scoped commit 收口。
 - [ ] fresh build/scratch/v9 attempt 从 L1-01 验收，随后 F7 和最终浏览器验收。
+
+### v9 Provider 断流与验收 Node 工具链固定
+
+- [x] `cb73d087` fresh build/scratch/v9 attempt `f9fce866-1cde-4b69-bd40-e8aa560e4a0e` 的 L1 五题全部 business/QA/Trace PASS。
+  L1-05 验收 CLI 补传同一已验输入引用后通过，原模型请求未重跑。
+- [x] L2-01 Run `f7f9069b-dfc8-83b9-a169-65cc4056e498` 在首个 Provider 请求响应流以 `UND_ERR_SOCKET` 失败；
+  持久 `OUTCOME_UNKNOWN` 与正式 FAILED 已封存，无 SQL/Analysis，前五题不可拼接。已精确停止本批 Web/Worker/Chrome。
+- [x] 当前 Node 26.3.0 / Undici 8.3.0 偏离 `.node-version=24`；只读实测协商 h2，Node 24.18.0 / Undici 7.28.0 协商 http/1.1。
+  两者目录请求 200、账户可用；只证明运行时差异，不把该差异认定为远端断流唯一原因。模型调用与 authority 写入均为 0。
+- [ ] 显式固定 Node 24.18.0 的父/子工具链，fresh clean build/full unit/attestation、physical scratch、v9 attempt 从 L1-01 完整验收。
+  通过15题才继续 live E17、F7 与最终资源清理。
