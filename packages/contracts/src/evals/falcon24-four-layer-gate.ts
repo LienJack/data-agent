@@ -24,8 +24,10 @@ export const FALCON24_FOUR_LAYER_V7_GATE_MANIFEST_VERSION =
   "falcon24-four-layer-gate-manifest@7.0.0" as const;
 export const FALCON24_FOUR_LAYER_V8_GATE_MANIFEST_VERSION =
   "falcon24-four-layer-gate-manifest@8.0.0" as const;
-export const FALCON24_FOUR_LAYER_GATE_MANIFEST_VERSION =
+export const FALCON24_FOUR_LAYER_V9_GATE_MANIFEST_VERSION =
   "falcon24-four-layer-gate-manifest@9.0.0" as const;
+export const FALCON24_FOUR_LAYER_GATE_MANIFEST_VERSION =
+  "falcon24-four-layer-gate-manifest@10.0.0" as const;
 export const FALCON24_FOUR_LAYER_LAYER_ORDER = Object.freeze(["L1", "L2", "L3", "L4"] as const);
 export const FALCON24_FOUR_LAYER_LAYER_TURN_COUNTS = Object.freeze({
   L1: 5,
@@ -749,6 +751,7 @@ function compareFrozenTurns(
     | typeof FALCON24_FOUR_LAYER_V6_GATE_MANIFEST_VERSION
     | typeof FALCON24_FOUR_LAYER_V7_GATE_MANIFEST_VERSION
     | typeof FALCON24_FOUR_LAYER_V8_GATE_MANIFEST_VERSION
+    | typeof FALCON24_FOUR_LAYER_V9_GATE_MANIFEST_VERSION
     | typeof FALCON24_FOUR_LAYER_GATE_MANIFEST_VERSION,
   context: z.RefinementCtx,
 ): void {
@@ -817,6 +820,7 @@ const manifestMaterialSchema = z
       FALCON24_FOUR_LAYER_V6_GATE_MANIFEST_VERSION,
       FALCON24_FOUR_LAYER_V7_GATE_MANIFEST_VERSION,
       FALCON24_FOUR_LAYER_V8_GATE_MANIFEST_VERSION,
+      FALCON24_FOUR_LAYER_V9_GATE_MANIFEST_VERSION,
       FALCON24_FOUR_LAYER_GATE_MANIFEST_VERSION,
     ]),
     gate_id: falcon24FourLayerGateIdSchema,
@@ -861,6 +865,7 @@ export async function buildFalcon24FourLayerManifestTurns(
     | typeof FALCON24_FOUR_LAYER_V6_GATE_MANIFEST_VERSION
     | typeof FALCON24_FOUR_LAYER_V7_GATE_MANIFEST_VERSION
     | typeof FALCON24_FOUR_LAYER_V8_GATE_MANIFEST_VERSION
+    | typeof FALCON24_FOUR_LAYER_V9_GATE_MANIFEST_VERSION
     | typeof FALCON24_FOUR_LAYER_GATE_MANIFEST_VERSION = FALCON24_FOUR_LAYER_GATE_MANIFEST_VERSION,
 ) {
   const blueprints =
@@ -1196,13 +1201,21 @@ export function verifyFalcon24FourLayerConversationBindings(
     .map(({ conversation_id: conversationId }) => conversationId);
   const l4a = bindings.slice(9, 12);
   const l4b = bindings.slice(12, 15);
+  // Message admission does not mutate the conversation's resource/directory
+  // revision. v10 keeps that snapshot nondecreasing; ordinal and unique Run ID
+  // prove progression. Historical manifests retain their original strict rule.
+  const allowsUnchangedResources =
+    manifest.schema_version === "falcon24-four-layer-gate-manifest@10.0.0";
   const groupIsValid = (group: readonly z.infer<typeof conversationBindingSchema>[]) =>
     new Set(group.map(({ conversation_id: conversationId }) => conversationId)).size === 1 &&
     group.every(
       (binding, index) =>
         index === 0 ||
-        binding.conversation_resource_version >
-          (group[index - 1]?.conversation_resource_version ?? Number.MAX_SAFE_INTEGER),
+        (allowsUnchangedResources
+          ? binding.conversation_resource_version >=
+            (group[index - 1]?.conversation_resource_version ?? Number.MAX_SAFE_INTEGER)
+          : binding.conversation_resource_version >
+            (group[index - 1]?.conversation_resource_version ?? Number.MAX_SAFE_INTEGER)),
     );
   if (
     bindings.some(

@@ -106,3 +106,50 @@ conversation.modelProfileId = selectedProfileId;
 // Correct: Conversation -> immutable Run snapshot -> direct Worker -> SQL/Evidence or direct model
 // 数据事实仍由只读查询和 Artifact 证明。
 ```
+
+## Scenario: 多轮验收中的资源快照版本
+
+### 1. Scope / Trigger
+
+跨轮校验 Conversation/version、Falcon 四层 claim 或 terminal closure 时适用；不能把资源版本当作消息数。
+
+### 2. Signatures
+
+`app_data_agent.claim_falcon24_four_layer_gate_turn(command jsonb)` 与
+`verifyFalcon24FourLayerConversationBindings(manifest, bindings)` 共同遵守 manifest 版本化规则。
+原 claim@1 payload/哈希、CAS、身份与 receipt 签名不变；migration10825 仅增加 manifest@10 支持。
+
+### 3. Contracts
+
+- 插入用户/助手消息不增加 resource_version；合法资源切换或目录变更才增加。已有消息仍禁止原地切换资源。
+- v10 同组保持 Conversation ID，版本单调不减；claim 必须精确匹配服务端当前 owner/scope/Conversation/version。
+- turn ordinal/scenario index 严格推进、前轮必须 PASSED、Run ID 唯一，当前 Run 冻结对话输入证明消息上下文。
+- v1～v9 仍保留原严格资源版本递增语义；v10 全部15题与 v9 相同。已封存失败不得升级、改写或拼接。
+
+### 4. Validation & Error Matrix
+
+| 条件 | 结果 |
+| --- | --- |
+| v10 同组 version 1→1 或 1→2，且当前快照一致 | 允许按原 claim/CAS 推进 |
+| v1～v9 同组 1→1 | 原 CONVERSATION_MISMATCH |
+| 版本倒退、快照过期、跨对话、前轮未通过 | FALCON24_FOUR_LAYER_CONVERSATION_MISMATCH |
+| CAS 过期、顺序错误、重复 Run | 原 VERSION_CONFLICT / ORDER_INVALID / 唯一性约束，事务回滚 |
+| TS 最终绑定不满足同组/顺序/唯一性 | FALCON24_FOUR_LAYER_CONVERSATION_BINDING_INVALID |
+
+### 5. Good / Base / Bad
+
+Good：三轮问答使用同一 Conversation，资源版本保持1，ordinal/Run按轮推进。
+Base：合法目录编辑增加版本后，下一轮读取新版本；既有消息资源仍冻结。
+Bad：为了通过测试每轮重命名对话，或把所有版本的历史门禁规则一起放宽。
+
+### 6. Tests Required
+
+Contracts 覆盖 v1～v10 的相等/增加/倒退与同组、ordinal、Run唯一性；v10 turns bytes等于v9。
+真实 PostgreSQL 在明确 system_identifier/cluster 的空闲专用 scratch 上调用原 begin/claim，
+验证版本回放、第二/第三轮、CAS/快照/前轮/重复Run失败关闭；所有诊断夹具回滚、历史 count/hash 不变。
+迁移必须校验 exact frontier/checksum、原函数hash、owner/SECURITY DEFINER/ACL，不能修改旧迁移或消息guard。
+
+### 7. Wrong vs Correct
+
+Wrong：`resource_version > previous_resource_version` 被当作所有消息推进的充分证明。
+Correct：v10资源快照非递减且claim精确匹配当前版本，消息推进另由ordinal、唯一Run和冻结历史校验。

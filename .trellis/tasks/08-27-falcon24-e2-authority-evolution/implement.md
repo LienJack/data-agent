@@ -2589,3 +2589,17 @@ SQL 模型输入，剩余 executable/schema 仍受原64 KB预算约束并超限�
   Chrome/Helper、Web/Worker、SSH转发、控制面均已退出，scratch停止且卷保留，普通NAS服务/用户Chrome未改；内存free73%。
   本小任务按scoped commit收口，整体验收仍未完成。
 - [ ] 新 clean build/fresh physical scratch/v9 attempt 自L1-01完整验收15题，再进行live E17、F7和最终清理；本次八题不拼接。
+
+### v10 多轮资源快照门禁修复
+
+- [x] `1c24ed3b` 同一 frozen attempt 前10题完整 PASS；L3-02 真实纯公式/单Stage/完整表图闭包通过。
+  L4-A-02 在 claim 前拒绝，Run/模型调用为0；原 supersede RPC 封存 FAILED/version52，未写 live authority。
+- [x] Browser/Helper、Web/Worker/control 已退出，仅现有 scratch 和 SSH 保留做无模型诊断；内存free73%。
+- [x] TS closure 回归先RED后GREEN；v10 全15题与v9相同，保留历史严格规则，同时前向修复原 SQL claim。
+- [x] 真实 PostgreSQL v1～v10 begin/replay/题库篡改拒绝、37项 claim矩阵与重放换绑拒绝通过；夹具全部回滚。
+  migration10825及诊断前后347表count/hash相同，两个RPC的owner/ACL不变；审计resource-snapshot-10825-{red,migration,green}.json。
+- [x] Contracts/Platform focused 18文件72项、Web 5文件42项通过；Contracts/Platform typecheck与build、Web typecheck、
+  owned Biome、全部注册迁移renderer、inventory及Trellis/diff通过。Web先加载旧Platform声明的类型错误在刷新依赖build后消失。
+  scratch和SSH已精确停止，Browser/Web/Worker/control/Sandbox仍为0，卷与历史保留，普通NAS服务健康，内存free74%。
+- [ ] 安全 scoped commit；新 clean build/fresh physical scratch/E17/v10 attempt 完整15题，随后 live E17、F7、390px与历史审计。
+  所有旧 PASS 仅保留历史，不计新 attempt；用户浏览器、普通NAS服务和保留数据卷不清理。

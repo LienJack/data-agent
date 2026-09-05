@@ -1302,3 +1302,23 @@ Analysis Stage/Sandbox 执行为0，live authority writes=0；不能把 SQL 正�
 - **R-FL-FORMULA-BRIEF-02** 原 Brief 非空指标、来源、Oracle、预算和发布边界不变；缺失支撑或 Context 换绑在副作用前失败关闭。
 - **AC-FL-FORMULA-BRIEF-01** 完整装配回归先红后绿，覆盖纯公式、无支撑、Context 错绑及原混合结果；focused 验证与 scoped commit 后
   用 fresh build/physical scratch/v9 attempt 从 L1-01 验收全部15题，前八题不拼接。
+
+### 22.33 多轮门禁区分资源快照与消息轮次
+
+`1c24ed3b` 的 v9 attempt `64530f4a-8df6-49c0-8956-871cd8996aab` 已完成前10题 business/QA/Trace PASS；
+L3-02 的 FORMULA-only 事实表、唯一 Analysis Stage 和完整表图均通过。L4-A-02 在 claim 前以
+`FALCON24_FOUR_LAYER_CONVERSATION_MISMATCH` 拒绝，未产生该题 Run 或模型调用。
+同一 Conversation 已有两条消息，resource_version 仍为1，这是正常产品语义；原门禁误要求每轮严格加一。
+原 attempt 经原 supersede RPC 封存 FAILED/version52，前10题不复用。
+
+- **R-FL-RESOURCE-SNAPSHOT-01** 本节前向澄清 §20.2 的资源版本递增要求：v10 同组 Conversation ID 必须相同，
+  resource_version 单调不减，且每次 claim 必须与当前服务端资源版本精确一致。消息推进由严格顺序的 turn ordinal、
+  scenario index、唯一 Run 和当前 Run 冻结的对话输入证明，不靠资源版本加一。
+- **R-FL-RESOURCE-SNAPSHOT-02** v1～v9 保留旧规则和回放语义；v10 复用 v9 全部15题、rubric 和 turns canonical hash
+  `sha256:04ee93aa5fc9eb0e21ae58c5d7b9503ffa8705866b1af11461e7881c444f7de9`。
+  禁止为通过门禁而重命名、移动、切换资源以人为增加版本；不改业务 Oracle、Agent 协作、QA/Trace 或安全要求。
+- **R-FL-RESOURCE-SNAPSHOT-03** migration10825 只在 exact post10824 frontier/checksum 和原 begin/claim 函数 hash 上
+  前向更新原 RPC；保留 owner、ACL、SECURITY DEFINER、CAS、Run 唯一性、scope 和全部历史表。
+- **AC-FL-RESOURCE-SNAPSHOT-01** Contracts 与真实 PostgreSQL 先红后绿，覆盖 v1～v10、相等/增加/倒退、同组第二/三轮、
+  换对话、过期快照、前轮未通过、重复 Run、顺序及 CAS 冲突。诊断夹具全部回滚，受保护历史逐表 count/hash 不变。
+  scoped commit 后从新 clean build、fresh physical scratch/E17/v10 attempt 完整验收15题，再做 live E17、F7和最终清理。

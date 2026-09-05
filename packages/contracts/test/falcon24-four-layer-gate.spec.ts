@@ -31,7 +31,7 @@ const now = "2026-08-30T08:00:00.000Z";
 
 async function manifest() {
   return buildFalcon24FourLayerGateManifest({
-    schema_version: "falcon24-four-layer-gate-manifest@9.0.0",
+    schema_version: FALCON24_FOUR_LAYER_GATE_MANIFEST_VERSION,
     gate_id: "E11-FL1",
     attempt_id: id(1),
     authority_epoch: "E11",
@@ -472,6 +472,76 @@ describe("Falcon24 four-layer gate contracts", () => {
         business_receipt: falsePass,
       }),
     ).rejects.toThrow("FALCON24_FOUR_LAYER_AGENT_CONTRACT_MISMATCH");
+  });
+
+  it("versions resource snapshots separately from increasing L4 turn ordinals", async () => {
+    const current = await manifest();
+    const { manifest_hash: _currentHash, ...currentMaterial } = current;
+    const document = await buildFalcon24FourLayerGateManifest({
+      ...currentMaterial,
+      schema_version: "falcon24-four-layer-gate-manifest@10.0.0",
+    });
+    const bindings = document.turns.map((turn, ordinal) => ({
+      turn_ordinal: ordinal,
+      turn_id: turn.turn_id,
+      conversation_id: ordinal < 9 ? id(200 + ordinal) : ordinal < 12 ? id(300) : id(301),
+      conversation_resource_version: 1,
+      run_id: id(400 + ordinal),
+    }));
+    expect(verifyFalcon24FourLayerConversationBindings(document, bindings)).toEqual(bindings);
+    const renamed = bindings.map((binding, index) => ({
+      ...binding,
+      conversation_resource_version: index === 10 || index === 11 ? 2 : 1,
+    }));
+    expect(verifyFalcon24FourLayerConversationBindings(document, renamed)).toEqual(renamed);
+    for (const invalid of [
+      bindings.map((binding, index) => ({
+        ...binding,
+        conversation_resource_version: index === 9 ? 2 : 1,
+      })),
+      bindings.map((binding, index) => ({
+        ...binding,
+        run_id: index === 10 ? id(409) : binding.run_id,
+      })),
+      bindings.map((binding, index) => ({ ...binding, turn_ordinal: index === 10 ? 9 : index })),
+      bindings.map((binding, index) => ({
+        ...binding,
+        conversation_id: index === 10 ? id(999) : binding.conversation_id,
+      })),
+    ]) {
+      expect(() => verifyFalcon24FourLayerConversationBindings(document, invalid)).toThrow(
+        "CONVERSATION_BINDING_INVALID",
+      );
+    }
+    for (const version of [
+      FALCON24_FOUR_LAYER_LEGACY_GATE_MANIFEST_VERSION,
+      FALCON24_FOUR_LAYER_V2_GATE_MANIFEST_VERSION,
+      FALCON24_FOUR_LAYER_V3_GATE_MANIFEST_VERSION,
+      FALCON24_FOUR_LAYER_V4_GATE_MANIFEST_VERSION,
+      FALCON24_FOUR_LAYER_V5_GATE_MANIFEST_VERSION,
+      FALCON24_FOUR_LAYER_V6_GATE_MANIFEST_VERSION,
+      FALCON24_FOUR_LAYER_V7_GATE_MANIFEST_VERSION,
+      FALCON24_FOUR_LAYER_V8_GATE_MANIFEST_VERSION,
+      "falcon24-four-layer-gate-manifest@9.0.0",
+    ] as const) {
+      const { manifest_hash: _hash, ...material } = current;
+      const legacy = await buildFalcon24FourLayerGateManifest({
+        ...material,
+        schema_version: version,
+        turns: await buildFalcon24FourLayerManifestTurns(version),
+      });
+      expect(() => verifyFalcon24FourLayerConversationBindings(legacy, bindings)).toThrow(
+        "CONVERSATION_BINDING_INVALID",
+      );
+      const advancing = bindings.map((binding, ordinal) => ({
+        ...binding,
+        conversation_resource_version: ordinal < 9 ? 1 : ((ordinal - 9) % 3) + 1,
+      }));
+      expect(verifyFalcon24FourLayerConversationBindings(legacy, advancing)).toEqual(advancing);
+    }
+    expect(document.turns).toEqual(
+      await buildFalcon24FourLayerManifestTurns("falcon24-four-layer-gate-manifest@9.0.0"),
+    );
   });
 
   it("rejects cross-conversation attempt closure and hashes the exact 15-turn terminal set", async () => {

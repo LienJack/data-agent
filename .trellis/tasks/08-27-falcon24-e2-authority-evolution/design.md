@@ -2360,3 +2360,37 @@ Metric refs、ResultContract 原 FORMULA 列；无支撑/Context 换绑负例证
 规范同步 `backend/artifact-authority.md` 的公式身份段；仓库无对应 `src/templates/markdown/spec` 分发模板。
 `formal-e17-06628bba-7693bb8e/runtime/L3-02-failure.json` 保存0 Stage，`L3-02-source-oracle.json` 保存16/16源表一致，
 `control-advance-1788594709846.json` 保存不可变 FAILED（version44）。本修复不能把旧批次升级为 PASS。
+
+## 63. 多轮门禁的资源快照语义
+
+### 1. Root Cause Category
+
+B（产品与门禁跨层契约）、D（fixture 每轮人为加一）和 E（把资源修订当作消息序号）。
+L4-A-02 的同组页面、Conversation ID 与当前资源版本都正确；SQL 在 claim 前比较 previous_version >= current_version 而拒绝。
+产品的消息插入仅更新 updated_at；资源/目录变更才增加 resource_version。Contracts 的最终绑定校验也有同一严格比较。
+实际两条消息/version1、原 SQL predicate 和先红回归相互吻合，根因置信度高，不是模型额度或浏览器资源问题。
+
+### 2. Why Fixes Failed
+
+前序修复分别解决公式 Brief、表图异步渲染和 Trace 点击；已在本批前10题得到完整证据，但没有执行到同组第二轮。
+用例内构造 1/2/3 版本掩盖了真实消息不改变资源版本的行为。不能重命名对话来凑版本，也不能只改 TS 而留下 SQL 冲突。
+
+### 3. Prevention Mechanisms
+
+P0：v10 保留 v9 turns/rubric/hash，原 begin RPC 增加 v10 白名单；原 claim 和 TS closure verifier 仅对 v10 接受非递减快照，
+v1～v9 仍严格递增。原当前 Conversation/version 精确匹配、前轮 PASSED、ordinal/index、唯一 Run、锁和 CAS 不变。
+migration10825 绑定 post10824 ledger/checksum 和两个原函数 prosrc，迁移前后检查347张业务表 count/hash、owner/ACL。
+真实 PostgreSQL 使用明确物理 binding 的 idle scratch，诊断夹具全部回滚；没有 Provider、正式 Run、消息或 live 激活。
+
+### 4. Systematic Expansion
+
+资源版本可以因合法目录编辑增加，所以跨轮强制相等也不正确；每轮读取当前版本，再检查同组非递减。
+消息历史来自当前 Run 的冻结输入，不能把资源版本、Run 租约 fence 或 UI 刷新序号互换使用。
+查询产品 guard、CLI、SQL admission 和 TS finalization 后未发现其他需变更的比较；本次不新增消息计数权威或通用版本解析器。
+
+### 5. Knowledge Capture
+
+规范同步 backend/qa-conversation-resource-binding；没有对应 Trellis 分发模板，不创建第二套。
+原审计 formal-e17-1c24ed3b-64530f4a/runtime 保留 L3-02/L4-A-01 的业务、表图和 QA/Trace 回执，
+control-advance-1788598092132.json 保存 preclaim 拒绝，control-supersede-resource-version.json 保存 FAILED/version52。
+后继必须新 clean build、fresh physical scratch/E17/v10 attempt 从第一题完整验收，不拼接前10题。
