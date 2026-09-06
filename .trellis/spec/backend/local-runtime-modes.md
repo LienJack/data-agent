@@ -185,14 +185,21 @@ pnpm --filter @data-agent/web exec tsx src/cli/bootstrap-qa-readiness.ts
   一次性 restore/verify 容器使用 `--rm` 并串行退出。历史失败批次保留证据及数据卷，停止或移除其容器后再启动后继批次。
   普通开发库、live authority、其他任务服务不计入可清理的临时资源，不得以资源回收为由切换数据库 binding 或修改权威数据。
 - OpenSandbox 仅在分析预检或分析题需要时启动一个控制面、一个活动分析会话（`ANALYSIS_SANDBOX_MAX_CONCURRENT_SESSIONS=1`）。
-  原运行时的 Agent/Operator 是两个隔离角色：该会话允许同时最多两个 Sandbox 容器，遵守 `before=0、peak<=2、after=0`；
-  不得为降低数量而合并角色或绕过隔离，也不得并行启动第二个分析会话。独立 restore/verify/policy/runtime 探针串行、峰值一个临时容器。
+  数量预算必须包括 Agent/Operator 角色、网络/egress sidecar 与实际容器化的控制面，不能把两个隔离角色报告为总共两个容器。
+  当前 NAS 双角色各有一个 egress sidecar，临时峰值为 `2 + 2 = 4`，另计 scratch；本机实测控制面为 NAS Python 进程。
+  每批记录 `before/peak/after`；不得为降低数量合并安全角色或并行启动第二会话。restore/verify 探针串行、峰值一个临时容器。
   不得因租约过期或失败而累积旧 Sandbox；完成后立刻回收，回收前核对 task/attempt 标签、挂载、连接与保留证据。
 - 构建、全量单测、数据库测试和浏览器 E2E 不并行争用内存；资源紧张时先降低本任务并发，并关闭已完成的临时服务。
   NAS 模式维持 OrbStack 关闭，不能为某条测试脚本重新启动本地 VM。
 - 完成、失败、暂停或执行中断后，都必须复查本任务浏览器主进程、子进程、容器状态/数量、监听端口和内存；
   终端命令退出或收到 Ctrl-C 不能代替资源已退出的证据。确需保留的运行资源要记录名称、用途和恢复 checkpoint。
   删除只能针对已核实的本任务临时容器或实例；保留数据卷、镜像和审计记录，禁止全局 Docker prune。
+- `agent-browser 0.32.3` 的 `auth list/show/delete` 可能启动无浏览器的后台进程。
+  分开检查 `browserLaunched`、`pageCount`、后台 PID 和 Chrome PID；后台 session 存在不等于新开 Chrome。
+  对本任务创建且 `browserLaunched=false/pageCount=0` 的后台 session 定向 close 后，有界等待该 PID 消失，再核验 session list；
+  不把 close 返回当作进程已退出。最终核验后不要再次运行会创建后台进程的 auth 命令。
+- Docker stop 使用当前支持的 `--timeout`；退出码和 `inspect State.Running/ExitCode` 是判断依据，不能只匹配 stdout。
+  警告导致封装脚本失败时，先读回精确容器/PID，再只执行尚未完成的清理，不重放已完成操作。
 
 ### 9. 冻结验收的 Node 运行时一致性
 

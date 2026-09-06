@@ -23,16 +23,21 @@
   ],
   "parent": "08-26-falcon24-e1-authority-reset",
   "relatedFiles": [],
-  "notes": "2026-08-31: user explicitly requested continuing the complex four-layer acceptance. Core4 remains a completed historical milestone, not four-layer PASS. Resume section 25 F6 capability preflight before fresh E17 activation; preserve old Runs, receipts, checkpoints and protected live authority.",
+  "notes": "2026-09-06: user requested scoped commit, push, and a written handoff before switching conversations. Frozen 3d5015b7 scratch attempt passed all 15 turns; separate fresh live E17 activation/readback, protected history and cleanup passed. Do not resume stale F6 or replay completed activation. Final task/child acceptance reconciliation and archive/journal remain for the receiving conversation. NAS health was verified at 2026-09-05T12:46:08Z; a later 15:28Z SSH probe failed, so current connectivity is unverified. Preserve all original evidence and physical volumes; production isolation remains HOLD.",
   "meta": {
     "core_collaboration_status": "COMPLETE",
     "core_collaboration_result": "CORE_COLLABORATION_VERIFIED",
     "core_collaboration_profile": "falcon24-core-collaboration@1.0.0",
     "verified_source_commit": "ec3c1e61e3258404245e6d7a26e30ef397eef158",
     "core_collaboration_report": "research/core-collaboration-verification-ec3c1e61.md",
-    "formal_four_layer_pass": false,
-    "remaining_scope": "ACTIVE_FOUR_LAYER_ACCEPTANCE",
-    "current_checkpoint": "F6_COMPLEX_CAPABILITY_PREFLIGHT",
-    "resume_source_commit": "fd42ac59"
+    "formal_four_layer_pass": true,
+    "four_layer_verified_source_commit": "3d5015b7d28dc37857203f7eab3ad2fd92c9bf53",
+    "four_layer_attempt_id": "f4aad696-8118-40a5-86e1-36bbc80765e9",
+    "four_layer_report": "research/four-layer-final-verification-3d5015b7.md",
+    "live_e17_baseline_id": "3c995b1c-d25f-5694-99f5-56903dfdc8ac",
+    "production_isolation_proven": false,
+    "production_gate": "HOLD",
+    "remaining_scope": "HANDOFF_FINAL_ACCEPTANCE_RECONCILIATION_AND_ARCHIVE",
+    "current_checkpoint": "F7_RUNTIME_HISTORY_CLEANUP_PASS_HANDOFF"
   }
 }

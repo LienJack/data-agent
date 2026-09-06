@@ -29,9 +29,16 @@ Managed by Trellis. Edits outside this block are preserved; edits inside may be 
 - Do not amend, squash, rewrite, or otherwise alter existing commits unless the user explicitly requests it.
 - An explicit user instruction not to commit overrides this policy for that task.
 
+## Prohibited Tooling
+
+- Do not use the Compound Engineering plugin (`compound-engineering@compound-engineering-plugin`) in this repository.
+- This prohibition covers every `ce-*` skill, command, agent, subagent, tool, workflow, and any alias or package that exposes them.
+- Use project-scoped Trellis helpers or standard Codex tooling instead.
+
 ## Test Resource Lifecycle
 
-- Before browser or Docker tests, inspect existing task-owned processes, sessions, containers, ports, and memory use. Reuse one browser session across cases; do not launch another Chrome for each test or retry.
-- Run resource-heavy tests serially. Keep only containers required by the active test; stop or remove completed task-owned temporary containers before starting the next batch, preserving evidence and data volumes.
-- After tests, failures, pauses, or interruptions, verify the remaining process/container count and memory use. Never terminate the user's browser or unrelated services to reclaim test resources.
-- Follow `.trellis/spec/backend/local-runtime-modes.md` section 8 for resource limits and cleanup verification.
+- Before browser or Docker tests, inspect existing task-owned sessions, processes, containers, ports, and memory use. Reuse one browser session and normally one active test page; do not launch another Chrome for each case, retry, or resume.
+- Run resource-heavy builds and tests serially. Keep only the current scratch database and the containers required by the active test. Count all task-owned containers, including Sandbox network/egress sidecars; record the expected peak before starting.
+- Stop or remove completed task-owned temporary instances before starting the next batch. After success, failure, pause, or interruption, verify remaining processes, containers, ports, and memory; command exit alone is not cleanup evidence.
+- Never terminate the user's browser or unrelated services, run global Docker prune, or delete retained volumes/evidence. In NAS mode, keep OrbStack off; do not restart a local VM for a test.
+- Follow [.trellis/spec/backend/local-runtime-modes.md](.trellis/spec/backend/local-runtime-modes.md) section 8 for limits, ownership checks, and cleanup verification.

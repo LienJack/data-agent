@@ -1,0 +1,910 @@
+{
+  "schema_version": "falcon24-final-evidence-index@1.0.0",
+  "source_commit": "3d5015b7d28dc37857203f7eab3ad2fd92c9bf53",
+  "scratch_attempt_id": "f4aad696-8118-40a5-86e1-36bbc80765e9",
+  "scratch_baseline_id": "83c87151-0b89-58c0-b870-18988a28cf6a",
+  "live_baseline_id": "3c995b1c-d25f-5694-99f5-56903dfdc8ac",
+  "original_matrix_path": "/Users/lienli/.codex/audit/falcon24-e1-authority-reset/formal-e17-3d5015b7-f4aad696/runtime/f7-fifteen-turn-matrix.json",
+  "original_matrix_sha256": "71e233bd41a69852452c019114b638d4f6af7f45dd749f61b8f9c940b93b2e7b",
+  "source": "Original one-shot scratch attempt; independent live E17 activation/readback. No cross-attempt pass composition.",
+  "token_note": "Provider-reported subset only. 35 of 100 requests have unavailable usage; not zero, not a complete total or cost. Certification is separate.",
+  "token_totals_reported_subset": {
+    "starts": 100,
+    "reported": 65,
+    "unavailable": 35,
+    "input": 887895,
+    "output": 33589
+  },
+  "turns": [
+    {
+      "ordinal": 0,
+      "turn": "L1-01",
+      "question": "我想看订单收入的同比增长，系统里应该怎么算？需要使用哪些收入和时间口径？",
+      "run": "f583fc96-7f53-886d-8f67-f8c8769f8929",
+      "conversation": "65cedf3c-9482-525d-96a5-9cca3f124645",
+      "agents": [
+        "semantic-management-agent"
+      ],
+      "answer_hash": "sha256:933012c91379cf2a629be0c704acf9886aea6ec90863cef7bac588519718a4c3",
+      "artifacts": [
+        {
+          "artifact_id": "13b450b1-d349-8016-859b-3d62f708d017",
+          "artifact_type": "SemanticQueryContext",
+          "app_id": "00000000-0000-4000-8000-00000000da01",
+          "tenant_id": "00000000-0000-4000-8000-00000000e124",
+          "environment": "local",
+          "run_id": "f583fc96-7f53-886d-8f67-f8c8769f8929",
+          "revision": 1,
+          "content_hash": "sha256:3bd9b3dfc41ce24e127793f019214bd085553eefdb4dc1703be9595492e5192d"
+        }
+      ],
+      "receipts": {
+        "business": "sha256:5890dcef9bdd8f5c66fcf5a6c539ca4008a32e9ed8e4ac4819399572d7b74240",
+        "qa": "sha256:ff3389a742ebbdf855b5beea89797770917c49191a1e7c4d4471b42c4dd2596e",
+        "trace": "sha256:3b0c92489324b3cec776e13595b07338fa8d4788e665fa0063b2a787cc07be7f",
+        "terminal": "sha256:92d1e42fef1293803602c223ae1916ada22451bd48ae0c217ab7c1b863805f3c"
+      },
+      "usage": {
+        "starts": 2,
+        "reported": 1,
+        "unavailable": 1,
+        "input": 10830,
+        "output": 241
+      }
+    },
+    {
+      "ordinal": 1,
+      "turn": "L1-02",
+      "question": "当前工作区里的“客单价”（formula.average_order_value）正式计算公式是什么？请说明分子、分母，以及订单数为0时怎样处理。",
+      "run": "c56b8cf1-5f5a-8813-bdd5-c8f1822f720a",
+      "conversation": "74340a0f-4e56-594b-a166-f93fae753a04",
+      "agents": [
+        "semantic-management-agent"
+      ],
+      "answer_hash": "sha256:dd25a208d1b9ac1b104c906bb36995dcf65e87745445ad128264d08bc0c1ebe7",
+      "artifacts": [
+        {
+          "artifact_id": "e0efe864-0244-8712-a031-9f6848c87625",
+          "artifact_type": "SemanticQueryContext",
+          "app_id": "00000000-0000-4000-8000-00000000da01",
+          "tenant_id": "00000000-0000-4000-8000-00000000e124",
+          "environment": "local",
+          "run_id": "c56b8cf1-5f5a-8813-bdd5-c8f1822f720a",
+          "revision": 1,
+          "content_hash": "sha256:c1402bd8c5fc7f3be6ed28d5edf7cbbe5af474d70cc8f70387a222d48623dec5"
+        }
+      ],
+      "receipts": {
+        "business": "sha256:aa837c86ce2098ccfba9c98252861d0932df9bbdfa09b3ea7a3b39d5ee75d4df",
+        "qa": "sha256:0f514b36800f1c4f6e8fa2efba983fe7d5e28c34f4137846d4f8e44963d7de23",
+        "trace": "sha256:06bc630bffe066646f0979cf52b94cb23e0c7845db96bc562fa52ed370178b81",
+        "terminal": "sha256:84f618c63f0ec3dda007961c7c3a22de14cf2176162cd4c1038aafbbdd73ea98"
+      },
+      "usage": {
+        "starts": 2,
+        "reported": 1,
+        "unavailable": 1,
+        "input": 27563,
+        "output": 101
+      }
+    },
+    {
+      "ordinal": 2,
+      "turn": "L1-03",
+      "question": "订单、客户、客户反馈和配送信息之间怎样关联？",
+      "run": "b8c7e050-512f-890a-897f-c5e3b78ad2c6",
+      "conversation": "21d0a9aa-2783-5a25-b7ae-d1b06d53ddfb",
+      "agents": [
+        "semantic-management-agent"
+      ],
+      "answer_hash": "sha256:7440fd71f142931a026f963fede113d0a9b092d405b62246ece3e3c0dc7b7a2e",
+      "artifacts": [
+        {
+          "artifact_id": "bf37eb05-6153-8e76-bc04-6c5a1cbf874e",
+          "artifact_type": "SemanticQueryContext",
+          "app_id": "00000000-0000-4000-8000-00000000da01",
+          "tenant_id": "00000000-0000-4000-8000-00000000e124",
+          "environment": "local",
+          "run_id": "b8c7e050-512f-890a-897f-c5e3b78ad2c6",
+          "revision": 1,
+          "content_hash": "sha256:9853a8243fb34b69fe0ba758845571e07ac6677c781f9a7b97749f7f443f26c9"
+        }
+      ],
+      "receipts": {
+        "business": "sha256:1b0213ed03e0bd72d18d06ea705096b5863fce2d09a2144754a0deb2ba701376",
+        "qa": "sha256:06b2aeafe367df07a1da56df6d0a8243d3f8e9fe0121e89412bcf9f52e2e49da",
+        "trace": "sha256:eb4b0f3eb824e8a46b26c9165e864f179772837b7b9056d0e576e7586cfd5218",
+        "terminal": "sha256:8f7d453c6788eb8079669aa0830f23c9b240d80f2ad810bcae10f034f87e8bbb"
+      },
+      "usage": {
+        "starts": 2,
+        "reported": 1,
+        "unavailable": 1,
+        "input": 35252,
+        "output": 116
+      }
+    },
+    {
+      "ordinal": 3,
+      "turn": "L1-04",
+      "question": "这是纯物理列查询。请直接由 Text2SQL 查询 falcon_db_24.blinkit_orders：返回 o.order_id AS order_id、o.order_date::pg_catalog.date AS order_date、o.order_total AS order_total，按 o.order_date::pg_catalog.date 降序，LIMIT 参数为数字 10。不要解释指标或时间语义。",
+      "run": "057ce4f1-8f13-8699-bb91-27c54c54abb5",
+      "conversation": "b0d15260-f1b6-52ce-aa8c-158633e88bda",
+      "agents": [
+        "governed-text2sql-agent"
+      ],
+      "answer_hash": "sha256:a94f67b8d38c3c220ebe208ce319ab653c5a63f26a95283a1caf726361ec1ab4",
+      "artifacts": [
+        {
+          "artifact_id": "a822f9fd-42dc-8e6d-a015-4747ea3db99c",
+          "artifact_type": "QueryEvidence",
+          "app_id": "00000000-0000-4000-8000-00000000da01",
+          "tenant_id": "00000000-0000-4000-8000-00000000e124",
+          "environment": "local",
+          "run_id": "057ce4f1-8f13-8699-bb91-27c54c54abb5",
+          "revision": 1,
+          "content_hash": "sha256:65e645b618250b837f7d07819ce28ea075dbd82ee72e72893215e238f77da4e7"
+        }
+      ],
+      "receipts": {
+        "business": "sha256:6428d9b4861288526a72361459cdc39292562650bb58f552affb71ff4876766d",
+        "qa": "sha256:43d7c4a0194a2afe76e0373b290a5b0fe6fbd0ae7c288cd89d92d810cee4e3fe",
+        "trace": "sha256:07f2f79ac43082ee8e07d24a709712570ecd340f10e3ce2ec0ff58c990c4a5f5",
+        "terminal": "sha256:6d9cb5d594449a06e7311ea4d297d7e12cccb16aae7d5d68b620544ca1c9b2b9"
+      },
+      "usage": {
+        "starts": 2,
+        "reported": 1,
+        "unavailable": 1,
+        "input": 11107,
+        "output": 263
+      }
+    },
+    {
+      "ordinal": 4,
+      "turn": "L1-05",
+      "question": "这是当前 Run 已验收并绑定的数据表。请只委派 Report Agent，基于这份表给经营负责人写一段简短摘要；不要查询其他数据，不要增加表中没有的结论。",
+      "run": "7e6cd4e9-cdfc-8465-bab8-65c986bb9917",
+      "conversation": "dd4e94f1-8074-5824-8a31-add760400336",
+      "agents": [
+        "report-writing-agent"
+      ],
+      "answer_hash": "sha256:7d2f69af43838813e36d2af7061b8bf3e394d32a12a2e1532783ea3c0360ad92",
+      "artifacts": [
+        {
+          "artifact_id": "1164a019-b4db-8ab8-9cce-550391a7a3a2",
+          "artifact_type": "AnalysisReport",
+          "app_id": "00000000-0000-4000-8000-00000000da01",
+          "tenant_id": "00000000-0000-4000-8000-00000000e124",
+          "environment": "local",
+          "run_id": "7e6cd4e9-cdfc-8465-bab8-65c986bb9917",
+          "revision": 1,
+          "content_hash": "sha256:b30703f03d342c656e155522a8e64328a250cdbb9ef123c50121fdd699e85348"
+        },
+        {
+          "artifact_id": "6ba32a75-cc8c-45ea-b5a9-bb3f9548b095",
+          "artifact_type": "QueryEvidence",
+          "app_id": "00000000-0000-4000-8000-00000000da01",
+          "tenant_id": "00000000-0000-4000-8000-00000000e124",
+          "environment": "local",
+          "run_id": "7e6cd4e9-cdfc-8465-bab8-65c986bb9917",
+          "revision": 1,
+          "content_hash": "sha256:c41a0210d5c74708d3237c6103ce0bff9736728c1c42eff2ec491ffc16c68a22"
+        }
+      ],
+      "receipts": {
+        "business": "sha256:64a3584331a0cfc3d628be8b40561e5cb687374ac68700926996237c75428c64",
+        "qa": "sha256:d36a1ef3d4ac748c2eede03404c54207a69dcf8469b78c7bbbee737dabd61d5d",
+        "trace": "sha256:d762c76dace0c7931f6cee4921aa8dc58794db692e83c6d9c0e89d1e8f49f9ea",
+        "terminal": "sha256:8c372d1a0f30a35c748daa565a15fd5b18d1bf17a226489f9fd8d1459abf6cbd"
+      },
+      "usage": {
+        "starts": 2,
+        "reported": 1,
+        "unavailable": 1,
+        "input": 848,
+        "output": 276
+      }
+    },
+    {
+      "ordinal": 5,
+      "turn": "L2-01",
+      "question": "使用已发布的订单收入、订单月份和请求级同比口径，比较数据中最近12个完整月。由 Semantic 解释口径，Text2SQL 输出12行 month、current_revenue、prior_revenue、yoy；先聚合再计算同比，零或缺失基期保留NULL。",
+      "run": "90d6b280-c8b9-8f13-ac83-dbcd6a488003",
+      "conversation": "aa74ce9d-5fdd-5af3-bae0-8cd88cac960e",
+      "agents": [
+        "semantic-management-agent",
+        "governed-text2sql-agent"
+      ],
+      "answer_hash": "sha256:d22e529bad4e959eeb8d9ac58da61e778518014fee47f6ab7210a1527584462b",
+      "artifacts": [
+        {
+          "artifact_id": "1e949f61-262b-8a59-a482-2580b0163d31",
+          "artifact_type": "ArtifactWorkspaceDocument",
+          "app_id": "00000000-0000-4000-8000-00000000da01",
+          "tenant_id": "00000000-0000-4000-8000-00000000e124",
+          "environment": "local",
+          "run_id": "90d6b280-c8b9-8f13-ac83-dbcd6a488003",
+          "revision": 1,
+          "content_hash": "sha256:7921dae008aee5555658feb0c4192fd932beaa9f066b13d9d7386034c87546b1"
+        },
+        {
+          "artifact_id": "81696cc3-8da1-8dbf-956d-37ba0b73bddd",
+          "artifact_type": "QueryEvidence",
+          "app_id": "00000000-0000-4000-8000-00000000da01",
+          "tenant_id": "00000000-0000-4000-8000-00000000e124",
+          "environment": "local",
+          "run_id": "90d6b280-c8b9-8f13-ac83-dbcd6a488003",
+          "revision": 1,
+          "content_hash": "sha256:accd3f21f16fee1b9331fd79c06ee95e97ebc280c0e8e17297c62a12a0435dca"
+        },
+        {
+          "artifact_id": "9a32fd54-1ce5-88a3-94ac-319aa3022a16",
+          "artifact_type": "SemanticQueryContext",
+          "app_id": "00000000-0000-4000-8000-00000000da01",
+          "tenant_id": "00000000-0000-4000-8000-00000000e124",
+          "environment": "local",
+          "run_id": "90d6b280-c8b9-8f13-ac83-dbcd6a488003",
+          "revision": 1,
+          "content_hash": "sha256:a763c5fb25cb2fe649beefe4f9327c231dc1c93839fc25461f970b15d9f58d85"
+        }
+      ],
+      "receipts": {
+        "business": "sha256:6b67663221f3e8202c94e316b4dc3c2bada0c154827432a71ad214e399ee3f6f",
+        "qa": "sha256:91a0f55b726b8942ec2e70ff93481b15ea15673ead81ab9dc554c7290ef76484",
+        "trace": "sha256:03b94e30ac478ea3c98ce71a10df9c15afc35c38b361e3a8ca319721fa94359d",
+        "terminal": "sha256:822c21326e8a1c7e19571dd4c4d61585fac8740cc9311a43122919c3946b8c72"
+      },
+      "usage": {
+        "starts": 4,
+        "reported": 2,
+        "unavailable": 2,
+        "input": 35274,
+        "output": 1134
+      }
+    },
+    {
+      "ordinal": 6,
+      "turn": "L2-02",
+      "question": "只执行两步委派：第一步只由 Semantic 解释已发布 formula.marketing_roas，并且只选择 dimension.marketing_channel、metric.marketing_spend、metric.marketing_revenue、formula.marketing_roas，不选择时间口径或关系；第二步只由 Text2SQL 对全部可用营销数据按渠道汇总，输出 channel、total_spend、marketing_revenue、roas 表。ROAS 等于汇总收入除以汇总投入，汇总投入为0时返回0；不得添加日期过滤，不要在 Semantic 后直接结束。",
+      "run": "30d85344-c4f4-8782-9a10-d765f2bc1b02",
+      "conversation": "d4080ba2-3b49-56f2-acac-a3f2109000d7",
+      "agents": [
+        "semantic-management-agent",
+        "governed-text2sql-agent"
+      ],
+      "answer_hash": "sha256:4cf3cd0e4941dbf2f7301a2f3ec12a8efd3084e047176982701632985c93f1c1",
+      "artifacts": [
+        {
+          "artifact_id": "78ac8d71-15ca-8323-88ca-02b1857bee21",
+          "artifact_type": "SemanticQueryContext",
+          "app_id": "00000000-0000-4000-8000-00000000da01",
+          "tenant_id": "00000000-0000-4000-8000-00000000e124",
+          "environment": "local",
+          "run_id": "30d85344-c4f4-8782-9a10-d765f2bc1b02",
+          "revision": 1,
+          "content_hash": "sha256:086f69e969c18e0207b2c7eaa74bcc39ba0a830a7f4caff47cbb16eae1d5fe01"
+        },
+        {
+          "artifact_id": "af254454-869d-81a2-af10-d3ba7b5d7b4b",
+          "artifact_type": "QueryEvidence",
+          "app_id": "00000000-0000-4000-8000-00000000da01",
+          "tenant_id": "00000000-0000-4000-8000-00000000e124",
+          "environment": "local",
+          "run_id": "30d85344-c4f4-8782-9a10-d765f2bc1b02",
+          "revision": 1,
+          "content_hash": "sha256:5f7ae998cc679aad0207a8a184ad351509a2fc4db5e7c1acbc7444bb282812b2"
+        },
+        {
+          "artifact_id": "efb8db24-04af-8d3f-9d87-0b20ac10d9b4",
+          "artifact_type": "ArtifactWorkspaceDocument",
+          "app_id": "00000000-0000-4000-8000-00000000da01",
+          "tenant_id": "00000000-0000-4000-8000-00000000e124",
+          "environment": "local",
+          "run_id": "30d85344-c4f4-8782-9a10-d765f2bc1b02",
+          "revision": 1,
+          "content_hash": "sha256:2f61e2a86840a595206701534fb3089fff18414361b88e66b0ac45704eee8201"
+        }
+      ],
+      "receipts": {
+        "business": "sha256:a5de95e09e80d2715e75947499ded74872e160f3a8903170edd5460524756408",
+        "qa": "sha256:eca1fed8b1599063a30393d1ca459bd5b84469a3433c6d649993e966e6eb76cb",
+        "trace": "sha256:d2970ef69907795166f966c8db2ef76f2913df1ef9d3625efca6520e4da8826b",
+        "terminal": "sha256:0e9d893b4ccc423897c42bec962ead138576342f123a9a7d1fc77e4b7985e843"
+      },
+      "usage": {
+        "starts": 5,
+        "reported": 3,
+        "unavailable": 2,
+        "input": 57911,
+        "output": 984
+      }
+    },
+    {
+      "ordinal": 7,
+      "turn": "L3-01",
+      "question": "最近12个完整月的订单收入同比表现如何？由 Semantic 保留订单收入、订单月份和同比口径，Text2SQL 输出完整12个月事实面板；随后只委派一个受治理 Analysis task，在同一个 Analysis Stage 内说明趋势强度并发布月度折线图和经营结论。只作描述性比较。",
+      "run": "e4f562e1-6159-851d-bade-c9400e4b6d47",
+      "conversation": "6c2a46ed-a284-5f13-ade2-6b0f0f0b51b1",
+      "agents": [
+        "semantic-management-agent",
+        "governed-text2sql-agent",
+        "governed-analysis-agent"
+      ],
+      "answer_hash": "sha256:a59f41bf7e1f9d91cdffef109eaa4d897a24eee31b4df6e48772290120dc9eac",
+      "artifacts": [
+        {
+          "artifact_id": "459cac2a-50ba-8c51-a953-c29d20115e5c",
+          "artifact_type": "SemanticQueryContext",
+          "app_id": "00000000-0000-4000-8000-00000000da01",
+          "tenant_id": "00000000-0000-4000-8000-00000000e124",
+          "environment": "local",
+          "run_id": "e4f562e1-6159-851d-bade-c9400e4b6d47",
+          "revision": 1,
+          "content_hash": "sha256:fd73a051a8a50370a03f6ab7e7b5aac6824bced962cbec081eed00e663c3f453"
+        },
+        {
+          "artifact_id": "b50f1f92-ba8a-5193-aee0-13e6f2cea6e0",
+          "artifact_type": "AnalysisReport",
+          "app_id": "00000000-0000-4000-8000-00000000da01",
+          "tenant_id": "00000000-0000-4000-8000-00000000e124",
+          "environment": "local",
+          "run_id": "e4f562e1-6159-851d-bade-c9400e4b6d47",
+          "revision": 1,
+          "content_hash": "sha256:b4e82dd3bbf306d8a0057b6fc94667db01af4da1ab0a912ff18d832a576b1b17"
+        },
+        {
+          "artifact_id": "c89a510e-f1bd-84ce-9154-81416e92424e",
+          "artifact_type": "ArtifactWorkspaceDocument",
+          "app_id": "00000000-0000-4000-8000-00000000da01",
+          "tenant_id": "00000000-0000-4000-8000-00000000e124",
+          "environment": "local",
+          "run_id": "e4f562e1-6159-851d-bade-c9400e4b6d47",
+          "revision": 1,
+          "content_hash": "sha256:e3d04d73cec2afc2b445816711d0637d4713ae73504e5cbbd26912330a42b139"
+        },
+        {
+          "artifact_id": "ce1893cd-68e6-53cc-8e8c-26ffc1896047",
+          "artifact_type": "ArtifactWorkspaceDocument",
+          "app_id": "00000000-0000-4000-8000-00000000da01",
+          "tenant_id": "00000000-0000-4000-8000-00000000e124",
+          "environment": "local",
+          "run_id": "e4f562e1-6159-851d-bade-c9400e4b6d47",
+          "revision": 1,
+          "content_hash": "sha256:963aff907f8a627dc8a6519aff0bb5ed1a8bb1d40c515de40bb29cd8f1f94ab0"
+        },
+        {
+          "artifact_id": "fdc59649-f932-8c61-8b6b-38f734d45b3a",
+          "artifact_type": "QueryEvidence",
+          "app_id": "00000000-0000-4000-8000-00000000da01",
+          "tenant_id": "00000000-0000-4000-8000-00000000e124",
+          "environment": "local",
+          "run_id": "e4f562e1-6159-851d-bade-c9400e4b6d47",
+          "revision": 1,
+          "content_hash": "sha256:01d4f5d8737bfe9cf2db24f9798c8e2617b3c538db62fdae2a5795c90f181931"
+        }
+      ],
+      "receipts": {
+        "business": "sha256:9b636ba41c9637ce4d7e644009ae37fdfcc9f317a6223d72a9516820910215e0",
+        "qa": "sha256:b91b1c0a42a34fb957a9fbb9fa96268cd076eabe5081a077b3c814f0dbcfdc80",
+        "trace": "sha256:9c8819875f9032065a32362cccd15224320cb570a71a18fb80a7baf8d33021d6",
+        "terminal": "sha256:9e8fb6fa9b85a8d4b68afcb7b3baac23b83dd09a94a1567d5f83afa4086b3a41"
+      },
+      "usage": {
+        "starts": 9,
+        "reported": 6,
+        "unavailable": 3,
+        "input": 66746,
+        "output": 3213
+      }
+    },
+    {
+      "ordinal": 8,
+      "turn": "L3-02",
+      "question": "只执行三步委派：第一步只由 Semantic 解释已发布转化量 metric.conversions（其定义引用 formula.conversions=SUM(conversions)）、渠道 dimension.marketing_channel 和目标人群 dimension.target_audience，不选择其他指标、额外时间口径或关系；第二步只由 Text2SQL 对全部可用营销数据按 channel × target_audience 汇总，输出 channel、target_audience、conversions 完整事实表，不得添加日期过滤；第三步只委派一个受治理 Analysis task，在同一个 Analysis Stage 内比较各渠道和目标人群的转化量并发布完整事实表与转化量对比图。结论只描述当前数据，禁止因果断言。",
+      "run": "0b011def-8718-86f8-92e5-7c0881169a73",
+      "conversation": "630bc457-b313-5dde-b14f-c186e246448a",
+      "agents": [
+        "semantic-management-agent",
+        "governed-text2sql-agent",
+        "governed-analysis-agent"
+      ],
+      "answer_hash": "sha256:d71b15de383aa31660363a17198d7a85767c9786d058e5108ccb2795f21b51ed",
+      "artifacts": [
+        {
+          "artifact_id": "6d63e547-923f-8c17-851c-950db5273b81",
+          "artifact_type": "QueryEvidence",
+          "app_id": "00000000-0000-4000-8000-00000000da01",
+          "tenant_id": "00000000-0000-4000-8000-00000000e124",
+          "environment": "local",
+          "run_id": "0b011def-8718-86f8-92e5-7c0881169a73",
+          "revision": 1,
+          "content_hash": "sha256:ce83c4589e381fef859db82d42eb6ca78fdcc6e441d9f6ce045bb5da2f7ac2af"
+        },
+        {
+          "artifact_id": "7e3a5f58-a628-53b5-99a2-e0622c64c8fc",
+          "artifact_type": "AnalysisReport",
+          "app_id": "00000000-0000-4000-8000-00000000da01",
+          "tenant_id": "00000000-0000-4000-8000-00000000e124",
+          "environment": "local",
+          "run_id": "0b011def-8718-86f8-92e5-7c0881169a73",
+          "revision": 1,
+          "content_hash": "sha256:5cc39a5b6462801fa3152c01f71abbcaaeaa363003941d50d1a225ba143aba27"
+        },
+        {
+          "artifact_id": "9e8142c6-8cad-5408-86a0-27d82ff93f17",
+          "artifact_type": "ArtifactWorkspaceDocument",
+          "app_id": "00000000-0000-4000-8000-00000000da01",
+          "tenant_id": "00000000-0000-4000-8000-00000000e124",
+          "environment": "local",
+          "run_id": "0b011def-8718-86f8-92e5-7c0881169a73",
+          "revision": 1,
+          "content_hash": "sha256:e41ea369867787fe7230fdc42f5a252366e75f0118005aad9e153b0045827b44"
+        },
+        {
+          "artifact_id": "b94dc61e-080e-831c-914f-d6096797a327",
+          "artifact_type": "SemanticQueryContext",
+          "app_id": "00000000-0000-4000-8000-00000000da01",
+          "tenant_id": "00000000-0000-4000-8000-00000000e124",
+          "environment": "local",
+          "run_id": "0b011def-8718-86f8-92e5-7c0881169a73",
+          "revision": 1,
+          "content_hash": "sha256:87b9244508b2c5410f92887a9bc06bbb5f48c08cd14d7253e968c6eb505578a5"
+        }
+      ],
+      "receipts": {
+        "business": "sha256:0de0d90dcc116c8f6c6560e96047c967d23360bca5df3b20012c78b7cc85d339",
+        "qa": "sha256:2d12c6f8208532ad9edd6e23c7845c0776e44d678516775fb771a0a477f2fd82",
+        "trace": "sha256:f4f9eaab22c7689e16d4a3265a838559db31e9dbd1b0d103436ce9c9e08fe3fe",
+        "terminal": "sha256:590ee1aaab4d52eaeacc5c113d5f1f2ba92405acfe697037fbd17f3032fba672"
+      },
+      "usage": {
+        "starts": 11,
+        "reported": 8,
+        "unavailable": 3,
+        "input": 88497,
+        "output": 2063
+      }
+    },
+    {
+      "ordinal": 9,
+      "turn": "L4-A-01",
+      "question": "最近12个完整月的订单收入同比表现如何？请给出月度趋势图。",
+      "run": "11a51750-87d8-8549-b9ed-79aca2355b13",
+      "conversation": "cc40b8a8-0903-5b0c-94e0-9768f5efa632",
+      "agents": [
+        "semantic-management-agent",
+        "governed-text2sql-agent",
+        "governed-analysis-agent"
+      ],
+      "answer_hash": "sha256:1a9aaed7e8239d1c33b9046e7acb8e2c6e174a82ff50906b06cc5ebc21f29d9c",
+      "artifacts": [
+        {
+          "artifact_id": "141fbb83-c0ac-515c-a46d-b1c7e2f11515",
+          "artifact_type": "AnalysisReport",
+          "app_id": "00000000-0000-4000-8000-00000000da01",
+          "tenant_id": "00000000-0000-4000-8000-00000000e124",
+          "environment": "local",
+          "run_id": "11a51750-87d8-8549-b9ed-79aca2355b13",
+          "revision": 1,
+          "content_hash": "sha256:757522d381e0485cbde6683efe872138199911245fa6e7553eea2a2efa756544"
+        },
+        {
+          "artifact_id": "83d0dea0-4e7a-8873-a4c7-5a69ffdeb877",
+          "artifact_type": "SemanticQueryContext",
+          "app_id": "00000000-0000-4000-8000-00000000da01",
+          "tenant_id": "00000000-0000-4000-8000-00000000e124",
+          "environment": "local",
+          "run_id": "11a51750-87d8-8549-b9ed-79aca2355b13",
+          "revision": 1,
+          "content_hash": "sha256:30558b207c80a7dce35d66328e756912995a81ff54b21512ebd985acdd1ad966"
+        },
+        {
+          "artifact_id": "9fd8e010-f495-81ea-831c-0221247713bb",
+          "artifact_type": "QueryEvidence",
+          "app_id": "00000000-0000-4000-8000-00000000da01",
+          "tenant_id": "00000000-0000-4000-8000-00000000e124",
+          "environment": "local",
+          "run_id": "11a51750-87d8-8549-b9ed-79aca2355b13",
+          "revision": 1,
+          "content_hash": "sha256:c386416e60eb087b6de589d0f8393da681e7e950eb38402ac71f3c8402d70a0d"
+        },
+        {
+          "artifact_id": "c9c37505-23ab-8653-a29b-20a550df5d7b",
+          "artifact_type": "ArtifactWorkspaceDocument",
+          "app_id": "00000000-0000-4000-8000-00000000da01",
+          "tenant_id": "00000000-0000-4000-8000-00000000e124",
+          "environment": "local",
+          "run_id": "11a51750-87d8-8549-b9ed-79aca2355b13",
+          "revision": 1,
+          "content_hash": "sha256:fc99470c8994898698b2d6799944157f8bdb431bc267e6d6e2df1205ed322b7e"
+        },
+        {
+          "artifact_id": "d0eef123-37d9-5dbd-b733-5f29d6045bb1",
+          "artifact_type": "ArtifactWorkspaceDocument",
+          "app_id": "00000000-0000-4000-8000-00000000da01",
+          "tenant_id": "00000000-0000-4000-8000-00000000e124",
+          "environment": "local",
+          "run_id": "11a51750-87d8-8549-b9ed-79aca2355b13",
+          "revision": 1,
+          "content_hash": "sha256:df4b40251ff079b9e4a16b8de99ca90568361340833cbb594d53fb35522c7940"
+        }
+      ],
+      "receipts": {
+        "business": "sha256:beb8e2d789142c666a2bea38a2e2fb221701b1bd336392b234b85792e12dffd7",
+        "qa": "sha256:e0079aec4f0a52aa2cd3242efe342facc3e2e198a9a73491abfa797505ea319c",
+        "trace": "sha256:0bfa452cea22b832acbd8e1aa25c54ac04412ea6a18fbddf43f58a5d824488b3",
+        "terminal": "sha256:ec2cf9c3d4d812b68ddc5cecead29423981aa23d765ee79e4c708bfc22f650ff"
+      },
+      "usage": {
+        "starts": 9,
+        "reported": 6,
+        "unavailable": 3,
+        "input": 56002,
+        "output": 3187
+      }
+    },
+    {
+      "ordinal": 10,
+      "turn": "L4-A-02",
+      "question": "沿用上一题最近12个完整月的同比窗口。由 Semantic 保留订单收入、订单月份、客户类型和同比口径，Text2SQL 输出完整的12个月 × 客户类型同比事实面板；随后只委派一个受治理 Analysis task，并在同一个 Analysis Stage 内一次完成整体同比下降最大的3个月、各客户类型对整体同比变化的贡献，同时一次发布整体同比趋势图和客户类型对比图。不得拆成多个 Analysis task/Stage。",
+      "run": "af3fd4b0-3b0d-840e-8935-9835a8f6d154",
+      "conversation": "cc40b8a8-0903-5b0c-94e0-9768f5efa632",
+      "agents": [
+        "semantic-management-agent",
+        "governed-text2sql-agent",
+        "governed-analysis-agent"
+      ],
+      "answer_hash": "sha256:15679cf1e9062e0a7eb0609a765e7e3d75ce7adb2f2853e14d3ee71f87c6b0eb",
+      "artifacts": [
+        {
+          "artifact_id": "38d1fdde-72e3-5944-a9db-f8bd2f2d27ba",
+          "artifact_type": "AnalysisReport",
+          "app_id": "00000000-0000-4000-8000-00000000da01",
+          "tenant_id": "00000000-0000-4000-8000-00000000e124",
+          "environment": "local",
+          "run_id": "af3fd4b0-3b0d-840e-8935-9835a8f6d154",
+          "revision": 1,
+          "content_hash": "sha256:7ea49914c105febd3cd496c3537d54bce36eeca62c3a1607833675162f01ae4b"
+        },
+        {
+          "artifact_id": "4aa002bf-ff68-86f7-8de9-98d50336127b",
+          "artifact_type": "SemanticQueryContext",
+          "app_id": "00000000-0000-4000-8000-00000000da01",
+          "tenant_id": "00000000-0000-4000-8000-00000000e124",
+          "environment": "local",
+          "run_id": "af3fd4b0-3b0d-840e-8935-9835a8f6d154",
+          "revision": 1,
+          "content_hash": "sha256:6a030c9dda63de550e82e9f17410ec8b1494d049320c7bb4fb568313f3c49ce0"
+        },
+        {
+          "artifact_id": "7b6f4d3f-4101-84a6-9825-a6a99b494b68",
+          "artifact_type": "QueryEvidence",
+          "app_id": "00000000-0000-4000-8000-00000000da01",
+          "tenant_id": "00000000-0000-4000-8000-00000000e124",
+          "environment": "local",
+          "run_id": "af3fd4b0-3b0d-840e-8935-9835a8f6d154",
+          "revision": 1,
+          "content_hash": "sha256:07b035d9f68158b5d1bed84cf7b74168b70216870e52f0689583c288c120eb00"
+        },
+        {
+          "artifact_id": "ace4d735-c55e-5b0d-ace6-09e4275de617",
+          "artifact_type": "ArtifactWorkspaceDocument",
+          "app_id": "00000000-0000-4000-8000-00000000da01",
+          "tenant_id": "00000000-0000-4000-8000-00000000e124",
+          "environment": "local",
+          "run_id": "af3fd4b0-3b0d-840e-8935-9835a8f6d154",
+          "revision": 1,
+          "content_hash": "sha256:0e2056fdbad69db094daad56ccf08e8d8c054e20b067d610845d49ce778e8f7d"
+        }
+      ],
+      "receipts": {
+        "business": "sha256:edaa56a7314a9f3d87a3229b2167e1e10cfef303848d0be61957e55314be32da",
+        "qa": "sha256:72ead5bef5baee6d1422c638b1a8e99b04863f9dff4e4e9419387fe2742f2dc8",
+        "trace": "sha256:44933f0c8c704c5ed991c6bba3177d8e0f0b1237568c71dffb9461dc19c5f9f9",
+        "terminal": "sha256:480c61f8580e3caa5f70cb78e5180ab1b1717dda5afe493dd4b6d0b9f58bcb77"
+      },
+      "usage": {
+        "starts": 9,
+        "reported": 6,
+        "unavailable": 3,
+        "input": 90663,
+        "output": 5059
+      }
+    },
+    {
+      "ordinal": 11,
+      "turn": "L4-A-03",
+      "question": "把总体趋势和这3个月的拆解合成一份经营摘要，保留原趋势图，再增加客户类型对比图。",
+      "run": "99615ce6-660a-875c-a62c-2312a56e82a3",
+      "conversation": "cc40b8a8-0903-5b0c-94e0-9768f5efa632",
+      "agents": [
+        "semantic-management-agent",
+        "governed-text2sql-agent",
+        "governed-analysis-agent"
+      ],
+      "answer_hash": "sha256:c7bd2cbc0ac99302a9952a674ebfb1e6ce5a1f3248879888a6297a60d2d5036b",
+      "artifacts": [
+        {
+          "artifact_id": "1e0aa361-7582-8758-aca9-2d910691b353",
+          "artifact_type": "QueryEvidence",
+          "app_id": "00000000-0000-4000-8000-00000000da01",
+          "tenant_id": "00000000-0000-4000-8000-00000000e124",
+          "environment": "local",
+          "run_id": "99615ce6-660a-875c-a62c-2312a56e82a3",
+          "revision": 1,
+          "content_hash": "sha256:9eb6316b2adfbb62d69c1aee6f3eeb852a3fc6fa264c26c94af9533725459c77"
+        },
+        {
+          "artifact_id": "46a113d0-fdd0-563a-87b6-a86f14bc8aa8",
+          "artifact_type": "AnalysisReport",
+          "app_id": "00000000-0000-4000-8000-00000000da01",
+          "tenant_id": "00000000-0000-4000-8000-00000000e124",
+          "environment": "local",
+          "run_id": "99615ce6-660a-875c-a62c-2312a56e82a3",
+          "revision": 1,
+          "content_hash": "sha256:da4a7422488bac591a8015e93ce263cb10a7ef4512d171804795c04bc1f14db8"
+        },
+        {
+          "artifact_id": "57b14aa2-678a-5951-935d-925834ae666f",
+          "artifact_type": "ArtifactWorkspaceDocument",
+          "app_id": "00000000-0000-4000-8000-00000000da01",
+          "tenant_id": "00000000-0000-4000-8000-00000000e124",
+          "environment": "local",
+          "run_id": "99615ce6-660a-875c-a62c-2312a56e82a3",
+          "revision": 1,
+          "content_hash": "sha256:c247e21ac52b2334c7595936c629ceb914522f5581c5df2fa88f5e44b2084f40"
+        },
+        {
+          "artifact_id": "cf88e7b5-2a88-8170-864b-5fe3380ffd59",
+          "artifact_type": "SemanticQueryContext",
+          "app_id": "00000000-0000-4000-8000-00000000da01",
+          "tenant_id": "00000000-0000-4000-8000-00000000e124",
+          "environment": "local",
+          "run_id": "99615ce6-660a-875c-a62c-2312a56e82a3",
+          "revision": 1,
+          "content_hash": "sha256:cca26db53636fd91447dbc36a30c80ecd522b78842fc28d611d2ee341e00c1a2"
+        }
+      ],
+      "receipts": {
+        "business": "sha256:1a3e61369561f3516b34dec986f2d60db2acf2885d33488f48b8f23b59bd6fbe",
+        "qa": "sha256:6eca7b4cf699232c378e13a344d27b8eb7a5721c42c6f1db5edc834286f5f2c1",
+        "trace": "sha256:9f35e5e20f2db3059f546609df1e92d4f0879160a030df078d5f5a228c4a3d69",
+        "terminal": "sha256:7f13c74a00e401b471cd5a66b837c4fa967fce762b58e39c65a89257fe32e407"
+      },
+      "usage": {
+        "starts": 9,
+        "reported": 6,
+        "unavailable": 3,
+        "input": 91691,
+        "output": 5060
+      }
+    },
+    {
+      "ordinal": 12,
+      "turn": "L4-B-01",
+      "question": "使用已发布公式“营销ROAS”（formula.marketing_roas；按渠道先汇总营销归因收入与营销投入，汇总投入为0时结果为0，否则以汇总收入÷汇总投入计算），由 Semantic 解释该发布公式、Text2SQL 按渠道输出总营销投入、营销归因收入和ROAS并给出渠道对比图。本题不要求因果解释。",
+      "run": "0562c057-a7d2-860c-80b7-4be9f59eba43",
+      "conversation": "48eb120b-d1fa-544e-9bda-9d4566b30373",
+      "agents": [
+        "semantic-management-agent",
+        "governed-text2sql-agent",
+        "governed-analysis-agent"
+      ],
+      "answer_hash": "sha256:bf9fd8897494a780745e3ff19fd67c099b91040e033076b75ad686c6aa8a042f",
+      "artifacts": [
+        {
+          "artifact_id": "0e0382ac-c375-540f-83f7-66e1f5674637",
+          "artifact_type": "AnalysisReport",
+          "app_id": "00000000-0000-4000-8000-00000000da01",
+          "tenant_id": "00000000-0000-4000-8000-00000000e124",
+          "environment": "local",
+          "run_id": "0562c057-a7d2-860c-80b7-4be9f59eba43",
+          "revision": 1,
+          "content_hash": "sha256:23e6106f3819993d69e6f22bf59dcd90f0bdd713a1a23cd1e4df4bd6eddd0675"
+        },
+        {
+          "artifact_id": "2fac7150-decd-8ec5-ab49-f45f491bc4bd",
+          "artifact_type": "QueryEvidence",
+          "app_id": "00000000-0000-4000-8000-00000000da01",
+          "tenant_id": "00000000-0000-4000-8000-00000000e124",
+          "environment": "local",
+          "run_id": "0562c057-a7d2-860c-80b7-4be9f59eba43",
+          "revision": 1,
+          "content_hash": "sha256:d9018130b86435b718c6418cce096c4010108635ca79cf32852317ea051637bb"
+        },
+        {
+          "artifact_id": "6c398660-20fb-84c1-b29b-a4ae4778734b",
+          "artifact_type": "ArtifactWorkspaceDocument",
+          "app_id": "00000000-0000-4000-8000-00000000da01",
+          "tenant_id": "00000000-0000-4000-8000-00000000e124",
+          "environment": "local",
+          "run_id": "0562c057-a7d2-860c-80b7-4be9f59eba43",
+          "revision": 1,
+          "content_hash": "sha256:6231a508137181cdd0f2511701542931865731cd403ef2e811b4096ad1370eaf"
+        },
+        {
+          "artifact_id": "e147a9d9-8d8b-89a7-952d-b4159c96a579",
+          "artifact_type": "SemanticQueryContext",
+          "app_id": "00000000-0000-4000-8000-00000000da01",
+          "tenant_id": "00000000-0000-4000-8000-00000000e124",
+          "environment": "local",
+          "run_id": "0562c057-a7d2-860c-80b7-4be9f59eba43",
+          "revision": 1,
+          "content_hash": "sha256:173a79deedd98379bab03ec6eb446331c6b2d5bb794789f02a1352d50f1d09bb"
+        },
+        {
+          "artifact_id": "fa8ba942-e718-5dab-b6f3-4466136559ef",
+          "artifact_type": "ArtifactWorkspaceDocument",
+          "app_id": "00000000-0000-4000-8000-00000000da01",
+          "tenant_id": "00000000-0000-4000-8000-00000000e124",
+          "environment": "local",
+          "run_id": "0562c057-a7d2-860c-80b7-4be9f59eba43",
+          "revision": 1,
+          "content_hash": "sha256:2f88117976396b8302101fea1766baafce9cd2ed66dceed4d0e82b149668b768"
+        }
+      ],
+      "receipts": {
+        "business": "sha256:4fcd6347b1005c5009f20e77afc8b1854e6f5dda220b1c5e71e6443e6a87756a",
+        "qa": "sha256:754d61fbaa36c550b3e2a1c137ae2ba16e1a44028048e992599d05b301d84a12",
+        "trace": "sha256:15a9db879fa1e588d4f029f87bb072566926a80a3638e0799589d878ac4c5ebd",
+        "terminal": "sha256:ca99d516f323d6179793f2cf2d0ccd79656ca8116b781025fcb0d0f8ff42ecd8"
+      },
+      "usage": {
+        "starts": 9,
+        "reported": 6,
+        "unavailable": 3,
+        "input": 92129,
+        "output": 1903
+      }
+    },
+    {
+      "ordinal": 13,
+      "turn": "L4-B-02",
+      "question": "沿用同一渠道范围，把回报改为请求级“净ROI”：先按渠道分别汇总营销归因收入和营销投入，再计算（汇总收入－汇总投入）÷汇总投入。由 Semantic 形成 REQUEST_ONLY/NONE 口径、Text2SQL 重算并给出渠道对比图；不要复用ROAS列。",
+      "run": "1ce98a56-0a41-8523-85f5-ecff23c129cc",
+      "conversation": "48eb120b-d1fa-544e-9bda-9d4566b30373",
+      "agents": [
+        "semantic-management-agent",
+        "governed-text2sql-agent",
+        "governed-text2sql-agent",
+        "governed-analysis-agent"
+      ],
+      "answer_hash": "sha256:710dbf549515ba6dbde4b6f21aae878af79025a0a0de54a94104e9fc1e6f725d",
+      "artifacts": [
+        {
+          "artifact_id": "13fef0b2-c9d9-5286-9138-2f8898d40da6",
+          "artifact_type": "ArtifactWorkspaceDocument",
+          "app_id": "00000000-0000-4000-8000-00000000da01",
+          "tenant_id": "00000000-0000-4000-8000-00000000e124",
+          "environment": "local",
+          "run_id": "1ce98a56-0a41-8523-85f5-ecff23c129cc",
+          "revision": 1,
+          "content_hash": "sha256:e015ae54607ab930bd3e82992590fd079a36ba4a2d686311efd3501d0c502ade"
+        },
+        {
+          "artifact_id": "3bf6db54-b974-8d9b-aa5d-b6ed06f8a3b3",
+          "artifact_type": "SemanticQueryContext",
+          "app_id": "00000000-0000-4000-8000-00000000da01",
+          "tenant_id": "00000000-0000-4000-8000-00000000e124",
+          "environment": "local",
+          "run_id": "1ce98a56-0a41-8523-85f5-ecff23c129cc",
+          "revision": 1,
+          "content_hash": "sha256:dc27d9119a88bf28e40d1cc3e70b57a85afbe5d7f473bbfdfbdeb9cde3d2c3c2"
+        },
+        {
+          "artifact_id": "4072c7e7-f802-5bb2-90f2-4bb973788809",
+          "artifact_type": "AnalysisReport",
+          "app_id": "00000000-0000-4000-8000-00000000da01",
+          "tenant_id": "00000000-0000-4000-8000-00000000e124",
+          "environment": "local",
+          "run_id": "1ce98a56-0a41-8523-85f5-ecff23c129cc",
+          "revision": 1,
+          "content_hash": "sha256:63d7472137a6a38e8310ca941e93bba0e9f071b42bf6c0068fb9476c4216d9e3"
+        },
+        {
+          "artifact_id": "928b1d96-b2cb-8d3f-9651-4392a8d77b0e",
+          "artifact_type": "QueryEvidence",
+          "app_id": "00000000-0000-4000-8000-00000000da01",
+          "tenant_id": "00000000-0000-4000-8000-00000000e124",
+          "environment": "local",
+          "run_id": "1ce98a56-0a41-8523-85f5-ecff23c129cc",
+          "revision": 1,
+          "content_hash": "sha256:5ca7113857c2ebc79e9bd07d66fb5e8dc727bd05f57820d9232f6dcec27c03ac"
+        },
+        {
+          "artifact_id": "c6aec1ee-707f-86d7-a2dd-cf271584a617",
+          "artifact_type": "ArtifactWorkspaceDocument",
+          "app_id": "00000000-0000-4000-8000-00000000da01",
+          "tenant_id": "00000000-0000-4000-8000-00000000e124",
+          "environment": "local",
+          "run_id": "1ce98a56-0a41-8523-85f5-ecff23c129cc",
+          "revision": 1,
+          "content_hash": "sha256:caba5eaacf2ea70206c24788700c30c3167e94b21ad5563767b5d83711479869"
+        }
+      ],
+      "receipts": {
+        "business": "sha256:63a2f00c8ebf7dd69b6d9f39fc3d6d5968c318a05848c4c68cf33a9cc0def955",
+        "qa": "sha256:50e64f34b5cbbc4da08a49cccc857d562e6b711f19b17703499a843a21e0baeb",
+        "trace": "sha256:d7a2484c508680f611a01957dcf366e8319ed8c7ce7113303e6dfe09a7bc364e",
+        "terminal": "sha256:d311860bc27c2b2746e915ef38d3ce45b4fb5b81a914f808723ee6cc0b801eda"
+      },
+      "usage": {
+        "starts": 12,
+        "reported": 8,
+        "unavailable": 4,
+        "input": 93757,
+        "output": 2963
+      }
+    },
+    {
+      "ordinal": 14,
+      "turn": "L4-B-03",
+      "question": "继续使用上两题的渠道范围和请求级净ROI口径。比较数据中最近两个完整的营销表现自然月：时间字段使用已发布维度“blinkit_marketing_performance date”，收入使用已发布的“营销归因收入”。由 Semantic 解析 RECENT_COMPLETE_PERIODS + AGGREGATE_RATIO；Text2SQL 必须输出完整 month × channel × audience 两月事实面板，共32行，每行包含营销投入、营销归因收入和请求级净ROI，SQL阶段不得预筛。随后只委派一个受治理 Analysis task，从完整面板按渠道重新汇总并筛出本期投入增加且净ROI下降的渠道，列出入选渠道的全部目标人群事实。可能原因和下一步必须标为待验证假设，禁止因果或持续趋势断言。",
+      "run": "33a84a44-63b1-88cb-9889-8369afd297d7",
+      "conversation": "48eb120b-d1fa-544e-9bda-9d4566b30373",
+      "agents": [
+        "semantic-management-agent",
+        "governed-text2sql-agent",
+        "governed-text2sql-agent",
+        "governed-analysis-agent"
+      ],
+      "answer_hash": "sha256:f15d769711aec74510d7c9f2822edcb8bf90318af668134d2ecb64de571ad1c1",
+      "artifacts": [
+        {
+          "artifact_id": "199665fc-4282-822a-9d45-40d47fde0835",
+          "artifact_type": "SemanticQueryContext",
+          "app_id": "00000000-0000-4000-8000-00000000da01",
+          "tenant_id": "00000000-0000-4000-8000-00000000e124",
+          "environment": "local",
+          "run_id": "33a84a44-63b1-88cb-9889-8369afd297d7",
+          "revision": 1,
+          "content_hash": "sha256:1e35f55230c9434cb81fc0521cfa9110bdfd217afc6261635d7066315a1c0e97"
+        },
+        {
+          "artifact_id": "1b9efb89-83c2-51fe-8fe1-4095db9347f8",
+          "artifact_type": "AnalysisReport",
+          "app_id": "00000000-0000-4000-8000-00000000da01",
+          "tenant_id": "00000000-0000-4000-8000-00000000e124",
+          "environment": "local",
+          "run_id": "33a84a44-63b1-88cb-9889-8369afd297d7",
+          "revision": 1,
+          "content_hash": "sha256:c9dba7143f11fb8ef5564f1450e5b97aa6dfb39a79963014617c19f87f8a8580"
+        },
+        {
+          "artifact_id": "4e24a445-4489-5803-96d3-33d5787ea66b",
+          "artifact_type": "ArtifactWorkspaceDocument",
+          "app_id": "00000000-0000-4000-8000-00000000da01",
+          "tenant_id": "00000000-0000-4000-8000-00000000e124",
+          "environment": "local",
+          "run_id": "33a84a44-63b1-88cb-9889-8369afd297d7",
+          "revision": 1,
+          "content_hash": "sha256:62f00246e6c96213e629a05591001c8b3d9c2e0ae460c45aa8f5758f73dd0a94"
+        },
+        {
+          "artifact_id": "5e661ef9-6029-87ae-9d4f-001bbf7a50dc",
+          "artifact_type": "QueryEvidence",
+          "app_id": "00000000-0000-4000-8000-00000000da01",
+          "tenant_id": "00000000-0000-4000-8000-00000000e124",
+          "environment": "local",
+          "run_id": "33a84a44-63b1-88cb-9889-8369afd297d7",
+          "revision": 1,
+          "content_hash": "sha256:ecbbe3fb75c06981c0bce40e1312b20a62ef2706cd1bef7f1b7f745e031903c7"
+        }
+      ],
+      "receipts": {
+        "business": "sha256:9c549444a375f9e3a3aeb4a9bf4859c0268b85f4eb20c79632ac933202c64e55",
+        "qa": "sha256:1bf0e6e4e86363e8b0ceec2672f83bd4f9032bd8c602c4377209f5853d2dd447",
+        "trace": "sha256:912662fea3a99ae8edd0ff15645a1f8bd37937ff6f59fac73206f9c4cc319897",
+        "terminal": "sha256:8d4125d6515fe3755db788c0642ee0f5197cd797b9fcd400abc6857b53491fe3"
+      },
+      "usage": {
+        "starts": 13,
+        "reported": 9,
+        "unavailable": 4,
+        "input": 129625,
+        "output": 7026
+      }
+    }
+  ]
+}

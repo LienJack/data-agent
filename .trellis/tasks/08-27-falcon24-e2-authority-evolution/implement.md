@@ -1404,11 +1404,13 @@ Diagnostic/Q1/C1任一正式首次失败必须写既有 authority支持的 immut
 
 ### F5 — Live activation 与四层正式门禁
 
-- [ ] fresh live certification在predecessor下STAGED/inactive；单事务激活fresh successor并完成production-port readback。
-- [ ] 创建唯一 four-layer attempt，按 L1五题 -> L2两题 -> L3两题 -> L4两组三轮严格串行。
-- [ ] 每一 turn：真实composer一次提交 -> terminal business receipt -> 同Run QA receipt -> 答案入口 exact Trace receipt -> finalize。
-- [ ] 任一层未完整PASS不得claim下一层；正式业务FAIL保存immutable evidence后进入F6，不继续消耗高层问题token。
-- [ ] 全部15回合必须绑定同一baseline/build/release/profile；L4每组固定Conversation且三个Run可逐一打开。
+执行顺序以PRD§22为准：fresh scratch同批15题通过，再进行fresh live认证/激活及读回；两库baseline不同，不搬运Run或重复计分。
+
+- [x] fresh live certification在predecessor下STAGED/inactive；单事务激活fresh successor并完成production-port readback。
+- [x] 创建唯一 four-layer attempt，按 L1五题 -> L2两题 -> L3两题 -> L4两组三轮严格串行。
+- [x] 每一 turn：真实composer一次提交 -> terminal business receipt -> 同Run QA receipt -> 答案入口 exact Trace receipt -> finalize。
+- [x] 任一层未完整PASS不得claim下一层；正式业务FAIL保存immutable evidence后进入F6，不继续消耗高层问题token。
+- [x] 全部15回合必须绑定同一baseline/build/release/profile；L4每组固定Conversation且三个Run可逐一打开。
 
 ### F6 — 无人值班修复循环
 
@@ -1976,10 +1978,11 @@ Diagnostic/Q1/C1任一正式首次失败必须写既有 authority支持的 immut
 
 ### F7 — 最终审计、页面证据与闭环
 
-- [ ] 输出 L1-L4 矩阵：question/Conversation/Run、实际Agent序列、answer/artifact hashes、business/QA/Trace receipts与token usage。
-- [ ] 证明15回合真实答案页可用、每个exact Trace可从答案进入、L4上下文/纠正正确、refresh/replay无重复副作用。
-- [ ] 核对protected history零漂移、最新authority/build/release/profile exact、sandbox residual=0、production isolation真实状态。
-- [ ] 停止本任务Web/Worker/browser/OpenSandbox，删除scratch/container/volume和临时credential；保留既定长期容器和audit stash。
+- [x] 输出 L1-L4 矩阵：question/Conversation/Run、实际Agent序列、answer/artifact hashes、business/QA/Trace receipts与token usage。
+- [x] 证明15回合真实答案页可用、每个exact Trace可从答案进入、L4上下文/纠正正确、refresh/replay无重复副作用。
+- [x] 核对protected history零漂移、最新authority/build/release/profile exact、sandbox residual=0、production isolation真实状态。
+- [x] 停止Web/Worker/browser/OpenSandbox/SSH和当前数据库服务，删除本轮瞬态credential及9个旧停止容器。
+  按用户最新资源/历史保护边界，保留所有数据卷、backup、当前已通过scratch和live包装（stopped），不执行旧条款中的删卷。
 - [ ] 更新spec/runbook/Trellis，运行final focused/full/validate/diff checks；每个完成小任务scoped commit，最终worktree clean。
 - [ ] 只有全部AC-FL/UI/AUTO/FINAL闭合才标记COMPLETE；任何外部等待都保持任务`in_progress`，不得标记blocked或结束。
 

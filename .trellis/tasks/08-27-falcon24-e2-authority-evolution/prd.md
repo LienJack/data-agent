@@ -686,14 +686,14 @@ Provider、SQL、Sandbox 或 Artifact side effect。
 
 ### 20.6 Final acceptance
 
-- [ ] **AC-FL-01** L1 五题在同一 frozen baseline 上全部 PASS，且每题只出现一个预期 Specialist Profile。
-- [ ] **AC-FL-02** L2 两题全部 PASS，动态顺序为 Semantic 后 Text2SQL，公式、时间与数据结果可复核。
-- [ ] **AC-FL-03** L3 两题全部 PASS，Root 基于 Tool Result 动态决定后续调用，表格、分析、报告和图表同源。
-- [ ] **AC-FL-04** L4 两个三轮 Conversation 全部 PASS，正确处理指代、筛选、口径纠正、跨 Run 历史与证据边界。
-- [ ] **AC-UI-01** 15 个正式用户回合的 Q&A Agent 页面均从真实 composer 提交并可见终态结果；刷新不重复 Run/调用。
-- [ ] **AC-UI-02** 每个通过的 Run 都能从答案入口打开 exact 可用轨迹；Agent、Tool、Artifact、表格/图表/报告预览与返回交互正常。
-- [ ] **AC-AUTO-01** 内部失败可自动修复并在新 build/attempt 上重启；crash/replay 不重复已提交副作用。
-- [ ] **AC-AUTO-02** 外部条件缺失时任务保持 `ACTIVE/WAITING_EXTERNAL`，先继续独立工作，再以无模型探针持续复查并自动续跑；
+- [x] **AC-FL-01** L1 五题在同一 frozen baseline 上全部 PASS，且每题只出现一个预期 Specialist Profile。
+- [x] **AC-FL-02** L2 两题全部 PASS，动态顺序为 Semantic 后 Text2SQL，公式、时间与数据结果可复核。
+- [x] **AC-FL-03** L3 两题全部 PASS，Root 基于 Tool Result 动态决定后续调用，表格、分析、报告和图表同源。
+- [x] **AC-FL-04** L4 两个三轮 Conversation 全部 PASS，正确处理指代、筛选、口径纠正、跨 Run 历史与证据边界。
+- [x] **AC-UI-01** 15 个正式用户回合的 Q&A Agent 页面均从真实 composer 提交并可见终态结果；刷新不重复 Run/调用。
+- [x] **AC-UI-02** 每个通过的 Run 都能从答案入口打开 exact 可用轨迹；Agent、Tool、Artifact、表格/图表/报告预览与返回交互正常。
+- [x] **AC-AUTO-01** 内部失败可自动修复并在新 build/attempt 上重启；crash/replay 不重复已提交副作用。
+- [x] **AC-AUTO-02** 外部条件缺失时任务保持 `ACTIVE/WAITING_EXTERNAL`，先继续独立工作，再以无模型探针持续复查并自动续跑；
   不因“需要真人审批”或 credential 暂不可用结束任务。
 - [ ] **AC-FINAL-01** PostgreSQL authority、protected history、credential、安全边界、sandbox residual、服务/浏览器/scratch 清理、
   focused/full checks、scoped commits 与 clean worktree 全部闭合；production isolation 仍按真实证据单独声明。
